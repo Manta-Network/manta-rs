@@ -17,7 +17,12 @@
 //! Algebraic Constructions
 
 use crate::{
-    eclair::alloc::Constant,
+    eclair::{
+        alloc::Constant,
+        bool::{Bool, ConditionalSelect},
+        num::Zero,
+        Has,
+    },
     key,
     rand::{RngCore, Sample},
 };
@@ -32,9 +37,32 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Group
-pub trait Group<COM = ()> {
+pub trait Group<COM = ()>: Sized {
     /// Adds `rhs` to `self` in the group.
     fn add(&self, rhs: &Self, compiler: &mut COM) -> Self;
+
+    /// Adds `rhs` to `self` in the group and assigns the result to `self`.
+    #[inline]
+    fn add_assign(&mut self, rhs: &Self, compiler: &mut COM) -> &mut Self {
+        *self = self.add(rhs, compiler);
+        self
+    }
+
+    /// Doubles `self` in the group and assigns the result to `self`.
+    #[inline]
+    fn double_assign(&mut self, compiler: &mut COM) -> &mut Self {
+        *self = self.add(self, compiler);
+        self
+    }
+
+    /// Doubles `self` `k` times in the group and assigns the result to `self`.
+    #[inline]
+    fn repeated_double_assign(&mut self, k: usize, compiler: &mut COM) -> &mut Self {
+        for _ in 0..k {
+            self.double_assign(compiler);
+        }
+        self
+    }
 }
 
 /// Ring
@@ -110,6 +138,116 @@ impl<G, const N: usize> PrecomputedBaseTable<G, N> {
                     .collect::<Vec<_>>(),
             ),
         }
+    }
+}
+
+/// Group Element Table for Windowed Point Multiplication
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Window<G> {
+    /// Multiplication Table
+    table: Vec<G>,
+}
+
+impl<G> Window<G> {
+    /// Creates a new [`Window`] from `table` without checking its correctness.
+    #[inline]
+    pub fn new_unchecked(table: Vec<G>) -> Self {
+        Self { table }
+    }
+
+    /// Creates a new [`Window`] table by repeatedly adding `point` to itself to
+    /// support a table with windowed multiplication with `window_size`.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if `window_size` is less than `1`.
+    ///
+    /// # Implementation Note
+    ///
+    /// Windowed multiplication consists of `B/n` rounds, where `B` is the number of
+    /// bits of a group element and `n` is the window size. Creating the table costs
+    /// `2^n - 2` additions in the group, and each round involves `1` table look-up,
+    /// `n` doublings and `1` addition. Asymptotically, the optimal window size is
+    /// `n = 2`.
+    #[inline]
+    pub fn new<COM>(window_size: usize, point: G, compiler: &mut COM) -> Self
+    where
+        G: Clone + Group<COM> + Zero<COM>,
+    {
+        assert!(window_size > 0, "Window size must be at least 1.");
+        let table_length = 2usize.pow(window_size as u32);
+        let mut table = Vec::with_capacity(table_length);
+        table.push(G::zero(compiler));
+        table.push(point.clone());
+        for _ in 2..table_length {
+            table.push(table.last().unwrap().add(&point, compiler));
+        }
+        Self::new_unchecked(table)
+    }
+
+    /// Returns the window size.
+    #[inline]
+    pub fn window_size(&self) -> usize {
+        self.table.len().trailing_zeros() as usize
+    }
+
+    /// Returns a shared reference to the multiplication table.
+    #[inline]
+    pub fn table(&self) -> &[G] {
+        &self.table
+    }
+
+    /// Returns the multiplication table, dropping `self`.
+    #[inline]
+    pub fn into_inner(self) -> Vec<G> {
+        self.table
+    }
+
+    /// Doubles `result`, `window_size`-many times and then adds the element from `table` corresponding to `chunk`.
+    #[inline]
+    fn scalar_mul_round<COM>(
+        window_size: usize,
+        table: &[G],
+        chunk: &[&Bool<COM>],
+        result: &mut G,
+        compiler: &mut COM,
+    ) where
+        G: Clone + ConditionalSelect<COM> + Group<COM>,
+        COM: Has<bool>,
+    {
+        let chunk = chunk.iter().copied().rev();
+        let selected_element = G::select_from_table(chunk, table, compiler);
+        result
+            .repeated_double_assign(window_size, compiler)
+            .add_assign(&selected_element, compiler);
+    }
+
+    /// Multiplies a point in G by `scalar` using `self` as the window table.
+    ///
+    /// # Implementation Note
+    ///
+    /// For `scalar_mul` to be compatible with `ConditionalSelect::select_from_table` and `Window::new`,
+    /// `bits` must be in the big-endian representation.
+    #[inline]
+    pub fn scalar_mul<'b, B, COM>(&self, bits: B, compiler: &mut COM) -> G
+    where
+        Bool<COM>: 'b,
+        B: IntoIterator<Item = &'b Bool<COM>>,
+        COM: Has<bool>,
+        G: Clone + ConditionalSelect<COM> + Group<COM> + Zero<COM>,
+    {
+        let bit_vector = bits.into_iter().collect::<Vec<_>>(); // TODO: Switch to chunking iterator.
+        let window_size = self.window_size();
+        let mut result = G::zero(compiler);
+        let mut iter_chunks = bit_vector.chunks_exact(window_size);
+        for chunk in &mut iter_chunks {
+            Self::scalar_mul_round(window_size, &self.table, chunk, &mut result, compiler);
+        }
+        let remainder = iter_chunks.remainder();
+        let last_window_size = remainder.len();
+        let subtable = &self.table[0..1 << last_window_size];
+        Self::scalar_mul_round(last_window_size, subtable, remainder, &mut result, compiler);
+        result
     }
 }
 
@@ -314,7 +452,7 @@ pub mod security {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
-    use crate::eclair::num::{One, Zero};
+    use crate::eclair::{bool::Assert, cmp::PartialEq, num::{One, Zero}};
 
     /// Tests if the group `G` is associative.
     #[inline]
@@ -405,6 +543,31 @@ pub mod test {
         R: Ring<COM> + One<COM>,
         F: FnOnce(&R, &R, &mut COM),
     {
-        assert_same(r, &r.mul(&R::one(compiler), compiler), compiler)
+        assert_same(r, &r.mul(&R::one(compiler), compiler), compiler)}
+
+    /// Tests if windowed scalar multiplication of the bit decomposition of `scalar` with `point` returns the
+    /// product `scalar` * `point`
+    #[inline]
+    pub fn window_correctness<S, G, F, B, COM>(
+        window_size: usize,
+        scalar: &S,
+        point: G,
+        bit_conversion: F,
+        compiler: &mut COM,
+    ) where
+        G: Clone
+            + ConditionalSelect<COM>
+            + PartialEq<G, COM>
+            + ScalarMulGroup<S, COM, Output = G>
+            + Zero<COM>,
+        F: FnOnce(&S, &mut COM) -> B,
+        B: IntoIterator<Item = Bool<COM>>,
+        COM: Assert,
+    {
+        let product = point.scalar_mul(scalar, compiler);
+        let window = Window::new(window_size, point, compiler);
+        let bits = Vec::from_iter(bit_conversion(scalar, compiler)); // TODO: use iter instead of Vec.
+        let windowed_product = window.scalar_mul(&bits, compiler);
+        product.assert_equal(&windowed_product, compiler);
     }
 }

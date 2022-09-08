@@ -20,7 +20,11 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
+
 use crate::eclair::{cmp::PartialEq, ops::Not, Has, Type};
+use alloc::vec::Vec;
+use manta_util::{iter::IteratorExt, vec::VecExt};
+
 
 /// Boolean Type Inside of the Compiler
 pub type Bool<COM = ()> = Type<COM, bool>;
@@ -106,6 +110,47 @@ where
 {
     /// Selects `true_value` when `bit == true` and `false_value` when `bit == false`.
     fn select(bit: &Bool<COM>, true_value: &Self, false_value: &Self, compiler: &mut COM) -> Self;
+
+    /// Selects an element from `table` by repeated iteration of `select` over `bits`.
+    /// The `bits` are ordered from most significant to least significant, forming unsigned
+    /// integers in binary representation which are understood as the `table` indices.
+    #[inline]
+    fn select_from_table<'s, B, T>(bits: B, table: T, compiler: &mut COM) -> Self
+    where
+        Self: 's + Clone,
+        Bool<COM>: 's,
+        B: IntoIterator<Item = &'s Bool<COM>>,
+        B::IntoIter: ExactSizeIterator,
+        T: IntoIterator<Item = &'s Self>,
+        T::IntoIter: ExactSizeIterator,
+    {
+        let mut table = table.into_iter();
+        let mut bits = bits.into_iter();
+        assert_eq!(
+            table.len(),
+            1 << bits.len(),
+            "Table length must equal 2^(number of bits)."
+        );
+        if let Some(first_bit) = bits.next() {
+            let mut table = table
+                .chunk_by()
+                .map(|[x, y]| Self::select(first_bit, y, x, compiler))
+                .collect::<Vec<_>>();
+            for bit in bits {
+                table = table
+                    .into_iter()
+                    .chunk_by()
+                    .map(|[x, y]| Self::select(bit, &y, &x, compiler))
+                    .collect();
+            }
+            table.take_first()
+        } else {
+            table
+                .next()
+                .expect("Table of length 1 always has one element.")
+                .clone()
+        }
+    }
 }
 
 /// Implements [`ConditionalSelect`] for the given `$type`.
