@@ -530,3 +530,87 @@ pub trait Rand: RngCore {
 }
 
 impl<R> Rand for R where R: RngCore + ?Sized {}
+
+/// Fuzzing module
+pub mod fuzz {
+    use super::*;
+
+    #[cfg(all(feature = "arkworks", feature = "rand"))]
+    use crate::arkworks::ff::{BigInteger, PrimeField};
+
+    /// Fuzz Trait
+    pub trait Fuzz<M = ()> {
+        /// Changes one bit of `self` at random.
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized;
+    }
+
+    impl Fuzz for bool {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            let _ = rng;
+            self ^ true
+        }
+    }
+
+    #[cfg(feature = "rand")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
+    impl<M, T> Fuzz<Vec<M>> for Vec<T>
+    where
+        T: Clone + Fuzz<M>,
+    {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            let position = rng.gen_range(0..self.len());
+            let mut fuzzed_self = self.clone();
+            fuzzed_self[position] = self[position].fuzz(rng);
+            fuzzed_self
+        }
+    }
+
+    /// BigInteger Marker Type
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct BigIntegerMarker;
+
+    #[cfg(all(feature = "arkworks", feature = "rand"))]
+    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "rand"))))]
+    impl<B> Fuzz<BigIntegerMarker> for B
+    where
+        B: BigInteger,
+    {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            B::from_bits_be(&self.to_bits_be().fuzz(rng))
+        }
+    }
+
+    /// Prime Field Marker Type
+    #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    pub struct PrimeFieldMarker;
+
+    #[cfg(all(feature = "arkworks", feature = "rand"))]
+    #[cfg_attr(doc_cfg, doc(cfg(all(feature = "arkworks", feature = "rand"))))]
+    impl<P> Fuzz<PrimeFieldMarker> for P
+    where
+        P: PrimeField,
+    {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            P::from_repr(self.into_repr().fuzz(rng))
+                .expect("Computing the field element from a big integer is not supposed to fail.")
+        }
+    }
+}
