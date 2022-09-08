@@ -1308,6 +1308,22 @@ where
             commitment,
         }
     }
+
+    /// Computes the item hash of `self` using `hasher`.
+    #[inline]
+    pub fn item_hash(
+        &self,
+        hasher: &C::UtxoAccumulatorItemHash,
+        compiler: &mut COM,
+    ) -> UtxoAccumulatorItem<C, COM> {
+        hasher.hash(
+            &self.is_transparent,
+            &self.public_asset.id,
+            &self.public_asset.value,
+            &self.commitment,
+            compiler,
+        )
+    }
 }
 
 impl<C, COM> PartialEq<Self, COM> for Utxo<C, COM>
