@@ -16,7 +16,7 @@
 
 //! Ratio Proofs
 
-use manta_crypto::{
+use crate::{
     arkworks::{
         ec::{AffineCurve, ProjectiveCurve},
         ff::{PrimeField, UniformRand, Zero},

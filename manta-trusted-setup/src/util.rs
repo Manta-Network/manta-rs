@@ -16,7 +16,7 @@
 
 //! Utilities
 
-use crate::{groth16::kzg, ratio::HashToGroup};
+use crate::groth16::kzg;
 use alloc::{boxed::Box, vec::Vec};
 use ark_std::{
     error,
@@ -29,6 +29,7 @@ use manta_crypto::{
         ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
         ff::{BigInteger, PrimeField, UniformRand, Zero},
         pairing::Pairing,
+        ratio::HashToGroup,
         serialize::{CanonicalSerialize, Read, SerializationError, Write},
     },
     rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
@@ -394,7 +395,7 @@ where
     #[inline]
     fn hash(&self, challenge: &[u8; N], ratio: (&P::G1, &P::G1)) -> P::G2 {
         let mut hasher = BlakeHasher::default();
-        hasher.0.update(&[self.domain_tag]);
+        hasher.0.update([self.domain_tag]);
         hasher.0.update(challenge);
         ratio.0.serialize(&mut hasher).unwrap();
         ratio.1.serialize(&mut hasher).unwrap();

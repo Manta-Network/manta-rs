@@ -18,7 +18,6 @@
 
 use crate::{
     groth16::{kzg::G1, ppot::kzg::PerpetualPowersOfTauCeremony},
-    ratio::HashToGroup,
     util::{hash_to_group, BlakeHasher, Serializer},
 };
 use ark_bn254::{Fq, Fq2, G1Affine, G2Affine};
@@ -27,6 +26,7 @@ use manta_crypto::{
     arkworks::{
         ec::{short_weierstrass_jacobian::GroupAffine, ProjectiveCurve, SWModelParameters},
         ff::{BigInteger256, Fp256, FpParameters, Zero},
+        ratio::HashToGroup,
     },
     rand::{RngCore, Sample},
 };
@@ -47,7 +47,7 @@ where
     #[inline]
     fn hash(&self, challenge: &[u8; N], pair: (&G1Affine, &G1Affine)) -> G2Affine {
         let mut hasher = BlakeHasher::default();
-        hasher.0.update(&[self.domain_tag]);
+        hasher.0.update([self.domain_tag]);
         hasher.0.update(challenge);
         <PerpetualPowersOfTauCeremony<S, POWERS> as Serializer<G1Affine, G1>>::serialize_uncompressed(pair.0, &mut hasher)
             .unwrap();

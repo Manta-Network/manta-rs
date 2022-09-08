@@ -22,7 +22,6 @@ use crate::{
         mpc::{self, contribute, initialize, verify_transform, verify_transform_all, Proof, State},
     },
     mpc::{ChallengeType, ProofType, StateType, Transcript},
-    ratio::test::assert_valid_ratio_proof,
     util::{BlakeHasher, HasDistribution, KZGBlakeHasher},
 };
 use alloc::vec::Vec;
@@ -36,6 +35,7 @@ use manta_crypto::{
         ff::{field_new, UniformRand},
         pairing::{test::assert_valid_pairing_ratio, Pairing},
         r1cs_std::eq::EqGadget,
+        ratio::test::assert_valid_ratio_proof,
         serialize::CanonicalSerialize,
     },
     eclair::alloc::{
@@ -114,7 +114,7 @@ impl kzg::Configuration for Test {
             item.serialize_uncompressed(&mut hasher).unwrap();
         }
         state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
-        hasher.0.update(&challenge);
+        hasher.0.update(challenge);
         proof
             .tau
             .serialize(&mut hasher)
