@@ -16,12 +16,9 @@
 
 //! Arkworks Constraint System and Proof System Implementations
 
-use alloc::vec::Vec;
-use core::iter::{self, Extend};
 use manta_crypto::{
-    algebra,
     arkworks::{
-        ff::{Field, Fp, FpParameters, PrimeField, ToConstraintField},
+        ff::{Fp, FpParameters, PrimeField},
         r1cs_std::{
             alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, ToBitsGadget,
         },
@@ -33,31 +30,19 @@ use manta_crypto::{
             },
         },
     },
-    constraint::{
-        measure::{Count, Measure},
-        Input, ProofSystem,
-    },
+    constraint::measure::{Count, Measure},
     eclair::{
         self,
         alloc::{
             mode::{self, Public, Secret},
             Constant, Variable,
         },
-        bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
+        bool::{Assert, ConditionalSelect, ConditionalSwap},
         num::{AssertWithinBitRange, Zero},
         ops::{Add, BitAnd, BitOr},
         Has, NonNative,
     },
-    rand::{RngCore, Sample},
 };
-use manta_util::{
-    byte_count,
-    codec::{Decode, DecodeError, Encode, Read, Write},
-    SizeLimit,
-};
-
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use manta_crypto::arkworks::{
     r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar},
