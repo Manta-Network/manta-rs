@@ -557,25 +557,24 @@ where
 
     /// Constructs an [`Asset`] against the `asset_id` of `self` and `value`.
     #[inline]
-    fn construct_asset(&self, value: &C::AssetValue) -> Asset<C> {
-        Asset::<C>::new(
-            self.asset_id
-                .clone()
-                .expect("The asset id exists by construction."),
-            value.clone(),
-        )
+    fn construct_asset(&self, value: &C::AssetValue) -> Option<Asset<C>> {
+        Some(Asset::<C>::new(self.asset_id.clone()?, value.clone()))
     }
 
     /// Returns the `k`-th source in the transfer.
     #[inline]
     pub fn source(&self, k: usize) -> Option<Asset<C>> {
-        self.sources.get(k).map(|value| self.construct_asset(value))
+        self.sources
+            .get(k)
+            .and_then(|value| self.construct_asset(value))
     }
 
     /// Returns the `k`-th sink in the transfer.
     #[inline]
     pub fn sink(&self, k: usize) -> Option<Asset<C>> {
-        self.sinks.get(k).map(|value| self.construct_asset(value))
+        self.sinks
+            .get(k)
+            .and_then(|value| self.construct_asset(value))
     }
 
     /// Generates the public input for the [`Transfer`] validation proof.
@@ -1376,25 +1375,24 @@ where
 
     /// Constructs an [`Asset`] against the `asset_id` of `self` and `value`.
     #[inline]
-    fn construct_asset(&self, value: &C::AssetValue) -> Asset<C> {
-        Asset::<C>::new(
-            self.asset_id
-                .clone()
-                .expect("The asset id exists by construction."),
-            value.clone(),
-        )
+    fn construct_asset(&self, value: &C::AssetValue) -> Option<Asset<C>> {
+        Some(Asset::<C>::new(self.asset_id.clone()?, value.clone()))
     }
 
     /// Returns the `k`-th source in the transfer.
     #[inline]
     pub fn source(&self, k: usize) -> Option<Asset<C>> {
-        self.sources.get(k).map(|value| self.construct_asset(value))
+        self.sources
+            .get(k)
+            .and_then(|value| self.construct_asset(value))
     }
 
     /// Returns the `k`-th sink in the transfer.
     #[inline]
     pub fn sink(&self, k: usize) -> Option<Asset<C>> {
-        self.sinks.get(k).map(|value| self.construct_asset(value))
+        self.sinks
+            .get(k)
+            .and_then(|value| self.construct_asset(value))
     }
 }
 
