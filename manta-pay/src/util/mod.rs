@@ -15,7 +15,3 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Manta Pay Utilities
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-pub mod scale;

@@ -35,8 +35,8 @@ use manta_crypto::{
 };
 use manta_util::codec::{self, DecodeError};
 
-#[cfg(feature = "scale")]
-use crate::crypto::ecc::arkworks::Group;
+// #[cfg(feature = "scale")]
+// use crate::crypto::ecc::arkworks::Group;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
@@ -73,70 +73,6 @@ pub struct Proof<E>(
 )
 where
     E: PairingEngine;
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<E> scale_codec::Decode for Proof<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
-    where
-        I: scale_codec::Input,
-    {
-        Ok(Self(
-            CanonicalDeserialize::deserialize(arkworks::codec::ScaleCodecReader(input))
-                .map_err(|_| "Deserialization Error")?,
-        ))
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<E> scale_codec::Encode for Proof<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn using_encoded<R, Encoder>(&self, f: Encoder) -> R
-    where
-        Encoder: FnOnce(&[u8]) -> R,
-    {
-        f(&proof_as_bytes::<E>(&self.0))
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<E> scale_codec::EncodeLike for Proof<E> where E: PairingEngine {}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<E> scale_codec::MaxEncodedLen for Proof<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn max_encoded_len() -> usize {
-        2 * Group::<E::G1Projective>::max_encoded_len()
-            + Group::<E::G2Projective>::max_encoded_len()
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<E> scale_info::TypeInfo for Proof<E>
-where
-    E: PairingEngine,
-{
-    type Identity = [u8];
-
-    #[inline]
-    fn type_info() -> scale_info::Type {
-        Self::Identity::type_info()
-    }
-}
 
 impl<E> codec::Encode for Proof<E>
 where
