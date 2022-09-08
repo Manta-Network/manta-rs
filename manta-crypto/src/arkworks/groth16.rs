@@ -32,8 +32,9 @@ use ark_snark::SNARK;
 use core::marker::PhantomData;
 use manta_util::codec::{self, DecodeError};
 
-#[cfg(feature = "scale")]
-use crate::crypto::ecc::arkworks::Group;
+// TODO: How much of ecc:arkworks should I move over? 
+// #[cfg(feature = "scale")]
+// use crate::crypto::ecc::arkworks::Group;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
@@ -71,23 +72,23 @@ pub struct Proof<E>(
 where
     E: PairingEngine;
 
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<E> scale_codec::Decode for Proof<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
-    where
-        I: scale_codec::Input,
-    {
-        Ok(Self(
-            CanonicalDeserialize::deserialize(arkworks::codec::ScaleCodecReader(input))
-                .map_err(|_| "Deserialization Error")?,
-        ))
-    }
-}
+// #[cfg(feature = "scale")]
+// #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
+// impl<E> scale_codec::Decode for Proof<E>
+// where
+//     E: PairingEngine,
+// {
+//     #[inline]
+//     fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
+//     where
+//         I: scale_codec::Input,
+//     {
+//         Ok(Self(
+//             CanonicalDeserialize::deserialize(arkworks::codec::ScaleCodecReader(input))
+//                 .map_err(|_| "Deserialization Error")?,
+//         ))
+//     }
+// }
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
@@ -108,18 +109,18 @@ where
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 impl<E> scale_codec::EncodeLike for Proof<E> where E: PairingEngine {}
 
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<E> scale_codec::MaxEncodedLen for Proof<E>
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn max_encoded_len() -> usize {
-        2 * Group::<E::G1Projective>::max_encoded_len()
-            + Group::<E::G2Projective>::max_encoded_len()
-    }
-}
+// #[cfg(feature = "scale")]
+// #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
+// impl<E> scale_codec::MaxEncodedLen for Proof<E>
+// where
+//     E: PairingEngine,
+// {
+//     #[inline]
+//     fn max_encoded_len() -> usize {
+//         2 * Group::<E::G1Projective>::max_encoded_len()
+//             + Group::<E::G2Projective>::max_encoded_len()
+//     }
+// }
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]

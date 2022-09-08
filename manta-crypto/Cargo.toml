@@ -58,6 +58,9 @@ getrandom = ["rand_core/getrandom"]
 # Enable Groth16 ZKP System
 groth16 = ["ark-groth16", "ark-snark", "arkworks"]
 
+# SCALE Codec and Type Info
+scale = ["scale-codec", "scale-info"]
+
 # Serde Serialization
 serde = [
     "manta-util/serde-alloc",
@@ -88,6 +91,8 @@ manta-util = { path = "../manta-util", default-features = false, features = ["al
 rand = { version = "0.8.4", optional = true, default-features = false, features = ["alloc"] }
 rand_chacha = { version = "0.3.1", optional = true, default-features = false }
 rand_core = { version = "0.6.3", default-features = false }
+scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
+scale-info = { version = "2.1.2", optional = true, default-features = false, features = ["derive"] }
 
 [dev-dependencies]
 ark-bn254 = { version = "0.3.0", default-features = false, features = ["scalar_field"] }
