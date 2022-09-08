@@ -32,6 +32,7 @@ arkworks = [
     "ark-r1cs-std",
     "ark-relations",
     "ark-serialize",
+    "ark-std",
 ]
 
 # Dalek Cryptography Backend
@@ -61,6 +62,7 @@ ark-ff = { version = "0.3.0", optional = true, default-features = false }
 ark-r1cs-std = { version = "0.3.1", optional = true, default-features = false }
 ark-relations = { version = "0.3.0", optional = true, default-features = false }
 ark-serialize = { version = "0.3.0", optional = true, default-features = false, features = ["derive"] }
+ark-std = { version = "0.3.0", optional = true, default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 ed25519-dalek = { version = "1.0.1", optional = true, default-features = false, features = ["u64_backend"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }

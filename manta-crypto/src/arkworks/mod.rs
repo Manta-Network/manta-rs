@@ -22,6 +22,7 @@ pub use ark_relations as relations;
 pub use ark_serialize as serialize;
 
 pub mod algebra;
+pub mod codec;
 pub mod constraint;
 pub mod ff;
 pub mod pairing;
