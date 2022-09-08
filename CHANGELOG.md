@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#248](https://github.com/Manta-Network/manta-rs/pull/248) Move Fp and R1CS to manta-crypto
 - [\#237](https://github.com/Manta-Network/manta-rs/pull/237) Public input fuzzing tests for transfer protocol
 - [\#215](https://github.com/Manta-Network/manta-rs/pull/215) Add windowed multiplication algorithm for groups
 - [\#213](https://github.com/Manta-Network/manta-rs/pull/197) Add Ceremony Utilities
