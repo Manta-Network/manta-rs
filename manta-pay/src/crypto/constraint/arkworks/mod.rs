@@ -921,7 +921,7 @@ mod tests {
         R: RngCore + ?Sized,
         F: PrimeField,
     {
-        let bound = Fp(F::from(2u64).pow(&[BITS as u64]));
+        let bound = Fp(F::from(2u64).pow([BITS as u64]));
         check_assert_within_range::<_, BITS>(Fp(F::zero()), true);
         check_assert_within_range::<_, BITS>(Fp(bound.0 - F::one()), true);
         check_assert_within_range::<_, BITS>(bound, false);

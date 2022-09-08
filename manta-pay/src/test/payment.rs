@@ -17,16 +17,26 @@
 //! Prove and Verify Functions for Benchmark and Test Purposes
 
 use crate::config::{
-    self, utxo::v1::UtxoAccumulatorModel, Asset, AssetId, AuthorizationContext, FullParametersRef,
+    self,
+    utxo::v1::{MerkleTreeConfiguration, UtxoAccumulatorItem, UtxoAccumulatorModel},
+    Asset, AssetId, Authorization, AuthorizationContext, FullParametersRef, MultiProvingContext,
     Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate, ToPublic,
     TransferPost,
 };
-use manta_accounting::transfer::{self, test::value_distribution, Authorization};
-use manta_crypto::rand::{CryptoRng, Rand, RngCore, Sample};
+use manta_accounting::transfer::{self, test::value_distribution};
+use manta_crypto::{
+    accumulator::Accumulator,
+    merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
+    rand::{CryptoRng, Rand, RngCore, Sample},
+};
+
+/// UTXO Accumulator for Building Test Circuits
+pub type UtxoAccumulator =
+    TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
 
 /// Builds a new internal pair for use in [`private_transfer::prove`] and [`to_public::prove`].
 #[inline]
-pub fn internal_pair<R>(
+fn internal_pair_unchecked<R>(
     parameters: &Parameters,
     authorization_context: &mut AuthorizationContext,
     asset: Asset,
@@ -68,7 +78,7 @@ pub mod to_private {
                 None,
                 rng,
             )
-            .expect("")
+            .expect("Unable to build TO_PRIVATE proof.")
             .expect("")
     }
 }
@@ -76,6 +86,64 @@ pub mod to_private {
 /// Utility Module for [`PrivateTransfer`]
 pub mod private_transfer {
     use super::*;
+
+    ///
+    #[inline]
+    pub fn prove_full<A, R>(
+        proving_context: &MultiProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator: &mut A,
+        rng: &mut R,
+    ) -> ([TransferPost; 2], TransferPost)
+    where
+        A: Accumulator<Item = UtxoAccumulatorItem, Model = UtxoAccumulatorModel>,
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let asset_id = AssetId::gen(rng);
+        let values = value_distribution(2, rng.gen(), rng);
+        let spending_key = rng.gen();
+        let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
+
+        let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(
+            parameters,
+            &mut authorization.context,
+            rng.gen(), // FIXME:
+            Asset::new(asset_id, values[0]),
+            Default::default(),
+            rng,
+        );
+        let sender_0 = pre_sender_0.insert_and_upgrade(parameters, utxo_accumulator);
+        let receiver_0 = (); // FIXME:
+
+        let (to_private_1, pre_sender_1) = ToPrivate::internal_pair(
+            parameters,
+            &mut authorization.context,
+            rng.gen(), // FIXME:
+            Asset::new(asset_id, values[1]),
+            Default::default(),
+            rng,
+        );
+        let sender_1 = pre_sender_1.insert_and_upgrade(parameters, utxo_accumulator);
+        let receiver_1 = (); // FIXME:
+
+        /*
+        let private_transfer = PrivateTransfer::build(
+            authorization,
+            [sender_0, sender_1],
+            [receiver_1, receiver_0],
+        )
+        .into_post(
+            FullParametersRef::new(parameters, utxo_accumulator_model),
+            &proving_context.private_transfer,
+            Some(&spending_key),
+            rng,
+        )
+        .expect("Unable to build PRIVATE_TRANSFER proof.")
+        .expect("");
+        */
+
+        todo!()
+    }
 
     /// Generates a proof for a [`PrivateTransfer`] transaction.
     #[inline]
@@ -91,15 +159,14 @@ pub mod private_transfer {
         let asset_id = AssetId::gen(rng);
         let values = value_distribution(2, rng.gen(), rng);
         let spending_key = rng.gen();
-        let mut authorization =
-            Authorization::<config::Config>::from_spending_key(parameters, &spending_key, rng);
-        let (receiver_0, sender_0) = internal_pair(
+        let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
+        let (receiver_0, sender_0) = internal_pair_unchecked(
             parameters,
             &mut authorization.context,
             Asset::new(asset_id, values[0]),
             rng,
         );
-        let (receiver_1, sender_1) = internal_pair(
+        let (receiver_1, sender_1) = internal_pair_unchecked(
             parameters,
             &mut authorization.context,
             Asset::new(asset_id, values[1]),
@@ -140,10 +207,10 @@ pub mod to_public {
         let values = value_distribution(2, rng.gen(), rng);
         let asset_0 = Asset::new(asset_id, values[0]);
         let spending_key = rng.gen();
-        let mut authorization =
-            Authorization::<config::Config>::from_spending_key(parameters, &spending_key, rng);
-        let (_, sender_0) = internal_pair(parameters, &mut authorization.context, asset_0, rng);
-        let (receiver_1, sender_1) = internal_pair(
+        let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
+        let (_, sender_0) =
+            internal_pair_unchecked(parameters, &mut authorization.context, asset_0, rng);
+        let (receiver_1, sender_1) = internal_pair_unchecked(
             parameters,
             &mut authorization.context,
             Asset::new(asset_id, values[1]),

@@ -1269,7 +1269,7 @@ where
     }
 }
 
-/// UTXO
+/// Unspent Transaction Output
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "C::Bool: Clone, Asset<C, COM>: Clone, UtxoCommitment<C, COM>: Clone"),

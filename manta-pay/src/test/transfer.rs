@@ -17,23 +17,16 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{
-        utxo::v1::MerkleTreeConfiguration, FullParametersRef, PrivateTransfer, Proof, ProofSystem,
-        ToPrivate, ToPublic,
-    },
+    config::{FullParametersRef, PrivateTransfer, Proof, ProofSystem, ToPrivate, ToPublic},
+    test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
     rand::{OsRng, Rand},
 };
 use std::io::Cursor;
-
-/// UTXO Accumulator for Building Test Circuits
-pub type UtxoAccumulator =
-    TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
 
 /// Tests the generation of proving/verifying contexts for [`ToPrivate`].
 #[test]

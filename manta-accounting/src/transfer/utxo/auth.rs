@@ -325,16 +325,18 @@ impl<T> AuthorizationSignature<T>
 where
     T: AuthorizationKeyType + SignatureType,
 {
-    ///
+    /// Builds a new [`AuthorizationSignature`] from `authorization_key` and `signature` without
+    /// checking that the `authorization_key` is the correct key for `signature`.
     #[inline]
-    pub fn new(authorization_key: T::AuthorizationKey, signature: T::Signature) -> Self {
+    pub fn new_unchecked(authorization_key: T::AuthorizationKey, signature: T::Signature) -> Self {
         Self {
             authorization_key,
             signature,
         }
     }
 
-    ///
+    /// Generates a new [`AuthorizationSignature`] by signing `message` with `spending_key` and
+    /// `authorization`.
     #[inline]
     pub fn generate<M, R>(
         parameters: &T,
@@ -352,10 +354,10 @@ where
             message,
             rng,
         );
-        Self::new(Field::into(authorization), signature)
+        Self::new_unchecked(Field::into(authorization), signature)
     }
 
-    ///
+    /// Verifies that `message` is commited to with `self` as the [`AuthorizationSignature`].
     #[inline]
     pub fn verify<M>(&self, parameters: &T, message: &M) -> bool
     where
