@@ -35,3 +35,11 @@ pub mod bls12_381;
 #[cfg(feature = "bn254")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bn254")))]
 pub mod bn254;
+
+#[cfg(feature = "arkworks")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
+pub mod codec;
+
+#[cfg(feature = "groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
+pub mod groth16;
