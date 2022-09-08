@@ -671,10 +671,14 @@ mod test {
     use crate::config::Bls12_381_Edwards;
     use core::str::FromStr;
     use manta_crypto::{
-        algebra::{PrecomputedBaseTable, test::window_correctness, ScalarMul},
-        arkworks::{algebra::scalar_bits,ec::{AffineCurve, ProjectiveCurve},
-        ff::{Field, UniformRand},
-        glv::GLVParameters, r1cs_std::groups::curves::twisted_edwards::AffineVar},
+        algebra::{test::window_correctness, PrecomputedBaseTable, ScalarMul},
+        arkworks::{
+            algebra::scalar_bits,
+            ec::{AffineCurve, ProjectiveCurve},
+            ff::{Field, UniformRand},
+            glv::GLVParameters,
+            r1cs_std::groups::curves::twisted_edwards::AffineVar,
+        },
         constraint::measure::Measure,
         eclair::bool::AssertEq,
         rand::OsRng,
