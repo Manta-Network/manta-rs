@@ -1309,14 +1309,14 @@ pub mod test {
             &mut F::options()
                 .create_new(true)
                 .write(true)
-                .open(&path, password)
+                .open(path, password)
                 .expect("Unable to create file for writing."),
         ))
         .expect("Unable to serialize and encrypt the data.");
         let decrypted_data = T::deserialize(&mut Deserializer::new(
             &mut F::options()
                 .read(true)
-                .open(&path, password)
+                .open(path, password)
                 .expect("Unable to open file for reading."),
         ))
         .expect("Unable to decrypt and deserialize the data.");
