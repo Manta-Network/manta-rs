@@ -1273,6 +1273,7 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "C::Bool: Clone, Asset<C, COM>: Clone, UtxoCommitment<C, COM>: Clone"),
+    Copy(bound = "C::Bool: Copy, Asset<C, COM>: Copy, UtxoCommitment<C, COM>: Copy"),
     Debug(bound = "C::Bool: Debug, Asset<C, COM>: Debug, UtxoCommitment<C, COM>: Debug")
 )]
 pub struct Utxo<C, COM = ()>
