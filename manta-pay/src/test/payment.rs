@@ -19,9 +19,9 @@
 use crate::config::{
     self,
     utxo::v1::{MerkleTreeConfiguration, UtxoAccumulatorItem, UtxoAccumulatorModel},
-    Asset, AssetId, Authorization, AuthorizationContext, FullParametersRef, MultiProvingContext,
-    Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate, ToPublic,
-    TransferPost,
+    Asset, AssetId, AssetValue, Authorization, AuthorizationContext, FullParametersRef,
+    MultiProvingContext, Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate,
+    ToPublic, TransferPost,
 };
 use manta_accounting::transfer::{self, test::value_distribution, utxo::DeriveAddress};
 use manta_crypto::{
@@ -93,17 +93,16 @@ pub mod private_transfer {
         proving_context: &MultiProvingContext,
         parameters: &Parameters,
         utxo_accumulator: &mut A,
+        asset_id: AssetId,
+        values: [AssetValue; 2],
         rng: &mut R,
     ) -> ([TransferPost; 2], TransferPost)
     where
         A: Accumulator<Item = UtxoAccumulatorItem, Model = UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        let asset_id = AssetId::gen(rng);
-        let values = value_distribution(2, rng.gen(), rng);
         let asset_0 = Asset::new(asset_id, values[0]);
         let asset_1 = Asset::new(asset_id, values[1]);
-
         let spending_key = rng.gen();
         let address = parameters.derive_address(&spending_key);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
