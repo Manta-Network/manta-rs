@@ -31,6 +31,7 @@ use manta_pay::{
 };
 use wasm_bindgen::prelude::wasm_bindgen;
 
+pub mod benchmark;
 pub mod ecc;
 
 /// Context Type

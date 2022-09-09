@@ -43,13 +43,10 @@ harness = false
 name = "reclaim"
 harness = false
 
-[[bench]]
-name = "benchmark"
-harness = false
-
 [dependencies]
 ark-ec = { version = "0.3.0", default-features = false }
 ark-ff = { version = "0.3.0", default-features = false }
+criterion = { version = "0.3.4", default-features = false }
 getrandom = { version = "0.2.6", default-features = false, features = ["js"] }
 instant = { version = "0.1.12", default-features = false, features = [ "wasm-bindgen" ] }
 manta-accounting = { path = "../manta-accounting", default-features = false, features = ["test"] }

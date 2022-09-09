@@ -712,8 +712,8 @@ mod test {
         println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
     }
 
-    pub type BN = ark_bn254::G1Affine;
-    pub type BLS = ark_bls12_381::G1Affine;
+    pub type BN = manta_crypto::arkworks::bn254::G1Affine;
+    pub type BLS = manta_crypto::arkworks::bls12_381::G1Affine;
 
     /// Checks that the GLV implementation on the curve `C` with the parameters given in `file`
     /// is correct.

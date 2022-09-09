@@ -18,7 +18,10 @@
 
 use core::iter::repeat_with;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_benchmark::ecc;
+use manta_benchmark::{
+    benchmark::{Benchmark, GLVMutiplicationSetup},
+    ecc,
+};
 use manta_crypto::{
     arkworks::bls12_381::{G1Affine as BLSAffine, G1Projective as BLSProjective},
     rand::OsRng,
@@ -135,8 +138,20 @@ fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
     });
 }
 
+#[inline]
+fn glv_scalar_multiplication(c: &mut Criterion) {
+    let mut group = c.benchmark_group("glv");
+    let mut rng = OsRng;
+    let glv_setup = black_box(GLVMutiplicationSetup::<BLSAffine>::setup(
+        &mut rng,
+        "../manta-pay/src/crypto/ecc/precomputed_glv_values/bls_values",
+    ));
+    glv_setup.define_benchmark(&mut group);
+}
+
 criterion_group!(
     ecc,
+    glv_scalar_multiplication,
     affine_affine_addition,
     projective_affine_addition,
     projective_projective_addition,

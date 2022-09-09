@@ -16,6 +16,8 @@
 
 //! Arkworks Elliptic Curve Implementation
 
+use core::str::FromStr;
+
 use crate::arkworks::{
     ec::{
         models::{short_weierstrass_jacobian, SWModelParameters},
@@ -24,8 +26,16 @@ use crate::arkworks::{
     ff::PrimeField,
 };
 use alloc::vec::Vec;
-use ark_ff::BigInteger;
-use num_bigint::{BigInt, Sign};
+use ark_ff::{BigInteger, Field};
+use num_bigint::{BigInt, BigUint, Sign};
+
+#[cfg(feature = "ark-bls12-381")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ark-bls12-381")))]
+use crate::arkworks::bls12_381;
+
+#[cfg(feature = "ark-bn254")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ark-bn254")))]
+use crate::arkworks::bn254;
 
 /// Affine Curve Extension
 pub trait AffineCurveExt: AffineCurve {
@@ -118,6 +128,15 @@ where
         }
     }
 
+    /// Creates a new instance of [`GLVParameters`] from the curve parameters.
+    #[inline]
+    pub fn new<M>() -> Self
+    where
+        C: HasGLV<M>,
+    {
+        C::glv_parameters()
+    }
+
     /// Returns a reference to `beta`.
     pub fn beta(&self) -> &C::BaseField {
         &self.beta
@@ -202,5 +221,129 @@ where
     {
         let (k1, k2, p1, p2) = self.scalars_and_points(point, scalar);
         Self::simultaneous_multiple_point_multiplication(k1, k2, p1, p2)
+    }
+}
+
+/// HasGLV Trait
+pub trait HasGLV<M>: AffineCurve {
+    /// Generates [`GLVParameters`].
+    fn glv_parameters() -> GLVParameters<Self>;
+}
+
+impl HasGLV<bls12_381::Parameters> for bls12_381::G1Affine {
+    /// Generates a [`GLVParameters`] instance from the precomputed parameters
+    /// for `bls12_381::G1Affine`.
+    #[inline]
+    fn glv_parameters() -> GLVParameters<Self> {
+        let beta = <bls12_381::G1Affine as AffineCurve>::BaseField::from_random_bytes(
+            &"793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620350"
+            .parse::<BigUint>()
+            .unwrap()
+            .to_bytes_le()
+        )
+        .unwrap();
+        let base_v1 = (
+            BigInt::from_str("1").unwrap(),
+            BigInt::from_str("-228988810152649578064853576960394133503").unwrap(),
+        );
+        let base_v2 = (
+            BigInt::from_str("228988810152649578064853576960394133504").unwrap(),
+            BigInt::from_str("1").unwrap(),
+        );
+        GLVParameters::<Self>::new_unchecked(beta, base_v1, base_v2)
+    }
+}
+
+impl HasGLV<bn254::Parameters> for bn254::G1Affine {
+    /// Generates a [`GLVParameters`] instance from the precomputed parameters
+    /// for `bn254::G1Affine`.
+    #[inline]
+    fn glv_parameters() -> GLVParameters<Self> {
+        let beta = <bn254::G1Affine as AffineCurve>::BaseField::from_random_bytes(
+            &"21888242871839275220042445260109153167277707414472061641714758635765020556616"
+                .parse::<BigUint>()
+                .unwrap()
+                .to_bytes_le(),
+        )
+        .unwrap();
+        let base_v1 = (
+            BigInt::from_str("147946756881789319000765030803803410728").unwrap(),
+            BigInt::from_str("-9931322734385697763").unwrap(),
+        );
+        let base_v2 = (
+            BigInt::from_str("9931322734385697763").unwrap(),
+            BigInt::from_str("147946756881789319010696353538189108491").unwrap(),
+        );
+        GLVParameters::<Self>::new_unchecked(beta, base_v1, base_v2)
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    };
+
+    use rand::RngCore;
+
+    use ark_ff::UniformRand;
+    use rand_core::OsRng;
+
+    use super::*;
+    /// Checks that the GLV implementation on the curve `C` with the parameters given in `file`
+    /// is correct.
+    #[inline]
+    fn glv_is_correct<C, R>(file_path: &str, rng: &mut R)
+    where
+        C: AffineCurveExt,
+        R: RngCore + ?Sized,
+    {
+        let file = File::open(file_path).expect("Could not open file.");
+        let reader = BufReader::new(file);
+        let mut glv_strings: Vec<String> = Vec::with_capacity(5);
+        for parameter in reader.lines() {
+            glv_strings.push(parameter.unwrap());
+        }
+        let glv_parameters: Vec<&str> = glv_strings.iter().map(|s| &s[..]).collect();
+        let scalar = C::ScalarField::rand(rng);
+        let point = C::Projective::rand(rng).into_affine();
+        let beta = C::BaseField::from_random_bytes(
+            &glv_parameters[0].parse::<BigUint>().unwrap().to_bytes_le(),
+        )
+        .unwrap();
+        let base_v1 = (
+            BigInt::from_str(glv_parameters[1]).unwrap(),
+            BigInt::from_str(glv_parameters[2]).unwrap(),
+        );
+        let base_v2 = (
+            BigInt::from_str(glv_parameters[3]).unwrap(),
+            BigInt::from_str(glv_parameters[4]).unwrap(),
+        );
+        let glv = GLVParameters::<C>::new_unchecked(beta, base_v1, base_v2);
+        assert_eq!(
+            glv.scalar_mul(&point, &scalar),
+            point.mul(scalar).into_affine()
+        );
+    }
+
+    /// Checks the implementation of GLV for BLS is correct.
+    #[test]
+    pub fn glv_bls_is_correct() {
+        let mut rng = OsRng;
+        glv_is_correct::<bls12_381::G1Affine, _>(
+            "../manta-pay/src/crypto/ecc/precomputed_glv_values/bls_values",
+            &mut rng,
+        )
+    }
+
+    /// Checks the implementation of GLV for BN is correct.
+    #[test]
+    pub fn glv_bn_is_correct() {
+        let mut rng = OsRng;
+        glv_is_correct::<bn254::G1Affine, _>(
+            "../manta-pay/src/crypto/ecc/precomputed_glv_values/bn_values",
+            &mut rng,
+        );
     }
 }

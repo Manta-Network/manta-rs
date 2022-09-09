@@ -16,18 +16,15 @@
 
 //! Benchmark trait
 
-use ark_bls12_381::G1Affine as BLSAffine;
+use crate::ecc;
 use ark_ec::{AffineCurve, ProjectiveCurve};
-use criterion::{
-    black_box, criterion_group, criterion_main, measurement::Measurement, BenchmarkGroup, Criterion,
-};
-use manta_benchmark::ecc;
+use criterion::{black_box, measurement::Measurement, BenchmarkGroup};
 use manta_crypto::{
     arkworks::{
         ff::{Field, UniformRand},
         glv::{AffineCurveExt, GLVParameters},
     },
-    rand::{OsRng, RngCore},
+    rand::RngCore,
 };
 use num_bigint::{BigInt, BigUint};
 use std::{
@@ -38,18 +35,24 @@ use std::{
 
 /// Benchmark trait
 pub trait Benchmark {
+    /// Benchmark Name
     const NAME: &'static str;
 
+    /// Benchmark Output Type
     type Output;
 
+    /// Benchmark Parameters
     type Parameters;
 
+    /// Setup Function
     fn setup<R>(rng: &mut R, parameters: Self::Parameters) -> Self
     where
         R: RngCore + ?Sized;
 
+    /// Benchmark Function
     fn benchmark(&self) -> Self::Output;
 
+    /// Benchmark Definition Function
     #[inline]
     fn define_benchmark<M>(&self, group: &mut BenchmarkGroup<M>)
     where
@@ -59,22 +62,26 @@ pub trait Benchmark {
     }
 }
 
-pub struct GLVMutiplication<C>
+/// GLV Multiplication Setup
+pub struct GLVMutiplicationSetup<C>
 where
     C: AffineCurveExt,
 {
+    /// GLV Parameters
     glv: GLVParameters<C>,
 
+    /// Scalar
     scalar: C::ScalarField,
 
+    /// Curve Point
     point: C,
 }
 
-impl<C> Benchmark for GLVMutiplication<C>
+impl<C> Benchmark for GLVMutiplicationSetup<C>
 where
     C: AffineCurveExt,
 {
-    const NAME: &'static str = "GLV Multiplication";
+    const NAME: &'static str = "GLV scalar multiplication";
 
     type Parameters = &'static str;
 
@@ -116,16 +123,19 @@ where
     }
 }
 
-pub struct PointAndScalar<C>
+/// Scalar Multiplication Setup
+pub struct ScalarAffineSetup<C>
 where
     C: AffineCurve,
 {
+    /// Scalar
     scalar: C::ScalarField,
 
+    /// Curve Point
     point: C,
 }
 
-impl<C> Benchmark for PointAndScalar<C>
+impl<C> Benchmark for ScalarAffineSetup<C>
 where
     C: AffineCurve,
 {
@@ -151,22 +161,3 @@ where
         ecc::affine_scalar_mul(&self.point, self.scalar).into_affine()
     }
 }
-
-#[inline]
-fn benchmark_glv(c: &mut Criterion) {
-    let mut group = c.benchmark_group("glv");
-    let mut rng = OsRng;
-    let glv_setup = black_box(GLVMutiplication::<BLSAffine>::setup(
-        &mut rng,
-        "../manta-pay/src/crypto/ecc/precomputed_glv_values/bls_values",
-    ));
-    let scalar_setup = PointAndScalar {
-        scalar: glv_setup.scalar,
-        point: glv_setup.point,
-    };
-    glv_setup.define_benchmark(&mut group);
-    scalar_setup.define_benchmark(&mut group);
-}
-
-criterion_group!(glv, benchmark_glv);
-criterion_main!(glv);
