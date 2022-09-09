@@ -21,7 +21,7 @@ use crate::groth16::{
         message::{MPCState, Signed},
         registry::Registry,
         signature::{check_nonce, verify},
-        Ceremony, CeremonyError, Participant, Queue, UserPriority,
+        Ceremony, CeremonyError, Participant, Queue,
     },
     mpc::{verify_transform, Proof, State, StateSize},
 };
@@ -131,7 +131,7 @@ where
         self.round += 1;
     }
 
-    /// Returns the state size.
+    /// Returns the state size for each circuit in this ceremony.
     #[inline]
     pub fn size(&self) -> &[StateSize; CIRCUIT_COUNT] {
         &self.size
@@ -177,18 +177,18 @@ where
     pub fn preprocess_request<T>(
         &mut self,
         request: &Signed<T, C>,
-    ) -> Result<UserPriority, CeremonyError<C>>
+    ) -> Result<C::Priority, CeremonyError<C>>
     where
         T: Serialize,
     {
         let participant = self
             .registry
             .get_mut(&request.identifier)
-            .ok_or_else(|| CeremonyError::NotRegistered)?;
+            .ok_or(CeremonyError::NotRegistered)?;
         if participant.has_contributed() {
             return Err(CeremonyError::AlreadyContributed);
         }
-        let participant_nonce = participant.get_nonce();
+        let participant_nonce = participant.nonce();
         if !check_nonce(&participant_nonce, &request.nonce) {
             return Err(CeremonyError::NonceNotInSync(participant_nonce));
         };
@@ -200,7 +200,7 @@ where
         )
         .map_err(|_| CeremonyError::BadRequest)?;
         participant.increment_nonce();
-        Ok(participant.level())
+        Ok(participant.priority())
     }
 
     /// Checks the lock update errors for the [`Coordinator::update`] method.

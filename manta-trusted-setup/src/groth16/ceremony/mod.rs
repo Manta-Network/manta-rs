@@ -20,7 +20,6 @@ use crate::groth16::{
     ceremony::signature::{Nonce, SignatureScheme},
     mpc::Configuration,
 };
-use derivative::Derivative;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
@@ -44,13 +43,16 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
 
 /// Participant
 pub trait Participant {
-    /// Participant Identifier Type
+    /// Identifier Type
     type Identifier;
 
-    /// Participant Verifying Key Type
+    /// Verifying Key Type
     type VerifyingKey;
 
-    /// Nonce
+    /// Priority Type
+    type Priority;
+
+    /// Nonce Type
     type Nonce: Nonce;
 
     /// Returns the [`Identifier`](Self::Identifier) for `self`.
@@ -60,11 +62,7 @@ pub trait Participant {
     fn verifying_key(&self) -> &Self::VerifyingKey;
 
     /// Returns the priority level for `self`.
-    ///
-    /// # Note
-    ///
-    /// Lower level indicates a higher priority.
-    fn level(&self) -> UserPriority;
+    fn priority(&self) -> Self::Priority;
 
     /// Reduces the priority.
     fn reduce_priority(&mut self);
@@ -75,32 +73,32 @@ pub trait Participant {
     /// Sets contributed.
     fn set_contributed(&mut self);
 
-    /// Returns nonce.
-    fn get_nonce(&self) -> Self::Nonce;
+    /// Returns the current nonce for `self`.
+    fn nonce(&self) -> Self::Nonce;
 
-    /// Increments the current nonce by one.
+    /// Increments the current nonce of `self` by one.
     fn increment_nonce(&mut self);
 }
 
 /// Ceremony Configuration
-pub trait Ceremony: SignatureScheme + Configuration {
+pub trait Ceremony: Configuration + SignatureScheme {
     /// Participant Identifier Type
     type Identifier: Clone + PartialEq;
+
+    /// Participant Priority Type
+    type Priority: Into<usize>;
 
     /// Participant Type
     type Participant: Participant<
         Identifier = Self::Identifier,
-        Nonce = Self::Nonce,
         VerifyingKey = Self::VerifyingKey,
+        Priority = Self::Priority,
+        Nonce = Self::Nonce,
     >;
 }
 
 /// Ceremony Error
-///
-/// # Note
-///
-/// All errors here are visible to users.
-#[derive(PartialEq, Serialize, Deserialize, Derivative)]
+#[derive(derivative::Derivative, Deserialize, Serialize, PartialEq)]
 #[derivative(Debug(bound = "C::Nonce: core::fmt::Debug"))]
 #[serde(
     bound(
@@ -134,28 +132,4 @@ where
 
     /// Unexpected Server Error
     Unexpected,
-}
-
-/// Priority
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(
-    bound(deserialize = "", serialize = ""),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub enum UserPriority {
-    /// High Priority
-    High,
-
-    /// Normal Priority
-    Normal,
-}
-
-impl From<UserPriority> for usize {
-    fn from(priority: UserPriority) -> Self {
-        match priority {
-            UserPriority::High => 0,
-            UserPriority::Normal => 1,
-        }
-    }
 }

@@ -33,6 +33,7 @@ rayon = ["manta-util/rayon"]
 
 # Serde Serialization
 serde = [
+    "manta-crypto/serde",
     "manta-util/serde",
     "manta-util/serde-alloc",
     "manta-util/serde-array"

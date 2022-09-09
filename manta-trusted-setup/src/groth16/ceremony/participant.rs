@@ -19,8 +19,33 @@
 use crate::groth16::ceremony::{
     self,
     signature::{Nonce, SignatureScheme},
-    UserPriority,
 };
+use manta_util::serde::{Deserialize, Serialize};
+
+/// Priority
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(
+    bound(deserialize = "", serialize = ""),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub enum Priority {
+    /// High Priority
+    High,
+
+    /// Normal Priority
+    Normal,
+}
+
+impl From<Priority> for usize {
+    #[inline]
+    fn from(priority: Priority) -> Self {
+        match priority {
+            Priority::High => 0,
+            Priority::Normal => 1,
+        }
+    }
+}
 
 /// Participant
 pub struct Participant<S>
@@ -34,7 +59,7 @@ where
     twitter: String,
 
     /// Priority
-    priority: UserPriority,
+    priority: Priority,
 
     /// Nonce
     nonce: S::Nonce,
@@ -49,6 +74,7 @@ where
 {
     type Identifier = S::VerifyingKey;
     type VerifyingKey = S::VerifyingKey;
+    type Priority = Priority;
     type Nonce = S::Nonce;
 
     #[inline]
@@ -62,13 +88,13 @@ where
     }
 
     #[inline]
-    fn level(&self) -> UserPriority {
+    fn priority(&self) -> Self::Priority {
         self.priority
     }
 
     #[inline]
     fn reduce_priority(&mut self) {
-        self.priority = UserPriority::Normal;
+        self.priority = Priority::Normal;
     }
 
     #[inline]
@@ -82,7 +108,7 @@ where
     }
 
     #[inline]
-    fn get_nonce(&self) -> Self::Nonce {
+    fn nonce(&self) -> Self::Nonce {
         self.nonce
     }
 
@@ -101,7 +127,7 @@ where
     pub fn new(
         verifying_key: S::VerifyingKey,
         twitter: String,
-        priority: UserPriority,
+        priority: Priority,
         nonce: S::Nonce,
         contributed: bool,
     ) -> Self {

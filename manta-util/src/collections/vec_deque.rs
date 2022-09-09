@@ -177,8 +177,8 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
             Some(position) => position,
             None => {
                 self.push_back(level, item);
-                self.0[level].len()-1
-            },
+                self.0[level].len() - 1
+            }
         }
     }
 }

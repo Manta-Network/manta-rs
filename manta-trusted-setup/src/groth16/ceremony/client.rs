@@ -16,13 +16,12 @@
 
 //! Trusted Setup Client
 
-use crate::groth16::ceremony::{signature::Nonce, Ceremony, Participant};
-use manta_crypto::dalek::ed25519::Ed25519;
-
-use super::{
+use crate::groth16::ceremony::{
     message::{QueryRequest, Signed},
-    CeremonyError,
+    signature::Nonce,
+    Ceremony, CeremonyError, Participant,
 };
+use manta_crypto::dalek::ed25519::Ed25519;
 
 /// Client
 pub struct Client<C, const CIRCUIT_COUNT: usize>

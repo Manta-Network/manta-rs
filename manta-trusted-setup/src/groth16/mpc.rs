@@ -30,13 +30,15 @@ use manta_crypto::{
         pairing::{Pairing, PairingEngineExt},
         ratio::{HashToGroup, RatioProof},
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
-        serialize::{canonical_deserialize, canonical_serialize},
     },
     rand::{CryptoRng, RngCore},
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use {
+    manta_crypto::arkworks::serialize::{canonical_deserialize, canonical_serialize},
+    manta_util::serde::{Deserialize, Serialize},
+};
 
 /// MPC State
 #[derive(Serialize, Deserialize, derivative::Derivative)]
@@ -417,8 +419,8 @@ pub fn verify_transform<C>(
 where
     C: Configuration,
 {
-    check_invariants::<C>(&prev, &next)?;
-    let next_challenge = C::challenge(challenge, &prev, &next, &proof);
+    check_invariants::<C>(prev, &next)?;
+    let next_challenge = C::challenge(challenge, prev, &next, &proof);
     let ((ratio_0, ratio_1), _) = proof
         .0
         .verify(&C::Hasher::default(), challenge)

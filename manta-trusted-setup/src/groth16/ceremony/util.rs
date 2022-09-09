@@ -22,28 +22,28 @@ use std::{
     path::Path,
 };
 
-/// Logs `data` to a disk file at `path` assuming this file does not exist.
+/// Serializes `data` to a file at `path` with the given `open_options`.
 #[inline]
 pub fn serialize_into_file<T, P>(
+    open_options: &mut OpenOptions,
     path: &P,
     data: &T,
-    option: &mut OpenOptions,
 ) -> bincode::Result<()>
 where
     P: AsRef<Path>,
     T: Serialize,
 {
-    Ok(bincode::serialize_into(option.open(path)?, data)?)
+    bincode::serialize_into(open_options.open(path)?, data)
 }
 
-/// Loads `data` from a disk file at `path`.
+/// Deserializes an element of type `T` from the file at `path`.
 #[inline]
 pub fn deserialize_from_file<T, P>(path: P) -> bincode::Result<T>
 where
     P: AsRef<Path>,
     T: DeserializeOwned,
 {
-    Ok(bincode::deserialize_from(File::open(path)?)?)
+    bincode::deserialize_from(File::open(path)?)
 }
 
 // /// Prepares phase one parameter `powers` for phase two parameters of circuit `cs` with `name`.

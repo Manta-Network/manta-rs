@@ -20,11 +20,11 @@ use crate::groth16::{
     ceremony::{
         coordinator::Coordinator,
         message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse, Signed},
-        participant::Participant,
+        participant::{Participant, Priority},
         registry::Registry,
         signature::{verify, Message},
         util::{deserialize_from_file, serialize_into_file},
-        Ceremony, CeremonyError, Participant as _, UserPriority,
+        Ceremony, CeremonyError, Participant as _,
     },
     mpc::{State, StateSize},
 };
@@ -87,12 +87,12 @@ where
     ) -> Result<(CeremonySize<CIRCUIT_COUNT>, C::Nonce), CeremonyError<C>> {
         let coordinator = self.coordinator.lock();
         Ok((
-            CeremonySize(BoxArray::from_unchecked(coordinator.size().clone())),
+            CeremonySize(BoxArray::from_unchecked(*coordinator.size())),
             coordinator
                 .registry()
                 .get(&request)
-                .ok_or_else(|| CeremonyError::NotRegistered)?
-                .get_nonce(),
+                .ok_or(CeremonyError::NotRegistered)?
+                .nonce(),
         ))
     }
 
@@ -132,9 +132,9 @@ where
         let (state, proof) = request.message.0;
         coordinator.update(&request.identifier, state, proof)?;
         serialize_into_file(
+            OpenOptions::new().write(true).create_new(true),
             &Path::new(&self.recovery_path).join(format!("transcript{}.data", coordinator.round())),
             &coordinator.deref(),
-            OpenOptions::new().write(true).create_new(true),
         )
         .map_err(|_| CeremonyError::Unexpected)?;
         println!("{} participants have contributed.", coordinator.round());
@@ -205,8 +205,8 @@ where
             verifying_key,
             twitter,
             match result[2].to_string().parse::<bool>().unwrap() {
-                true => UserPriority::High,
-                false => UserPriority::Normal,
+                true => Priority::High,
+                false => Priority::Normal,
             },
             OsRng.gen::<_, u16>() as u64,
             false,
