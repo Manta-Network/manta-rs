@@ -20,16 +20,20 @@ use crate::groth16::{
     ceremony::{
         coordinator::Coordinator,
         message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse, Signed},
+        participant::Participant,
         registry::Registry,
         signature::{verify, Message},
         util::{deserialize_from_file, serialize_into_file},
-        Ceremony, CeremonyError, Challenge, Nonce, Participant, VerifyingKey,
+        Ceremony, CeremonyError, Challenge, Nonce, Participant as _, UserPriority, VerifyingKey,
     },
     mpc::{State, StateSize},
 };
 use alloc::sync::Arc;
 use core::{convert::TryInto, ops::Deref};
-use manta_crypto::dalek::ed25519::{self, Ed25519};
+use manta_crypto::{
+    dalek::ed25519::{self, Ed25519},
+    rand::{OsRng, Rand},
+};
 use manta_util::{
     serde::{de::DeserializeOwned, Serialize},
     BoxArray,
@@ -159,14 +163,11 @@ where
 
 /// Loads registry from a disk file at `registry`.
 #[inline]
-pub fn load_registry<C, P, S, R>(registry_file: P) -> R
+pub fn load_registry<C, P, R>(registry_file: P) -> R
 where
-    C: Ceremony<Nonce = u64>,
+    C: Ceremony<Nonce = u64, Participant = Participant<C>, VerifyingKey = ed25519::PublicKey>,
     P: AsRef<Path>,
     R: Registry<VerifyingKey<C>, C::Participant>,
-    // C: CeremonyConfig<Participant = Participant<S>>,
-    // S::VerifyingKey: Ord,
-    // C::SignatureScheme: SignatureScheme<Nonce = u64>,
 {
     let mut registry = R::new();
     for record in
@@ -200,17 +201,17 @@ where
             &signature,
         )
         .expect("Should verify the signature.");
-        // let participant = Participant {
-        //     twitter,
-        //     priority: match result[2].to_string().parse::<bool>().unwrap() {
-        //         true => UserPriority::High,
-        //         false => UserPriority::Normal,
-        //     },
-        //     public_key,
-        //     nonce: OsRng.gen::<_, u16>() as u64,
-        //     contributed: false,
-        // };
-        // registry.register(participant.public_key, participant);
+        let participant: Participant<C> = Participant::new(
+            verifying_key,
+            twitter,
+            match result[2].to_string().parse::<bool>().unwrap() {
+                true => UserPriority::High,
+                false => UserPriority::Normal,
+            },
+            OsRng.gen::<_, u16>() as u64,
+            false,
+        );
+        registry.register(verifying_key, participant);
     }
     registry
 }

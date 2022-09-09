@@ -26,6 +26,7 @@ use manta_util::{
 
 // pub mod client;
 pub mod message;
+pub mod participant;
 pub mod registry;
 pub mod server;
 pub mod signature;
