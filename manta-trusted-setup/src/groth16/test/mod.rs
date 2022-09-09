@@ -25,15 +25,15 @@ use crate::{
     util::{BlakeHasher, HasDistribution, KZGBlakeHasher},
 };
 use alloc::vec::Vec;
-use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::{Groth16, ProvingKey};
 use ark_snark::SNARK;
 use blake2::Digest;
 use manta_crypto::{
     arkworks::{
+        bn254::{Bn254, Fr, G1Affine, G2Affine},
         ec::{AffineCurve, PairingEngine},
         ff::{field_new, UniformRand},
-        pairing::{test::assert_valid_pairing_ratio, Pairing},
+        pairing::Pairing,
         r1cs_std::eq::EqGadget,
         ratio::test::assert_valid_ratio_proof,
         serialize::CanonicalSerialize,
@@ -236,17 +236,6 @@ where
         )
         .unwrap(),
         "Verify proof should succeed."
-    );
-}
-
-/// Tests if bls13_381 pairing ratio is valid.
-#[test]
-fn has_valid_bn254_pairing_ratio() {
-    let mut rng = OsRng;
-    assert_valid_pairing_ratio::<Bn254>(
-        <G1Affine as Sample<()>>::gen(&mut rng),
-        <G2Affine as Sample<()>>::gen(&mut rng),
-        Fr::gen(&mut rng),
     );
 }
 

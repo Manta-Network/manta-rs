@@ -123,11 +123,11 @@ where
     point_vec.iter().map(P::into_affine).collect()
 }
 
+/// Testing Suite
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::G1Affine;
-    use manta_crypto::rand::OsRng;
+    use manta_crypto::{arkworks::bls12_381::G1Affine, rand::OsRng};
 
     /// Tests if affine-affine addition, affine-projective addition, and projective-projective
     /// addition give same results.
