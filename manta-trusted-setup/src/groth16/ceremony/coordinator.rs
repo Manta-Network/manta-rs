@@ -133,7 +133,7 @@ where
 
     /// Returns the state size.
     #[inline]
-    pub fn size(&self) -> &BoxArray<StateSize, CIRCUIT_COUNT> {
+    pub fn size(&self) -> &[StateSize; CIRCUIT_COUNT] {
         &self.size
     }
 
@@ -155,7 +155,7 @@ where
         self.registry.get_mut(id)
     }
 
-    ///
+    /// Returns a mutable reference to `queue`.
     pub fn queue_mut(&mut self) -> &mut Queue<C, LEVEL_COUNT> {
         &mut self.queue
     }
@@ -232,6 +232,16 @@ where
         })
     }
 
+    /// Checks lock for `participant`.
+    #[inline]
+    pub fn check_lock(&mut self, participant: &C::Identifier) -> Result<(), CeremonyError<C>> {
+        if self.participant_lock.has_expired(TIME_LIMIT) {
+            Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)
+        } else {
+            Self::check_lock_update_errors(false, self.participant_lock.get(), participant)
+        }
+    }
+
     /// Updates the MPC state and challenge using client's contribution. If the contribution is
     /// valid, the participant will be removed from the waiting queue, and cannot participate in
     /// this ceremony again.
@@ -242,11 +252,7 @@ where
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
     ) -> Result<(), CeremonyError<C>> {
-        if self.participant_lock.has_expired(TIME_LIMIT) {
-            Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)?;
-        } else {
-            Self::check_lock_update_errors(false, self.participant_lock.get(), participant)?;
-        }
+        self.check_lock(participant)?;
         for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
             self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
                 .map_err(|_| CeremonyError::BadRequest)?
@@ -254,6 +260,11 @@ where
         }
         self.latest_proof = Some(proof);
         self.participant_lock.set(self.queue.pop_front());
+        match self.participant_mut(participant) {
+            Some(participant) => participant.set_contributed(),
+            None => return Err(CeremonyError::Unexpected),
+        };
+        self.increment_round();
         Ok(())
     }
 }

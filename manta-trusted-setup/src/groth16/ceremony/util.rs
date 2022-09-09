@@ -16,41 +16,34 @@
 
 //! Utilities
 
-extern crate alloc;
-
 use manta_util::serde::{de::DeserializeOwned, Serialize};
 use std::{
-    fs::File,
-    io::{Read, Write},
+    fs::{File, OpenOptions},
     path::Path,
 };
 
-/// Logs `data` to a disk file at `path`.
+/// Logs `data` to a disk file at `path` assuming this file does not exist.
 #[inline]
-pub fn log_to_file<T, P>(path: &P, data: &T)
+pub fn serialize_into_file<T, P>(
+    path: &P,
+    data: &T,
+    option: &mut OpenOptions,
+) -> bincode::Result<()>
 where
-    T: Serialize,
     P: AsRef<Path>,
+    T: Serialize,
 {
-    let mut file = File::create(path).expect("Open file should succeed.");
-    let encoded = bincode::serialize(data).expect("");
-    file.write_all(&encoded)
-        .expect("Writing phase one parameters to disk should succeed.");
-    file.flush().expect("Flushing file should succeed.");
+    Ok(bincode::serialize_into(option.open(path)?, data)?)
 }
 
 /// Loads `data` from a disk file at `path`.
 #[inline]
-pub fn load_from_file<T, P>(path: P) -> T
+pub fn deserialize_from_file<T, P>(path: P) -> bincode::Result<T>
 where
     P: AsRef<Path>,
     T: DeserializeOwned,
 {
-    let mut file = File::open(path).expect("Opening file should succeed.");
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)
-        .expect("Reading data should succeed.");
-    bincode::deserialize(&buf[..]).unwrap()
+    Ok(bincode::deserialize_from(File::open(path)?)?)
 }
 
 // /// Prepares phase one parameter `powers` for phase two parameters of circuit `cs` with `name`.
@@ -87,8 +80,13 @@ mod test {
     #[test]
     fn log_load_file_is_correct() {
         let data = "Testing data".to_string();
-        log_to_file(&"test_transcript.data", &data);
-        let loaded_data: String = load_from_file(&"test_transcript.data");
+        serialize_into_file(
+            &"test_transcript.data",
+            &data,
+            OpenOptions::new().write(true).create_new(true),
+        )
+        .unwrap();
+        let loaded_data: String = deserialize_from_file(&"test_transcript.data").unwrap();
         assert_eq!(data, loaded_data);
     }
 }

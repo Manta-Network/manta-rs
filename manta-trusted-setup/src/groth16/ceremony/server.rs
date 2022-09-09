@@ -19,10 +19,10 @@
 use crate::groth16::{
     ceremony::{
         coordinator::Coordinator,
-        message::{ContributeRequest, QueryRequest, QueryResponse, CeremonySize, Signed},
+        message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse, Signed},
         registry::Registry,
-        signature::{verify, Message, SignatureScheme},
-        util::{load_from_file, log_to_file},
+        signature::{verify, Message},
+        util::{deserialize_from_file, serialize_into_file},
         Ceremony, CeremonyError, Challenge, Nonce, Participant, VerifyingKey,
     },
     mpc::{State, StateSize},
@@ -35,7 +35,10 @@ use manta_util::{
     BoxArray,
 };
 use parking_lot::Mutex;
-use std::{fs::File, path::Path};
+use std::{
+    fs::{File, OpenOptions},
+    path::Path,
+};
 
 /// Server
 pub struct Server<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
@@ -80,7 +83,7 @@ where
     ) -> Result<(CeremonySize<CIRCUIT_COUNT>, Nonce<C>), CeremonyError<C>> {
         let coordinator = self.coordinator.lock();
         Ok((
-            coordinator.size().clone().into(),
+            CeremonySize(BoxArray::from_unchecked(coordinator.size().clone())),
             coordinator
                 .registry()
                 .get(&request)
@@ -122,87 +125,36 @@ where
     {
         let mut coordinator = self.coordinator.lock();
         coordinator.preprocess_request(&request)?;
-        let contribute_state = request.message.contribute_state;
-        coordinator.update(
-            &request.identifier,
-            contribute_state.state,
-            contribute_state.proof,
-        )?;
-        coordinator
-            .participant_mut(&request.identifier)
-            .expect("Geting participant should succeed.")
-            .set_contributed();
-        coordinator.increment_round();
-        log_to_file(
+        let (state, proof) = request.message.0;
+        coordinator.update(&request.identifier, state, proof)?;
+        serialize_into_file(
             &Path::new(&self.recovery_path).join(format!("transcript{}.data", coordinator.round())),
             &coordinator.deref(),
-        );
+            OpenOptions::new().write(true).create_new(true),
+        )
+        .map_err(|_| CeremonyError::Unexpected)?;
         println!("{} participants have contributed.", coordinator.round());
         Ok(())
     }
 }
-
-// #[cfg(all(feature = "serde", feature = "tide"))]
-// #[cfg_attr(doc_cfg, doc(cfg(all(feature = "serde", feature = "tide"))))]
-// pub mod network {
-//     use super::*;
-//     use core::future::Future;
-//     use manta_util::http::tide::{self, Body, Request, Response};
-
-//     /// Generates the JSON body for the output of `f`, returning an HTTP reponse.
-//     #[inline]
-//     pub async fn into_body<C, R, F, Fut>(f: F) -> Result<Response, tide::Error>
-//     where
-//         F: FnOnce() -> Fut,
-//         Fut: Future<Output = Result<R, CeremonyError<C>>>,
-//         C: Ceremony,
-//     {
-//         Ok(Body::from_json(&f().await)?.into())
-//     }
-
-//     /// Executes `f` on the incoming `request`.
-//     #[inline]
-//     pub async fn execute<C, T, R, F, Fut>(
-//         mut request: Request<Self>,
-//         f: F,
-//     ) -> Result<Response, tide::Error>
-//     where
-//         C: Ceremony,
-//         T: DeserializeOwned,
-//         R: Serialize,
-//         F: FnOnce(Self, T) -> Fut,
-//         <C::SignatureScheme as SignatureScheme<Vec<u8>>>::Nonce: Serialize,
-//         Fut: Future<Output = Result<R, CeremonyError<C>>>,
-//     {
-//         into_body::<C, _, _, _>(move || async move {
-//             f(
-//                 request.state().clone(),
-//                 request
-//                     .body_json::<T>()
-//                     .await
-//                     .expect("Read and deserialize should succeed."),
-//             )
-//             .await
-//         })
-//         .await
-//     }
-// }
 
 /// Recovers from a disk file at `recovery` and use `recovery_path` as the backup directory.
 #[inline]
 pub fn recover<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>(
     recovery: String,
     recovery_path: String,
-) -> Server<C, R, LEVEL_COUNT, CIRCUIT_COUNT>
+) -> Result<Server<C, R, LEVEL_COUNT, CIRCUIT_COUNT>, CeremonyError<C>>
 where
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
     Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: DeserializeOwned,
 {
-    Server {
-        coordinator: Arc::new(Mutex::new(load_from_file(recovery))),
+    Ok(Server {
+        coordinator: Arc::new(Mutex::new(
+            deserialize_from_file(recovery).map_err(|_| CeremonyError::Unexpected)?,
+        )),
         recovery_path,
-    }
+    })
 }
 
 /// Loads registry from a disk file at `registry`.
