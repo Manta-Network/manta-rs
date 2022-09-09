@@ -758,10 +758,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ark_bls12_381::Fr;
     use core::iter::repeat_with;
     use manta_crypto::{
-        arkworks::ff::BigInteger,
+        arkworks::{bls12_381::Fr, ff::BigInteger},
         eclair::alloc::Allocate,
         rand::{OsRng, Rand},
     };

@@ -21,13 +21,12 @@ use manta_crypto::{
     eclair::alloc::{mode::Secret, Allocate, Allocator},
     hash::ArrayHashFunction,
     key::agreement::{Agree, Derive},
-    rand::{Sample, SeedableRng},
+    rand::{ChaCha20Rng, Sample, SeedableRng},
 };
 use manta_pay::config::{
     Compiler, KeyAgreementScheme, KeyAgreementSchemeVar, Poseidon2, Poseidon2Var, Poseidon4,
     Poseidon4Var,
 };
-use rand_chacha::ChaCha20Rng;
 
 /// Runs some basic measurements of the circuit component sizes.
 #[inline]

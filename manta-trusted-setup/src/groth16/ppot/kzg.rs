@@ -23,11 +23,11 @@ use crate::{
     },
     util::{BlakeHasher, Deserializer, Serializer},
 };
-use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_std::io;
 use blake2::Digest;
 use core::marker::PhantomData;
 use manta_crypto::arkworks::{
+    bn254::{Bn254, Fr, G1Affine, G2Affine},
     ec::{AffineCurve, PairingEngine},
     pairing::Pairing,
     serialize::{CanonicalSerialize, Read, Write},
