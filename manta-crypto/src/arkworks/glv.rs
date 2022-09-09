@@ -23,6 +23,7 @@ use crate::arkworks::{
     },
     ff::PrimeField,
 };
+use alloc::vec::Vec;
 use ark_ff::BigInteger;
 use num_bigint::{BigInt, Sign};
 
@@ -36,6 +37,11 @@ pub trait AffineCurveExt: AffineCurve {
 
     /// Builds [`Self`] from `x` and `y`.
     fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self;
+
+    /// Applies the GLV endomorphism to `self`
+    fn glv_endomorphism(&self, beta: &Self::BaseField) -> Self {
+        Self::from_xy_unchecked(*self.x() * beta, *self.y())
+    }
 }
 
 impl<P> AffineCurveExt for short_weierstrass_jacobian::GroupAffine<P>
@@ -130,34 +136,62 @@ where
         )
     }
 
+    /// Generate scalars and points for the simultaneous multiple
+    /// point multiplication
+    #[inline]
+    fn scalars_and_points(&self, point: &C, scalar: &C::ScalarField) -> (Vec<bool>, Vec<bool>, C, C)
+    where
+        C: AffineCurveExt,
+    {
+        // TODO: make sure both output vectors have the same length. I guess into_repr and
+        // to_bits_be() do that already?
+        let (k1, k2) = decompose_scalar(scalar, self.basis().0, self.basis().1);
+        let (k1_sign, k1) = k1.into_parts();
+        let p1 = match k1_sign {
+            Sign::Minus => -*point,
+            _ => *point,
+        };
+        let (k2_sign, k2) = k2.into_parts();
+        let p2 = match k2_sign {
+            Sign::Minus => -point.glv_endomorphism(&self.beta),
+            _ => point.glv_endomorphism(&self.beta),
+        };
+        (
+            C::ScalarField::from_le_bytes_mod_order(&k1.to_bytes_le())
+                .into_repr()
+                .to_bits_be(),
+            C::ScalarField::from_le_bytes_mod_order(&k2.to_bytes_le())
+                .into_repr()
+                .to_bits_be(),
+            p1,
+            p2,
+        )
+    }
+
+    /// Executes a simulatenous multiple point multiplication without windowing.
+    #[inline]
+    fn simultaneous_multiple_point_multiplication(u: Vec<bool>, v: Vec<bool>, p: C, q: C) -> C {
+        // TODO: implement windowing.
+        let mut table = Vec::with_capacity(4);
+        table.push(C::zero());
+        table.push(p);
+        table.push(q);
+        table.push(p + q);
+        let mut r = C::zero();
+        for i in 0..u.len() {
+            r = ProjectiveCurve::double(&r.into_projective()).into_affine();
+            r = r + table[u[i] as usize + 2 * (v[i] as usize)]
+        }
+        r
+    }
+
     /// Multiplies `point` by `scalar` using the GLV method.
     #[inline]
     pub fn scalar_mul(&self, point: &C, scalar: &C::ScalarField) -> C
     where
         C: AffineCurveExt,
     {
-        let (k1, k2) = decompose_scalar(scalar, self.basis().0, self.basis().1);
-        let (k1_sign, k1) = k1.into_parts();
-        let k1_scalar = C::ScalarField::from_le_bytes_mod_order(&k1.to_bytes_le());
-        let p1 = match k1_sign {
-            Sign::Minus => -point.mul(k1_scalar.into_repr()),
-            _ => point.mul(k1_scalar.into_repr()),
-        };
-        let (k2_sign, k2) = k2.into_parts();
-        let k2_scalar = C::ScalarField::from_le_bytes_mod_order(&k2.to_bytes_le());
-        let p2 = match k2_sign {
-            Sign::Minus => -glv_endomorphism(point, &self.beta).mul(k2_scalar.into_repr()),
-            _ => glv_endomorphism(point, &self.beta).mul(k2_scalar.into_repr()),
-        };
-        (p1 + p2).into_affine()
+        let (k1, k2, p1, p2) = self.scalars_and_points(point, scalar);
+        Self::simultaneous_multiple_point_multiplication(k1, k2, p1, p2)
     }
-}
-
-/// Multiplies the `x` coordinate of `point` by `beta`.
-#[inline]
-fn glv_endomorphism<C>(point: &C, beta: &C::BaseField) -> C
-where
-    C: AffineCurveExt,
-{
-    C::from_xy_unchecked(*point.x() * beta, *point.y())
 }
