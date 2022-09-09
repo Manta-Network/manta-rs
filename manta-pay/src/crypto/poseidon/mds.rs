@@ -265,9 +265,11 @@ where
 mod test {
     use super::*;
     use crate::crypto::{constraint::arkworks::Fp, poseidon::matrix::Matrix};
-    use ark_bls12_381::Fr;
     use manta_crypto::{
-        arkworks::ff::{field_new, UniformRand},
+        arkworks::{
+            bls12_381::Fr,
+            ff::{field_new, UniformRand},
+        },
         rand::OsRng,
     };
 

@@ -139,7 +139,11 @@ where
     /// Generate scalars and points for the simultaneous multiple
     /// point multiplication
     #[inline]
-    fn scalars_and_points(&self, point: &C, scalar: &C::ScalarField) -> (Vec<bool>, Vec<bool>, C::Projective, C::Projective)
+    fn scalars_and_points(
+        &self,
+        point: &C,
+        scalar: &C::ScalarField,
+    ) -> (Vec<bool>, Vec<bool>, C::Projective, C::Projective)
     where
         C: AffineCurveExt,
     {
@@ -170,7 +174,12 @@ where
 
     /// Executes a simulatenous multiple point multiplication without windowing.
     #[inline]
-    fn simultaneous_multiple_point_multiplication(u: Vec<bool>, v: Vec<bool>, p: C::Projective, q: C::Projective) -> C {
+    fn simultaneous_multiple_point_multiplication(
+        u: Vec<bool>,
+        v: Vec<bool>,
+        p: C::Projective,
+        q: C::Projective,
+    ) -> C {
         // TODO: implement windowing.
         let mut table = Vec::with_capacity(4);
         table.push(C::zero().into_projective());
@@ -179,7 +188,7 @@ where
         table.push(p + q);
         let mut r = C::zero().into_projective();
         for i in 0..u.len() {
-            ProjectiveCurve::double_in_place(& mut r);
+            ProjectiveCurve::double_in_place(&mut r);
             r = r + table[u[i] as usize + 2 * (v[i] as usize)]
         }
         r.into_affine()

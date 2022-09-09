@@ -16,12 +16,15 @@
 
 //! Elliptic Curve Cryptography Benchmarks
 
-use ark_bls12_381::{G1Affine as BLSAffine, G1Projective as BLSProjective};
 use core::iter::repeat_with;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_benchmark::ecc;
-use manta_crypto::rand::OsRng;
+use manta_crypto::{
+    arkworks::bls12_381::{G1Affine as BLSAffine, G1Projective as BLSProjective},
+    rand::OsRng,
+};
 
+#[inline]
 fn affine_affine_addition(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
@@ -34,6 +37,7 @@ fn affine_affine_addition(c: &mut Criterion) {
     });
 }
 
+#[inline]
 fn projective_affine_addition(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
@@ -46,6 +50,7 @@ fn projective_affine_addition(c: &mut Criterion) {
     });
 }
 
+#[inline]
 fn projective_projective_addition(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
@@ -58,6 +63,7 @@ fn projective_projective_addition(c: &mut Criterion) {
     });
 }
 
+#[inline]
 fn affine_scalar_multiplication(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
@@ -70,6 +76,7 @@ fn affine_scalar_multiplication(c: &mut Criterion) {
     });
 }
 
+#[inline]
 fn projective_scalar_multiplication(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
@@ -82,6 +89,7 @@ fn projective_scalar_multiplication(c: &mut Criterion) {
     });
 }
 
+#[inline]
 fn projective_to_affine_normalization(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
@@ -93,6 +101,7 @@ fn projective_to_affine_normalization(c: &mut Criterion) {
     });
 }
 
+#[inline]
 fn batch_vector_projective_to_affine_normalization(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
@@ -109,6 +118,7 @@ fn batch_vector_projective_to_affine_normalization(c: &mut Criterion) {
     });
 }
 
+#[inline]
 fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;

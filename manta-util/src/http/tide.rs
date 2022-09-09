@@ -19,7 +19,7 @@
 use crate::serde::{de::DeserializeOwned, Serialize};
 use core::future::Future;
 
-pub use tide::{Body, Error, Request, Response, Server, StatusCode};
+pub use tide::{listener, Body, Error, Request, Response, Server, StatusCode};
 
 /// Generates the JSON body for the output of `f`, returning an HTTP reponse.
 #[inline]
