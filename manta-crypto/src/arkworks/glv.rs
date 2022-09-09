@@ -24,7 +24,6 @@ use crate::arkworks::{
     ff::PrimeField,
 };
 use alloc::vec::Vec;
-use ark_ec::group::Group;
 use ark_ff::BigInteger;
 use num_bigint::{BigInt, Sign};
 
