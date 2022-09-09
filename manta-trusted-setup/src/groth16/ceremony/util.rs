@@ -81,9 +81,9 @@ mod test {
     fn log_load_file_is_correct() {
         let data = "Testing data".to_string();
         serialize_into_file(
+            OpenOptions::new().write(true).create_new(true),
             &"test_transcript.data",
             &data,
-            OpenOptions::new().write(true).create_new(true),
         )
         .unwrap();
         let loaded_data: String = deserialize_from_file(&"test_transcript.data").unwrap();

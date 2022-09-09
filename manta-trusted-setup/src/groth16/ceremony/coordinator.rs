@@ -262,7 +262,11 @@ where
         self.participant_lock.set(self.queue.pop_front());
         match self.participant_mut(participant) {
             Some(participant) => participant.set_contributed(),
-            None => return Err(CeremonyError::Unexpected),
+            None => {
+                return Err(CeremonyError::Unexpected(
+                    "Cannot get participant.".to_string(),
+                ))
+            }
         };
         self.increment_round();
         Ok(())

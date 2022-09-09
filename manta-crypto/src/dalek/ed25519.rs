@@ -22,7 +22,7 @@ use crate::{
         MessageType, RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKeyType,
     },
 };
-use core::marker::PhantomData;
+use core::{convert::TryInto, marker::PhantomData};
 use manta_util::AsBytes;
 
 pub use ed25519_dalek::*;
@@ -90,6 +90,22 @@ where
         public: (&secret_key).into(),
         secret: secret_key,
     }
+}
+
+/// Generates a [`KeyPair`] from `bytes`.
+#[inline]
+pub fn generate_keys(bytes: &[u8]) -> Option<Keypair> {
+    if SECRET_KEY_LENGTH > bytes.len() {
+        return None;
+    }
+    let sk = match bytes[0..SECRET_KEY_LENGTH].try_into() {
+        Ok(bytes) => secret_key_from_bytes(bytes),
+        Err(_) => return None,
+    };
+    Some(Keypair {
+        public: (&sk).into(),
+        secret: sk,
+    })
 }
 
 /// Edwards Curve Signature Scheme for the `Curve25519` Elliptic Curve

@@ -136,7 +136,7 @@ where
             &Path::new(&self.recovery_path).join(format!("transcript{}.data", coordinator.round())),
             &coordinator.deref(),
         )
-        .map_err(|_| CeremonyError::Unexpected)?;
+        .map_err(|e| CeremonyError::Unexpected(format!("{:?}", e)))?;
         println!("{} participants have contributed.", coordinator.round());
         Ok(())
     }
@@ -155,7 +155,8 @@ where
 {
     Ok(Server {
         coordinator: Arc::new(Mutex::new(
-            deserialize_from_file(recovery).map_err(|_| CeremonyError::Unexpected)?,
+            deserialize_from_file(recovery)
+                .map_err(|e| CeremonyError::Unexpected(format!("{:?}", e)))?,
         )),
         recovery_path,
     })

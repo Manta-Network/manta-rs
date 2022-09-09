@@ -131,5 +131,8 @@ where
     Timeout,
 
     /// Unexpected Server Error
-    Unexpected,
+    Unexpected(String),
+
+    /// Network Error
+    Network(String),
 }

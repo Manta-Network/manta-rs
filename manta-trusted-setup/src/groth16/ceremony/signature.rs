@@ -18,7 +18,7 @@
 
 use alloc::vec::Vec;
 use manta_crypto::{
-    dalek::ed25519::{Ed25519, SignatureError},
+    dalek::ed25519::{Ed25519, SignatureError, self},
     signature,
 };
 use manta_util::{serde::Serialize, AsBytes};
@@ -86,6 +86,9 @@ pub trait SignatureScheme:
 
     /// Verification Error Type
     type Error;
+
+    /// Generates key pair from `bytes`.
+    fn generate_keys(bytes: &[u8]) -> Option<(Self::SigningKey, Self::VerifyingKey)>;
 }
 
 /// Signs the `message` with the `nonce` attached using the `signing_key`.
@@ -158,4 +161,12 @@ where
 {
     type Nonce = N;
     type Error = SignatureError;
+
+    #[inline]
+    fn generate_keys(bytes: &[u8]) -> Option<(Self::SigningKey, Self::VerifyingKey)> {
+        match ed25519::generate_keys(bytes) {
+            Some(key_pair) => Some((key_pair.secret, key_pair.public)),
+            None => None,
+        }
+    }
 }
