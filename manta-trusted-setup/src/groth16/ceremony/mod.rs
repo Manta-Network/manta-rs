@@ -36,19 +36,19 @@ pub mod util;
 pub mod coordinator;
 
 /// Nonce
-pub type Nonce<C> = <<C as Ceremony>::SignatureScheme as SignatureScheme>::Nonce;
+pub type Nonce<C> = <C as SignatureScheme>::Nonce;
 
 /// Signature
-pub type Signature<C> = <<C as Ceremony>::SignatureScheme as SignatureType>::Signature;
+pub type Signature<C> = <C as SignatureType>::Signature;
 
 /// Signing Key
-pub type SigningKey<C> = <<C as Ceremony>::SignatureScheme as SigningKeyType>::SigningKey;
+pub type SigningKey<C> = <C as SigningKeyType>::SigningKey;
 
 /// Verifying Key
-pub type VerifyingKey<C> = <<C as Ceremony>::SignatureScheme as VerifyingKeyType>::VerifyingKey;
+pub type VerifyingKey<C> = <C as VerifyingKeyType>::VerifyingKey;
 
 /// Challenge Type
-pub type Challenge<C> = <<C as Ceremony>::Configuration as Configuration>::Challenge;
+pub type Challenge<C> = <C as Configuration>::Challenge;
 
 /// Participant Queue Type
 pub type Queue<C, const LEVEL_COUNT: usize> =
@@ -100,7 +100,7 @@ pub trait Participant {
 }
 
 /// Ceremony Configuration
-pub trait Ceremony {
+pub trait Ceremony: SignatureScheme + Configuration {
     /// Participant Identifier Type
     type Identifier: Clone + PartialEq;
 
@@ -110,12 +110,6 @@ pub trait Ceremony {
         Nonce = Nonce<Self>,
         VerifyingKey = VerifyingKey<Self>,
     >;
-
-    /// Signature Scheme
-    type SignatureScheme: SignatureScheme;
-
-    /// Configuration
-    type Configuration: Configuration;
 }
 
 /// Ceremony Error

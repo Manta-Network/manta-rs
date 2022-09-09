@@ -64,7 +64,7 @@ where
     registry: R,
 
     /// State
-    state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
+    state: BoxArray<State<C>, CIRCUIT_COUNT>,
 
     /// Challenge
     challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
@@ -75,7 +75,7 @@ where
     latest_contributor: Option<C::Participant>,
 
     /// Latest Proof
-    latest_proof: Option<BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>>,
+    latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>>,
 
     /// State Sizes
     size: BoxArray<StateSize, CIRCUIT_COUNT>,
@@ -102,7 +102,7 @@ where
     #[inline]
     pub fn new(
         registry: R,
-        state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
+        state: BoxArray<State<C>, CIRCUIT_COUNT>,
         challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
         size: BoxArray<StateSize, CIRCUIT_COUNT>,
     ) -> Self {
@@ -192,7 +192,7 @@ where
         if !check_nonce(&participant_nonce, &request.nonce) {
             return Err(CeremonyError::NonceNotInSync(participant_nonce));
         };
-        verify::<T, C::SignatureScheme>(
+        verify::<T, C>(
             participant.verifying_key(),
             participant_nonce,
             &request.message,
@@ -239,8 +239,8 @@ where
     pub fn update(
         &mut self,
         participant: &C::Identifier,
-        state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
-        proof: BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>,
+        state: BoxArray<State<C>, CIRCUIT_COUNT>,
+        proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
     ) -> Result<(), CeremonyError<C>> {
         if self.participant_lock.has_expired(TIME_LIMIT) {
             Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)?;

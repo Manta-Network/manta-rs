@@ -107,10 +107,9 @@ pub trait AsBytes {
     fn as_bytes(&self) -> Vec<u8>;
 }
 
-#[cfg(feature = "bincode")]
 impl AsBytes for u64 {
     #[inline]
     fn as_bytes(&self) -> Vec<u8> {
-        bincode::serialize(self).unwrap()
+        self.to_le_bytes().to_vec()
     }
 }

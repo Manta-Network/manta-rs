@@ -157,6 +157,5 @@ where
     N: AsBytes + Default + Nonce,
 {
     type Nonce = N;
-
     type Error = SignatureError;
 }

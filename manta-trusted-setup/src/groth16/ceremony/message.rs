@@ -41,7 +41,7 @@ where
     C: Ceremony,
 {
     /// State
-    pub state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
+    pub state: BoxArray<State<C>, CIRCUIT_COUNT>,
 
     /// Challenge
     pub challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
@@ -59,10 +59,10 @@ where
     C: Ceremony,
 {
     /// State
-    pub state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
+    pub state: BoxArray<State<C>, CIRCUIT_COUNT>,
 
     /// Proof
-    pub proof: BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>,
+    pub proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
 }
 
 /// Response for State Sizes
@@ -190,7 +190,7 @@ where
         T: Serialize,
         Nonce<C>: Clone,
     {
-        let signature = match sign::<_, C::SignatureScheme>(signing_key, nonce.clone(), &message) {
+        let signature = match sign::<_, C>(signing_key, nonce.clone(), &message) {
             Ok(signature) => signature,
             Err(_) => return Err(CeremonyError::<C>::BadRequest),
         };

@@ -59,7 +59,7 @@ where
     /// Builds a ['Server`] with initial `state`, `challenge`, a loaded `registry`, and a `recovery_path`.
     #[inline]
     pub fn new(
-        state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
+        state: BoxArray<State<C>, CIRCUIT_COUNT>,
         challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
         registry: R,
         recovery_path: String,
@@ -209,8 +209,7 @@ where
 #[inline]
 pub fn load_registry<C, P, S, R>(registry_file: P) -> R
 where
-    C: Ceremony<SignatureScheme = S>,
-    S: SignatureScheme<Nonce = u64>,
+    C: Ceremony<Nonce = u64>,
     P: AsRef<Path>,
     R: Registry<VerifyingKey<C>, C::Participant>,
     // C: CeremonyConfig<Participant = Participant<S>>,
