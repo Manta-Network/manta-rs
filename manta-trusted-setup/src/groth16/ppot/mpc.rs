@@ -42,11 +42,11 @@ impl<S, const POWERS: usize> Configuration for PerpetualPowersOfTauCeremony<S, P
     ) -> Self::Challenge {
         let mut hasher = Self::Hasher::default();
         hasher.0.update(challenge);
-        prev.serialize(&mut hasher)
+        prev.0.serialize(&mut hasher)
             .expect("Consuming the previous state failed.");
-        next.serialize(&mut hasher)
+        next.0.serialize(&mut hasher)
             .expect("Consuming the current state failed.");
-        proof
+        proof.0
             .serialize(&mut hasher)
             .expect("Consuming proof failed");
         into_array_unchecked(hasher.0.finalize())

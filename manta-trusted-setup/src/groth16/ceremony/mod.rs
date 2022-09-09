@@ -35,10 +35,6 @@ pub mod util;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod coordinator;
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
-pub mod serde;
-
 /// Nonce
 pub type Nonce<C> = <<C as Ceremony>::SignatureScheme as SignatureScheme>::Nonce;
 

@@ -97,12 +97,12 @@ where
     let mut validity = true;
     for i in 0..CIRCUIT_COUNT {
         validity = validity
-            || (states[i].vk.gamma_abc_g1.len() == size.0[i].gamma_abc_g1)
-            || (states[i].a_query.len() == size.0[i].a_query)
-            || (states[i].b_g1_query.len() == size.0[i].a_query)
-            || (states[i].b_g2_query.len() == size.0[i].a_query)
-            || (states[i].h_query.len() == size.0[i].h_query)
-            || (states[i].l_query.len() == size.0[i].l_query);
+            || (states[i].0.vk.gamma_abc_g1.len() == size.0[i].gamma_abc_g1)
+            || (states[i].0.a_query.len() == size.0[i].a_query)
+            || (states[i].0.b_g1_query.len() == size.0[i].a_query)
+            || (states[i].0.b_g2_query.len() == size.0[i].a_query)
+            || (states[i].0.h_query.len() == size.0[i].h_query)
+            || (states[i].0.l_query.len() == size.0[i].l_query);
     }
     validity
 }

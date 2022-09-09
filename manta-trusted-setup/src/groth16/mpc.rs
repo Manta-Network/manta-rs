@@ -30,6 +30,7 @@ use manta_crypto::{
         pairing::{Pairing, PairingEngineExt},
         ratio::{HashToGroup, RatioProof},
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
+        serialize::{canonical_deserialize, canonical_serialize},
     },
     rand::{CryptoRng, RngCore},
 };
@@ -38,10 +39,46 @@ use manta_crypto::{
 use manta_util::serde::{Deserialize, Serialize};
 
 /// MPC State
-pub type State<P> = ProvingKey<<P as Pairing>::Pairing>;
+#[derive(Serialize, Deserialize, derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+#[serde(
+    bound(serialize = "", deserialize = ""),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct State<P>(
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "canonical_serialize::<ProvingKey<P::Pairing>, _>",
+            deserialize_with = "canonical_deserialize::<'de, _, ProvingKey<P::Pairing>>"
+        )
+    )]
+    pub ProvingKey<P::Pairing>,
+)
+where
+    P: Pairing + ?Sized;
 
 /// MPC Proof
-pub type Proof<P> = RatioProof<P>;
+#[derive(Serialize, Deserialize, derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
+#[serde(
+    bound(serialize = "", deserialize = "",),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct Proof<P>(
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "canonical_serialize::<RatioProof<P>, _>",
+            deserialize_with = "canonical_deserialize::<'de, _, RatioProof<P>>"
+        )
+    )]
+    pub RatioProof<P>,
+)
+where
+    P: Pairing + ?Sized;
 
 /// Proving Key Hasher
 pub trait ProvingKeyHasher<P>
@@ -217,34 +254,34 @@ pub fn check_invariants<P>(prev: &State<P>, next: &State<P>) -> Result<(), Error
 where
     P: Pairing,
 {
-    if prev.h_query.len() != next.h_query.len() {
+    if prev.0.h_query.len() != next.0.h_query.len() {
         return Err(Error::InvariantViolated("H length changed"));
     }
-    if prev.l_query.len() != next.l_query.len() {
+    if prev.0.l_query.len() != next.0.l_query.len() {
         return Err(Error::InvariantViolated("L length changed"));
     }
-    if prev.a_query != next.a_query {
+    if prev.0.a_query != next.0.a_query {
         return Err(Error::InvariantViolated("A query changed"));
     }
-    if prev.b_g1_query != next.b_g1_query {
+    if prev.0.b_g1_query != next.0.b_g1_query {
         return Err(Error::InvariantViolated("B_G1 query changed"));
     }
-    if prev.b_g2_query != next.b_g2_query {
+    if prev.0.b_g2_query != next.0.b_g2_query {
         return Err(Error::InvariantViolated("B_G2 query changed"));
     }
-    if prev.vk.alpha_g1 != next.vk.alpha_g1 {
+    if prev.0.vk.alpha_g1 != next.0.vk.alpha_g1 {
         return Err(Error::InvariantViolated("alpha_G1 changed"));
     }
-    if prev.beta_g1 != next.beta_g1 {
+    if prev.0.beta_g1 != next.0.beta_g1 {
         return Err(Error::InvariantViolated("beta_G1 changed"));
     }
-    if prev.vk.beta_g2 != next.vk.beta_g2 {
+    if prev.0.vk.beta_g2 != next.0.vk.beta_g2 {
         return Err(Error::InvariantViolated("beta_G2 changed"));
     }
-    if prev.vk.gamma_g2 != next.vk.gamma_g2 {
+    if prev.0.vk.gamma_g2 != next.0.vk.gamma_g2 {
         return Err(Error::InvariantViolated("gamma_G2 changed"));
     }
-    if prev.vk.gamma_abc_g1 != next.vk.gamma_abc_g1 {
+    if prev.0.vk.gamma_abc_g1 != next.0.vk.gamma_abc_g1 {
         return Err(Error::InvariantViolated("Public input cross terms changed"));
     }
     Ok(())
@@ -312,7 +349,7 @@ where
     let ext = ProjectiveCurve::batch_normalization_into_affine(&ext);
     let public_cross_terms = Vec::from(&ext[..constraint_matrices.num_instance_variables]);
     let private_cross_terms = Vec::from(&ext[constraint_matrices.num_instance_variables..]);
-    Ok(ProvingKey {
+    Ok(State(ProvingKey {
         vk: VerifyingKey {
             alpha_g1: powers.alpha_tau_powers_g1[0],
             beta_g2: powers.beta_g2,
@@ -327,7 +364,7 @@ where
         b_g2_query,
         h_query,
         l_query: private_cross_terms,
-    })
+    }))
 }
 
 /// Configuration
@@ -362,11 +399,11 @@ where
 {
     let delta = C::Scalar::rand(rng);
     let delta_inverse = delta.inverse()?;
-    batch_mul_fixed_scalar(&mut state.l_query, delta_inverse);
-    batch_mul_fixed_scalar(&mut state.h_query, delta_inverse);
-    state.delta_g1 = state.delta_g1.mul(delta).into_affine();
-    state.vk.delta_g2 = state.vk.delta_g2.mul(delta).into_affine();
-    Proof::prove(hasher, challenge, &delta, rng)
+    batch_mul_fixed_scalar(&mut state.0.l_query, delta_inverse);
+    batch_mul_fixed_scalar(&mut state.0.h_query, delta_inverse);
+    state.0.delta_g1 = state.0.delta_g1.mul(delta).into_affine();
+    state.0.vk.delta_g2 = state.0.vk.delta_g2.mul(delta).into_affine();
+    RatioProof::prove(hasher, challenge, &delta, rng).map(Proof)
 }
 
 /// Verifies transforming from `prev` to `next` is correct given `challenge` and `proof`.
@@ -383,26 +420,27 @@ where
     check_invariants::<C>(&prev, &next)?;
     let next_challenge = C::challenge(challenge, &prev, &next, &proof);
     let ((ratio_0, ratio_1), _) = proof
+        .0
         .verify(&C::Hasher::default(), challenge)
         .ok_or(Error::InvalidRatioProof)?;
-    if !C::Pairing::same_ratio((ratio_0, ratio_1), (prev.vk.delta_g2, next.vk.delta_g2)) {
+    if !C::Pairing::same_ratio((ratio_0, ratio_1), (prev.0.vk.delta_g2, next.0.vk.delta_g2)) {
         return Err(Error::InconsistentDeltaChange);
     }
     if !C::Pairing::same_ratio(
-        (prev.delta_g1, next.delta_g1),
-        (prev.vk.delta_g2, next.vk.delta_g2),
+        (prev.0.delta_g1, next.0.delta_g1),
+        (prev.0.vk.delta_g2, next.0.vk.delta_g2),
     ) {
         return Err(Error::InconsistentDeltaChange);
     }
     if !C::Pairing::same_ratio(
-        merge_pairs_affine(&next.h_query, &prev.h_query),
-        (prev.vk.delta_g2, next.vk.delta_g2),
+        merge_pairs_affine(&next.0.h_query, &prev.0.h_query),
+        (prev.0.vk.delta_g2, next.0.vk.delta_g2),
     ) {
         return Err(Error::InconsistentHChange);
     }
     if !C::Pairing::same_ratio(
-        merge_pairs_affine(&next.l_query, &prev.l_query),
-        (prev.vk.delta_g2, next.vk.delta_g2),
+        merge_pairs_affine(&next.0.l_query, &prev.0.l_query),
+        (prev.0.vk.delta_g2, next.0.vk.delta_g2),
     ) {
         return Err(Error::InconsistentLChange);
     }
@@ -426,11 +464,12 @@ where
     for (next_state, next_proof) in iter {
         let next_challenge = C::challenge(&challenge, &state, &next_state, &next_proof);
         let ((ratio_0, ratio_1), _) = next_proof
+            .0
             .verify(&C::Hasher::default(), &challenge)
             .ok_or(Error::InvalidRatioProof)?;
         if !C::Pairing::same_ratio(
             (ratio_0, ratio_1),
-            (state.vk.delta_g2, next_state.vk.delta_g2),
+            (state.0.vk.delta_g2, next_state.0.vk.delta_g2),
         ) {
             return Err(Error::InconsistentDeltaChange);
         }
@@ -438,20 +477,20 @@ where
     }
     check_invariants::<C>(&initial_state, &state)?;
     if !C::Pairing::same_ratio(
-        (initial_state.delta_g1, state.delta_g1),
-        (initial_state.vk.delta_g2, state.vk.delta_g2),
+        (initial_state.0.delta_g1, state.0.delta_g1),
+        (initial_state.0.vk.delta_g2, state.0.vk.delta_g2),
     ) {
         return Err(Error::InconsistentDeltaChange);
     }
     if !C::Pairing::same_ratio(
-        merge_pairs_affine(&state.h_query, &initial_state.h_query),
-        (initial_state.vk.delta_g2, state.vk.delta_g2),
+        merge_pairs_affine(&state.0.h_query, &initial_state.0.h_query),
+        (initial_state.0.vk.delta_g2, state.0.vk.delta_g2),
     ) {
         return Err(Error::InconsistentHChange);
     }
     if !C::Pairing::same_ratio(
-        merge_pairs_affine(&state.l_query, &initial_state.l_query),
-        (initial_state.vk.delta_g2, state.vk.delta_g2),
+        merge_pairs_affine(&state.0.l_query, &initial_state.0.l_query),
+        (initial_state.0.vk.delta_g2, state.0.vk.delta_g2),
     ) {
         return Err(Error::InconsistentLChange);
     }

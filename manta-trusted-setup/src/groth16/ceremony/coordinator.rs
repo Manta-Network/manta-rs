@@ -20,14 +20,12 @@ use crate::groth16::{
     ceremony::{
         message::{MPCState, Signed},
         registry::Registry,
-        serde::{deserialize_array, serialize_array},
         signature::{check_nonce, verify},
         Ceremony, CeremonyError, Challenge, Participant, Queue, UserPriority,
     },
     mpc::{verify_transform, Proof, State, StateSize},
 };
 use core::{mem, time::Duration};
-use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{time::lock::Timed, BoxArray};
 
 #[cfg(feature = "serde")]
@@ -46,13 +44,11 @@ pub const TIME_LIMIT: Duration = Duration::from_secs(360);
                 R: Serialize,
                 Challenge<C>: Serialize,
                 C::Participant: Serialize,
-                State<C::Configuration>: CanonicalSerialize,
             ",
             deserialize = r"
                 R: Deserialize<'de>,
                 Challenge<C>: Deserialize<'de>,
                 C::Participant: Deserialize<'de>,
-                State<C::Configuration>: CanonicalDeserialize,
             "
         ),
         crate = "manta_util::serde",
@@ -68,13 +64,6 @@ where
     registry: R,
 
     /// State
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "serialize_array::<State<C::Configuration>, _, CIRCUIT_COUNT>",
-            deserialize_with = "deserialize_array::<'de, _, State<C::Configuration>, CIRCUIT_COUNT>"
-        )
-    )]
     state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
 
     /// Challenge
@@ -86,15 +75,7 @@ where
     latest_contributor: Option<C::Participant>,
 
     /// Latest Proof
-    // #[cfg_attr(
-    //     feature = "serde",
-    //     serde(
-    //         serialize_with = "serialize_array::<Proof<C::Configuration>, _, CIRCUIT_COUNT>",
-    //         deserialize_with = "deserialize_array::<'de, _, Proof<C::Configuration>, CIRCUIT_COUNT>"
-    //     )
-    // )]
-    #[serde(skip)] //TODO
-    latest_proof: Option<BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>>, // TODO: Implement serialize
+    latest_proof: Option<BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>>,
 
     /// State Sizes
     size: BoxArray<StateSize, CIRCUIT_COUNT>,

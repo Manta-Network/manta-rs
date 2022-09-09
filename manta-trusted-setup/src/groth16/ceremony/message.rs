@@ -17,14 +17,9 @@
 //! Messages through Network
 
 use crate::groth16::{
-    ceremony::{
-        serde::{deserialize_array, serialize_array},
-        signature::sign,
-        Ceremony, CeremonyError, Challenge, Nonce, Signature, SigningKey,
-    },
+    ceremony::{signature::sign, Ceremony, CeremonyError, Challenge, Nonce, Signature, SigningKey},
     mpc::{Proof, State, StateSize},
 };
-use manta_crypto::arkworks::serialize::{CanonicalDeserialize, CanonicalSerialize};
 use manta_util::{
     serde::{Deserialize, Serialize},
     BoxArray,
@@ -34,8 +29,8 @@ use manta_util::{
 #[derive(Serialize, Deserialize)]
 #[serde(
     bound(
-        serialize = "Challenge<C>: Serialize, State<C::Configuration>: CanonicalSerialize,",
-        deserialize = "Challenge<C>: Deserialize<'de>, State<C::Configuration>: CanonicalDeserialize,",
+        serialize = "Challenge<C>: Serialize",
+        deserialize = "Challenge<C>: Deserialize<'de>",
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -45,13 +40,6 @@ where
     C: Ceremony,
 {
     /// State
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "serialize_array::<State<C::Configuration>, _, CIRCUIT_COUNT>",
-            deserialize_with = "deserialize_array::<'de, _, State<C::Configuration>, CIRCUIT_COUNT>"
-        )
-    )]
     pub state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
 
     /// Challenge
@@ -70,23 +58,9 @@ where
     C: Ceremony,
 {
     /// State
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "serialize_array::<State<C::Configuration>, _, CIRCUIT_COUNT>",
-            deserialize_with = "deserialize_array::<'de, _, State<C::Configuration>, CIRCUIT_COUNT>"
-        )
-    )]
     pub state: BoxArray<State<C::Configuration>, CIRCUIT_COUNT>,
 
     /// Proof
-    #[cfg_attr(
-        feature = "serde",
-        serde(
-            serialize_with = "serialize_array::<Proof<C::Configuration>, _, CIRCUIT_COUNT>",
-            deserialize_with = "deserialize_array::<'de, _, Proof<C::Configuration>, CIRCUIT_COUNT>"
-        )
-    )]
     pub proof: BoxArray<Proof<C::Configuration>, CIRCUIT_COUNT>,
 }
 

@@ -144,11 +144,14 @@ impl mpc::Configuration for Test {
     ) -> Self::Challenge {
         let mut hasher = Self::Hasher::default();
         hasher.0.update(challenge);
-        prev.serialize(&mut hasher)
+        prev.0
+            .serialize(&mut hasher)
             .expect("Consuming the previous state failed.");
-        next.serialize(&mut hasher)
+        next.0
+            .serialize(&mut hasher)
             .expect("Consuming the current state failed.");
         proof
+            .0
             .serialize(&mut hasher)
             .expect("Consuming proof failed");
         into_array_unchecked(hasher.0.finalize())
@@ -215,7 +218,7 @@ pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
 pub fn dummy_prover_key() -> ProvingKey<Bn254> {
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);
-    initialize(dummy_phase_one_trusted_setup(), cs).unwrap()
+    initialize(dummy_phase_one_trusted_setup(), cs).unwrap().0
 }
 
 /// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
@@ -263,9 +266,9 @@ fn proving_and_verifying_ratio_proof_is_correct() {
 #[test]
 fn trusted_setup_phase_two_is_valid() {
     let mut rng = OsRng;
-    let mut state = dummy_prover_key();
+    let mut state = State(dummy_prover_key());
     let mut transcript = Transcript::<Test> {
-        initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
+        initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state.0),
         initial_state: state.clone(),
         rounds: Vec::new(),
     };
@@ -275,8 +278,9 @@ fn trusted_setup_phase_two_is_valid() {
     for _ in 0..5 {
         prev_state = state.clone();
         proof = contribute(&hasher, &challenge, &mut state, &mut rng).unwrap();
-        (challenge, state) = verify_transform(&challenge, &prev_state, state, proof.clone())
-            .expect("Verify transform failed");
+        (challenge, state) =
+            verify_transform(&challenge, &prev_state, state, proof.clone())
+                .expect("Verify transform failed");
         transcript.rounds.push((state.clone(), proof));
     }
     verify_transform_all(
@@ -287,5 +291,5 @@ fn trusted_setup_phase_two_is_valid() {
     .expect("Verifying all transformations failed.");
     let mut cs = R1CS::for_proofs();
     dummy_circuit(&mut cs);
-    prove_and_verify_circuit(state, cs, &mut rng);
+    prove_and_verify_circuit(state.0, cs, &mut rng);
 }
