@@ -16,7 +16,11 @@
 
 //! Participant
 
-use crate::groth16::ceremony::{self, signature::SignatureScheme, UserPriority};
+use crate::groth16::ceremony::{
+    self,
+    signature::{Nonce, SignatureScheme},
+    UserPriority,
+};
 
 /// Participant
 pub struct Participant<S>
@@ -44,41 +48,47 @@ where
     S: SignatureScheme<Nonce = u64>,
 {
     type Identifier = S::VerifyingKey;
-
     type VerifyingKey = S::VerifyingKey;
-
     type Nonce = S::Nonce;
 
+    #[inline]
     fn id(&self) -> &Self::Identifier {
         &self.verifying_key
     }
 
+    #[inline]
     fn verifying_key(&self) -> &Self::VerifyingKey {
         &self.verifying_key
     }
 
+    #[inline]
     fn level(&self) -> UserPriority {
         self.priority
     }
 
-    fn get_nonce(&self) -> Self::Nonce {
-        self.nonce
-    }
-
-    fn increment_nonce(&mut self) {
-        self.nonce += 1;
-    }
-
+    #[inline]
     fn reduce_priority(&mut self) {
         self.priority = UserPriority::Normal;
     }
 
+    #[inline]
     fn has_contributed(&self) -> bool {
         self.contributed
     }
 
+    #[inline]
     fn set_contributed(&mut self) {
         self.contributed = true
+    }
+
+    #[inline]
+    fn get_nonce(&self) -> Self::Nonce {
+        self.nonce
+    }
+
+    #[inline]
+    fn increment_nonce(&mut self) {
+        self.nonce.increment();
     }
 }
 

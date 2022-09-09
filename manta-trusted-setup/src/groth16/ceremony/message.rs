@@ -17,7 +17,7 @@
 //! Messages through Network
 
 use crate::groth16::{
-    ceremony::{signature::sign, Ceremony, CeremonyError, Challenge, Nonce, Signature, SigningKey},
+    ceremony::{signature::sign, Ceremony, CeremonyError},
     mpc::{Proof, State, StateSize},
 };
 use manta_crypto::arkworks::pairing::Pairing;
@@ -30,8 +30,8 @@ use manta_util::{
 #[derive(Serialize, Deserialize)]
 #[serde(
     bound(
-        serialize = "Challenge<C>: Serialize",
-        deserialize = "Challenge<C>: Deserialize<'de>",
+        serialize = "C::Challenge: Serialize",
+        deserialize = "C::Challenge: Deserialize<'de>",
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -44,7 +44,7 @@ where
     pub state: BoxArray<State<C>, CIRCUIT_COUNT>,
 
     /// Challenge
-    pub challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
+    pub challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
 }
 
 /// Response for State Sizes
@@ -109,8 +109,10 @@ where
     deny_unknown_fields
 )]
 pub struct ContributeRequest<C, const CIRCUIT_COUNT: usize>(
-    pub (BoxArray<State<C>, CIRCUIT_COUNT>,
-    BoxArray<Proof<C>, CIRCUIT_COUNT>)
+    pub  (
+        BoxArray<State<C>, CIRCUIT_COUNT>,
+        BoxArray<Proof<C>, CIRCUIT_COUNT>,
+    ),
 )
 where
     C: Ceremony;
@@ -122,14 +124,14 @@ where
         serialize = r"
             C::Identifier: Serialize,
             T: Serialize,
-            Nonce<C>: Serialize,
-            Signature<C>: Serialize,
+            C::Nonce: Serialize,
+            C::Signature: Serialize,
         ",
         deserialize = r"
             C::Identifier: Deserialize<'de>,
             T: Deserialize<'de>,
-            Nonce<C>: Deserialize<'de>,
-            Signature<C>: Deserialize<'de>,
+            C::Nonce: Deserialize<'de>,
+            C::Signature: Deserialize<'de>,
         ",
     ),
     crate = "manta_util::serde",
@@ -143,10 +145,10 @@ where
     pub message: T,
 
     /// Nonce
-    pub nonce: Nonce<C>,
+    pub nonce: C::Nonce,
 
     /// Signature
-    pub signature: Signature<C>,
+    pub signature: C::Signature,
 
     /// Participant Identifier
     pub identifier: C::Identifier,
@@ -160,13 +162,13 @@ where
     #[inline]
     pub fn new(
         message: T,
-        nonce: &Nonce<C>,
-        signing_key: &SigningKey<C>,
+        nonce: &C::Nonce,
+        signing_key: &C::SigningKey,
         identifier: C::Identifier,
     ) -> Result<Self, CeremonyError<C>>
     where
         T: Serialize,
-        Nonce<C>: Clone,
+        C::Nonce: Clone,
     {
         let signature = match sign::<_, C>(signing_key, nonce.clone(), &message) {
             Ok(signature) => signature,

@@ -24,7 +24,7 @@ use crate::groth16::{
         registry::Registry,
         signature::{verify, Message},
         util::{deserialize_from_file, serialize_into_file},
-        Ceremony, CeremonyError, Challenge, Nonce, Participant as _, UserPriority, VerifyingKey,
+        Ceremony, CeremonyError, Participant as _, UserPriority,
     },
     mpc::{State, StateSize},
 };
@@ -67,7 +67,7 @@ where
     #[inline]
     pub fn new(
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
-        challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
+        challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
         registry: R,
         recovery_path: String,
         size: BoxArray<StateSize, CIRCUIT_COUNT>,
@@ -84,7 +84,7 @@ where
     pub async fn start(
         self,
         request: C::Identifier,
-    ) -> Result<(CeremonySize<CIRCUIT_COUNT>, Nonce<C>), CeremonyError<C>> {
+    ) -> Result<(CeremonySize<CIRCUIT_COUNT>, C::Nonce), CeremonyError<C>> {
         let coordinator = self.coordinator.lock();
         Ok((
             CeremonySize(BoxArray::from_unchecked(coordinator.size().clone())),
@@ -103,7 +103,7 @@ where
         request: Signed<QueryRequest, C>,
     ) -> Result<QueryResponse<C, CIRCUIT_COUNT>, CeremonyError<C>>
     where
-        Challenge<C>: Clone,
+        C::Challenge: Clone,
     {
         let mut coordinator = self.coordinator.lock();
         let priority = coordinator.preprocess_request(&request)?;
@@ -167,7 +167,7 @@ pub fn load_registry<C, P, R>(registry_file: P) -> R
 where
     C: Ceremony<Nonce = u64, Participant = Participant<C>, VerifyingKey = ed25519::PublicKey>,
     P: AsRef<Path>,
-    R: Registry<VerifyingKey<C>, C::Participant>,
+    R: Registry<C::VerifyingKey, C::Participant>,
 {
     let mut registry = R::new();
     for record in
@@ -191,7 +191,7 @@ where
                 .try_into()
                 .expect("Should give an array"),
         );
-        verify::<_, Ed25519<Message<Nonce<C>>>>(
+        verify::<_, Ed25519<Message<C::Nonce>>>(
             &verifying_key,
             0,
             &format!(

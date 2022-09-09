@@ -16,20 +16,56 @@
 
 //! Trusted Setup Client
 
-// use crate::groth16::ceremony::{signature::Nonce, Ceremony, Participant};
-// use manta_crypto::dalek::ed25519::Ed25519;
-//
-// /// Client
-// pub struct Client<C, const CIRCUIT_COUNT: usize>
-// where
-//     C: Ceremony,
-// {
-//     /// Identifier
-//     Identifier: C::Identifier,
-//
-//     /// Current Nonce
-//     nonce: u64,
-//
-//     /// Private Key
-//     private_key: Ed25519,
-// }
+use crate::groth16::ceremony::{signature::Nonce, Ceremony, Participant};
+use manta_crypto::dalek::ed25519::Ed25519;
+
+use super::{
+    message::{QueryRequest, Signed},
+    CeremonyError,
+};
+
+/// Client
+pub struct Client<C, const CIRCUIT_COUNT: usize>
+where
+    C: Ceremony,
+{
+    /// Identifier
+    identifier: C::Identifier,
+
+    /// Current Nonce
+    nonce: C::Nonce,
+
+    /// Signing Key
+    signing_key: C::SigningKey,
+}
+
+impl<C, const CIRCUIT_COUNT: usize> Client<C, CIRCUIT_COUNT>
+where
+    C: Ceremony,
+{
+    /// Builds a new [`Client`] with `participant` and `private_key`.
+    #[inline]
+    pub fn new(identifier: C::Identifier, nonce: C::Nonce, signing_key: C::SigningKey) -> Self {
+        Self {
+            identifier,
+            nonce,
+            signing_key,
+        }
+    }
+
+    /// Queries the server state.
+    #[inline]
+    pub fn query(&mut self) -> Result<Signed<QueryRequest, C>, CeremonyError<C>>
+    where
+        C::Nonce: Clone,
+    {
+        let signed_message = Signed::new(
+            QueryRequest,
+            &self.nonce,
+            &self.signing_key,
+            self.identifier.clone(),
+        )?;
+        self.nonce.increment();
+        Ok(signed_message)
+    }
+}

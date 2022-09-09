@@ -26,7 +26,7 @@ use manta_util::{serde::Serialize, AsBytes};
 /// Nonce
 pub trait Nonce: PartialEq {
     /// Increments the current nonce by one.
-    fn increment(&self) -> Self;
+    fn increment(&mut self);
 
     /// Checks if the current nonce is valid.
     fn is_valid(&self) -> bool;
@@ -34,8 +34,8 @@ pub trait Nonce: PartialEq {
 
 impl Nonce for u64 {
     #[inline]
-    fn increment(&self) -> Self {
-        self.saturating_add(1)
+    fn increment(&mut self) {
+        *self = self.saturating_add(1);
     }
 
     #[inline]

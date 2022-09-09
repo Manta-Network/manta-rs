@@ -21,7 +21,7 @@ use crate::groth16::{
         message::{MPCState, Signed},
         registry::Registry,
         signature::{check_nonce, verify},
-        Ceremony, CeremonyError, Challenge, Participant, Queue, UserPriority,
+        Ceremony, CeremonyError, Participant, Queue, UserPriority,
     },
     mpc::{verify_transform, Proof, State, StateSize},
 };
@@ -42,12 +42,12 @@ pub const TIME_LIMIT: Duration = Duration::from_secs(360);
         bound(
             serialize = r"
                 R: Serialize,
-                Challenge<C>: Serialize,
+                C::Challenge: Serialize,
                 C::Participant: Serialize,
             ",
             deserialize = r"
                 R: Deserialize<'de>,
-                Challenge<C>: Deserialize<'de>,
+                C::Challenge: Deserialize<'de>,
                 C::Participant: Deserialize<'de>,
             "
         ),
@@ -67,7 +67,7 @@ where
     state: BoxArray<State<C>, CIRCUIT_COUNT>,
 
     /// Challenge
-    challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
+    challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
 
     /// Latest Contributor
     ///
@@ -103,7 +103,7 @@ where
     pub fn new(
         registry: R,
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
-        challenge: BoxArray<Challenge<C>, CIRCUIT_COUNT>,
+        challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
         size: BoxArray<StateSize, CIRCUIT_COUNT>,
     ) -> Self {
         Self {
@@ -164,7 +164,7 @@ where
     #[inline]
     pub fn state_and_challenge(&self) -> MPCState<C, CIRCUIT_COUNT>
     where
-        Challenge<C>: Clone,
+        C::Challenge: Clone,
     {
         MPCState {
             state: self.state.clone(),
