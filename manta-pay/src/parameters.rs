@@ -21,9 +21,8 @@ use crate::config::{
     Parameters, PrivateTransfer, ProofSystemError, Reclaim, UtxoAccumulatorModel,
     UtxoCommitmentScheme, VerifyingContext, VoidNumberCommitmentScheme,
 };
-use manta_crypto::rand::{Rand, SeedableRng};
+use manta_crypto::rand::{ChaCha20Rng, Rand, SeedableRng};
 use manta_util::codec::Decode;
-use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "std")]
 use {

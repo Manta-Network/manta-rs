@@ -107,11 +107,14 @@ pub trait PairingEngineExt: PairingEngine {
 impl<E> PairingEngineExt for E where E: PairingEngine {}
 
 /// Testing Framework
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+#[cfg(any(feature = "test", test))]
+#[cfg_attr(doc_cfg, doc(cfg(any(feature = "test", test))))]
 pub mod test {
     use super::*;
     use crate::arkworks::ec::ProjectiveCurve;
+
+    #[cfg(test)]
+    use crate::rand::{OsRng, Rand};
 
     /// Asserts that `g1` and `g1*scalar` are in the same ratio as `g2` and `g2*scalar`.
     #[inline]
@@ -124,5 +127,29 @@ pub mod test {
             (g1.mul(scalar).into_affine(), g2)
         )
         .is_some());
+    }
+
+    /// Checks that BLS12-381 has a valid pairing ratio.
+    #[cfg(feature = "ark-bls12-381")]
+    #[test]
+    fn bls12_381_has_valid_pairing_ratio() {
+        let mut rng = OsRng;
+        assert_valid_pairing_ratio::<crate::arkworks::bls12_381::Bls12_381>(
+            rng.gen(),
+            rng.gen(),
+            rng.gen(),
+        );
+    }
+
+    /// Checks that BN254 has a valid pairing ratio.
+    #[cfg(feature = "ark-bn254")]
+    #[test]
+    fn bn254_has_valid_pairing_ratio() {
+        let mut rng = OsRng;
+        assert_valid_pairing_ratio::<crate::arkworks::bn254::Bn254>(
+            rng.gen(),
+            rng.gen(),
+            rng.gen(),
+        );
     }
 }
