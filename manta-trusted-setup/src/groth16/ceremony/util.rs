@@ -18,20 +18,12 @@
 
 extern crate alloc;
 
-use manta_crypto::arkworks::pairing::Pairing;
-use manta_util::{
-    serde::{de::DeserializeOwned, Serialize},
-    BoxArray,
-};
+use manta_util::serde::{de::DeserializeOwned, Serialize};
 use std::{
     fs::File,
     io::{Read, Write},
     path::Path,
 };
-
-use crate::groth16::mpc::State;
-
-use super::message::ServerSize;
 
 /// Logs `data` to a disk file at `path`.
 #[inline]
@@ -85,27 +77,6 @@ where
 //         now.elapsed()
 //     );
 // }
-
-/// Checks `states` has the same size as `size`.
-pub fn check_state_size<P, const CIRCUIT_COUNT: usize>(
-    states: &BoxArray<State<P>, CIRCUIT_COUNT>,
-    size: &ServerSize<CIRCUIT_COUNT>,
-) -> bool
-where
-    P: Pairing,
-{
-    let mut validity = true;
-    for i in 0..CIRCUIT_COUNT {
-        validity = validity
-            || (states[i].0.vk.gamma_abc_g1.len() == size.0[i].gamma_abc_g1)
-            || (states[i].0.a_query.len() == size.0[i].a_query)
-            || (states[i].0.b_g1_query.len() == size.0[i].a_query)
-            || (states[i].0.b_g2_query.len() == size.0[i].a_query)
-            || (states[i].0.h_query.len() == size.0[i].h_query)
-            || (states[i].0.l_query.len() == size.0[i].l_query);
-    }
-    validity
-}
 
 /// Testing Suites
 #[cfg(test)]

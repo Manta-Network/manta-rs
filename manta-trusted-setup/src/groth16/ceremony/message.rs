@@ -20,6 +20,7 @@ use crate::groth16::{
     ceremony::{signature::sign, Ceremony, CeremonyError, Challenge, Nonce, Signature, SigningKey},
     mpc::{Proof, State, StateSize},
 };
+use manta_crypto::arkworks::pairing::Pairing;
 use manta_util::{
     serde::{Deserialize, Serialize},
     BoxArray,
@@ -67,13 +68,28 @@ where
 /// Response for State Sizes
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct ServerSize<const CIRCUIT_COUNT: usize>(pub BoxArray<StateSize, CIRCUIT_COUNT>);
+pub struct CeremonySize<const CIRCUIT_COUNT: usize>(pub BoxArray<StateSize, CIRCUIT_COUNT>);
 
 impl<const CIRCUIT_COUNT: usize> From<BoxArray<StateSize, CIRCUIT_COUNT>>
-    for ServerSize<CIRCUIT_COUNT>
+    for CeremonySize<CIRCUIT_COUNT>
 {
     fn from(inner: BoxArray<StateSize, CIRCUIT_COUNT>) -> Self {
-        ServerSize(inner)
+        CeremonySize(inner)
+    }
+}
+
+impl<const CIRCUIT_COUNT: usize> CeremonySize<CIRCUIT_COUNT> {
+    /// Checks `states` matches [`CeremonySize`].
+    #[inline]
+    pub fn check_state_size<P>(&self, states: &BoxArray<State<P>, CIRCUIT_COUNT>) -> bool
+    where
+        P: Pairing,
+    {
+        let mut validity = true;
+        for i in 0..CIRCUIT_COUNT {
+            validity = validity || self.0[i].matches(&states[i].0);
+        }
+        validity
     }
 }
 

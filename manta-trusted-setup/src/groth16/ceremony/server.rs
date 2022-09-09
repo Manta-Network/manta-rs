@@ -19,7 +19,7 @@
 use crate::groth16::{
     ceremony::{
         coordinator::Coordinator,
-        message::{ContributeRequest, QueryRequest, QueryResponse, ServerSize, Signed},
+        message::{ContributeRequest, QueryRequest, QueryResponse, CeremonySize, Signed},
         registry::Registry,
         signature::{verify, Message, SignatureScheme},
         util::{load_from_file, log_to_file},
@@ -77,14 +77,15 @@ where
     pub async fn start(
         self,
         request: C::Identifier,
-    ) -> Result<(ServerSize<CIRCUIT_COUNT>, Nonce<C>), CeremonyError<C>> {
+    ) -> Result<(CeremonySize<CIRCUIT_COUNT>, Nonce<C>), CeremonyError<C>> {
         let coordinator = self.coordinator.lock();
         Ok((
             coordinator.size().clone().into(),
             coordinator
                 .registry()
-                .nonce(&request)
-                .ok_or_else(|| CeremonyError::NotRegistered)?,
+                .get(&request)
+                .ok_or_else(|| CeremonyError::NotRegistered)?
+                .get_nonce(),
         ))
     }
 

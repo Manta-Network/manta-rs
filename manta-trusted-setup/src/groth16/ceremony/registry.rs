@@ -16,8 +16,6 @@
 
 //! Groth16 Trusted Setup Ceremony Registry
 
-use crate::groth16::ceremony::Participant;
-
 /// Participant Registry
 pub trait Registry<I, P> {
     /// Builds a new [`Registry`].
@@ -25,23 +23,11 @@ pub trait Registry<I, P> {
 
     /// Registers the `id` and `participant` into `self` returning `false` if the `participant` is already
     /// registered or their registration would conflict with another existing participant.
-    fn register(&mut self, id: &I, participant: P) -> bool;
+    fn register(&mut self, id: I, participant: P) -> bool;
 
     /// Returns a shared reference to the participant with the given `id` if they are registered.
     fn get(&self, id: &I) -> Option<&P>;
 
     /// Returns a mutable reference to the participant with the given `id` if they are registered.
     fn get_mut(&mut self, id: &I) -> Option<&mut P>;
-
-    /// Returns `true` if the participant with the given `id` has already contributed to the
-    /// ceremony.
-    fn has_contributed(&self, id: &I) -> bool;
-
-    /// Gets nonce of a participant with `id`.
-    fn nonce(&self, id: &I) -> Option<P::Nonce>
-    where
-        P: Participant,
-    {
-        Some(self.get(id)?.get_nonce())
-    }
 }

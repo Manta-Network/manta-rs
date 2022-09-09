@@ -92,6 +92,9 @@ pub trait Participant {
     /// Reduces the priority.
     fn reduce_priority(&mut self);
 
+    /// Checks if the participant has contributed.
+    fn has_contributed(&self) -> bool;
+
     /// Sets contributed.
     fn set_contributed(&mut self);
 }
@@ -169,16 +172,6 @@ pub enum UserPriority {
 
     /// Normal Priority
     Normal,
-}
-
-impl From<usize> for UserPriority {
-    fn from(priority: usize) -> Self {
-        match priority {
-            0 => Self::High,
-            1 => Self::Normal,
-            _ => unimplemented!(),
-        }
-    }
 }
 
 impl From<UserPriority> for usize {

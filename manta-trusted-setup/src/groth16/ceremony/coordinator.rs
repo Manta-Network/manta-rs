@@ -181,13 +181,13 @@ where
     where
         T: Serialize,
     {
-        if self.registry.has_contributed(&request.identifier) {
-            return Err(CeremonyError::AlreadyContributed);
-        }
         let participant = self
             .registry
             .get_mut(&request.identifier)
             .ok_or_else(|| CeremonyError::NotRegistered)?;
+        if participant.has_contributed() {
+            return Err(CeremonyError::AlreadyContributed);
+        }
         let participant_nonce = participant.get_nonce();
         if !check_nonce(&participant_nonce, &request.nonce) {
             return Err(CeremonyError::NonceNotInSync(participant_nonce));

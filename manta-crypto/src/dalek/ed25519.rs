@@ -55,7 +55,7 @@ pub fn signature_from_bytes(bytes: [u8; SIGNATURE_LENGTH]) -> Signature {
     match Signature::from_bytes(&bytes) {
         Ok(signature) => signature,
         _ => {
-            unreachable!("We are guaranteed the correct number of bytes from `PUBLIC_KEY_LENGTH`.")
+            unreachable!("We are guaranteed the correct number of bytes from `SIGNATURE_LENGTH`.")
         }
     }
 }
