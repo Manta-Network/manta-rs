@@ -129,8 +129,8 @@ where
     {
         let mut coordinator = self.coordinator.lock();
         coordinator.preprocess_request(&request)?;
-        let (state, proof) = request.message.0;
-        coordinator.update(&request.identifier, state, proof)?;
+        let message = request.message;
+        coordinator.update(&request.identifier, message.state, message.proof)?;
         serialize_into_file(
             OpenOptions::new().write(true).create_new(true),
             &Path::new(&self.recovery_path).join(format!("transcript{}.data", coordinator.round())),

@@ -47,36 +47,26 @@ where
     pub challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
 }
 
-/// Response for State Sizes
-#[derive(Clone, Serialize, Deserialize)]
+/// Ceremony Size
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(crate = "manta_util::serde", deny_unknown_fields)]
 pub struct CeremonySize<const CIRCUIT_COUNT: usize>(pub BoxArray<StateSize, CIRCUIT_COUNT>);
 
-impl<const CIRCUIT_COUNT: usize> From<BoxArray<StateSize, CIRCUIT_COUNT>>
-    for CeremonySize<CIRCUIT_COUNT>
-{
-    fn from(inner: BoxArray<StateSize, CIRCUIT_COUNT>) -> Self {
-        CeremonySize(inner)
-    }
-}
-
 impl<const CIRCUIT_COUNT: usize> CeremonySize<CIRCUIT_COUNT> {
-    /// Checks `states` matches [`CeremonySize`].
+    /// Checks that each size in `self` matches each [`State`] in `states`.
     #[inline]
-    pub fn check_state_size<P>(&self, states: &BoxArray<State<P>, CIRCUIT_COUNT>) -> bool
+    pub fn matches<P>(&self, states: &[State<P>; CIRCUIT_COUNT]) -> bool
     where
         P: Pairing,
     {
-        let mut validity = true;
-        for i in 0..CIRCUIT_COUNT {
-            validity = validity || self.0[i].matches(&states[i].0);
-        }
-        validity
+        self.0.iter().zip(states).all(|(l, r)| l.matches(&r.0))
     }
 }
 
 /// Query Request
-#[derive(Deserialize, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 #[serde(crate = "manta_util::serde", deny_unknown_fields)]
 pub struct QueryRequest;
 
@@ -84,8 +74,8 @@ pub struct QueryRequest;
 #[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        serialize = "MPCState<C, CIRCUIT_COUNT>: Serialize",
-        deserialize = "MPCState<C, CIRCUIT_COUNT>: Deserialize<'de>"
+        deserialize = "MPCState<C, CIRCUIT_COUNT>: Deserialize<'de>",
+        serialize = "MPCState<C, CIRCUIT_COUNT>: Serialize"
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -102,20 +92,22 @@ where
 }
 
 /// Contribute Request
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(
-    bound(serialize = "", deserialize = ""),
+    bound(deserialize = "", serialize = ""),
     crate = "manta_util::serde",
     deny_unknown_fields
 )]
-pub struct ContributeRequest<C, const CIRCUIT_COUNT: usize>(
-    pub  (
-        BoxArray<State<C>, CIRCUIT_COUNT>,
-        BoxArray<Proof<C>, CIRCUIT_COUNT>,
-    ),
-)
+pub struct ContributeRequest<C, const CIRCUIT_COUNT: usize>
 where
-    C: Ceremony;
+    C: Ceremony,
+{
+    /// State
+    pub state: BoxArray<State<C>, CIRCUIT_COUNT>,
+
+    /// Proof
+    pub proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
+}
 
 /// Signed Message
 #[derive(Deserialize, Serialize)]
