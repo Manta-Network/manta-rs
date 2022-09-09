@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#197](https://github.com/Manta-Network/manta-rs/pull/197) Add ECLAIR utilities for next circuit upgrade
 
 ### Changed
+- [\#247](https://github.com/Manta-Network/manta-rs/pull/247) Moved BLS12-381 and BN254 curves (and Edwards counterparts) to `manta-crypto`
 - [\#236](https://github.com/Manta-Network/manta-rs/pull/236) Moved `RatioProof` from `manta-trusted-setup` to `manta-crypto`
 - [\#180](https://github.com/Manta-Network/manta-rs/pull/180) Start moving to new `arkworks` backend for `manta-crypto`
 - [\#191](https://github.com/Manta-Network/manta-rs/pull/191) Move HTTP Utilities to `manta-util`
