@@ -24,6 +24,7 @@ use crate::arkworks::{
     ff::PrimeField,
 };
 use alloc::vec::Vec;
+use ark_ec::group::Group;
 use ark_ff::BigInteger;
 use num_bigint::{BigInt, Sign};
 
@@ -139,7 +140,7 @@ where
     /// Generate scalars and points for the simultaneous multiple
     /// point multiplication
     #[inline]
-    fn scalars_and_points(&self, point: &C, scalar: &C::ScalarField) -> (Vec<bool>, Vec<bool>, C, C)
+    fn scalars_and_points(&self, point: &C, scalar: &C::ScalarField) -> (Vec<bool>, Vec<bool>, C::Projective, C::Projective)
     where
         C: AffineCurveExt,
     {
@@ -163,26 +164,26 @@ where
             C::ScalarField::from_le_bytes_mod_order(&k2.to_bytes_le())
                 .into_repr()
                 .to_bits_be(),
-            p1,
-            p2,
+            p1.into_projective(),
+            p2.into_projective(),
         )
     }
 
     /// Executes a simulatenous multiple point multiplication without windowing.
     #[inline]
-    fn simultaneous_multiple_point_multiplication(u: Vec<bool>, v: Vec<bool>, p: C, q: C) -> C {
+    fn simultaneous_multiple_point_multiplication(u: Vec<bool>, v: Vec<bool>, p: C::Projective, q: C::Projective) -> C {
         // TODO: implement windowing.
         let mut table = Vec::with_capacity(4);
-        table.push(C::zero());
+        table.push(C::zero().into_projective());
         table.push(p);
         table.push(q);
         table.push(p + q);
-        let mut r = C::zero();
+        let mut r = C::zero().into_projective();
         for i in 0..u.len() {
-            r = ProjectiveCurve::double(&r.into_projective()).into_affine();
+            ProjectiveCurve::double_in_place(& mut r);
             r = r + table[u[i] as usize + 2 * (v[i] as usize)]
         }
-        r
+        r.into_affine()
     }
 
     /// Multiplies `point` by `scalar` using the GLV method.
