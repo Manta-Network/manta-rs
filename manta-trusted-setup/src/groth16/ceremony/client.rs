@@ -16,12 +16,17 @@
 
 //! Trusted Setup Client
 
-use crate::groth16::ceremony::{
-    message::{QueryRequest, Signed},
-    signature::Nonce,
-    Ceremony, CeremonyError, Participant,
+use crate::groth16::{
+    ceremony::{
+        message::{ContributeRequest, QueryRequest, Signed},
+        signature::Nonce,
+        Ceremony, CeremonyError, Participant,
+    },
+    mpc::{contribute, State},
 };
-use manta_crypto::dalek::ed25519::Ed25519;
+use console::style;
+use manta_crypto::{dalek::ed25519::Ed25519, rand::OsRng};
+use manta_util::BoxArray;
 
 /// Client
 pub struct Client<C, const CIRCUIT_COUNT: usize>
@@ -66,5 +71,45 @@ where
         )?;
         self.nonce.increment();
         Ok(signed_message)
+    }
+
+    /// Contributes to the state on the server.
+    #[inline]
+    pub fn contribute(
+        &mut self,
+        hasher: &C::Hasher,
+        challenge: &BoxArray<C::Challenge, CIRCUIT_COUNT>,
+        mut state: BoxArray<State<C>, CIRCUIT_COUNT>,
+    ) -> Result<Signed<ContributeRequest<C, CIRCUIT_COUNT>, C>, CeremonyError<C>>
+    where
+        C::Nonce: Clone,
+    {
+        let circuit_name = ["ToPrivate", "PrivateTransfer", "ToPublic"];
+        let mut rng = OsRng;
+        let mut proofs = Vec::new();
+        for i in 0..CIRCUIT_COUNT {
+            println!(
+                "{} Contributing to {} Circuits...",
+                style(format!("[{}/9]", i + 5)).bold().dim(),
+                circuit_name[i],
+            );
+            match contribute(hasher, &challenge[i], &mut state[i], &mut rng) {
+                Some(proof) => proofs.push(proof),
+                None => return Err(CeremonyError::Unexpected),
+            }
+        }
+        println!(
+            "{} Waiting for Confirmation from Server... Estimated Waiting Time: {} minutes.",
+            style("[8/9]").bold().dim(),
+            style("3").bold().blue(),
+        );
+        let signed_message = Signed::new(
+            ContributeRequest((state, BoxArray::from_vec(proofs))),
+            &self.nonce,
+            &self.signing_key,
+            self.identifier.clone(),
+        );
+        self.nonce.increment();
+        signed_message
     }
 }
