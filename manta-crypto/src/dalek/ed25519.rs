@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Dalek Cryptography `ed25519` Backend
+//! Dalek Cryptography [`ed25519`](ed25519_dalek) Backend
 
 use crate::{
     rand::{CryptoRng, Rand, RngCore},
@@ -27,38 +27,33 @@ use manta_util::AsBytes;
 
 pub use ed25519_dalek::*;
 
-/// Converts `bytes` into a [`SecretKey`].
-#[inline]
-pub fn secret_key_from_bytes(bytes: [u8; SECRET_KEY_LENGTH]) -> SecretKey {
-    match SecretKey::from_bytes(&bytes) {
-        Ok(secret_key) => secret_key,
-        _ => {
-            unreachable!("We are guaranteed the correct number of bytes from `SECRET_KEY_LENGTH`.")
+/// Implements byte conversion from an array of bytes of length `$len` into the given `$type`.
+macro_rules! byte_conversion {
+    ($name:ident, $type:tt, $len:ident) => {
+        #[doc = "Converts the `bytes` fixed-length array into [`"]
+        #[doc = stringify!($type)]
+        #[doc = "`]."]
+        ///
+        /// # Note
+        ///
+        /// We don't need to return an error here because `bytes` already has the correct length.
+        #[inline]
+        pub fn $name(bytes: [u8; $len]) -> $type {
+            match $type::from_bytes(&bytes) {
+                Ok(value) => value,
+                _ => unreachable!(concat!(
+                    "We are guaranteed the correct number of bytes from `",
+                    stringify!($len),
+                    "`."
+                )),
+            }
         }
-    }
+    };
 }
 
-/// Converts `bytes` into a [`PublicKey`].
-#[inline]
-pub fn public_key_from_bytes(bytes: [u8; PUBLIC_KEY_LENGTH]) -> PublicKey {
-    match PublicKey::from_bytes(&bytes) {
-        Ok(public_key) => public_key,
-        _ => {
-            unreachable!("We are guaranteed the correct number of bytes from `PUBLIC_KEY_LENGTH`.")
-        }
-    }
-}
-
-/// Converts `bytes` into [`Signature`].
-#[inline]
-pub fn signature_from_bytes(bytes: [u8; SIGNATURE_LENGTH]) -> Signature {
-    match Signature::from_bytes(&bytes) {
-        Ok(signature) => signature,
-        _ => {
-            unreachable!("We are guaranteed the correct number of bytes from `SIGNATURE_LENGTH`.")
-        }
-    }
-}
+byte_conversion!(secret_key_from_bytes, SecretKey, SECRET_KEY_LENGTH);
+byte_conversion!(public_key_from_bytes, PublicKey, PUBLIC_KEY_LENGTH);
+byte_conversion!(signature_from_bytes, Signature, SIGNATURE_LENGTH);
 
 /// Clones the `secret_key` by serializing and then deserializing.
 #[inline]
@@ -107,7 +102,9 @@ impl<M> MessageType for Ed25519<M> {
 }
 
 impl<M> RandomnessType for Ed25519<M> {
-    /// The `ed25519_dalek` crate provides randomness internally so we set it as `()` here.
+    /// Empty Randomness
+    ///
+    /// The [`ed25519_dalek`] crate provides randomness internally so we set it as `()` here.
     type Randomness = ();
 }
 

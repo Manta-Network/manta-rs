@@ -19,7 +19,7 @@
 #[cfg(feature = "serde")]
 use {
     alloc::vec::Vec,
-    manta_util::serde::{de, ser, Deserialize, Serialize},
+    manta_util::serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer},
 };
 
 #[doc(inline)]
@@ -32,7 +32,7 @@ pub use ark_serialize::*;
 pub fn canonical_serialize<T, S>(data: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
     T: CanonicalSerialize,
-    S: ser::Serializer,
+    S: Serializer,
 {
     let mut bytes = Vec::new();
     data.serialize(&mut bytes).map_err(ser::Error::custom)?;
@@ -46,7 +46,7 @@ where
 #[inline]
 pub fn canonical_deserialize<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
-    D: de::Deserializer<'de>,
+    D: Deserializer<'de>,
     T: CanonicalDeserialize,
 {
     let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
