@@ -92,7 +92,7 @@ where
     }
 }
 
-/// Generates a [`KeyPair`] from `bytes`.
+/// Generates a [`Keypair`] from `bytes`.
 #[inline]
 pub fn generate_keys(bytes: &[u8]) -> Option<Keypair> {
     if SECRET_KEY_LENGTH > bytes.len() {
