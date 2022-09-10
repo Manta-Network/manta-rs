@@ -82,7 +82,7 @@ pub trait SignatureScheme:
     + signature::Verify<Verification = Result<(), Self::Error>>
 {
     /// Message Nonce
-    type Nonce: Nonce;
+    type Nonce: Nonce + Clone;
 
     /// Verification Error Type
     type Error;
@@ -157,7 +157,7 @@ where
 
 impl<N> SignatureScheme for Ed25519<Message<N>>
 where
-    N: AsBytes + Default + Nonce,
+    N: AsBytes + Default + Nonce + Clone,
 {
     type Nonce = N;
     type Error = SignatureError;

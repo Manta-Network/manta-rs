@@ -41,7 +41,7 @@ use manta_util::{
 use parking_lot::Mutex;
 use std::{
     fs::{File, OpenOptions},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 /// Server
@@ -54,7 +54,7 @@ where
     coordinator: Arc<Mutex<Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>>>,
 
     /// Recovery directory path
-    recovery_path: String,
+    recovery_directory: PathBuf,
 }
 
 impl<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
@@ -63,19 +63,19 @@ where
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
 {
-    /// Builds a ['Server`] with initial `state`, `challenge`, a loaded `registry`, and a `recovery_path`.
+    /// Builds a ['Server`] with initial `state`, `challenge`, a loaded `registry`, and a `recovery_directory`.
     #[inline]
     pub fn new(
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
         registry: R,
-        recovery_path: String,
+        recovery_directory: PathBuf,
         size: BoxArray<StateSize, CIRCUIT_COUNT>,
     ) -> Self {
         let coordinator = Coordinator::new(registry, state, challenge, size);
         Self {
             coordinator: Arc::new(Mutex::new(coordinator)),
-            recovery_path,
+            recovery_directory,
         }
     }
 
@@ -133,7 +133,8 @@ where
         coordinator.update(&request.identifier, message.state, message.proof)?;
         serialize_into_file(
             OpenOptions::new().write(true).create_new(true),
-            &Path::new(&self.recovery_path).join(format!("transcript{}.data", coordinator.round())),
+            &Path::new(&self.recovery_directory)
+                .join(format!("transcript{}.data", coordinator.round())),
             &coordinator.deref(),
         )
         .map_err(|e| CeremonyError::Unexpected(format!("{:?}", e)))?;
@@ -142,23 +143,24 @@ where
     }
 }
 
-/// Recovers from a disk file at `recovery` and use `recovery_path` as the backup directory.
+/// Recovers from a disk file at `path` and use `recovery_directory` as the backup directory.
 #[inline]
-pub fn recover<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>(
-    recovery: String,
-    recovery_path: String,
+pub fn recover<C, R, P, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>(
+    path: P,
+    recovery_directory: PathBuf,
 ) -> Result<Server<C, R, LEVEL_COUNT, CIRCUIT_COUNT>, CeremonyError<C>>
 where
     C: Ceremony,
+    P: AsRef<Path>,
     R: Registry<C::Identifier, C::Participant>,
     Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: DeserializeOwned,
 {
     Ok(Server {
         coordinator: Arc::new(Mutex::new(
-            deserialize_from_file(recovery)
+            deserialize_from_file(path)
                 .map_err(|e| CeremonyError::Unexpected(format!("{:?}", e)))?,
         )),
-        recovery_path,
+        recovery_directory,
     })
 }
 

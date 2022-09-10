@@ -50,7 +50,7 @@ impl From<Priority> for usize {
 /// Participant
 pub struct Participant<S>
 where
-    S: SignatureScheme<Nonce = u64>,
+    S: SignatureScheme,
 {
     /// Verifying Key
     verifying_key: S::VerifyingKey,
@@ -70,7 +70,7 @@ where
 
 impl<S> ceremony::Participant for Participant<S>
 where
-    S: SignatureScheme<Nonce = u64>,
+    S: SignatureScheme,
 {
     type Identifier = S::VerifyingKey;
     type VerifyingKey = S::VerifyingKey;
@@ -109,7 +109,7 @@ where
 
     #[inline]
     fn nonce(&self) -> Self::Nonce {
-        self.nonce
+        self.nonce.clone()
     }
 
     #[inline]
@@ -120,7 +120,7 @@ where
 
 impl<S> Participant<S>
 where
-    S: SignatureScheme<Nonce = u64>,
+    S: SignatureScheme,
 {
     /// Builds a new [`Participant`].
     #[inline]
@@ -142,7 +142,7 @@ where
 
     /// Gets `twitter`.
     #[inline]
-    pub fn twitter(&self) -> String {
-        self.twitter.clone()
+    pub fn twitter(&self) -> &str {
+        &self.twitter
     }
 }
