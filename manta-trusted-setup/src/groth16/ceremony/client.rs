@@ -227,9 +227,9 @@ where
         )
         .await
         .map_err(|_| {
-            return CeremonyError::Network(
+            CeremonyError::Network(
                 "Should have received starting meta data from server".to_string(),
-            );
+            )
         })? {
         Ok((server_size, nonce)) => Ok((server_size, nonce)),
         Err(CeremonyError::NotRegistered) => Err(CeremonyError::NotRegistered),
@@ -267,9 +267,9 @@ where
             )
             .await
             .map_err(|_| {
-                return CeremonyError::Network(
+                CeremonyError::Network(
                     "Should have received starting meta data from server".to_string(),
-                );
+                )
             })? {
             Ok(message) => match message {
                 QueryResponse::QueuePosition(position) => {
@@ -332,9 +332,9 @@ where
             )
             .await
             .map_err(|_| {
-                return CeremonyError::Network(
+                CeremonyError::Network(
                     "Should have received starting meta data from server".to_string(),
-                );
+                )
             })? {
             Ok(_) => {
                 term.clear_last_lines(1)

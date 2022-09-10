@@ -41,13 +41,13 @@ use {
 };
 
 /// MPC State
-#[derive(Serialize, Deserialize, derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-#[serde(
-    bound(serialize = "", deserialize = ""),
-    crate = "manta_util::serde",
-    deny_unknown_fields
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
 pub struct State<P>(
     #[cfg_attr(
         feature = "serde",
@@ -62,13 +62,13 @@ where
     P: Pairing + ?Sized;
 
 /// MPC Proof
-#[derive(Serialize, Deserialize, derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-#[serde(
-    bound(serialize = "", deserialize = "",),
-    crate = "manta_util::serde",
-    deny_unknown_fields
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
 pub struct Proof<P>(
     #[cfg_attr(
         feature = "serde",

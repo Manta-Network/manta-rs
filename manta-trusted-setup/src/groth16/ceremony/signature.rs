@@ -18,7 +18,7 @@
 
 use alloc::vec::Vec;
 use manta_crypto::{
-    dalek::ed25519::{Ed25519, SignatureError, self},
+    dalek::ed25519::{self, Ed25519, SignatureError},
     signature,
 };
 use manta_util::{serde::Serialize, AsBytes};
