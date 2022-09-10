@@ -17,7 +17,7 @@
 //! Messages through Network
 
 use crate::groth16::{
-    ceremony::{signature::sign, Ceremony, CeremonyError},
+    ceremony::{signature::sign, Ceremony},
     mpc::{Proof, State, StateSize},
 };
 use manta_crypto::arkworks::pairing::Pairing;
@@ -157,15 +157,12 @@ where
         nonce: &C::Nonce,
         signing_key: &C::SigningKey,
         identifier: C::Identifier,
-    ) -> Result<Self, CeremonyError<C>>
+    ) -> Result<Self, bincode::Error>
     where
         T: Serialize,
         C::Nonce: Clone,
     {
-        let signature = match sign::<_, C>(signing_key, nonce.clone(), &message) {
-            Ok(signature) => signature,
-            Err(_) => return Err(CeremonyError::<C>::BadRequest),
-        };
+        let signature = sign::<_, C>(signing_key, nonce.clone(), &message)?;
         let message = Signed {
             message,
             nonce: nonce.clone(),

@@ -26,6 +26,8 @@ use core::{convert::TryInto, marker::PhantomData};
 use manta_util::AsBytes;
 
 pub use ed25519_dalek::*;
+use rand_chacha::ChaCha20Rng;
+use rand_core::SeedableRng;
 
 /// Implements byte conversion from an array of bytes of length `$len` into the given `$type`.
 macro_rules! byte_conversion {
@@ -95,17 +97,14 @@ where
 /// Generates a [`Keypair`] from `bytes`.
 #[inline]
 pub fn generate_keys(bytes: &[u8]) -> Option<Keypair> {
-    if SECRET_KEY_LENGTH > bytes.len() {
+    if SECRET_KEY_LENGTH <= bytes.len() {
         return None;
     }
-    let sk = match bytes[0..SECRET_KEY_LENGTH].try_into() {
-        Ok(bytes) => secret_key_from_bytes(bytes),
+    let mut rng = match bytes[0..SECRET_KEY_LENGTH].try_into() {
+        Ok(seed) => ChaCha20Rng::from_seed(seed),
         Err(_) => return None,
     };
-    Some(Keypair {
-        public: (&sk).into(),
-        secret: sk,
-    })
+    Some(generate_keypair(&mut rng))
 }
 
 /// Edwards Curve Signature Scheme for the `Curve25519` Elliptic Curve

@@ -81,7 +81,12 @@ where
             &self.nonce,
             &self.signing_key,
             self.identifier.clone(),
-        )?;
+        )
+        .map_err(|_| {
+            CeremonyError::Unexpected(
+                "Cannot sign message since it cannot be serialized.".to_string(),
+            )
+        })?;
         self.nonce.increment();
         Ok(signed_message)
     }
@@ -106,10 +111,10 @@ where
                 style(format!("[{}/9]", i + 5)).bold().dim(),
                 circuit_name[i],
             );
-            match contribute(hasher, &challenge[i], &mut state[i], &mut rng) {
-                Some(proof) => proofs.push(proof),
-                None => return Err(CeremonyError::Unexpected("Cannot contribute.".to_string())),
-            }
+            proofs.push(
+                contribute(hasher, &challenge[i], &mut state[i], &mut rng)
+                    .ok_or(CeremonyError::Unexpected("Cannot contribute.".to_string()))?,
+            );
         }
         println!(
             "{} Waiting for Confirmation from Server... Estimated Waiting Time: {} minutes.",
@@ -124,9 +129,14 @@ where
             &self.nonce,
             &self.signing_key,
             self.identifier.clone(),
-        );
+        )
+        .map_err(|_| {
+            CeremonyError::Unexpected(
+                "Cannot sign message since it cannot be serialized.".to_string(),
+            )
+        })?;
         self.nonce.increment();
-        signed_message
+        Ok(signed_message)
     }
 }
 
@@ -202,12 +212,11 @@ where
     )
     .as_bytes()
     .to_vec();
-    match C::generate_keys(&seed_bytes) {
-        Some(key_pair) => Ok(key_pair),
-        None => Err(CeremonyError::Unexpected(
+    Ok(
+        C::generate_keys(&seed_bytes).ok_or(CeremonyError::Unexpected(
             "Cannot generate keys.".to_string(),
-        )),
-    }
+        ))?,
+    )
 }
 
 /// Gets state size from server.
@@ -221,7 +230,7 @@ where
     C::Identifier: Serialize,
     C::Nonce: DeserializeOwned + Debug,
 {
-    match network_client
+    network_client
         .post::<_, Result<(CeremonySize<CIRCUIT_COUNT>, C::Nonce), CeremonyError<C>>>(
             "start", &identity,
         )
@@ -229,12 +238,8 @@ where
         .map_err(|_| {
             CeremonyError::Network(
                 "Should have received starting meta data from server".to_string(),
-            )
-        })? {
-        Ok((server_size, nonce)) => Ok((server_size, nonce)),
-        Err(CeremonyError::NotRegistered) => Err(CeremonyError::NotRegistered),
-        Err(e) => Err(CeremonyError::Unexpected(format!("{:?}", e))),
-    }
+            );
+        })?
 }
 
 /// Contributes to the server.
@@ -261,9 +266,7 @@ where
         let mpc_state = match network_client
             .post::<_, Result<QueryResponse<C, CIRCUIT_COUNT>, CeremonyError<C>>>(
                 "query",
-                &trusted_setup_client.query().map_err(|_| {
-                    CeremonyError::UnableToGenerateRequest("Queries the server state.".to_string())
-                })?,
+                &trusted_setup_client.query()?,
             )
             .await
             .map_err(|_| {
@@ -324,11 +327,11 @@ where
         match network_client
             .post::<_, Result<(), CeremonyError<C>>>(
                 "update",
-                &trusted_setup_client
-                    .contribute(&C::Hasher::default(), &mpc_state.challenge, mpc_state.state)
-                    .map_err(|_| {
-                        CeremonyError::UnableToGenerateRequest("contribute".to_string())
-                    })?,
+                &trusted_setup_client.contribute(
+                    &C::Hasher::default(),
+                    &mpc_state.challenge,
+                    mpc_state.state,
+                )?,
             )
             .await
             .map_err(|_| {

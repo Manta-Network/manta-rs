@@ -164,57 +164,79 @@ where
     })
 }
 
+/// Prases a string `record` into a pair of `(C::Identifier, C::Participant)`.
+#[inline]
+pub fn parse<C>(
+    record: csv::StringRecord,
+) -> Result<(C::VerifyingKey, C::Participant), CeremonyError<C>>
+where
+    C: Ceremony<Nonce = u64, Participant = Participant<C>, VerifyingKey = ed25519::PublicKey>,
+{
+    if record.len() != 5 {
+        return Err(CeremonyError::Unexpected(
+            "Record format is wrong.".to_string(),
+        ));
+    }
+    let twitter = record[0].to_string();
+    let email = record[1].to_string();
+    let verifying_key = ed25519::public_key_from_bytes(
+        bs58::decode(record[3].to_string())
+            .into_vec()
+            .map_err(|_| CeremonyError::Unexpected("Cannot decode verifying key.".to_string()))?
+            .try_into()
+            .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
+    );
+    let signature: ed25519::Signature = ed25519::signature_from_bytes(
+        bs58::decode(record[4].to_string())
+            .into_vec()
+            .map_err(|_| CeremonyError::Unexpected("Cannot decode signature.".to_string()))?
+            .try_into()
+            .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
+    );
+    verify::<_, Ed25519<Message<C::Nonce>>>(
+        &verifying_key,
+        0,
+        &format!(
+            "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+            twitter, email
+        ),
+        &signature,
+    )
+    .map_err(|_| CeremonyError::Unexpected("Cannot verify signature.".to_string()))?;
+    Ok((
+        verifying_key,
+        Participant::new(
+            verifying_key,
+            twitter,
+            match record[2].to_string().parse::<bool>().unwrap() {
+                true => Priority::High,
+                false => Priority::Normal,
+            },
+            OsRng.gen::<_, u16>() as u64,
+            false,
+        ),
+    ))
+}
+
 /// Loads registry from a disk file at `registry`.
 #[inline]
-pub fn load_registry<C, P, R>(registry_file: P) -> R
+pub fn load_registry<C, P, R>(registry_file: P) -> Result<R, CeremonyError<C>>
 where
     C: Ceremony<Nonce = u64, Participant = Participant<C>, VerifyingKey = ed25519::PublicKey>,
     P: AsRef<Path>,
     R: Registry<C::VerifyingKey, C::Participant>,
 {
     let mut registry = R::new();
-    for record in
-        csv::Reader::from_reader(File::open(registry_file).expect("Registry file should exist."))
-            .records()
+    for record in csv::Reader::from_reader(
+        File::open(registry_file)
+            .map_err(|_| CeremonyError::Unexpected("Cannot open registry file.".to_string()))?,
+    )
+    .records()
     {
-        let result = record.expect("Read csv should succeed.");
-        let twitter = result[0].to_string();
-        let email = result[1].to_string();
-        let verifying_key: ed25519::PublicKey = ed25519::public_key_from_bytes(
-            bs58::decode(result[3].to_string())
-                .into_vec()
-                .expect("Should convert into a vector")
-                .try_into()
-                .expect("Should give an array"),
-        );
-        let signature: ed25519::Signature = ed25519::signature_from_bytes(
-            bs58::decode(result[4].to_string())
-                .into_vec()
-                .expect("Should convert into a vector")
-                .try_into()
-                .expect("Should give an array"),
-        );
-        verify::<_, Ed25519<Message<C::Nonce>>>(
-            &verifying_key,
-            0,
-            &format!(
-                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-                twitter, email
-            ),
-            &signature,
-        )
-        .expect("Should verify the signature.");
-        let participant: Participant<C> = Participant::new(
-            verifying_key,
-            twitter,
-            match result[2].to_string().parse::<bool>().unwrap() {
-                true => Priority::High,
-                false => Priority::Normal,
-            },
-            OsRng.gen::<_, u16>() as u64,
-            false,
-        );
-        registry.register(verifying_key, participant);
+        let (identifier, participant) = parse(record.map_err(|_| {
+            CeremonyError::Unexpected("Cannot parse record from csv.".to_string())
+        })?)?;
+        registry.register(identifier, participant);
     }
-    registry
+    Ok(registry)
 }
