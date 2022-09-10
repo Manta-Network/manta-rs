@@ -101,7 +101,7 @@ where
 #[cfg_attr(doc_cfg, doc(cfg(feature = "rand_chacha")))]
 #[inline]
 pub fn generate_keys(bytes: &[u8]) -> Option<Keypair> {
-    if SECRET_KEY_LENGTH <= bytes.len() {
+    if SECRET_KEY_LENGTH > bytes.len() {
         return None;
     }
     let mut rng = match bytes[0..SECRET_KEY_LENGTH].try_into() {
