@@ -130,6 +130,9 @@ where
     /// Timed-out
     Timeout,
 
+    /// Client unable to Generate Request
+    UnableToGenerateRequest(String),
+
     /// Unexpected Server Error
     Unexpected(String),
 
