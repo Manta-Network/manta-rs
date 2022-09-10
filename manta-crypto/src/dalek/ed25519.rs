@@ -22,12 +22,14 @@ use crate::{
         MessageType, RandomnessType, Sign, SignatureType, SigningKeyType, Verify, VerifyingKeyType,
     },
 };
-use core::{convert::TryInto, marker::PhantomData};
+use core::marker::PhantomData;
 use manta_util::AsBytes;
 
+#[cfg(feature = "rand_chacha")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "rand_chacha")))]
+use {core::convert::TryInto, rand_core::SeedableRng};
+
 pub use ed25519_dalek::*;
-use rand_chacha::ChaCha20Rng;
-use rand_core::SeedableRng;
 
 /// Implements byte conversion from an array of bytes of length `$len` into the given `$type`.
 macro_rules! byte_conversion {
@@ -95,13 +97,15 @@ where
 }
 
 /// Generates a [`Keypair`] from `bytes`.
+#[cfg(feature = "rand_chacha")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "rand_chacha")))]
 #[inline]
 pub fn generate_keys(bytes: &[u8]) -> Option<Keypair> {
     if SECRET_KEY_LENGTH <= bytes.len() {
         return None;
     }
     let mut rng = match bytes[0..SECRET_KEY_LENGTH].try_into() {
-        Ok(seed) => ChaCha20Rng::from_seed(seed),
+        Ok(seed) => rand_chacha::ChaCha20Rng::from_seed(seed),
         Err(_) => return None,
     };
     Some(generate_keypair(&mut rng))
