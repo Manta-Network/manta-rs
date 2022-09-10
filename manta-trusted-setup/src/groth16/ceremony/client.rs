@@ -238,7 +238,7 @@ where
         .map_err(|_| {
             CeremonyError::Network(
                 "Should have received starting meta data from server".to_string(),
-            );
+            )
         })?
 }
 
