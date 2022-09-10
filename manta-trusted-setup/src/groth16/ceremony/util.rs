@@ -78,6 +78,7 @@ mod test {
 
     /// Tests if logging and loading data is correct.
     #[test]
+    #[ignore]
     fn log_load_file_is_correct() {
         let data = "Testing data".to_string();
         serialize_into_file(
