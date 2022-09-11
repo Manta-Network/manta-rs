@@ -25,10 +25,6 @@ use crate::{
 use core::marker::PhantomData;
 use manta_util::AsBytes;
 
-#[cfg(feature = "rand_chacha")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "rand_chacha")))]
-use {core::convert::TryInto, rand_core::SeedableRng};
-
 pub use ed25519_dalek::*;
 
 /// Implements byte conversion from an array of bytes of length `$len` into the given `$type`.
@@ -94,21 +90,6 @@ where
         public: (&secret_key).into(),
         secret: secret_key,
     }
-}
-
-/// Generates a [`Keypair`] from `bytes`.
-#[cfg(feature = "rand_chacha")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "rand_chacha")))]
-#[inline]
-pub fn generate_keys(bytes: &[u8]) -> Option<Keypair> {
-    if SECRET_KEY_LENGTH > bytes.len() {
-        return None;
-    }
-    let mut rng = match bytes[0..SECRET_KEY_LENGTH].try_into() {
-        Ok(seed) => rand_chacha::ChaCha20Rng::from_seed(seed),
-        Err(_) => return None,
-    };
-    Some(generate_keypair(&mut rng))
 }
 
 /// Edwards Curve Signature Scheme for the `Curve25519` Elliptic Curve

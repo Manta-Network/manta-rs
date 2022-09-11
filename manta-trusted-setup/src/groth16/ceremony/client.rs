@@ -19,7 +19,7 @@
 use crate::groth16::{
     ceremony::{
         message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse, Signed},
-        signature::{sign, Message, Nonce},
+        signature::{sign, Nonce},
         Ceremony, CeremonyError,
     },
     mpc::{contribute, State},
@@ -29,10 +29,7 @@ use colored::Colorize;
 use console::{style, Term};
 use core::fmt::Debug;
 use dialoguer::{theme::ColorfulTheme, Input};
-use manta_crypto::{
-    dalek::ed25519::{self, generate_keys, Ed25519},
-    rand::OsRng,
-};
+use manta_crypto::{dalek::ed25519, rand::OsRng};
 use manta_util::{
     http::reqwest::KnownUrlClient,
     serde::{de::DeserializeOwned, Serialize},
@@ -113,7 +110,7 @@ where
             );
             proofs.push(
                 contribute(hasher, &challenge[i], &mut state[i], &mut rng)
-                    .ok_or(CeremonyError::Unexpected("Cannot contribute.".to_string()))?,
+                    .ok_or_else(|| CeremonyError::Unexpected("Cannot contribute.".to_string()))?,
             );
         }
         println!(
@@ -142,7 +139,12 @@ where
 
 /// Registers a participant.
 #[inline]
-pub fn register(twitter_account: String, email: String) {
+pub fn register<C>(twitter_account: String, email: String)
+where
+    C: Ceremony,
+    C::VerifyingKey: AsRef<[u8]>,
+    C::Signature: AsRef<[u8]>,
+{
     println!(
         "Your {}: \nCopy the following text to \"Twitter\" Section in Google Sheet:\n {}\n",
         "Twitter Account".italic(),
@@ -155,15 +157,15 @@ pub fn register(twitter_account: String, email: String) {
     );
     let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
     let seed = Seed::new(&mnemonic, "manta-trusted-setup");
-    let key_pair = generate_keys(seed.as_bytes()).expect("Should generate a key pair.");
+    let keypair = C::generate_keys(seed.as_bytes()).expect("Should generate a key pair.");
     println!(
         "Your {}: \nCopy the following text to \"Public Key\" Section in Google Sheet:\n {}\n",
         "Public Key".italic(),
-        bs58::encode(key_pair.public).into_string().blue(),
+        bs58::encode(keypair.1).into_string().blue(),
     );
-    let signature = sign::<_, Ed25519<Message<u64>>>(
-        &key_pair.secret,
-        0,
+    let signature = sign::<_, C>(
+        &keypair.0,
+        Default::default(),
         &format!(
             "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
             twitter_account, email
@@ -212,11 +214,8 @@ where
     )
     .as_bytes()
     .to_vec();
-    Ok(
-        C::generate_keys(&seed_bytes).ok_or(CeremonyError::Unexpected(
-            "Cannot generate keys.".to_string(),
-        ))?,
-    )
+    C::generate_keys(&seed_bytes)
+        .ok_or_else(|| CeremonyError::Unexpected("Cannot generate keys.".to_string()))
 }
 
 /// Gets state size from server.

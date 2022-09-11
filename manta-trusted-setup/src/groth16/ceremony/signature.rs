@@ -18,13 +18,14 @@
 
 use alloc::vec::Vec;
 use manta_crypto::{
-    dalek::ed25519::{self, Ed25519, SignatureError},
+    dalek::ed25519::{generate_keypair, Ed25519, SignatureError},
+    rand::{ChaCha20Rng, SeedableRng},
     signature,
 };
 use manta_util::{serde::Serialize, AsBytes};
 
 /// Nonce
-pub trait Nonce: PartialEq {
+pub trait Nonce: Default + PartialEq {
     /// Increments the current nonce by one.
     fn increment(&mut self);
 
@@ -87,7 +88,7 @@ pub trait SignatureScheme:
     /// Verification Error Type
     type Error;
 
-    /// Generates key pair from `bytes`.
+    /// Generates a keypair from `bytes` returning `None` if `bytes` was not the right format.
     fn generate_keys(bytes: &[u8]) -> Option<(Self::SigningKey, Self::VerifyingKey)>;
 }
 
@@ -164,9 +165,7 @@ where
 
     #[inline]
     fn generate_keys(bytes: &[u8]) -> Option<(Self::SigningKey, Self::VerifyingKey)> {
-        match ed25519::generate_keys(bytes) {
-            Some(key_pair) => Some((key_pair.secret, key_pair.public)),
-            None => None,
-        }
+        let keypair = generate_keypair(&mut ChaCha20Rng::from_seed(bytes.try_into().ok()?));
+        Some((keypair.secret, keypair.public))
     }
 }
