@@ -17,8 +17,8 @@
 //! Groth16 Trusted Setup Ceremony
 
 use crate::{
-    ceremony::signature::Nonce,
-    groth16::{ceremony::signature::SignatureScheme, mpc::Configuration},
+    ceremony::signature::{Nonce, SignatureScheme},
+    groth16::mpc::Configuration,
 };
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
@@ -30,7 +30,7 @@ pub mod message;
 pub mod participant;
 pub mod registry;
 pub mod server;
-pub mod signature;
+// FIXME[remove]: pub mod signature;
 
 #[cfg(feature = "serde")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
@@ -73,7 +73,7 @@ pub trait Participant {
     fn set_contributed(&mut self);
 
     /// Returns the current nonce for `self`.
-    fn nonce(&self) -> Self::Nonce;
+    fn nonce(&self) -> &Self::Nonce;
 
     /// Increments the current nonce of `self` by one.
     fn increment_nonce(&mut self);

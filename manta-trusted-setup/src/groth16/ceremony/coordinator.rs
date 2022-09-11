@@ -17,13 +17,10 @@
 //! Coordinator
 
 use crate::{
-    ceremony::signature::Nonce,
+    ceremony::signature::{verify, Nonce, SignedMessage},
     groth16::{
         ceremony::{
-            message::MPCState,
-            registry::Registry,
-            signature::{verify, Signed},
-            Ceremony, CeremonyError, Participant, Queue,
+            message::MPCState, registry::Registry, Ceremony, CeremonyError, Participant, Queue,
         },
         mpc::{verify_transform, Proof, State, StateSize},
     },
@@ -179,11 +176,12 @@ where
     #[inline]
     pub fn preprocess_request<T>(
         &mut self,
-        request: &Signed<T, C>,
+        request: &SignedMessage<C, C::Identifier, T>,
     ) -> Result<C::Priority, CeremonyError<C>>
     where
         T: Serialize,
     {
+        /* TODO:
         let participant = self
             .registry
             .get_mut(&request.identifier)
@@ -195,7 +193,7 @@ where
         if !participant_nonce.matches(&request.nonce) {
             return Err(CeremonyError::NonceNotInSync(participant_nonce));
         };
-        verify::<T, C>(
+        verify::<C, _>(
             participant.verifying_key(),
             participant_nonce,
             &request.message,
@@ -204,6 +202,8 @@ where
         .map_err(|_| CeremonyError::BadRequest)?;
         participant.increment_nonce();
         Ok(participant.priority())
+        */
+        todo!()
     }
 
     /// Checks the lock update errors for the [`Coordinator::update`] method.

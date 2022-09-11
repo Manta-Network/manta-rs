@@ -25,6 +25,9 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [features]
+# Bincode for Message Signing
+bincode = ["dep:bincode", "serde"]
+
 # CSV for Ceremony Registries
 csv = ["dep:csv", "serde", "std"]
 

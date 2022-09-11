@@ -46,6 +46,20 @@ pub trait SignatureScheme:
     fn generate_keys(bytes: &[u8]) -> Option<(Self::SigningKey, Self::VerifyingKey)>;
 }
 
+impl<N> SignatureScheme for Ed25519<Message<N>>
+where
+    N: AsBytes + Default + Nonce + Clone,
+{
+    type Nonce = N;
+    type Error = SignatureError;
+
+    #[inline]
+    fn generate_keys(bytes: &[u8]) -> Option<(Self::SigningKey, Self::VerifyingKey)> {
+        let keypair = generate_keypair(&mut ChaCha20Rng::from_seed(bytes.try_into().ok()?));
+        Some((keypair.secret, keypair.public))
+    }
+}
+
 /// Signs the `message` with the `nonce` attached using the `signing_key`.
 #[inline]
 pub fn sign<T, S>(
@@ -110,6 +124,7 @@ where
         .map_err(VerificationError::Error)
 }
 
+/* TODO[remove]:
 /// Signed Message
 #[derive(Deserialize, Serialize)]
 #[serde(
@@ -173,17 +188,4 @@ where
         Ok(message)
     }
 }
-
-impl<N> SignatureScheme for Ed25519<Message<N>>
-where
-    N: AsBytes + Default + Nonce + Clone,
-{
-    type Nonce = N;
-    type Error = SignatureError;
-
-    #[inline]
-    fn generate_keys(bytes: &[u8]) -> Option<(Self::SigningKey, Self::VerifyingKey)> {
-        let keypair = generate_keypair(&mut ChaCha20Rng::from_seed(bytes.try_into().ok()?));
-        Some((keypair.secret, keypair.public))
-    }
-}
+*/

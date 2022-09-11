@@ -40,7 +40,7 @@ pub trait Participant {
     fn set_contributed(&mut self);
 
     /// Returns the current nonce for `self`.
-    fn nonce(&self) -> Self::Nonce;
+    fn nonce(&self) -> &Self::Nonce;
 
     /// Increments the current nonce of `self` by one.
     fn increment_nonce(&mut self);

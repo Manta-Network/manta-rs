@@ -18,7 +18,7 @@
 
 use crate::{
     ceremony::{
-        signature::Message,
+        signature::{RawMessage, SignedMessage},
         util::{deserialize_from_file, serialize_into_file},
     },
     groth16::{
@@ -27,7 +27,6 @@ use crate::{
             message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
             participant::{Participant, Priority},
             registry::Registry,
-            signature::{verify, Signed},
             Ceremony, CeremonyError, Participant as _,
         },
         mpc::{State, StateSize},
@@ -89,7 +88,10 @@ where
     pub async fn start(
         self,
         request: C::Identifier,
-    ) -> Result<(CeremonySize<CIRCUIT_COUNT>, C::Nonce), CeremonyError<C>> {
+    ) -> Result<(CeremonySize<CIRCUIT_COUNT>, C::Nonce), CeremonyError<C>>
+    where
+        C::Nonce: Clone,
+    {
         let coordinator = self.coordinator.lock();
         Ok((
             CeremonySize(BoxArray::from_unchecked(*coordinator.size())),
@@ -97,7 +99,8 @@ where
                 .registry()
                 .get(&request)
                 .ok_or(CeremonyError::NotRegistered)?
-                .nonce(),
+                .nonce()
+                .clone(),
         ))
     }
 
@@ -105,11 +108,12 @@ where
     #[inline]
     pub async fn query(
         self,
-        request: Signed<QueryRequest, C>,
+        request: SignedMessage<C, C::Identifier, QueryRequest>,
     ) -> Result<QueryResponse<C, CIRCUIT_COUNT>, CeremonyError<C>>
     where
         C::Challenge: Clone,
     {
+        /* TODO:
         let mut coordinator = self.coordinator.lock();
         let priority = coordinator.preprocess_request(&request)?;
         let position = coordinator
@@ -120,6 +124,8 @@ where
         } else {
             Ok(QueryResponse::QueuePosition(position))
         }
+        */
+        todo!()
     }
 
     /// Processes a request to update the MPC state and remove the participant if successfully updated the state.
@@ -127,11 +133,12 @@ where
     #[inline]
     pub async fn update(
         self,
-        request: Signed<ContributeRequest<C, CIRCUIT_COUNT>, C>,
+        request: SignedMessage<C, C::Identifier, ContributeRequest<C, CIRCUIT_COUNT>>,
     ) -> Result<(), CeremonyError<C>>
     where
         Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: Serialize,
     {
+        /* TODO:
         let mut coordinator = self.coordinator.lock();
         coordinator.preprocess_request(&request)?;
         let message = request.message;
@@ -145,6 +152,8 @@ where
         .map_err(|e| CeremonyError::Unexpected(format!("{:?}", e)))?;
         println!("{} participants have contributed.", coordinator.round());
         Ok(())
+        */
+        todo!()
     }
 }
 
@@ -169,6 +178,7 @@ where
     })
 }
 
+/* TODO[remove]:
 /// Prases a string `record` into a pair of `(C::Identifier, C::Participant)`.
 #[inline]
 pub fn parse<C>(
@@ -198,7 +208,7 @@ where
             .try_into()
             .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
     );
-    verify::<_, Ed25519<Message<C::Nonce>>>(
+    verify::<_, _>(
         &verifying_key,
         0,
         &format!(
@@ -245,3 +255,4 @@ where
     }
     Ok(registry)
 }
+*/

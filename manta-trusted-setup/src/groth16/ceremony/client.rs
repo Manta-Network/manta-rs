@@ -17,11 +17,10 @@
 //! Trusted Setup Client
 
 use crate::{
-    ceremony::signature::Nonce,
+    ceremony::signature::{sign, Nonce, SignedMessage},
     groth16::{
         ceremony::{
             message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
-            signature::{sign, Signed},
             Ceremony, CeremonyError,
         },
         mpc::{contribute, State},
@@ -72,15 +71,17 @@ where
 
     /// Queries the server state.
     #[inline]
-    pub fn query(&mut self) -> Result<Signed<QueryRequest, C>, CeremonyError<C>>
+    pub fn query(
+        &mut self,
+    ) -> Result<SignedMessage<C, C::Identifier, QueryRequest>, CeremonyError<C>>
     where
         C::Nonce: Clone,
     {
-        let signed_message = Signed::new(
-            QueryRequest,
-            &self.nonce,
+        let signed_message = SignedMessage::generate(
             &self.signing_key,
+            self.nonce.clone(),
             self.identifier.clone(),
+            QueryRequest,
         )
         .map_err(|_| {
             CeremonyError::Unexpected(
@@ -98,7 +99,10 @@ where
         hasher: &C::Hasher,
         challenge: &BoxArray<C::Challenge, CIRCUIT_COUNT>,
         mut state: BoxArray<State<C>, CIRCUIT_COUNT>,
-    ) -> Result<Signed<ContributeRequest<C, CIRCUIT_COUNT>, C>, CeremonyError<C>>
+    ) -> Result<
+        SignedMessage<C, C::Identifier, ContributeRequest<C, CIRCUIT_COUNT>>,
+        CeremonyError<C>,
+    >
     where
         C::Nonce: Clone,
     {
@@ -121,14 +125,14 @@ where
             style("[8/9]").bold().dim(),
             style("3").bold().blue(),
         );
-        let signed_message = Signed::new(
+        let signed_message = SignedMessage::generate(
+            &self.signing_key,
+            self.nonce.clone(),
+            self.identifier.clone(),
             ContributeRequest {
                 state,
                 proof: BoxArray::from_vec(proofs),
             },
-            &self.nonce,
-            &self.signing_key,
-            self.identifier.clone(),
         )
         .map_err(|_| {
             CeremonyError::Unexpected(
@@ -139,6 +143,8 @@ where
         Ok(signed_message)
     }
 }
+
+/* TODO:
 
 /// Registers a participant.
 #[inline]
@@ -395,3 +401,5 @@ mod test {
         );
     }
 }
+
+*/

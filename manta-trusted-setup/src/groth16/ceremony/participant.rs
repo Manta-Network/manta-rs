@@ -17,8 +17,8 @@
 //! Participant
 
 use crate::{
-    ceremony::signature::Nonce,
-    groth16::ceremony::{self, signature::SignatureScheme},
+    ceremony::signature::{Nonce, SignatureScheme},
+    groth16::ceremony,
 };
 use manta_util::serde::{Deserialize, Serialize};
 
@@ -108,8 +108,8 @@ where
     }
 
     #[inline]
-    fn nonce(&self) -> Self::Nonce {
-        self.nonce.clone()
+    fn nonce(&self) -> &Self::Nonce {
+        &self.nonce
     }
 
     #[inline]
