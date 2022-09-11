@@ -16,9 +16,9 @@
 
 //! Participant
 
-use crate::groth16::ceremony::{
-    self,
-    signature::{Nonce, SignatureScheme},
+use crate::{
+    ceremony::signature::Nonce,
+    groth16::ceremony::{self, signature::SignatureScheme},
 };
 use manta_util::serde::{Deserialize, Serialize};
 

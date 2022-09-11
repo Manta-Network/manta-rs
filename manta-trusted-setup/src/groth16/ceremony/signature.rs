@@ -16,65 +16,19 @@
 
 //! Groth16 Trusted Setup Ceremony Signatures
 
-use alloc::vec::Vec;
+use crate::{
+    ceremony::signature::{Message, Nonce},
+    groth16::ceremony::Ceremony,
+};
 use manta_crypto::{
     dalek::ed25519::{generate_keypair, Ed25519, SignatureError},
     rand::{ChaCha20Rng, SeedableRng},
     signature,
 };
-use manta_util::{serde::Serialize, AsBytes};
-
-/// Nonce
-pub trait Nonce: Default + PartialEq {
-    /// Increments the current nonce by one.
-    fn increment(&mut self);
-
-    /// Checks if the current nonce is valid.
-    fn is_valid(&self) -> bool;
-}
-
-impl Nonce for u64 {
-    #[inline]
-    fn increment(&mut self) {
-        *self = self.saturating_add(1);
-    }
-
-    #[inline]
-    fn is_valid(&self) -> bool {
-        *self != Self::MAX
-    }
-}
-
-/// Checks if the two nonces, `current` and `user_nonce`, are both valid and equal to each other.
-#[inline]
-pub fn check_nonce<N>(current: &N, user_nonce: &N) -> bool
-where
-    N: Nonce,
-{
-    current.is_valid() && user_nonce.is_valid() && current == user_nonce
-}
-
-/// Message with Nonce
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct Message<N> {
-    /// Nonce
-    pub nonce: N,
-
-    /// Encoded Message
-    pub encoded_message: Vec<u8>,
-}
-
-impl<N> AsBytes for Message<N>
-where
-    N: AsBytes,
-{
-    #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = self.nonce.as_bytes();
-        bytes.extend_from_slice(&self.encoded_message);
-        bytes
-    }
-}
+use manta_util::{
+    serde::{Deserialize, Serialize},
+    AsBytes,
+};
 
 /// Signature Scheme
 pub trait SignatureScheme:
@@ -83,7 +37,7 @@ pub trait SignatureScheme:
     + signature::Verify<Verification = Result<(), Self::Error>>
 {
     /// Message Nonce
-    type Nonce: Nonce + Clone;
+    type Nonce: Clone + Nonce;
 
     /// Verification Error Type
     type Error;
@@ -154,6 +108,70 @@ where
             &mut (),
         )
         .map_err(VerificationError::Error)
+}
+
+/// Signed Message
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = r"
+            C::Identifier: Serialize,
+            T: Serialize,
+            C::Nonce: Serialize,
+            C::Signature: Serialize,
+        ",
+        deserialize = r"
+            C::Identifier: Deserialize<'de>,
+            T: Deserialize<'de>,
+            C::Nonce: Deserialize<'de>,
+            C::Signature: Deserialize<'de>,
+        ",
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct Signed<T, C>
+where
+    C: Ceremony,
+{
+    /// Message
+    pub message: T,
+
+    /// Nonce
+    pub nonce: C::Nonce,
+
+    /// Signature
+    pub signature: C::Signature,
+
+    /// Participant Identifier
+    pub identifier: C::Identifier,
+}
+
+impl<T, C> Signed<T, C>
+where
+    C: Ceremony,
+{
+    /// Generates a signed message with `signing_key` on `message` and `nonce`.
+    #[inline]
+    pub fn new(
+        message: T,
+        nonce: &C::Nonce,
+        signing_key: &C::SigningKey,
+        identifier: C::Identifier,
+    ) -> Result<Self, bincode::Error>
+    where
+        T: Serialize,
+        C::Nonce: Clone,
+    {
+        let signature = sign::<_, C>(signing_key, nonce.clone(), &message)?;
+        let message = Signed {
+            message,
+            nonce: nonce.clone(),
+            signature,
+            identifier,
+        };
+        Ok(message)
+    }
 }
 
 impl<N> SignatureScheme for Ed25519<Message<N>>

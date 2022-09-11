@@ -17,7 +17,7 @@
 //! Messages through Network
 
 use crate::groth16::{
-    ceremony::{signature::sign, Ceremony},
+    ceremony::Ceremony,
     mpc::{Proof, State, StateSize},
 };
 use manta_crypto::arkworks::pairing::Pairing;
@@ -107,68 +107,4 @@ where
 
     /// Proof
     pub proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
-}
-
-/// Signed Message
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        serialize = r"
-            C::Identifier: Serialize,
-            T: Serialize,
-            C::Nonce: Serialize,
-            C::Signature: Serialize,
-        ",
-        deserialize = r"
-            C::Identifier: Deserialize<'de>,
-            T: Deserialize<'de>,
-            C::Nonce: Deserialize<'de>,
-            C::Signature: Deserialize<'de>,
-        ",
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub struct Signed<T, C>
-where
-    C: Ceremony,
-{
-    /// Message
-    pub message: T,
-
-    /// Nonce
-    pub nonce: C::Nonce,
-
-    /// Signature
-    pub signature: C::Signature,
-
-    /// Participant Identifier
-    pub identifier: C::Identifier,
-}
-
-impl<T, C> Signed<T, C>
-where
-    C: Ceremony,
-{
-    /// Generates a signed message with `signing_key` on `message` and `nonce`.
-    #[inline]
-    pub fn new(
-        message: T,
-        nonce: &C::Nonce,
-        signing_key: &C::SigningKey,
-        identifier: C::Identifier,
-    ) -> Result<Self, bincode::Error>
-    where
-        T: Serialize,
-        C::Nonce: Clone,
-    {
-        let signature = sign::<_, C>(signing_key, nonce.clone(), &message)?;
-        let message = Signed {
-            message,
-            nonce: nonce.clone(),
-            signature,
-            identifier,
-        };
-        Ok(message)
-    }
 }

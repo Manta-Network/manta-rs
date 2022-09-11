@@ -16,13 +16,16 @@
 
 //! Trusted Setup Client
 
-use crate::groth16::{
-    ceremony::{
-        message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse, Signed},
-        signature::{sign, Nonce},
-        Ceremony, CeremonyError,
+use crate::{
+    ceremony::signature::Nonce,
+    groth16::{
+        ceremony::{
+            message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
+            signature::{sign, Signed},
+            Ceremony, CeremonyError,
+        },
+        mpc::{contribute, State},
     },
-    mpc::{contribute, State},
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use colored::Colorize;

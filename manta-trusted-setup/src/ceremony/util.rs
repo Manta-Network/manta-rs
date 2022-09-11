@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Utilities
+//! Trusted Setup Ceremony Utilities
 
 use manta_util::serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -45,31 +45,6 @@ where
 {
     bincode::deserialize_from(File::open(path)?)
 }
-
-// /// Prepares phase one parameter `powers` for phase two parameters of circuit `cs` with `name`.
-// #[inline]
-// pub fn prepare_parameters<C, D, S>(powers: Accumulator<C>, cs: S, name: &str)
-// where
-//     C: Pairing + Size + kzg::Configuration + mpc::ProvingKeyHasher<C> + mpc::Configuration,
-//     S: ConstraintSynthesizer<C::Scalar>,
-//     D: CeremonyConfig<Setup = Groth16Phase2<C>>,
-//     <C as mpc::Configuration>::Challenge:
-//         From<<C as mpc::ProvingKeyHasher<C>>::Output> + CanonicalSerialize,
-// {
-//     let now = Instant::now();
-//     let state = initialize::<C, S>(powers, cs).expect("failed to initialize state");
-//     let challenge = <C as mpc::ProvingKeyHasher<C>>::hash(&state);
-//     let mpc_state = MPCState::<D, 1> {
-//         state: Array::from_unchecked([AsBytes::from_actual(state)]),
-//         challenge: Array::from_unchecked([AsBytes::from_actual(challenge.into())]),
-//     };
-//     log_to_file(&format!("prepared_{}.data", name), &mpc_state);
-//     println!(
-//         "Preparing Phase 2 parameters for {} circuit takes {:?}\n",
-//         name,
-//         now.elapsed()
-//     );
-// }
 
 /// Testing Suites
 #[cfg(test)]

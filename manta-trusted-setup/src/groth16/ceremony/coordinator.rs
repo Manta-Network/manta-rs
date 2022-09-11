@@ -16,14 +16,17 @@
 
 //! Coordinator
 
-use crate::groth16::{
-    ceremony::{
-        message::{MPCState, Signed},
-        registry::Registry,
-        signature::{check_nonce, verify},
-        Ceremony, CeremonyError, Participant, Queue,
+use crate::{
+    ceremony::signature::Nonce,
+    groth16::{
+        ceremony::{
+            message::MPCState,
+            registry::Registry,
+            signature::{verify, Signed},
+            Ceremony, CeremonyError, Participant, Queue,
+        },
+        mpc::{verify_transform, Proof, State, StateSize},
     },
-    mpc::{verify_transform, Proof, State, StateSize},
 };
 use core::{mem, time::Duration};
 use manta_util::{time::lock::Timed, BoxArray};
@@ -189,7 +192,7 @@ where
             return Err(CeremonyError::AlreadyContributed);
         }
         let participant_nonce = participant.nonce();
-        if !check_nonce(&participant_nonce, &request.nonce) {
+        if !participant_nonce.matches(&request.nonce) {
             return Err(CeremonyError::NonceNotInSync(participant_nonce));
         };
         verify::<T, C>(

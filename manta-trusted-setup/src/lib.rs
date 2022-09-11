@@ -23,6 +23,7 @@
 
 extern crate alloc;
 
+pub mod ceremony;
 pub mod groth16;
 pub mod mpc;
 pub mod util;

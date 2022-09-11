@@ -16,9 +16,9 @@
 
 //! Groth16 Trusted Setup Ceremony
 
-use crate::groth16::{
-    ceremony::signature::{Nonce, SignatureScheme},
-    mpc::Configuration,
+use crate::{
+    ceremony::signature::Nonce,
+    groth16::{ceremony::signature::SignatureScheme, mpc::Configuration},
 };
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
@@ -31,7 +31,6 @@ pub mod participant;
 pub mod registry;
 pub mod server;
 pub mod signature;
-pub mod util;
 
 #[cfg(feature = "serde")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]

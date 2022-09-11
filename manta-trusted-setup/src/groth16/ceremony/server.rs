@@ -16,17 +16,22 @@
 
 //! Trusted Setup Server
 
-use crate::groth16::{
+use crate::{
     ceremony::{
-        coordinator::Coordinator,
-        message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse, Signed},
-        participant::{Participant, Priority},
-        registry::Registry,
-        signature::{verify, Message},
+        signature::Message,
         util::{deserialize_from_file, serialize_into_file},
-        Ceremony, CeremonyError, Participant as _,
     },
-    mpc::{State, StateSize},
+    groth16::{
+        ceremony::{
+            coordinator::Coordinator,
+            message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
+            participant::{Participant, Priority},
+            registry::Registry,
+            signature::{verify, Signed},
+            Ceremony, CeremonyError, Participant as _,
+        },
+        mpc::{State, StateSize},
+    },
 };
 use alloc::sync::Arc;
 use core::{convert::TryInto, ops::Deref};

@@ -14,20 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup Ceremony Registry
+//! Trusted Setup Ceremonies
 
-/// Participant Registry
-pub trait Registry<I, P> {
-    /// Builds a new [`Registry`].
-    fn new() -> Self;
+pub mod participant;
+pub mod registry;
+pub mod signature;
 
-    /// Registers the `id` and `participant` into `self` returning `false` if the `participant` is
-    /// already registered or their registration would conflict with another existing participant.
-    fn register(&mut self, id: I, participant: P) -> bool;
-
-    /// Returns a shared reference to the participant with the given `id` if they are registered.
-    fn get(&self, id: &I) -> Option<&P>;
-
-    /// Returns a mutable reference to the participant with the given `id` if they are registered.
-    fn get_mut(&mut self, id: &I) -> Option<&mut P>;
-}
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+pub mod util;
