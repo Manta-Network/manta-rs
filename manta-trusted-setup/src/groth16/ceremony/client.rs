@@ -73,10 +73,7 @@ where
     #[inline]
     pub fn query(
         &mut self,
-    ) -> Result<SignedMessage<C, C::Identifier, QueryRequest>, CeremonyError<C>>
-    where
-        C::Nonce: Clone,
-    {
+    ) -> Result<SignedMessage<C, C::Identifier, QueryRequest>, CeremonyError<C>> {
         let signed_message = SignedMessage::generate(
             &self.signing_key,
             self.nonce.clone(),
@@ -102,10 +99,7 @@ where
     ) -> Result<
         SignedMessage<C, C::Identifier, ContributeRequest<C, CIRCUIT_COUNT>>,
         CeremonyError<C>,
-    >
-    where
-        C::Nonce: Clone,
-    {
+    > {
         let circuit_name = ["ToPrivate", "PrivateTransfer", "ToPublic"];
         let mut rng = OsRng;
         let mut proofs = Vec::new();

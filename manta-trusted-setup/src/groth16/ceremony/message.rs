@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Messages through Network
+//! Groth16 Trusted Setup Ceremony Messaging Protocol
+
+// FIXME: Use correct serde configuration since we don't assume it's always available
 
 use crate::groth16::{
     ceremony::Ceremony,
@@ -88,7 +90,7 @@ where
     QueuePosition(usize),
 
     /// MPC State
-    Mpc(MPCState<C, CIRCUIT_COUNT>),
+    State(MPCState<C, CIRCUIT_COUNT>),
 }
 
 /// Contribute Request

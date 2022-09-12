@@ -93,7 +93,7 @@ pub trait SignatureScheme:
     + signature::Verify<Verification = Result<(), Self::Error>>
 {
     /// Message Nonce Type
-    type Nonce: Nonce;
+    type Nonce: Clone + Nonce;
 
     /// Verification Error Type
     type Error;
@@ -101,7 +101,7 @@ pub trait SignatureScheme:
 
 impl<N> SignatureScheme for Ed25519<RawMessage<N>>
 where
-    N: AsBytes + Default + Nonce,
+    N: AsBytes + Clone + Default + Nonce,
 {
     type Nonce = N;
     type Error = SignatureError;
@@ -209,16 +209,16 @@ where
     S: SignatureScheme,
 {
     /// Signature
-    signature: S::Signature,
+    pub signature: S::Signature,
 
     /// Nonce
-    nonce: S::Nonce,
+    pub nonce: S::Nonce,
 
     /// Participant Identifier
-    identifier: I,
+    pub identifier: I,
 
     /// Message
-    message: T,
+    pub message: T,
 }
 
 impl<S, I, T> SignedMessage<S, I, T>
@@ -253,7 +253,6 @@ where
         message: T,
     ) -> Result<Self, bincode::Error>
     where
-        S::Nonce: Clone,
         T: Serialize,
     {
         Ok(Self::new_unchecked(
@@ -262,5 +261,21 @@ where
             identifier,
             message,
         ))
+    }
+
+    /// Verifies `self` against the `verifying_key`.
+    #[cfg(feature = "bincode")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "bincode")))]
+    #[inline]
+    pub fn verify(&self, verifying_key: &S::VerifyingKey) -> Result<(), VerificationError<S::Error>>
+    where
+        T: Serialize,
+    {
+        verify::<S, _>(
+            verifying_key,
+            self.nonce.clone(),
+            &self.message,
+            &self.signature,
+        )
     }
 }

@@ -17,11 +17,13 @@
 //! Coordinator
 
 use crate::{
-    ceremony::signature::{verify, Nonce, SignedMessage},
+    ceremony::{
+        participant::{Participant, Priority},
+        registry::Registry,
+        signature::{Nonce, SignedMessage},
+    },
     groth16::{
-        ceremony::{
-            message::MPCState, registry::Registry, Ceremony, CeremonyError, Participant, Queue,
-        },
+        ceremony::{message::MPCState, Ceremony, CeremonyError, Queue},
         mpc::{verify_transform, Proof, State, StateSize},
     },
 };
@@ -84,11 +86,11 @@ where
     round: usize,
 
     /// Participant Queue
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     queue: Queue<C, LEVEL_COUNT>,
 
     /// Participant Lock
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     participant_lock: Timed<Option<C::Identifier>>,
 }
 
@@ -181,7 +183,6 @@ where
     where
         T: Serialize,
     {
-        /* TODO:
         let participant = self
             .registry
             .get_mut(&request.identifier)
@@ -191,19 +192,13 @@ where
         }
         let participant_nonce = participant.nonce();
         if !participant_nonce.matches(&request.nonce) {
-            return Err(CeremonyError::NonceNotInSync(participant_nonce));
+            return Err(CeremonyError::NonceNotInSync(participant_nonce.clone()));
         };
-        verify::<C, _>(
-            participant.verifying_key(),
-            participant_nonce,
-            &request.message,
-            &request.signature,
-        )
-        .map_err(|_| CeremonyError::BadRequest)?;
+        request
+            .verify(participant.verifying_key())
+            .map_err(|_| CeremonyError::BadRequest)?;
         participant.increment_nonce();
         Ok(participant.priority())
-        */
-        todo!()
     }
 
     /// Checks the lock update errors for the [`Coordinator::update`] method.
@@ -265,10 +260,10 @@ where
         self.participant_lock.set(self.queue.pop_front());
         match self.participant_mut(participant) {
             Some(participant) => participant.set_contributed(),
-            None => {
+            _ => {
                 return Err(CeremonyError::Unexpected(
                     "Cannot get participant.".to_string(),
-                ))
+                ));
             }
         };
         self.increment_round();
