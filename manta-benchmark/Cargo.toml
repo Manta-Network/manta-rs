@@ -58,5 +58,4 @@ wasm-bindgen-test = { version = "0.3.30", default-features = false }
 web-sys = { version = "0.3.59", default-features = false, features = ["console"] }
 
 [dev-dependencies]
-ark-bn254 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
 criterion = { version = "0.3.4", default-features = false }

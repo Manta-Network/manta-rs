@@ -75,13 +75,13 @@ where
 }
 
 /// Given a scalar `k` and basis vectors `v` and `u` finds integer scalars `k1` and `k2`,
-/// so that `(k, 0)` is close to `k1v + k2u`
-/// TODO: Check the bit length of BitInt v.s. BaseField or ScalarField. See if there is any overflow issue.
+/// so that `(k, 0)` is close to `k1v + k2u`.
 #[inline]
 pub fn decompose_scalar<F>(k: &F, v: (&BigInt, &BigInt), u: (&BigInt, &BigInt)) -> (BigInt, BigInt)
 where
     F: PrimeField,
 {
+    // TODO: Check the bit length of BitInt v.s. BaseField or ScalarField. See if there is any overflow issue.
     let k = BigInt::from_bytes_be(Sign::Plus, &k.into_repr().to_bytes_be());
     let q1 = (u.1 * &k) / ((v.0 * u.1) - (v.1 * u.0));
     let q2 = (-v.1 * &k) / ((v.0 * u.1) - (v.1 * u.0));
@@ -219,13 +219,12 @@ where
 
 /// HasGLV Trait
 pub trait HasGLV<M>: AffineCurve {
-    /// Generates [`GLVParameters`].
+    /// Generates [`GLVParameters`] from some precomputed parameters encoded
+    /// in the marker type `M`.
     fn glv_parameters() -> GLVParameters<Self>;
 }
 
 impl HasGLV<bls12_381::Parameters> for bls12_381::G1Affine {
-    /// Generates a [`GLVParameters`] instance from the precomputed parameters
-    /// for `bls12_381::G1Affine`.
     #[inline]
     fn glv_parameters() -> GLVParameters<Self> {
         let beta = <bls12_381::G1Affine as AffineCurve>::BaseField::from_random_bytes(
@@ -248,8 +247,6 @@ impl HasGLV<bls12_381::Parameters> for bls12_381::G1Affine {
 }
 
 impl HasGLV<bn254::Parameters> for bn254::G1Affine {
-    /// Generates a [`GLVParameters`] instance from the precomputed parameters
-    /// for `bn254::G1Affine`.
     #[inline]
     fn glv_parameters() -> GLVParameters<Self> {
         let beta = <bn254::G1Affine as AffineCurve>::BaseField::from_random_bytes(

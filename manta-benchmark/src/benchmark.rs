@@ -38,15 +38,15 @@ pub trait Benchmark {
     /// Benchmark Parameters
     type Parameters;
 
-    /// Setup Function
+    /// Generates a randomized instance of `Self` from `parameters`.
     fn setup<R>(rng: &mut R, parameters: Self::Parameters) -> Self
     where
         R: RngCore + ?Sized;
 
-    /// Benchmark Function
+    /// A function of `self` which will be benchmarked.
     fn benchmark(&self) -> Self::Output;
 
-    /// Benchmark Definition Function
+    /// Defines a benchmark from `benchmark`.
     #[inline]
     fn define_benchmark<M>(&self, group: &mut BenchmarkGroup<M>)
     where

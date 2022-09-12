@@ -114,7 +114,6 @@ manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["rand_chacha"] }
 manta-parameters = { path = "../manta-parameters", optional = true, default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
-num-bigint = { version = "0.4.3", default-features = false }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.1.2", optional = true, default-features = false, features = ["derive"] }
@@ -125,6 +124,5 @@ tokio-tungstenite = { version = "0.17.2", optional = true, default-features = fa
 ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
 
 [dev-dependencies]
-ark-bn254 = { version = "0.3.0", default-features = false, features = ["curve", "scalar_field"] }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
 manta-pay = { path = ".", default-features = false, features = ["download", "groth16", "scale", "scale-std", "std", "test"] }
