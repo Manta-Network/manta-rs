@@ -61,7 +61,7 @@ def print_for_rust():
     pair = valid_pair(beta_values, lambda_values, E, G)
     basis = generate_short_basis(order_subgroup, int(pair[1]))
     output = [pair[0], basis[0][0], basis[0][1], basis[1][0], basis[1][1]]
-    print('\n'.join(f'{w}' for w in output))
+    print("[\"" + '\", \"'.join(f'{w}' for w in output) + "\"]")
 
 def main():
     print_for_rust()

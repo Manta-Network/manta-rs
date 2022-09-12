@@ -271,27 +271,16 @@ impl HasGLV<bn254::Parameters> for bn254::G1Affine {
 #[cfg(test)]
 pub mod test {
     use super::*;
+    use crate::rand::RngCore;
     use ark_ff::UniformRand;
-    use rand::RngCore;
     use rand_core::OsRng;
-    use std::{
-        fs::File,
-        io::{BufRead, BufReader},
-    };
 
     /// Extracts the GLV parameters from a file.
     #[inline]
-    fn extract_glv_parameters<C>(file_path: &str) -> GLVParameters<C>
+    fn extract_glv_parameters<C>(glv_parameters: [&str; 5]) -> GLVParameters<C>
     where
         C: AffineCurveExt,
     {
-        let file = File::open(file_path).expect("Could not open file.");
-        let reader = BufReader::new(file);
-        let mut glv_strings: Vec<String> = Vec::with_capacity(5);
-        for parameter in reader.lines() {
-            glv_strings.push(parameter.unwrap());
-        }
-        let glv_parameters: Vec<&str> = glv_strings.iter().map(|s| &s[..]).collect();
         let beta = C::BaseField::from_random_bytes(
             &glv_parameters[0].parse::<BigUint>().unwrap().to_bytes_le(),
         )
@@ -310,12 +299,11 @@ pub mod test {
     /// Checks the GLV parameters of BLS12 and BN254 match the hardcoded sage outputs.
     #[test]
     fn glv_parameters_match() {
-        let bls_hardcoded_parameters = extract_glv_parameters::<bls12_381::G1Affine>(
-            "../manta-crypto/src/arkworks/glv/precomputed_glv_values/bls_values",
-        );
-        let bn_hardcoded_parameters = extract_glv_parameters::<bn254::G1Affine>(
-            "../manta-crypto/src/arkworks/glv/precomputed_glv_values/bn_values",
-        );
+        let bls_hardcoded_parameters = extract_glv_parameters::<bls12_381::G1Affine>(include!(
+            "precomputed_glv_values/bls_values"
+        ));
+        let bn_hardcoded_parameters =
+            extract_glv_parameters::<bn254::G1Affine>(include!("precomputed_glv_values/bn_values"));
         let bls_parameters = bls12_381::G1Affine::glv_parameters();
         let bn_parameters = bn254::G1Affine::glv_parameters();
         assert_eq!(bls_hardcoded_parameters, bls_parameters);
