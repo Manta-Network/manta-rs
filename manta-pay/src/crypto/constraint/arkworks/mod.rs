@@ -451,7 +451,7 @@ where
 /// Testing Suite
 #[cfg(test)]
 mod tests {
-    // move to constraint with R1CS
+    // TODO: move to constraint with R1CS
     use super::*;
     use core::iter::repeat_with;
     use manta_crypto::{

@@ -35,9 +35,6 @@ use manta_crypto::{
 };
 use manta_util::codec::{self, DecodeError};
 
-// #[cfg(feature = "scale")]
-// use crate::crypto::ecc::arkworks::Group;
-
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
