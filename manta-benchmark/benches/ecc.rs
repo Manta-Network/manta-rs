@@ -142,10 +142,7 @@ fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
 fn glv_scalar_multiplication(c: &mut Criterion) {
     let mut group = c.benchmark_group("glv");
     let mut rng = OsRng;
-    let glv_setup = black_box(GLVMutiplicationSetup::<BLSAffine>::setup(
-        &mut rng,
-        "../manta-pay/src/crypto/ecc/precomputed_glv_values/bls_values",
-    ));
+    let glv_setup = black_box(GLVMutiplicationSetup::<BLSAffine, _>::setup(&mut rng, ()));
     glv_setup.define_benchmark(&mut group);
 }
 

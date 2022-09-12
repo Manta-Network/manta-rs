@@ -669,24 +669,12 @@ where
 mod test {
     use super::*;
     use crate::config::Bls12_381_Edwards;
-    use core::str::FromStr;
     use manta_crypto::{
         algebra::{test::window_correctness, PrecomputedBaseTable, ScalarMul},
-        arkworks::{
-            algebra::scalar_bits,
-            ec::ProjectiveCurve,
-            ff::{Field, UniformRand},
-            glv::{AffineCurveExt, GLVParameters},
-            r1cs_std::groups::curves::twisted_edwards::AffineVar,
-        },
+        arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
         constraint::measure::Measure,
         eclair::bool::AssertEq,
         rand::OsRng,
-    };
-    use num_bigint::{BigInt, BigUint};
-    use std::{
-        fs::File,
-        io::{BufRead, BufReader},
     };
 
     /// Checks if the fixed base multiplcation is correct.
@@ -710,65 +698,6 @@ mod test {
         assert!(cs.is_satisfied());
         println!("variable base mul constraint: {:?}", ctr2 - ctr1);
         println!("fixed base mul constraint: {:?}", ctr3 - ctr2);
-    }
-
-    pub type BN = manta_crypto::arkworks::bn254::G1Affine;
-    pub type BLS = manta_crypto::arkworks::bls12_381::G1Affine;
-
-    /// Checks that the GLV implementation on the curve `C` with the parameters given in `file`
-    /// is correct.
-    #[inline]
-    fn glv_is_correct<C, R>(file_path: &str, rng: &mut R)
-    where
-        C: AffineCurveExt,
-        R: RngCore + ?Sized,
-    {
-        let file = File::open(file_path).expect("Could not open file.");
-        let reader = BufReader::new(file);
-        let mut glv_strings: Vec<String> = Vec::with_capacity(5);
-        for parameter in reader.lines() {
-            glv_strings.push(parameter.unwrap());
-        }
-        let glv_parameters: Vec<&str> = glv_strings.iter().map(|s| &s[..]).collect();
-        let scalar = C::ScalarField::rand(rng);
-        let point = C::Projective::rand(rng).into_affine();
-        let beta = C::BaseField::from_random_bytes(
-            &glv_parameters[0].parse::<BigUint>().unwrap().to_bytes_le(),
-        )
-        .unwrap();
-        let base_v1 = (
-            BigInt::from_str(glv_parameters[1]).unwrap(),
-            BigInt::from_str(glv_parameters[2]).unwrap(),
-        );
-        let base_v2 = (
-            BigInt::from_str(glv_parameters[3]).unwrap(),
-            BigInt::from_str(glv_parameters[4]).unwrap(),
-        );
-        let glv = GLVParameters::<C>::new_unchecked(beta, base_v1, base_v2);
-        assert_eq!(
-            glv.scalar_mul(&point, &scalar),
-            point.mul(scalar).into_affine()
-        );
-    }
-
-    /// Checks the implementation of GLV for BLS is correct.
-    #[test]
-    pub fn glv_bls_is_correct() {
-        let mut rng = OsRng;
-        glv_is_correct::<BLS, _>(
-            "../manta-pay/src/crypto/ecc/precomputed_glv_values/bls_values",
-            &mut rng,
-        )
-    }
-
-    /// Checks the implementation of GLV for BN is correct.
-    #[test]
-    pub fn glv_bn_is_correct() {
-        let mut rng = OsRng;
-        glv_is_correct::<BN, _>(
-            "../manta-pay/src/crypto/ecc/precomputed_glv_values/bn_values",
-            &mut rng,
-        );
     }
 
     /// Checks if the windowed multiplication is correct in the native compiler.

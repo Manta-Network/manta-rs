@@ -16,22 +16,16 @@
 
 //! Benchmark trait
 
-use crate::ecc;
-use ark_ec::{AffineCurve, ProjectiveCurve};
+use ark_ec::ProjectiveCurve;
 use criterion::{black_box, measurement::Measurement, BenchmarkGroup};
 use manta_crypto::{
     arkworks::{
-        ff::{Field, UniformRand},
-        glv::{AffineCurveExt, GLVParameters},
+        ff::UniformRand,
+        glv::{AffineCurveExt, GLVParameters, HasGLV},
     },
     rand::RngCore,
 };
-use num_bigint::{BigInt, BigUint};
-use std::{
-    fs::File,
-    io::{BufRead, BufReader},
-    str::FromStr,
-};
+use std::marker::PhantomData;
 
 /// Benchmark trait
 pub trait Benchmark {
@@ -63,9 +57,9 @@ pub trait Benchmark {
 }
 
 /// GLV Multiplication Setup
-pub struct GLVMutiplicationSetup<C>
+pub struct GLVMutiplicationSetup<C, M>
 where
-    C: AffineCurveExt,
+    C: AffineCurveExt + HasGLV<M>,
 {
     /// GLV Parameters
     glv: GLVParameters<C>,
@@ -75,89 +69,39 @@ where
 
     /// Curve Point
     point: C,
+
+    /// Type Parameter Marker
+    __: PhantomData<M>,
 }
 
-impl<C> Benchmark for GLVMutiplicationSetup<C>
+impl<C, T> Benchmark for GLVMutiplicationSetup<C, T>
 where
-    C: AffineCurveExt,
+    C: AffineCurveExt + HasGLV<T>,
 {
     const NAME: &'static str = "GLV scalar multiplication";
-
-    type Parameters = &'static str;
-
-    type Output = C;
-
-    #[inline]
-    fn setup<R>(rng: &mut R, parameters: Self::Parameters) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        let scalar = C::ScalarField::rand(rng);
-        let point = C::Projective::rand(rng).into_affine();
-        let file = File::open(parameters).expect("Could not open file.");
-        let reader = BufReader::new(file);
-        let mut glv_strings: Vec<String> = Vec::with_capacity(5);
-        for parameter in reader.lines() {
-            glv_strings.push(parameter.unwrap());
-        }
-        let glv_parameters: Vec<&str> = glv_strings.iter().map(|s| &s[..]).collect();
-        let beta = C::BaseField::from_random_bytes(
-            &glv_parameters[0].parse::<BigUint>().unwrap().to_bytes_le(),
-        )
-        .unwrap();
-        let base_v1 = (
-            BigInt::from_str(glv_parameters[1]).unwrap(),
-            BigInt::from_str(glv_parameters[2]).unwrap(),
-        );
-        let base_v2 = (
-            BigInt::from_str(glv_parameters[3]).unwrap(),
-            BigInt::from_str(glv_parameters[4]).unwrap(),
-        );
-        let glv = GLVParameters::<C>::new_unchecked(beta, base_v1, base_v2);
-        Self { glv, scalar, point }
-    }
-
-    #[inline]
-    fn benchmark(&self) -> Self::Output {
-        self.glv.scalar_mul(&self.point, &self.scalar)
-    }
-}
-
-/// Scalar Multiplication Setup
-pub struct ScalarAffineSetup<C>
-where
-    C: AffineCurve,
-{
-    /// Scalar
-    scalar: C::ScalarField,
-
-    /// Curve Point
-    point: C,
-}
-
-impl<C> Benchmark for ScalarAffineSetup<C>
-where
-    C: AffineCurve,
-{
-    const NAME: &'static str = "Scalar multiplication";
 
     type Parameters = ();
 
     type Output = C;
 
     #[inline]
-    fn setup<R>(rng: &mut R, parameters: Self::Parameters) -> Self
+    fn setup<R>(rng: &mut R, (): Self::Parameters) -> Self
     where
         R: RngCore + ?Sized,
     {
-        let _ = parameters;
+        let glv = C::glv_parameters();
         let scalar = C::ScalarField::rand(rng);
         let point = C::Projective::rand(rng).into_affine();
-        Self { scalar, point }
+        Self {
+            glv,
+            scalar,
+            point,
+            __: PhantomData,
+        }
     }
 
     #[inline]
     fn benchmark(&self) -> Self::Output {
-        ecc::affine_scalar_mul(&self.point, self.scalar).into_affine()
+        self.glv.scalar_mul(&self.point, &self.scalar)
     }
 }

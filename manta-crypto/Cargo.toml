@@ -27,6 +27,8 @@ maintenance = { status = "actively-developed" }
 [features]
 # Arkworks Backend
 arkworks = [
+    "ark-bls12-381",
+    "ark-bn254",
     "ark-ec",
     "ark-ff",
     "ark-r1cs-std",

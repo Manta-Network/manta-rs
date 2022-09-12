@@ -25,7 +25,7 @@ use crate::arkworks::{
     },
     ff::PrimeField,
 };
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use ark_ff::{BigInteger, Field};
 use num_bigint::{BigInt, BigUint, Sign};
 
@@ -82,9 +82,6 @@ pub fn decompose_scalar<F>(k: &F, v: (&BigInt, &BigInt), u: (&BigInt, &BigInt)) 
 where
     F: PrimeField,
 {
-    // NOTE: We first find rational solutions to `(k,0) = q1v + q2u`
-    //       We can re-write this problem as a matrix `A(q1,q2) = (k,0)`
-    //       so that `(q1,q2) = A^-1(k,0)`.
     let k = BigInt::from_bytes_be(Sign::Plus, &k.into_repr().to_bytes_be());
     let q1 = (u.1 * &k) / ((v.0 * u.1) - (v.1 * u.0));
     let q2 = (-v.1 * &k) / ((v.0 * u.1) - (v.1 * u.0));
@@ -93,6 +90,7 @@ where
     (k1, k2)
 }
 
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 /// GLV Parameters
 pub struct GLVParameters<C>
 where
@@ -155,8 +153,8 @@ where
         )
     }
 
-    /// Generate scalars and points for the simultaneous multiple
-    /// point multiplication
+    /// Generates scalars and points for the simultaneous multiple
+    /// point multiplication.
     #[inline]
     fn scalars_and_points(
         &self,
@@ -199,16 +197,11 @@ where
         p: C::Projective,
         q: C::Projective,
     ) -> C {
-        // TODO: implement windowing.
-        let mut table = Vec::with_capacity(4);
-        table.push(C::zero().into_projective());
-        table.push(p);
-        table.push(q);
-        table.push(p + q);
+        let table = vec![C::zero().into_projective(), p, q, p + q];
         let mut r = C::zero().into_projective();
         for i in 0..u.len() {
             ProjectiveCurve::double_in_place(&mut r);
-            r = r + table[u[i] as usize + 2 * (v[i] as usize)]
+            r += table[u[i] as usize + 2 * (v[i] as usize)]
         }
         r.into_affine()
     }
@@ -280,24 +273,20 @@ impl HasGLV<bn254::Parameters> for bn254::G1Affine {
 
 #[cfg(test)]
 pub mod test {
+    use super::*;
+    use ark_ff::UniformRand;
+    use rand::RngCore;
+    use rand_core::OsRng;
     use std::{
         fs::File,
         io::{BufRead, BufReader},
     };
 
-    use rand::RngCore;
-
-    use ark_ff::UniformRand;
-    use rand_core::OsRng;
-
-    use super::*;
-    /// Checks that the GLV implementation on the curve `C` with the parameters given in `file`
-    /// is correct.
+    /// Extracts the GLV parameters from a file.
     #[inline]
-    fn glv_is_correct<C, R>(file_path: &str, rng: &mut R)
+    fn extract_glv_parameters<C>(file_path: &str) -> GLVParameters<C>
     where
         C: AffineCurveExt,
-        R: RngCore + ?Sized,
     {
         let file = File::open(file_path).expect("Could not open file.");
         let reader = BufReader::new(file);
@@ -306,8 +295,6 @@ pub mod test {
             glv_strings.push(parameter.unwrap());
         }
         let glv_parameters: Vec<&str> = glv_strings.iter().map(|s| &s[..]).collect();
-        let scalar = C::ScalarField::rand(rng);
-        let point = C::Projective::rand(rng).into_affine();
         let beta = C::BaseField::from_random_bytes(
             &glv_parameters[0].parse::<BigUint>().unwrap().to_bytes_le(),
         )
@@ -320,7 +307,34 @@ pub mod test {
             BigInt::from_str(glv_parameters[3]).unwrap(),
             BigInt::from_str(glv_parameters[4]).unwrap(),
         );
-        let glv = GLVParameters::<C>::new_unchecked(beta, base_v1, base_v2);
+        GLVParameters::<C>::new_unchecked(beta, base_v1, base_v2)
+    }
+
+    /// Checks the GLV parameters of BLS12 and BN254 match the hardcoded sage outputs.
+    #[test]
+    fn glv_parameters_match() {
+        let bls_hardcoded_parameters = extract_glv_parameters::<bls12_381::G1Affine>(
+            "../manta-crypto/src/arkworks/glv/precomputed_glv_values/bls_values",
+        );
+        let bn_hardcoded_parameters = extract_glv_parameters::<bn254::G1Affine>(
+            "../manta-crypto/src/arkworks/glv/precomputed_glv_values/bn_values",
+        );
+        let bls_parameters = bls12_381::G1Affine::glv_parameters();
+        let bn_parameters = bn254::G1Affine::glv_parameters();
+        assert_eq!(bls_hardcoded_parameters, bls_parameters);
+        assert_eq!(bn_hardcoded_parameters, bn_parameters);
+    }
+
+    /// Checks the GLV scalar multiplication gives the expected result for the curve `C`.
+    #[inline]
+    fn glv_is_correct<C, R, M>(rng: &mut R)
+    where
+        C: AffineCurveExt + HasGLV<M>,
+        R: RngCore + ?Sized,
+    {
+        let scalar = C::ScalarField::rand(rng);
+        let point = C::Projective::rand(rng).into_affine();
+        let glv = C::glv_parameters();
         assert_eq!(
             glv.scalar_mul(&point, &scalar),
             point.mul(scalar).into_affine()
@@ -331,19 +345,13 @@ pub mod test {
     #[test]
     pub fn glv_bls_is_correct() {
         let mut rng = OsRng;
-        glv_is_correct::<bls12_381::G1Affine, _>(
-            "../manta-pay/src/crypto/ecc/precomputed_glv_values/bls_values",
-            &mut rng,
-        )
+        glv_is_correct::<bls12_381::G1Affine, _, _>(&mut rng)
     }
 
     /// Checks the implementation of GLV for BN is correct.
     #[test]
     pub fn glv_bn_is_correct() {
         let mut rng = OsRng;
-        glv_is_correct::<bn254::G1Affine, _>(
-            "../manta-pay/src/crypto/ecc/precomputed_glv_values/bn_values",
-            &mut rng,
-        );
+        glv_is_correct::<bn254::G1Affine, _, _>(&mut rng);
     }
 }
