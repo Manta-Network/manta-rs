@@ -78,8 +78,10 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::Fr;
-    use manta_crypto::arkworks::ff::{field_new, Fp};
+    use manta_crypto::arkworks::{
+        bls12_381::Fr,
+        ff::{field_new, Fp},
+    };
 
     /// Checks if [`GrainLFSR`] matches hardcoded sage outputs.
     #[test]

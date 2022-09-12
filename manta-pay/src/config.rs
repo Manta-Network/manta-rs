@@ -28,8 +28,6 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
 };
-use bls12_381::Bls12_381;
-use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::{
     asset::{Asset, AssetId, AssetValue},
     transfer,
@@ -38,6 +36,8 @@ use manta_crypto::{
     accumulator,
     algebra::DiffieHellman,
     arkworks::{
+        bls12_381::{self, Bls12_381},
+        ed_on_bls12_381::{self, constraints::EdwardsVar as Bls12_381_EdwardsVar},
         ff::{field_element_as_bytes, Fp, ToConstraintField},
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
@@ -66,19 +66,13 @@ use alloc::string::String;
 #[cfg(any(feature = "test", test))]
 use manta_crypto::rand::{Rand, RngCore, Sample};
 
-#[doc(inline)]
-pub use ark_bls12_381 as bls12_381;
-
-#[doc(inline)]
-pub use ark_ed_on_bls12_381 as bls12_381_ed;
-
-pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
+pub(crate) use ed_on_bls12_381::EdwardsProjective as Bls12_381_Edwards;
 
 /// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
 
 /// Embedded Scalar Field Type
-pub type EmbeddedScalarField = bls12_381_ed::Fr;
+pub type EmbeddedScalarField = ed_on_bls12_381::Fr;
 
 /// Embedded Scalar Type
 pub type EmbeddedScalar = ecc::arkworks::Scalar<Bls12_381_Edwards>;

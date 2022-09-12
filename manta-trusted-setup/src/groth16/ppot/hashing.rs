@@ -20,10 +20,10 @@ use crate::{
     groth16::{kzg::G1, ppot::kzg::PerpetualPowersOfTauCeremony},
     util::{hash_to_group, BlakeHasher, Serializer},
 };
-use ark_bn254::{Fq, Fq2, G1Affine, G2Affine};
 use blake2::Digest;
 use manta_crypto::{
     arkworks::{
+        bn254::{self, Fq, Fq2, G1Affine, G2Affine},
         ec::{short_weierstrass_jacobian::GroupAffine, ProjectiveCurve, SWModelParameters},
         ff::{BigInteger256, Fp256, FpParameters, Zero},
         ratio::HashToGroup,
@@ -93,8 +93,8 @@ impl Sample<PpotDistribution> for Fq {
             let mut tmp = BigInteger256::sample(distribution, rng);
 
             // Mask away the unused bits at the beginning.
-            tmp.as_mut()[3] &= 0xffffffffffffffff >> ark_bn254::FqParameters::REPR_SHAVE_BITS;
-            if tmp < ark_bn254::FqParameters::MODULUS {
+            tmp.as_mut()[3] &= 0xffffffffffffffff >> bn254::FqParameters::REPR_SHAVE_BITS;
+            if tmp < bn254::FqParameters::MODULUS {
                 return Fp256::new(tmp);
             }
         }

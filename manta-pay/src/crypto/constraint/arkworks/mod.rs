@@ -453,10 +453,9 @@ where
 mod tests {
     // move to constraint with R1CS
     use super::*;
-    use ark_bls12_381::Fr;
     use core::iter::repeat_with;
     use manta_crypto::{
-        arkworks::ff::BigInteger,
+        arkworks::{bls12_381::Fr, ff::BigInteger},
         eclair::alloc::Allocate,
         rand::{OsRng, Rand, RngCore},
     };

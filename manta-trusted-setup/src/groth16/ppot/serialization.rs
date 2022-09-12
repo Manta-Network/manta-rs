@@ -24,10 +24,10 @@ use crate::{
     util::{from_error, Deserializer, Serializer},
 };
 use alloc::vec::Vec;
-use ark_bn254::{G1Affine, G2Affine, Parameters};
 use ark_std::io;
 use core::fmt;
 use manta_crypto::arkworks::{
+    bn254::{G1Affine, G2Affine, Parameters},
     ec::{
         bn::BnParameters, short_weierstrass_jacobian::GroupAffine, ModelParameters,
         SWModelParameters,
