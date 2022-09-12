@@ -17,7 +17,12 @@
 //! Arkworks Elliptic Curve Primitives
 
 use crate::crypto::constraint::arkworks::{
-    self, conditionally_select, empty, full, Boolean, FpVar, R1CS,
+    self,
+    conditionally_select,
+    empty,
+    full,
+    Boolean,
+    R1CS, // TODO: Move R1CS with Groth16
 };
 use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
@@ -26,6 +31,7 @@ use manta_crypto::{
     algebra::FixedBaseScalarMul,
     arkworks::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
+        constraint::FpVar,
         ec::{AffineCurve, ProjectiveCurve},
         ff::{BigInteger, Field, Fp, PrimeField, Zero as _},
         r1cs_std::{groups::CurveVar, ToBitsGadget},

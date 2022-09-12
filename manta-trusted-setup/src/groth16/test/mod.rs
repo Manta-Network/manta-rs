@@ -31,7 +31,7 @@ use blake2::Digest;
 use manta_crypto::{
     arkworks::{
         bn254::{Bn254, Fr, G1Affine, G2Affine},
-        constraint::R1CS,
+        constraint::{FpVar, R1CS},
         ec::{AffineCurve, PairingEngine},
         ff::{field_new, Fp, UniformRand},
         pairing::Pairing,
@@ -45,7 +45,6 @@ use manta_crypto::{
     },
     rand::{CryptoRng, OsRng, RngCore, Sample},
 };
-use manta_pay::crypto::constraint::arkworks::FpVar;
 use manta_util::into_array_unchecked;
 
 /// Test MPC

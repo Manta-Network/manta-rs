@@ -19,7 +19,7 @@
 use crate::crypto::constraint::arkworks::{
     self,
     codec::{HasDeserialization, HasSerialization, SerializationError},
-    R1CS,
+    R1CS, // TODO: Move with Groth16
 };
 use alloc::vec::Vec;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};

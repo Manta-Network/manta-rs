@@ -18,6 +18,7 @@
 
 use manta_crypto::{
     arkworks::{
+        constraint::FpVar,
         ff::{Fp, FpParameters, PrimeField},
         r1cs_std::{
             alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, ToBitsGadget,
@@ -45,8 +46,7 @@ use manta_crypto::{
 };
 
 pub use manta_crypto::arkworks::{
-    r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar},
-    relations::r1cs::SynthesisError,
+    r1cs_std::bits::boolean::Boolean, relations::r1cs::SynthesisError,
 };
 
 pub mod codec;

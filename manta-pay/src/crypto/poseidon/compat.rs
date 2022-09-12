@@ -327,9 +327,10 @@ pub type Output<S, const ARITY: usize, COM = ()> =
 #[cfg(feature = "arkworks")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod arkworks {
-    use crate::crypto::constraint::arkworks::{FpVar, R1CS};
+    use crate::crypto::constraint::arkworks::R1CS;
     use manta_crypto::{
         arkworks::{
+            constraint::FpVar,
             ff::{Field, Fp, PrimeField},
             r1cs_std::fields::FieldVar,
         },

@@ -17,7 +17,7 @@
 //! Manta-Pay Configuration
 
 use crate::crypto::{
-    constraint::arkworks::{groth16, Boolean, FpVar, R1CS},
+    constraint::arkworks::{groth16, Boolean, R1CS}, // TODO: Move R1CS with Groth16
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     key::Blake2sKdf,
@@ -37,6 +37,7 @@ use manta_crypto::{
     algebra::DiffieHellman,
     arkworks::{
         bls12_381::{self, Bls12_381},
+        constraint::FpVar,
         ed_on_bls12_381::{self, constraints::EdwardsVar as Bls12_381_EdwardsVar},
         ff::{field_element_as_bytes, Fp, ToConstraintField},
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
