@@ -16,8 +16,6 @@
 
 //! Arkworks Elliptic Curve Implementation
 
-use core::str::FromStr;
-
 use crate::arkworks::{
     ec::{
         models::{short_weierstrass_jacobian, SWModelParameters},
@@ -27,28 +25,28 @@ use crate::arkworks::{
 };
 use alloc::{vec, vec::Vec};
 use ark_ff::{BigInteger, Field};
+use core::str::FromStr;
 use num_bigint::{BigInt, BigUint, Sign};
 
 #[cfg(feature = "ark-bls12-381")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "ark-bls12-381")))]
 use crate::arkworks::bls12_381;
 
 #[cfg(feature = "ark-bn254")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "ark-bn254")))]
 use crate::arkworks::bn254;
 
 /// Affine Curve Extension
 pub trait AffineCurveExt: AffineCurve {
-    /// Gets `x` coordinate.
+    /// Returns the `x` coordinate of `self`.
     fn x(&self) -> &Self::BaseField;
 
-    /// Gets `y` coordinate.
+    /// Returns the `y` coordinate of `self`.
     fn y(&self) -> &Self::BaseField;
 
     /// Builds [`Self`] from `x` and `y`.
     fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self;
 
     /// Applies the GLV endomorphism to `self`
+    #[inline]
     fn glv_endomorphism(&self, beta: &Self::BaseField) -> Self {
         Self::from_xy_unchecked(*self.x() * beta, *self.y())
     }
@@ -224,6 +222,8 @@ pub trait HasGLV<M>: AffineCurve {
     fn glv_parameters() -> GLVParameters<Self>;
 }
 
+#[cfg(feature = "ark-bls12-381")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ark-bls12-381")))]
 impl HasGLV<bls12_381::Parameters> for bls12_381::G1Affine {
     #[inline]
     fn glv_parameters() -> GLVParameters<Self> {
@@ -246,6 +246,8 @@ impl HasGLV<bls12_381::Parameters> for bls12_381::G1Affine {
     }
 }
 
+#[cfg(feature = "ark-bn254")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ark-bn254")))]
 impl HasGLV<bn254::Parameters> for bn254::G1Affine {
     #[inline]
     fn glv_parameters() -> GLVParameters<Self> {
@@ -268,6 +270,7 @@ impl HasGLV<bn254::Parameters> for bn254::G1Affine {
     }
 }
 
+/// Testing Suite
 #[cfg(test)]
 pub mod test {
     use super::*;
@@ -329,14 +332,12 @@ pub mod test {
     /// Checks the implementation of GLV for BLS is correct.
     #[test]
     pub fn glv_bls_is_correct() {
-        let mut rng = OsRng;
-        glv_is_correct::<bls12_381::G1Affine, _, _>(&mut rng)
+        glv_is_correct::<bls12_381::G1Affine, _, _>(&mut OsRng)
     }
 
     /// Checks the implementation of GLV for BN is correct.
     #[test]
     pub fn glv_bn_is_correct() {
-        let mut rng = OsRng;
-        glv_is_correct::<bn254::G1Affine, _, _>(&mut rng);
+        glv_is_correct::<bn254::G1Affine, _, _>(&mut OsRng);
     }
 }

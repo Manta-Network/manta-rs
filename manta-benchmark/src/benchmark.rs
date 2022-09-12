@@ -81,7 +81,6 @@ where
     const NAME: &'static str = "GLV scalar multiplication";
 
     type Parameters = ();
-
     type Output = C;
 
     #[inline]
@@ -89,13 +88,10 @@ where
     where
         R: RngCore + ?Sized,
     {
-        let glv = C::glv_parameters();
-        let scalar = C::ScalarField::rand(rng);
-        let point = C::Projective::rand(rng).into_affine();
         Self {
-            glv,
-            scalar,
-            point,
+            glv: C::glv_parameters(),
+            scalar: C::ScalarField::rand(rng),
+            point: C::Projective::rand(rng).into_affine(),
             __: PhantomData,
         }
     }
