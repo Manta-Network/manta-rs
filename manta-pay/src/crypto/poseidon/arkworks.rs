@@ -16,11 +16,9 @@
 
 //! Poseidon Arkworks Backend
 
-use crate::crypto::{
-    poseidon::{
-        self, encryption::BlockElement, hash::DomainTag, Constants, Field, FieldGeneration,
-        ParameterFieldType,
-    },
+use crate::crypto::poseidon::{
+    self, encryption::BlockElement, hash::DomainTag, Constants, Field, FieldGeneration,
+    ParameterFieldType,
 };
 use manta_crypto::{
     arkworks::{
