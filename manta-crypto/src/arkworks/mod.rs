@@ -33,6 +33,9 @@ pub use ark_ed_on_bls12_381 as ed_on_bls12_381;
 #[cfg(feature = "ark-ed-on-bn254")]
 pub use ark_ed_on_bn254 as ed_on_bn254;
 
+#[cfg(feature = "groth16")]
+pub mod groth16;
+
 pub mod algebra;
 pub mod codec;
 pub mod constraint;
