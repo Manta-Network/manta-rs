@@ -158,6 +158,7 @@ where
     }
 
     /// Returns a mutable reference to `queue`.
+    #[inline]
     pub fn queue_mut(&mut self) -> &mut Queue<C, LEVEL_COUNT> {
         &mut self.queue
     }

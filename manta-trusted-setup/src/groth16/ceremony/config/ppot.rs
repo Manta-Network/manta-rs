@@ -184,6 +184,7 @@ pub struct Record {
 impl csv::Record<VerifyingKey, Participant> for Record {
     type Error = String;
 
+    #[inline]
     fn parse(self) -> Result<(VerifyingKey, Participant), Self::Error> {
         let verifying_key = ed25519::public_key_from_bytes(
             bs58::decode(self.verifying_key)
