@@ -16,19 +16,21 @@
 
 //! Groth16 Trusted Setup Ceremony Perpetual Powers of Tau Configuration
 
-use core::marker::PhantomData;
-
-use manta_crypto::{dalek::ed25519, signature::Sign};
+use crate::ceremony::{
+    participant,
+    registry::csv,
+    signature::{verify, Nonce as _, RawMessage, SignatureScheme},
+};
+use manta_crypto::{
+    dalek::ed25519::{self, Ed25519},
+    rand::{OsRng, Rand},
+    signature::VerifyingKeyType,
+};
 use manta_util::serde::{Deserialize, Serialize};
 
-use crate::{
-    ceremony::{
-        participant,
-        registry::csv,
-        signature::{Nonce, SignatureScheme},
-    },
-    groth16::ceremony::Ceremony,
-};
+type Signature = Ed25519<RawMessage<u64>>;
+type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
+type Nonce = <Signature as SignatureScheme>::Nonce;
 
 /// Priority
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -56,10 +58,22 @@ impl From<Priority> for usize {
 }
 
 /// Participant
-pub struct Participant<S>
-where
-    S: SignatureScheme,
-{
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(
+    bound(
+        deserialize = "
+        VerifyingKey: Deserialize<'de>,
+        Nonce: Deserialize<'de>,
+    ",
+        serialize = "
+        VerifyingKey: Serialize,
+        Nonce: Serialize,
+    "
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct Participant {
     /// Twitter Account
     twitter: String,
 
@@ -67,26 +81,23 @@ where
     priority: Priority,
 
     /// Verifying Key
-    verifying_key: S::VerifyingKey,
+    verifying_key: VerifyingKey,
 
     /// Nonce
-    nonce: S::Nonce,
+    nonce: Nonce,
 
     /// Boolean on whether this participant has contributed
     contributed: bool,
 }
 
-impl<S> Participant<S>
-where
-    S: SignatureScheme,
-{
+impl Participant {
     /// Builds a new [`Participant`].
     #[inline]
     pub fn new(
-        verifying_key: S::VerifyingKey,
+        verifying_key: VerifyingKey,
         twitter: String,
         priority: Priority,
-        nonce: S::Nonce,
+        nonce: Nonce,
         contributed: bool,
     ) -> Self {
         Self {
@@ -105,13 +116,10 @@ where
     }
 }
 
-impl<S> participant::Participant for Participant<S>
-where
-    S: SignatureScheme,
-{
-    type Identifier = S::VerifyingKey;
-    type VerifyingKey = S::VerifyingKey;
-    type Nonce = S::Nonce;
+impl participant::Participant for Participant {
+    type Identifier = VerifyingKey;
+    type VerifyingKey = VerifyingKey;
+    type Nonce = Nonce;
 
     #[inline]
     fn id(&self) -> &Self::Identifier {
@@ -144,10 +152,7 @@ where
     }
 }
 
-impl<S> participant::Priority for Participant<S>
-where
-    S: SignatureScheme,
-{
+impl participant::Priority for Participant {
     type Priority = Priority;
 
     #[inline]
@@ -162,53 +167,58 @@ where
 }
 
 /// Record
-pub struct Record;
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(
+    bound(deserialize = "", serialize = ""),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct Record {
+    twitter: String,
+    email: String,
+    priority: String,
+    verifying_key: String,
+    signature: String,
+}
 
-/* TODO:
-impl<S> csv::Record<S::VerifyingKey, Participant<S>> for Record
-where
-    S: SignatureScheme,
-{
-    type Error;
+impl csv::Record<VerifyingKey, Participant> for Record {
+    type Error = String;
 
-    fn parse(self) -> Result<(S::VerifyingKey, Participant<S>), Self::Error> {
-        if self.len() != 5 {
-            return Err(CeremonyError::Unexpected(
-                "Record format is wrong.".to_string(),
-            ));
-        }
-        let twitter = record[0].to_string();
-        let email = record[1].to_string();
+    fn parse(self) -> Result<(VerifyingKey, Participant), Self::Error> {
         let verifying_key = ed25519::public_key_from_bytes(
-            bs58::decode(record[3].to_string())
+            bs58::decode(self.verifying_key)
                 .into_vec()
-                .map_err(|_| CeremonyError::Unexpected("Cannot decode verifying key.".to_string()))?
+                .map_err(|_| "Cannot decode verifying key.".to_string())?
                 .try_into()
-                .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
+                .map_err(|_| "Cannot decode to array.".to_string())?,
         );
         let signature: ed25519::Signature = ed25519::signature_from_bytes(
-            bs58::decode(record[4].to_string())
+            bs58::decode(self.signature)
                 .into_vec()
-                .map_err(|_| CeremonyError::Unexpected("Cannot decode signature.".to_string()))?
+                .map_err(|_| "Cannot decode signature.".to_string())?
                 .try_into()
-                .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
+                .map_err(|_| "Cannot decode to array.".to_string())?,
         );
-        verify::<_, _>(
+        verify::<Signature, _>(
             &verifying_key,
             0,
             &format!(
                 "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-                twitter, email
+                self.twitter, self.email
             ),
             &signature,
         )
-        .map_err(|_| CeremonyError::Unexpected("Cannot verify signature.".to_string()))?;
+        .map_err(|_| "Cannot verify signature.".to_string())?;
         Ok((
             verifying_key,
             Participant::new(
                 verifying_key,
-                twitter,
-                match record[2].to_string().parse::<bool>().unwrap() {
+                self.twitter,
+                match self
+                    .priority
+                    .parse::<bool>()
+                    .map_err(|_| "Cannot parse priority.".to_string())?
+                {
                     true => Priority::High,
                     false => Priority::Normal,
                 },
@@ -218,84 +228,3 @@ where
         ))
     }
 }
- */
-
-/* TODO: replace with `Record` parsing:
-
-/// Prases a string `record` into a pair of `(C::Identifier, C::Participant)`.
-#[inline]
-pub fn parse<C>(
-    record: csv::StringRecord,
-) -> Result<(C::VerifyingKey, C::Participant), CeremonyError<C>>
-where
-    C: Ceremony<Nonce = u64, Participant = Participant<C>, VerifyingKey = ed25519::PublicKey>,
-{
-    if record.len() != 5 {
-        return Err(CeremonyError::Unexpected(
-            "Record format is wrong.".to_string(),
-        ));
-    }
-    let twitter = record[0].to_string();
-    let email = record[1].to_string();
-    let verifying_key = ed25519::public_key_from_bytes(
-        bs58::decode(record[3].to_string())
-            .into_vec()
-            .map_err(|_| CeremonyError::Unexpected("Cannot decode verifying key.".to_string()))?
-            .try_into()
-            .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
-    );
-    let signature: ed25519::Signature = ed25519::signature_from_bytes(
-        bs58::decode(record[4].to_string())
-            .into_vec()
-            .map_err(|_| CeremonyError::Unexpected("Cannot decode signature.".to_string()))?
-            .try_into()
-            .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
-    );
-    verify::<_, _>(
-        &verifying_key,
-        0,
-        &format!(
-            "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-            twitter, email
-        ),
-        &signature,
-    )
-    .map_err(|_| CeremonyError::Unexpected("Cannot verify signature.".to_string()))?;
-    Ok((
-        verifying_key,
-        Participant::new(
-            verifying_key,
-            twitter,
-            match record[2].to_string().parse::<bool>().unwrap() {
-                true => Priority::High,
-                false => Priority::Normal,
-            },
-            OsRng.gen::<_, u16>() as u64,
-            false,
-        ),
-    ))
-}
-
-/// Loads registry from a disk file at `registry`.
-#[inline]
-pub fn load_registry<C, P, R>(registry_file: P) -> Result<R, CeremonyError<C>>
-where
-    C: Ceremony<Nonce = u64, Participant = Participant<C>, VerifyingKey = ed25519::PublicKey>,
-    P: AsRef<Path>,
-    R: Registry<C::VerifyingKey, C::Participant>,
-{
-    let mut registry = R::new();
-    for record in csv::Reader::from_reader(
-        File::open(registry_file)
-            .map_err(|_| CeremonyError::Unexpected("Cannot open registry file.".to_string()))?,
-    )
-    .records()
-    {
-        let (identifier, participant) = parse(record.map_err(|_| {
-            CeremonyError::Unexpected("Cannot parse record from csv.".to_string())
-        })?)?;
-        registry.register(identifier, participant);
-    }
-    Ok(registry)
-}
-*/

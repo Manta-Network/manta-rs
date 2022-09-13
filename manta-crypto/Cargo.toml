@@ -44,7 +44,8 @@ getrandom = ["rand_core/getrandom"]
 serde = [
     "manta-util/serde-alloc",
     "manta-util/serde-array",
-    "rand_chacha?/serde1"
+    "rand_chacha?/serde1",
+    "ed25519-dalek?/serde",
 ]
 
 # Standard Library

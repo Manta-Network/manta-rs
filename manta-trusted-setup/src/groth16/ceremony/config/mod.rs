@@ -16,4 +16,6 @@
 
 //! Groth16 Trusted Setup Ceremony Configurations
 
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod ppot;
