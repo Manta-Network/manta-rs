@@ -16,21 +16,19 @@
 
 //! Groth16 Trusted Setup Ceremony Perpetual Powers of Tau Configuration
 
-use crate::{ceremony, ceremony::registry::csv};
+use core::marker::PhantomData;
 
-///
-pub struct Record {}
+use manta_crypto::{dalek::ed25519, signature::Sign};
+use manta_util::serde::{Deserialize, Serialize};
 
-// TODO: impl csv::Record for Record {}
-
-///
-pub struct Participant {}
-
-// TODO: impl ceremony::Participant for Participant {}
-
-// TODO: impl ceremony::Priority for Participant {}
-
-/* TODO: replace with above abstractions
+use crate::{
+    ceremony::{
+        participant,
+        registry::csv,
+        signature::{Nonce, SignatureScheme},
+    },
+    groth16::ceremony::Ceremony,
+};
 
 /// Priority
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -62,14 +60,14 @@ pub struct Participant<S>
 where
     S: SignatureScheme,
 {
-    /// Verifying Key
-    verifying_key: S::VerifyingKey,
-
     /// Twitter Account
     twitter: String,
 
     /// Priority
     priority: Priority,
+
+    /// Verifying Key
+    verifying_key: S::VerifyingKey,
 
     /// Nonce
     nonce: S::Nonce,
@@ -154,7 +152,7 @@ where
 
     #[inline]
     fn priority(&self) -> Self::Priority {
-        self.priority
+        self.priority.clone()
     }
 
     #[inline]
@@ -162,7 +160,65 @@ where
         self.priority = Priority::Normal;
     }
 }
-*/
+
+/// Record
+pub struct Record;
+
+/* TODO:
+impl<S> csv::Record<S::VerifyingKey, Participant<S>> for Record
+where
+    S: SignatureScheme,
+{
+    type Error;
+
+    fn parse(self) -> Result<(S::VerifyingKey, Participant<S>), Self::Error> {
+        if self.len() != 5 {
+            return Err(CeremonyError::Unexpected(
+                "Record format is wrong.".to_string(),
+            ));
+        }
+        let twitter = record[0].to_string();
+        let email = record[1].to_string();
+        let verifying_key = ed25519::public_key_from_bytes(
+            bs58::decode(record[3].to_string())
+                .into_vec()
+                .map_err(|_| CeremonyError::Unexpected("Cannot decode verifying key.".to_string()))?
+                .try_into()
+                .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
+        );
+        let signature: ed25519::Signature = ed25519::signature_from_bytes(
+            bs58::decode(record[4].to_string())
+                .into_vec()
+                .map_err(|_| CeremonyError::Unexpected("Cannot decode signature.".to_string()))?
+                .try_into()
+                .map_err(|_| CeremonyError::Unexpected("Cannot decode to array.".to_string()))?,
+        );
+        verify::<_, _>(
+            &verifying_key,
+            0,
+            &format!(
+                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                twitter, email
+            ),
+            &signature,
+        )
+        .map_err(|_| CeremonyError::Unexpected("Cannot verify signature.".to_string()))?;
+        Ok((
+            verifying_key,
+            Participant::new(
+                verifying_key,
+                twitter,
+                match record[2].to_string().parse::<bool>().unwrap() {
+                    true => Priority::High,
+                    false => Priority::Normal,
+                },
+                OsRng.gen::<_, u16>() as u64,
+                false,
+            ),
+        ))
+    }
+}
+ */
 
 /* TODO: replace with `Record` parsing:
 
