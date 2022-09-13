@@ -20,8 +20,13 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
-use crate::eclair::{cmp::PartialEq, Has, Type};
+use crate::{
+    arkworks::{constraint::R1CS, relations::r1cs::SynthesisError},
+    eclair::{cmp::PartialEq, Has, Type},
+};
 use alloc::vec::Vec;
+use ark_ff::{BigInteger, PrimeField};
+use ark_r1cs_std::ToBitsGadget;
 use manta_util::{iter::IteratorExt, vec::VecExt};
 
 /// Boolean Type Inside of the Compiler
@@ -169,4 +174,50 @@ where
     /// Swaps `lhs` and `rhs` whenever `bit == true` and keeps them in the same order when `bit ==
     /// false`.
     fn swap(bit: &Bool<COM>, lhs: &Self, rhs: &Self, compiler: &mut COM) -> (Self, Self);
+}
+
+/// Bit Decomposition
+pub trait BitDecomposition<COM = ()>
+where
+    COM: Has<bool> + ?Sized,
+{
+    /// Error Type
+    type Error;
+
+    /// Returns the big-endian bit representation of `self`, with leading zeroes.
+    fn to_bits_be(&self) -> Result<Vec<Bool<COM>>, Self::Error>;
+
+    /// Returns the little-endian bit representation of `self`, with trailing zeroes.
+    fn to_bits_le(&self) -> Result<Vec<Bool<COM>>, Self::Error>;
+}
+
+impl<F, G> BitDecomposition<R1CS<F>> for G
+where
+    F: PrimeField,
+    G: ToBitsGadget<F>,
+{
+    type Error = SynthesisError;
+
+    fn to_bits_be(&self) -> Result<Vec<Bool<R1CS<F>>>, Self::Error> {
+        self.to_bits_be()
+    }
+
+    fn to_bits_le(&self) -> Result<Vec<Bool<R1CS<F>>>, Self::Error> {
+        self.to_bits_le()
+    }
+}
+
+impl<B> BitDecomposition for B
+where
+    B: BigInteger,
+{
+    type Error = ();
+
+    fn to_bits_be(&self) -> Result<Vec<Bool<()>>, Self::Error> {
+        Ok(self.to_bits_be())
+    }
+
+    fn to_bits_le(&self) -> Result<Vec<Bool<()>>, Self::Error> {
+        Ok(self.to_bits_le())
+    }
 }
