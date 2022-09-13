@@ -627,8 +627,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::crypto::constraint::arkworks::Fp;
-    use manta_crypto::arkworks::bls12_381::Fr;
+    use manta_crypto::arkworks::{bls12_381::Fr, ff::Fp};
 
     /// Checks if generating minor matrix is correct.
     #[test]

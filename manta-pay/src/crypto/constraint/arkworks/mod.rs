@@ -16,12 +16,10 @@
 
 //! Arkworks Constraint System and Proof System Implementations
 
-use alloc::vec::Vec;
-use core::iter::{self, Extend};
 use manta_crypto::{
-    algebra,
     arkworks::{
-        ff::{Field, FpParameters, PrimeField, ToConstraintField},
+        constraint::FpVar,
+        ff::{Fp, FpParameters, PrimeField},
         r1cs_std::{
             alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, ToBitsGadget,
         },
@@ -33,35 +31,22 @@ use manta_crypto::{
             },
         },
     },
-    constraint::{
-        measure::{Count, Measure},
-        Input, ProofSystem,
-    },
+    constraint::measure::{Count, Measure},
     eclair::{
         self,
         alloc::{
             mode::{self, Public, Secret},
             Constant, Variable,
         },
-        bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
+        bool::{Assert, ConditionalSelect, ConditionalSwap},
         num::{AssertWithinBitRange, Zero},
         ops::{Add, BitAnd, BitOr},
         Has, NonNative,
     },
-    rand::{RngCore, Sample},
 };
-use manta_util::{
-    byte_count,
-    codec::{Decode, DecodeError, Encode, Read, Write},
-    SizeLimit,
-};
-
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use manta_crypto::arkworks::{
-    r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar},
-    relations::r1cs::SynthesisError,
+    r1cs_std::bits::boolean::Boolean, relations::r1cs::SynthesisError,
 };
 
 pub mod codec;
@@ -70,297 +55,6 @@ pub mod pairing;
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod groth16;
-
-/// Field Element
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(
-        bound(deserialize = "", serialize = ""),
-        crate = "manta_util::serde",
-        deny_unknown_fields,
-        try_from = "Vec<u8>"
-    )
-)]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Fp<F>(
-    /// Field Element
-    #[cfg_attr(
-        feature = "serde",
-        serde(serialize_with = "serialize_field_element::<F, _>")
-    )]
-    pub F,
-)
-where
-    F: Field;
-
-impl<F> From<u128> for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn from(value: u128) -> Self {
-        Self(value.into())
-    }
-}
-
-impl<F> ToConstraintField<F> for Fp<F>
-where
-    F: PrimeField,
-{
-    #[inline]
-    fn to_field_elements(&self) -> Option<Vec<F>> {
-        self.0.to_field_elements()
-    }
-}
-
-impl<F, P> Input<P> for Fp<F>
-where
-    F: Field,
-    P: ProofSystem + ?Sized,
-    P::Input: Extend<F>,
-{
-    #[inline]
-    fn extend(&self, input: &mut P::Input) {
-        input.extend(iter::once(self.0))
-    }
-}
-
-impl<F> Decode for Fp<F>
-where
-    F: Field,
-{
-    type Error = codec::SerializationError;
-
-    #[inline]
-    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
-    where
-        R: Read,
-    {
-        let mut reader = codec::ArkReader::new(reader);
-        match F::deserialize(&mut reader) {
-            Ok(value) => reader
-                .finish()
-                .map(move |_| Self(value))
-                .map_err(DecodeError::Read),
-            Err(err) => Err(DecodeError::Decode(err)),
-        }
-    }
-}
-
-impl<F> Encode for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        let mut writer = codec::ArkWriter::new(writer);
-        let _ = self.0.serialize(&mut writer);
-        writer.finish().map(move |_| ())
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<F> scale_codec::Decode for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
-    where
-        I: scale_codec::Input,
-    {
-        Ok(Self(
-            F::deserialize(codec::ScaleCodecReader(input)).map_err(|_| "Deserialization Error")?,
-        ))
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<F> scale_codec::Encode for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn using_encoded<R, Encoder>(&self, f: Encoder) -> R
-    where
-        Encoder: FnOnce(&[u8]) -> R,
-    {
-        f(&field_element_as_bytes::<F>(&self.0))
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<F> scale_codec::EncodeLike for Fp<F> where F: Field {}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<F> scale_codec::MaxEncodedLen for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn max_encoded_len() -> usize {
-        byte_count(
-            <<F::BasePrimeField as PrimeField>::Params as FpParameters>::MODULUS_BITS
-                * (F::extension_degree() as u32),
-        ) as usize
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<F> scale_info::TypeInfo for Fp<F>
-where
-    F: Field,
-{
-    type Identity = [u8];
-
-    #[inline]
-    fn type_info() -> scale_info::Type {
-        Self::Identity::type_info()
-    }
-}
-
-impl<F> eclair::cmp::PartialEq<Self> for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn eq(&self, rhs: &Self, _: &mut ()) -> bool {
-        PartialEq::eq(self, rhs)
-    }
-}
-
-impl<F> eclair::num::Zero for Fp<F>
-where
-    F: Field,
-{
-    type Verification = bool;
-
-    #[inline]
-    fn zero(_: &mut ()) -> Self {
-        Self(F::zero())
-    }
-
-    #[inline]
-    fn is_zero(&self, _: &mut ()) -> Self::Verification {
-        self.0.is_zero()
-    }
-}
-
-impl<F> eclair::num::One for Fp<F>
-where
-    F: Field,
-{
-    type Verification = bool;
-
-    #[inline]
-    fn one(_: &mut ()) -> Self {
-        Self(F::one())
-    }
-
-    #[inline]
-    fn is_one(&self, _: &mut ()) -> Self::Verification {
-        self.0.is_one()
-    }
-}
-
-impl<F> ConditionalSelect for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn select(bit: &Bool, true_value: &Self, false_value: &Self, _: &mut ()) -> Self {
-        if *bit {
-            *true_value
-        } else {
-            *false_value
-        }
-    }
-}
-
-impl<F> Sample for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn sample<R>(_: (), rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self(F::rand(rng))
-    }
-}
-
-impl<F> algebra::Group for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn add(&self, rhs: &Self, _: &mut ()) -> Self {
-        Self(self.0 + rhs.0)
-    }
-}
-
-impl<F> algebra::Ring for Fp<F>
-where
-    F: Field,
-{
-    #[inline]
-    fn mul(&self, rhs: &Self, _: &mut ()) -> Self {
-        Self(self.0 * rhs.0)
-    }
-}
-
-impl<F> SizeLimit for Fp<F>
-where
-    F: PrimeField,
-{
-    const SIZE: usize = byte_count(<F::Params as FpParameters>::MODULUS_BITS) as usize;
-}
-
-impl<F> TryFrom<Vec<u8>> for Fp<F>
-where
-    F: Field,
-{
-    type Error = codec::SerializationError;
-
-    #[inline]
-    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        F::deserialize(&mut bytes.as_slice()).map(Self)
-    }
-}
-
-/// Converts `element` into its canonical byte-representation.
-#[inline]
-pub fn field_element_as_bytes<F>(element: &F) -> Vec<u8>
-where
-    F: Field,
-{
-    let mut buffer = Vec::new();
-    element
-        .serialize(&mut buffer)
-        .expect("Serialization is not allowed to fail.");
-    buffer
-}
-
-/// Uses `serializer` to serialize `element`.
-#[cfg(feature = "serde")]
-#[inline]
-fn serialize_field_element<F, S>(element: &F, serializer: S) -> Result<S::Ok, S::Error>
-where
-    F: Field,
-    S: Serializer,
-{
-    serializer.serialize_bytes(&field_element_as_bytes(element))
-}
 
 /// Synthesis Result
 pub type SynthesisResult<T = ()> = Result<T, SynthesisError>;
@@ -757,12 +451,13 @@ where
 /// Testing Suite
 #[cfg(test)]
 mod tests {
+    // TODO: move to constraint with R1CS
     use super::*;
     use core::iter::repeat_with;
     use manta_crypto::{
         arkworks::{bls12_381::Fr, ff::BigInteger},
         eclair::alloc::Allocate,
-        rand::{OsRng, Rand},
+        rand::{OsRng, Rand, RngCore},
     };
 
     /// Checks if `assert_within_range` passes when `should_pass` is `true` and fails when

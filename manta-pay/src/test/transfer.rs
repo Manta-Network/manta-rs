@@ -17,9 +17,8 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
+    config::{FullParameters, Mint, PrivateTransfer, ProofSystem, Reclaim},
     test::payment::UtxoAccumulator,
-    util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
 use ark_std::rand::RngCore;
 use core::fmt::Debug;
@@ -31,7 +30,6 @@ use manta_crypto::{
     constraint::{self, measure::Measure, test::verify_fuzz_public_input, ProofSystem as _},
     rand::{fuzz::Fuzz, OsRng, Rand, Sample},
 };
-use std::io::Cursor;
 
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
@@ -249,82 +247,4 @@ fn reclaim_proof_validity() {
     )
     .expect("Random Reclaim should have produced a proof.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
-}
-
-/// Asserts that `proof` can be SCALE encoded and decoded with at least [`Vec`], [`Cursor`], and
-/// [`File`](std::fs::File).
-#[inline]
-fn assert_valid_proof_codec(proof: &Proof) {
-    assert_valid_codec(proof, &mut Vec::new(), move |v| v.as_slice());
-    assert_valid_io_codec(proof, &mut Cursor::new(vec![0; 8192]));
-    assert_valid_io_codec(
-        proof,
-        &mut tempfile::tempfile().expect("Unable to construct temporary file."),
-    );
-}
-
-/// Tests the SCALE encoding and decoding of a [`Mint`] proof.
-#[test]
-fn mint_proof_scale_codec() {
-    let mut rng = OsRng;
-    let parameters = rng.gen();
-    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let (proving_context, verifying_context) = Mint::generate_context(
-        &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
-        &mut rng,
-    )
-    .expect("Unable to create proving and verifying contexts.");
-    let post = Mint::sample_post(
-        &proving_context,
-        &parameters,
-        &mut utxo_accumulator,
-        &mut rng,
-    )
-    .expect("Random Mint should have produced a proof.");
-    assert_valid_proof_codec(post.assert_valid_proof(&verifying_context));
-}
-
-/// Tests the SCALE encoding and decoding of a [`PrivateTransfer`] proof.
-#[test]
-fn private_transfer_proof_scale_codec() {
-    let mut rng = OsRng;
-    let parameters = rng.gen();
-    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let (proving_context, verifying_context) = PrivateTransfer::generate_context(
-        &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
-        &mut rng,
-    )
-    .expect("Unable to create proving and verifying contexts.");
-    let post = PrivateTransfer::sample_post(
-        &proving_context,
-        &parameters,
-        &mut utxo_accumulator,
-        &mut rng,
-    )
-    .expect("Random PrivateTransfer should have produced a proof.");
-    assert_valid_proof_codec(post.assert_valid_proof(&verifying_context));
-}
-
-/// Tests the SCALE encoding and decoding of a [`Reclaim`] proof.
-#[test]
-fn reclaim_proof_scale_codec() {
-    let mut rng = OsRng;
-    let parameters = rng.gen();
-    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let (proving_context, verifying_context) = Reclaim::generate_context(
-        &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
-        &mut rng,
-    )
-    .expect("Unable to create proving and verifying contexts.");
-    let post = Reclaim::sample_post(
-        &proving_context,
-        &parameters,
-        &mut utxo_accumulator,
-        &mut rng,
-    )
-    .expect("Random Reclaim should have produced a proof.");
-    assert_valid_proof_codec(post.assert_valid_proof(&verifying_context));
 }

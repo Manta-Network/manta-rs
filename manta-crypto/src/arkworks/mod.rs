@@ -34,6 +34,7 @@ pub use ark_ed_on_bls12_381 as ed_on_bls12_381;
 pub use ark_ed_on_bn254 as ed_on_bn254;
 
 pub mod algebra;
+pub mod codec;
 pub mod constraint;
 pub mod ff;
 pub mod pairing;

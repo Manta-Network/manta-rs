@@ -18,8 +18,10 @@
 
 use crate::{
     arkworks::{
-        ff::{FpParameters, PrimeField},
-        r1cs_std::{alloc::AllocVar, eq::EqGadget, select::CondSelectGadget, ToBitsGadget},
+        ff::{Fp, FpParameters, PrimeField},
+        r1cs_std::{
+            alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, ToBitsGadget,
+        },
         relations::{
             ns,
             r1cs::{
@@ -36,9 +38,9 @@ use crate::{
             Constant, Variable,
         },
         bool::{Assert, ConditionalSwap},
-        num::AssertWithinBitRange,
-        ops::Add,
-        Has,
+        num::{AssertWithinBitRange, Zero},
+        ops::{Add, BitAnd, BitOr},
+        Has, NonNative,
     },
 };
 
@@ -113,6 +115,8 @@ where
             .expect("Checking circuit satisfaction is not allowed to fail.")
     }
 }
+
+impl<F> NonNative for R1CS<F> where F: PrimeField {}
 
 impl<F> Has<bool> for R1CS<F>
 where
@@ -267,6 +271,96 @@ where
     }
 }
 
+impl<F> BitAnd<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitand(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.and(&rhs).expect("Bitwise AND is not allowed to fail.")
+    }
+}
+
+impl<F> BitOr<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.or(&rhs).expect("Bitwise OR is not allowed to fail.")
+    }
+}
+
+impl<F> Constant<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Type = Fp<F>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        AllocVar::new_constant(ns!(compiler.0, "field constant"), this.0)
+            .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
+impl<F> Constant<R1CS<F>> for Fp<F>
+where
+    F: PrimeField,
+{
+    type Type = Self;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        let _ = compiler;
+        *this
+    }
+}
+
+impl<F> Variable<Public, R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Type = Fp<F>;
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        Self::new_input(ns!(compiler.0, "field public input"), full(this.0))
+            .expect("Variable allocation is not allowed to fail.")
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut R1CS<F>) -> Self {
+        Self::new_input(ns!(compiler.0, "field public input"), empty::<F>)
+            .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
+impl<F> Variable<Secret, R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Type = Fp<F>;
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut R1CS<F>) -> Self {
+        Self::new_witness(ns!(compiler.0, "field secret witness"), full(this.0))
+            .expect("Variable allocation is not allowed to fail.")
+    }
+
+    #[inline]
+    fn new_unknown(compiler: &mut R1CS<F>) -> Self {
+        Self::new_witness(ns!(compiler.0, "field secret witness"), empty::<F>)
+            .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
 impl<F> eclair::cmp::PartialEq<Self, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
@@ -313,5 +407,24 @@ where
     fn add(self, rhs: Self, compiler: &mut R1CS<F>) -> Self {
         let _ = compiler;
         self + rhs
+    }
+}
+
+impl<F> Zero<R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+{
+    type Verification = Boolean<F>;
+
+    #[inline]
+    fn zero(compiler: &mut R1CS<F>) -> Self {
+        let _ = compiler;
+        FieldVar::zero()
+    }
+
+    #[inline]
+    fn is_zero(&self, compiler: &mut R1CS<F>) -> Self::Verification {
+        let _ = compiler;
+        FieldVar::is_zero(self).expect("Comparison with zero is not allowed to fail.")
     }
 }

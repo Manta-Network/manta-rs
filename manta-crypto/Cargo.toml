@@ -32,19 +32,7 @@ arkworks = [
     "ark-r1cs-std",
     "ark-relations",
     "ark-serialize",
-    "ark-std"
-]
-
-# Bls12-381 Curve
-bls12_381 = [
-    "ark-bls12-381",
-    "arkworks"
-]
-
-# Bn254 Curve
-bn254 = [
-    "ark-bn254",
-    "arkworks"
+    "ark-std",
 ]
 
 # Dalek Cryptography Backend
@@ -103,8 +91,6 @@ manta-util = { path = "../manta-util", default-features = false, features = ["al
 rand = { version = "0.8.4", optional = true, default-features = false, features = ["alloc"] }
 rand_chacha = { version = "0.3.1", optional = true, default-features = false }
 rand_core = { version = "0.6.3", default-features = false }
-scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
-scale-info = { version = "2.1.2", optional = true, default-features = false, features = ["derive"] }
 
 [dev-dependencies]
 manta-crypto = { path = ".", default-features = false, features = ["ark-bn254", "getrandom"] }

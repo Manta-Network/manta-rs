@@ -17,7 +17,12 @@
 //! Arkworks Elliptic Curve Primitives
 
 use crate::crypto::constraint::arkworks::{
-    self, conditionally_select, empty, full, Boolean, Fp, FpVar, R1CS,
+    self,
+    conditionally_select,
+    empty,
+    full,
+    Boolean,
+    R1CS, // TODO: Move R1CS with Groth16
 };
 use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
@@ -26,8 +31,9 @@ use manta_crypto::{
     algebra::FixedBaseScalarMul,
     arkworks::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
+        constraint::FpVar,
         ec::{AffineCurve, ProjectiveCurve},
-        ff::{BigInteger, Field, PrimeField, Zero as _},
+        ff::{BigInteger, Field, Fp, PrimeField, Zero as _},
         r1cs_std::{groups::CurveVar, ToBitsGadget},
         relations::ns,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
@@ -138,73 +144,6 @@ where
         let mut writer = arkworks::codec::ArkWriter::new(writer);
         let _ = self.0.serialize(&mut writer);
         writer.finish().map(|_| ())
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_codec::Decode for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    #[inline]
-    fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
-    where
-        I: scale_codec::Input,
-    {
-        Ok(Self(
-            CanonicalDeserialize::deserialize(arkworks::codec::ScaleCodecReader(input))
-                .map_err(|_| "Deserialization Error")?,
-        ))
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_codec::Encode for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    #[inline]
-    fn using_encoded<R, Encoder>(&self, f: Encoder) -> R
-    where
-        Encoder: FnOnce(&[u8]) -> R,
-    {
-        f(&affine_point_as_bytes::<C>(&self.0))
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_codec::EncodeLike for Group<C> where C: ProjectiveCurve {}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_codec::MaxEncodedLen for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    #[inline]
-    fn max_encoded_len() -> usize {
-        // NOTE: In affine form, we have two base field elements to represent the point. The
-        //       encoding uses a compressed representation, so we only need to include half as many
-        //       bytes. We add space for an extra byte flag in case we need to keep track of
-        //       "infinity".
-        Fp::<C::BaseField>::max_encoded_len() + 1
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_info::TypeInfo for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    type Identity = [u8];
-
-    #[inline]
-    fn type_info() -> scale_info::Type {
-        Self::Identity::type_info()
     }
 }
 

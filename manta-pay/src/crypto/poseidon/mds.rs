@@ -264,11 +264,10 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::crypto::{constraint::arkworks::Fp, poseidon::matrix::Matrix};
     use manta_crypto::{
         arkworks::{
             bls12_381::Fr,
-            ff::{field_new, UniformRand},
+            ff::{field_new, Fp, UniformRand},
         },
         rand::OsRng,
     };

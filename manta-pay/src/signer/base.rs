@@ -18,7 +18,6 @@
 
 use crate::{
     config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},
-    crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
     signer::Checkpoint,
 };
@@ -33,7 +32,10 @@ use manta_accounting::{
     },
 };
 use manta_crypto::{
-    arkworks::{ec::ProjectiveCurve, ff::PrimeField},
+    arkworks::{
+        ec::ProjectiveCurve,
+        ff::{Fp, PrimeField},
+    },
     key::kdf::KeyDerivationFunction,
     merkle_tree::{self, forest::Configuration},
     rand::ChaCha20Rng,
