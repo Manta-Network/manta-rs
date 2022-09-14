@@ -73,7 +73,7 @@ pub fn full<T>(value: T) -> impl FnOnce() -> SynthesisResult<T> {
 /// Arkworks Rank-1 Constraint System
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug)]
-pub struct R1CS<F>(ConstraintSystemRef<F>)
+pub struct R1CS<F>(pub ConstraintSystemRef<F>)
 where
     F: PrimeField;
 

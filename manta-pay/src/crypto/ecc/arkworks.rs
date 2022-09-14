@@ -21,8 +21,7 @@ use crate::crypto::constraint::arkworks::{
     conditionally_select,
     empty,
     full,
-    Boolean,
-    R1CS, // TODO: Move R1CS with Groth16
+    Boolean, // TODO
 };
 use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
@@ -31,7 +30,7 @@ use manta_crypto::{
     algebra::FixedBaseScalarMul,
     arkworks::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
-        constraint::FpVar,
+        constraint::{FpVar, R1CS},
         ec::{AffineCurve, ProjectiveCurve},
         ff::{BigInteger, Field, Fp, PrimeField, Zero as _},
         r1cs_std::{groups::CurveVar, ToBitsGadget},
@@ -505,7 +504,7 @@ where
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
-            CV::new_constant(ns!(compiler.cs, "embedded curve point constant"), this.0)
+            CV::new_constant(ns!(compiler.0, "embedded curve point constant"), this.0)
                 .expect("Variable allocation is not allowed to fail."),
         )
     }
@@ -522,7 +521,7 @@ where
     fn new_known(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_input(
-                ns!(compiler.cs, "embedded curve point public input"),
+                ns!(compiler.0, "embedded curve point public input"),
                 full(this.0),
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -533,7 +532,7 @@ where
     fn new_unknown(compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_input(
-                ns!(compiler.cs, "embedded curve point public input"),
+                ns!(compiler.0, "embedded curve point public input"),
                 empty::<C>,
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -552,7 +551,7 @@ where
     fn new_known(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_witness(
-                ns!(compiler.cs, "embedded curve point secret witness"),
+                ns!(compiler.0, "embedded curve point secret witness"),
                 full(this.0),
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -563,7 +562,7 @@ where
     fn new_unknown(compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_witness(
-                ns!(compiler.cs, "embedded curve point secret witness"),
+                ns!(compiler.0, "embedded curve point secret witness"),
                 empty::<C>,
             )
             .expect("Variable allocation is not allowed to fail."),

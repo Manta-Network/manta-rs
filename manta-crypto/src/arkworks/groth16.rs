@@ -16,21 +16,20 @@
 
 //! Groth-16 Proving System
 
+use crate::{
+    arkworks::{
+        codec::{ArkReader, ArkWriter, HasDeserialization, HasSerialization, SerializationError},
+        constraint::R1CS,
+        ec::PairingEngine,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write},
+    },
+    constraint::{Input, ProofSystem},
+    rand::{CryptoRng, RngCore, SizedRng},
+};
 use alloc::vec::Vec;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
 use ark_snark::SNARK;
 use core::marker::PhantomData;
-use crate::{
-    arkworks::{
-        codec::{ArkReader, ArkWriter, HasDeserialization, HasSerialization, SerializationError},
-        constraint::R1CS, 
-        ec::PairingEngine,
-        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write},
-    },
-    
-    constraint::{Input, ProofSystem},
-    rand::{CryptoRng, RngCore, SizedRng},
-};
 use manta_util::codec::{self, DecodeError};
 
 #[cfg(feature = "serde")]
@@ -455,22 +454,21 @@ where
     }
 }
 
-impl<E> Input<Groth16<E>> for bool
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(&self, input: &mut Vec<E::Fr>) {
-        input.push((*self).into());
-    }
+/// Implements `Input` for Groth16 ProofSystem for `$type`.
+macro_rules! impl_input {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl<E> Input<Groth16<E>> for $type
+            where
+                E: PairingEngine,
+            {
+                #[inline]
+                fn extend(&self, input: &mut Vec<E::Fr>) {
+                    input.push((*self).into());
+                }
+            }
+        )*
+    };
 }
 
-impl<E> Input<Groth16<E>> for u128
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(&self, input: &mut Vec<E::Fr>) {
-        input.push((*self).into());
-    }
-}
+impl_input!(bool, u8, u16, u32, u64, u128);

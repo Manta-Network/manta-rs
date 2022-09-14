@@ -38,6 +38,7 @@ use core::{
 };
 use derive_more::{Add, AddAssign, Display, From, Sub, SubAssign, Sum};
 use manta_crypto::{
+    constraint::{Input, ProofSystem},
     eclair::alloc::{mode::Secret, Allocate, Allocator, Variable},
     rand::{Rand, RngCore, Sample},
 };
@@ -135,6 +136,17 @@ where
         R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
+    }
+}
+
+impl<P> Input<P> for AssetId
+where
+    P: ProofSystem,
+    AssetIdType: Input<P>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        self.0.extend(input)
     }
 }
 
@@ -266,6 +278,17 @@ where
         R: RngCore + ?Sized,
     {
         Self(rng.sample(distribution))
+    }
+}
+
+impl<P> Input<P> for AssetValue
+where
+    P: ProofSystem,
+    AssetValueType: Input<P>,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        self.0.extend(input)
     }
 }
 
