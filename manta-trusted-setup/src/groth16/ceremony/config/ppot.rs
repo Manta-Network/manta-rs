@@ -31,9 +31,10 @@ use crate::{
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use colored::Colorize;
 use console::{style, Term};
+use core::{fmt::Debug, time::Duration};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
-    dalek::ed25519::{self, generate_keypair, Ed25519},
+    dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     signature::VerifyingKeyType,
 };
@@ -41,6 +42,7 @@ use manta_util::{
     http::reqwest::KnownUrlClient,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
+use std::thread;
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
@@ -247,7 +249,12 @@ impl csv::Record<VerifyingKey, Participant> for Record {
 /// Generates an ed25519 keypair with `bytes` as seed.
 #[inline]
 pub fn generate_keys(bytes: &[u8]) -> Option<(ed25519::SecretKey, ed25519::PublicKey)> {
-    let keypair = generate_keypair(&mut ChaCha20Rng::from_seed(bytes.try_into().ok()?));
+    if ed25519::SECRET_KEY_LENGTH > bytes.len() {
+        return None;
+    }
+    let keypair = generate_keypair(&mut ChaCha20Rng::from_seed(
+        bytes[0..SECRET_KEY_LENGTH].try_into().ok()?,
+    ));
     Some((keypair.secret, keypair.public))
 }
 
@@ -322,24 +329,6 @@ pub fn get_client_keys() -> Option<(ed25519::SecretKey, ed25519::PublicKey)> {
     .to_vec();
     generate_keys(&seed_bytes)
 }
-
-/// Testing Suite
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    /// Tests if register is visually correct.
-    #[test]
-    fn register_is_visually_correct() {
-        register(
-            "Mantalorian".to_string(),
-            "mantalorian@manta.network".to_string(),
-        );
-    }
-}
-
-use core::{fmt::Debug, time::Duration};
-use std::thread;
 
 /// Contributes to the server.
 #[inline]
@@ -482,4 +471,19 @@ where
         }
     }
     Ok(())
+}
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Tests if register is visually correct.
+    #[test]
+    fn register_is_visually_correct() {
+        register(
+            "Mantalorian".to_string(),
+            "mantalorian@manta.network".to_string(),
+        );
+    }
 }
