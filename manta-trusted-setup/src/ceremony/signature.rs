@@ -105,14 +105,6 @@ where
 {
     type Nonce = N;
     type Error = SignatureError;
-
-    /* TODO
-    #[inline]
-    fn generate_keys(bytes: &[u8]) -> Option<(Self::SigningKey, Self::VerifyingKey)> {
-        let keypair = generate_keypair(&mut ChaCha20Rng::from_seed(bytes.try_into().ok()?));
-        Some((keypair.secret, keypair.public))
-    }
-    */
 }
 
 /// Signs the `message` with the `nonce` attached using the `signing_key`.
