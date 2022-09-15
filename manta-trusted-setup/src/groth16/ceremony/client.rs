@@ -18,22 +18,32 @@
 
 use crate::{
     ceremony::signature::{Nonce, SignedMessage},
-    groth16::{
-        ceremony::{
-            message::{CeremonySize, ContributeRequest, QueryRequest},
-            Ceremony, CeremonyError,
-        },
-        mpc::{contribute, State},
+    groth16::ceremony::{
+        message::{CeremonySize, QueryRequest},
+        Ceremony, CeremonyError,
     },
 };
-use console::style;
+use alloc::string::ToString;
 use core::fmt::Debug;
-use manta_crypto::rand::OsRng;
 use manta_util::{
     http::reqwest::KnownUrlClient,
     serde::{de::DeserializeOwned, Serialize},
-    BoxArray,
 };
+
+#[cfg(feature = "std")]
+use crate::groth16::{
+    ceremony::message::ContributeRequest,
+    mpc::{contribute, State},
+};
+
+#[cfg(feature = "std")]
+use console::style;
+
+#[cfg(feature = "std")]
+use manta_crypto::rand::OsRng;
+
+#[cfg(feature = "std")]
+use manta_util::BoxArray;
 
 /// Client
 pub struct Client<C, const CIRCUIT_COUNT: usize>
@@ -85,6 +95,7 @@ where
     }
 
     /// Contributes to the state on the server.
+    #[cfg(feature = "std")]
     #[inline]
     pub fn contribute(
         &mut self,

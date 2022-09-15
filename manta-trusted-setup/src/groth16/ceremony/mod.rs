@@ -23,6 +23,7 @@ use crate::{
     },
     groth16::mpc::Configuration,
 };
+use alloc::string::String;
 use core::fmt::Debug;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
@@ -31,8 +32,12 @@ use manta_util::{
 
 pub mod client;
 pub mod config;
-pub mod coordinator;
 pub mod message;
+
+#[cfg(feature = "std")]
+pub mod coordinator;
+
+#[cfg(feature = "std")]
 pub mod server;
 
 /// Participant Queue Type

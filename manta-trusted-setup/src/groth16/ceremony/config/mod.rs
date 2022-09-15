@@ -16,6 +16,9 @@
 
 //! Groth16 Trusted Setup Ceremony Configurations
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+#[cfg(all(feature = "serde", feature = "csv", feature = "std", feature = "serde"))]
+#[cfg_attr(
+    doc_cfg,
+    doc(cfg(all(feature = "serde", feature = "csv", feature = "std", feature = "serde")))
+)]
 pub mod ppot;
