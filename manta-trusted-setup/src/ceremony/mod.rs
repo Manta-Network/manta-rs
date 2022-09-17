@@ -20,6 +20,6 @@ pub mod participant;
 pub mod registry;
 pub mod signature;
 
-#[cfg(all(feature = "std", feature = "bincode"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "std", feature = "bincode"))))]
+#[cfg(all(feature = "bincode", feature = "std"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "std"))))]
 pub mod util;

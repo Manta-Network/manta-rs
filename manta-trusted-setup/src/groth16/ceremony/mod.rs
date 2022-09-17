@@ -97,12 +97,33 @@ where
     /// Timed-out
     Timeout,
 
-    /// Client unable to Generate Request
-    UnableToGenerateRequest(String),
-
-    /// Unexpected Server Error
-    Unexpected(String),
-
     /// Network Error
     Network(String),
+
+    /// Unexpected Server Error
+    Unexpected(UnexpectedError),
+}
+
+/// Unexpected Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Debug)]
+pub enum UnexpectedError {
+    /// Serialization Error
+    Serialization,
+
+    /// Failed to generate a valid Contribution
+    FailedContribution,
+
+    /// Missing Registered Participant
+    MissingRegisteredParticipant,
+
+    /// Incorrect State Size
+    IncorrectStateSize,
+
+    /// Unexpected Turn Skip by the Ceremony Server
+    SkippedTurn,
 }

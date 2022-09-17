@@ -23,45 +23,42 @@ use crate::groth16::{
     mpc::{Proof, State, StateSize},
 };
 use manta_crypto::arkworks::pairing::Pairing;
-use manta_util::{
-    serde::{Deserialize, Serialize},
-    BoxArray,
-};
+use manta_util::serde::{Deserialize, Serialize};
 
 /// MPC States
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        serialize = "C::Challenge: Serialize",
         deserialize = "C::Challenge: Deserialize<'de>",
+        serialize = "C::Challenge: Serialize",
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
 )]
-pub struct MPCState<C, const CIRCUIT_COUNT: usize>
+pub struct MPCState<C>
 where
     C: Ceremony,
 {
-    /// State
-    pub state: BoxArray<State<C>, CIRCUIT_COUNT>,
+    /// States
+    pub state: Vec<State<C>>,
 
-    /// Challenge
-    pub challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
+    /// Challenges
+    pub challenge: Vec<C::Challenge>,
 }
 
 /// Ceremony Size
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct CeremonySize<const CIRCUIT_COUNT: usize>(pub BoxArray<StateSize, CIRCUIT_COUNT>);
+pub struct CeremonySize(pub Vec<StateSize>);
 
-impl<const CIRCUIT_COUNT: usize> CeremonySize<CIRCUIT_COUNT> {
+impl CeremonySize {
     /// Checks that each size in `self` matches each [`State`] in `states`.
     #[inline]
-    pub fn matches<P>(&self, states: &[State<P>; CIRCUIT_COUNT]) -> bool
+    pub fn matches<P>(&self, states: &[State<P>]) -> bool
     where
         P: Pairing,
     {
-        self.0.iter().zip(states).all(|(l, r)| l.matches(&r.0))
+        self.0.len() == states.len() && self.0.iter().zip(states).all(|(l, r)| l.matches(&r.0))
     }
 }
 
@@ -76,13 +73,13 @@ pub struct QueryRequest;
 #[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        deserialize = "MPCState<C, CIRCUIT_COUNT>: Deserialize<'de>",
-        serialize = "MPCState<C, CIRCUIT_COUNT>: Serialize"
+        deserialize = "MPCState<C>: Deserialize<'de>",
+        serialize = "MPCState<C>: Serialize"
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
 )]
-pub enum QueryResponse<C, const CIRCUIT_COUNT: usize>
+pub enum QueryResponse<C>
 where
     C: Ceremony,
 {
@@ -90,23 +87,23 @@ where
     QueuePosition(usize),
 
     /// MPC State
-    State(MPCState<C, CIRCUIT_COUNT>),
+    State(MPCState<C>),
 }
 
 /// Contribute Request
 #[derive(Deserialize, Serialize)]
 #[serde(
-    bound(deserialize = "", serialize = ""),
+    bound(deserialize = "", serialize = "",),
     crate = "manta_util::serde",
     deny_unknown_fields
 )]
-pub struct ContributeRequest<C, const CIRCUIT_COUNT: usize>
+pub struct ContributeRequest<C>
 where
     C: Ceremony,
 {
     /// State
-    pub state: BoxArray<State<C>, CIRCUIT_COUNT>,
+    pub state: Vec<State<C>>,
 
     /// Proof
-    pub proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
+    pub proof: Vec<Proof<C>>,
 }

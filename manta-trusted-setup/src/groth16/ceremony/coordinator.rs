@@ -23,7 +23,7 @@ use crate::{
         signature::{Nonce, SignedMessage},
     },
     groth16::{
-        ceremony::{message::MPCState, Ceremony, CeremonyError, Queue},
+        ceremony::{message::MPCState, Ceremony, CeremonyError, Queue, UnexpectedError},
         mpc::{verify_transform, Proof, State, StateSize},
     },
 };
@@ -165,13 +165,13 @@ where
 
     /// Gets the current state and challenge.
     #[inline]
-    pub fn state_and_challenge(&self) -> MPCState<C, CIRCUIT_COUNT>
+    pub fn state_and_challenge(&self) -> MPCState<C>
     where
         C::Challenge: Clone,
     {
         MPCState {
-            state: self.state.clone(),
-            challenge: self.challenge.clone(),
+            state: self.state.to_vec(),
+            challenge: self.challenge.to_vec(),
         }
     }
 
@@ -263,7 +263,7 @@ where
             Some(participant) => participant.set_contributed(),
             _ => {
                 return Err(CeremonyError::Unexpected(
-                    "Cannot get participant.".to_string(),
+                    UnexpectedError::MissingRegisteredParticipant,
                 ));
             }
         };

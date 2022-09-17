@@ -57,10 +57,10 @@ impl Nonce for u64 {
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct RawMessage<N> {
     /// Nonce
-    pub nonce: N,
+    nonce: N,
 
     /// Encoded Message
-    pub encoded_message: Vec<u8>,
+    encoded_message: Vec<u8>,
 }
 
 impl<N> RawMessage<N> {
@@ -268,6 +268,71 @@ where
             self.nonce.clone(),
             &self.message,
             &self.signature,
+        )
+    }
+}
+
+/// Signer
+pub struct Signer<S, I>
+where
+    S: SignatureScheme,
+{
+    /// Nonce
+    nonce: S::Nonce,
+
+    /// Signing Key
+    signing_key: S::SigningKey,
+
+    /// Identifier
+    identifier: I,
+}
+
+impl<S, I> Signer<S, I>
+where
+    S: SignatureScheme,
+{
+    /// Builds a new [`Signer`] from `nonce`, `signing_key`, and `identifier`.
+    #[inline]
+    pub fn new(nonce: S::Nonce, signing_key: S::SigningKey, identifier: I) -> Self {
+        Self {
+            nonce,
+            signing_key,
+            identifier,
+        }
+    }
+
+    /// Returns the nonce for `self`.
+    #[inline]
+    pub fn nonce(&self) -> &S::Nonce {
+        &self.nonce
+    }
+
+    ///
+    #[inline]
+    pub fn increment_nonce(&mut self) {
+        self.nonce.increment()
+    }
+
+    /// Returns the identifier for `self`.
+    #[inline]
+    pub fn identifier(&self) -> &I {
+        &self.identifier
+    }
+
+    /// Signs `message` using the internal signing key and
+    #[cfg(feature = "bincode")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "bincode")))]
+    #[inline]
+    pub fn sign<T>(&self, message: T) -> Result<SignedMessage<S, I, T>, bincode::Error>
+    where
+        I: Clone,
+        T: Serialize,
+    {
+        SignedMessage::generate(
+            &self.signing_key,
+            self.nonce.clone(),
+            self.identifier.clone(),
+            message,
         )
     }
 }

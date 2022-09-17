@@ -26,7 +26,7 @@ use crate::{
         ceremony::{
             coordinator::Coordinator,
             message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, Participant as _,
+            Ceremony, CeremonyError, Participant as _, UnexpectedError,
         },
         mpc::{State, StateSize},
     },
@@ -90,7 +90,7 @@ where
         Ok(Self {
             coordinator: Arc::new(Mutex::new(
                 deserialize_from_file(path)
-                    .map_err(|e| CeremonyError::Unexpected(format!("{:?}", e)))?,
+                    .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?,
             )),
             recovery_directory,
         })
@@ -101,13 +101,13 @@ where
     pub async fn start(
         self,
         request: C::Identifier,
-    ) -> Result<(CeremonySize<CIRCUIT_COUNT>, C::Nonce), CeremonyError<C>>
+    ) -> Result<(CeremonySize, C::Nonce), CeremonyError<C>>
     where
         C::Nonce: Clone,
     {
         let coordinator = self.coordinator.lock();
         Ok((
-            CeremonySize(BoxArray::from_unchecked(*coordinator.size())),
+            CeremonySize(coordinator.size().to_vec()),
             coordinator
                 .registry()
                 .get(&request)
@@ -122,7 +122,7 @@ where
     pub async fn query(
         self,
         request: SignedMessage<C, C::Identifier, QueryRequest>,
-    ) -> Result<QueryResponse<C, CIRCUIT_COUNT>, CeremonyError<C>>
+    ) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
         C::Challenge: Clone,
     {
@@ -143,7 +143,7 @@ where
     #[inline]
     pub async fn update(
         self,
-        request: SignedMessage<C, C::Identifier, ContributeRequest<C, CIRCUIT_COUNT>>,
+        request: SignedMessage<C, C::Identifier, ContributeRequest<C>>,
     ) -> Result<(), CeremonyError<C>>
     where
         Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: Serialize,
@@ -151,14 +151,18 @@ where
         let mut coordinator = self.coordinator.lock();
         coordinator.preprocess_request(&request)?;
         let message = request.message;
-        coordinator.update(&request.identifier, message.state, message.proof)?;
+        coordinator.update(
+            &request.identifier,
+            BoxArray::from_vec(message.state),
+            BoxArray::from_vec(message.proof),
+        )?;
         serialize_into_file(
             OpenOptions::new().write(true).create_new(true),
             &Path::new(&self.recovery_directory)
                 .join(format!("transcript{}.data", coordinator.round())),
             &coordinator.deref(),
         )
-        .map_err(|e| CeremonyError::Unexpected(format!("{:?}", e)))?;
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         println!("{} participants have contributed.", coordinator.round());
         Ok(())
     }

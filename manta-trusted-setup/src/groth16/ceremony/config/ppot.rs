@@ -23,9 +23,7 @@ use crate::{
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
     groth16::ceremony::{
-        client::{get_start_meta_data, Client},
-        message::QueryResponse,
-        Ceremony, CeremonyError,
+        client::Client, message::QueryResponse, Ceremony, CeremonyError, UnexpectedError,
     },
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
@@ -77,14 +75,14 @@ impl From<Priority> for usize {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(
     bound(
-        deserialize = "
-        VerifyingKey: Deserialize<'de>,
-        Nonce: Deserialize<'de>,
-    ",
-        serialize = "
-        VerifyingKey: Serialize,
-        Nonce: Serialize,
-    "
+        deserialize = r"
+            VerifyingKey: Deserialize<'de>,
+            Nonce: Deserialize<'de>,
+        ",
+        serialize = r"
+            VerifyingKey: Serialize,
+            Nonce: Serialize,
+        "
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -344,16 +342,17 @@ where
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
 {
+    /* TODO:
     let network_client = KnownUrlClient::new("http://localhost:8080").expect("Should succeed.");
-    let (sk, pk) = get_client_keys().ok_or_else(|| {
-        CeremonyError::Unexpected("Received mpc state size is not correct.".to_string())
-    })?;
+    let (sk, pk) = get_client_keys().ok_or(CeremonyError::Unexpected(
+        UnexpectedError::IncorrectStateSize,
+    ))?;
     println!(
         "{} Contacting Server for Meta Data...",
         style("[1/9]").bold().dim()
     );
     let term = Term::stdout();
-    let (size, nonce) = get_start_meta_data::<C, CIRCUIT_COUNT>(pk, &network_client).await?;
+    let (size, nonce) = get_start_meta_data::<C, CIRCUIT_COUNT>(&network_client, pk).await?;
     let mut trusted_setup_client = Client::<C, CIRCUIT_COUNT>::new(pk, nonce, sk);
     println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
     loop {
@@ -378,7 +377,7 @@ where
                             style(position).bold().red(),
                             style(5*position).bold().blue(),
                         );
-                    thread::sleep(Duration::from_secs(10));
+                    thread::sleep(Duration::from_secs(1));
                     continue;
                 }
                 QueryResponse::State(mpc_state) => {
@@ -391,7 +390,7 @@ where
                     );
                     if !size.matches(&mpc_state.state) {
                         return Err(CeremonyError::Unexpected(
-                            "Received mpc state size is not correct.".to_string(),
+                            UnexpectedError::IncorrectStateSize,
                         ));
                     }
                     mpc_state
@@ -407,10 +406,7 @@ where
                 continue;
             }
             Err(CeremonyError::NotYourTurn) => {
-                return Err(CeremonyError::Unexpected(
-                        "Unexpected error when query mpc state. Should not receive NotYourTurn message."
-                            .to_string(),
-                    ));
+                return Err(CeremonyError::Unexpected(UnexpectedError::SkippedTurn));
             }
             Err(err) => return Err(err),
         };
@@ -457,8 +453,8 @@ where
             }
             Err(CeremonyError::NotRegistered) => {
                 return Err(CeremonyError::Unexpected(
-                    "unexpected error when contribute. Should have registered.".to_string(),
-                ))
+                    UnexpectedError::MissingRegisteredParticipant,
+                ));
             }
             Err(CeremonyError::NotYourTurn) => {
                 println!(
@@ -471,6 +467,8 @@ where
         }
     }
     Ok(())
+    */
+    todo!()
 }
 
 /// Testing Suite

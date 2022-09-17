@@ -17,152 +17,111 @@
 //! Trusted Setup Client
 
 use crate::{
-    ceremony::signature::{Nonce, SignedMessage},
-    groth16::ceremony::{
-        message::{CeremonySize, QueryRequest},
-        Ceremony, CeremonyError,
+    ceremony::signature::{SignedMessage, Signer},
+    groth16::{
+        ceremony::{
+            message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
+            Ceremony, CeremonyError, UnexpectedError,
+        },
+        mpc::{contribute, State},
     },
 };
-use alloc::string::ToString;
-use core::fmt::Debug;
+use manta_crypto::rand::OsRng;
 use manta_util::{
     http::reqwest::KnownUrlClient,
     serde::{de::DeserializeOwned, Serialize},
 };
 
-#[cfg(feature = "std")]
-use crate::groth16::{
-    ceremony::message::ContributeRequest,
-    mpc::{contribute, State},
-};
-
-#[cfg(feature = "std")]
-use console::style;
-
-#[cfg(feature = "std")]
-use manta_crypto::rand::OsRng;
-
-#[cfg(feature = "std")]
-use manta_util::BoxArray;
-
 /// Client
-pub struct Client<C, const CIRCUIT_COUNT: usize>
+pub struct Client<C>
 where
     C: Ceremony,
 {
-    /// Identifier
-    identifier: C::Identifier,
+    /// Signer
+    signer: Signer<C, C::Identifier>,
 
-    /// Current Nonce
-    nonce: C::Nonce,
-
-    /// Signing Key
-    signing_key: C::SigningKey,
+    /// HTTP Client
+    client: KnownUrlClient,
 }
 
-impl<C, const CIRCUIT_COUNT: usize> Client<C, CIRCUIT_COUNT>
+impl<C> Client<C>
 where
     C: Ceremony,
 {
-    /// Builds a new [`Client`] with `participant` and `private_key`.
+    ///
     #[inline]
-    pub fn new(identifier: C::Identifier, nonce: C::Nonce, signing_key: C::SigningKey) -> Self {
-        Self {
-            identifier,
-            nonce,
-            signing_key,
-        }
-    }
-
-    /// Queries the server state.
-    #[inline]
-    pub fn query(
+    fn sign<T>(
         &mut self,
-    ) -> Result<SignedMessage<C, C::Identifier, QueryRequest>, CeremonyError<C>> {
-        let signed_message = SignedMessage::generate(
-            &self.signing_key,
-            self.nonce.clone(),
-            self.identifier.clone(),
-            QueryRequest,
-        )
-        .map_err(|_| {
-            CeremonyError::Unexpected(
-                "Cannot sign message since it cannot be serialized.".to_string(),
-            )
-        })?;
-        self.nonce.increment();
+        message: T,
+    ) -> Result<SignedMessage<C, C::Identifier, T>, CeremonyError<C>>
+    where
+        T: Serialize,
+    {
+        let signed_message = self
+            .signer
+            .sign(message)
+            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        self.signer.increment_nonce();
         Ok(signed_message)
     }
 
-    /// Contributes to the state on the server.
-    #[cfg(feature = "std")]
+    ///
     #[inline]
-    pub fn contribute(
+    pub async fn start(&self) -> Result<(CeremonySize, C::Nonce), CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        C::Nonce: DeserializeOwned,
+    {
+        self.client
+            .post("start", &self.signer.identifier())
+            .await
+            .map_err(|_| CeremonyError::Network("".into()))
+    }
+
+    ///
+    #[inline]
+    pub async fn query(&mut self) -> Result<QueryResponse<C>, CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        C::Nonce: Serialize,
+        C::Signature: Serialize,
+        QueryResponse<C>: DeserializeOwned,
+    {
+        let signed_message = self.sign(QueryRequest)?;
+        self.client
+            .post("query", &signed_message)
+            .await
+            .map_err(|_| CeremonyError::Network("".into()))
+    }
+
+    ///
+    #[inline]
+    pub async fn contribute(
         &mut self,
         hasher: &C::Hasher,
-        challenge: &BoxArray<C::Challenge, CIRCUIT_COUNT>,
-        mut state: BoxArray<State<C>, CIRCUIT_COUNT>,
-    ) -> Result<
-        SignedMessage<C, C::Identifier, ContributeRequest<C, CIRCUIT_COUNT>>,
-        CeremonyError<C>,
-    > {
-        let circuit_name = ["ToPrivate", "PrivateTransfer", "ToPublic"];
+        challenge: &[C::Challenge],
+        mut state: Vec<State<C>>,
+    ) -> Result<(), CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        C::Nonce: Serialize,
+        C::Signature: Serialize,
+        ContributeRequest<C>: Serialize,
+    {
         let mut rng = OsRng;
-        let mut proofs = Vec::new();
-        for i in 0..CIRCUIT_COUNT {
-            println!(
-                "{} Contributing to {} Circuits...",
-                style(format!("[{}/9]", i + 5)).bold().dim(),
-                circuit_name[i],
-            );
-            proofs.push(
-                contribute(hasher, &challenge[i], &mut state[i], &mut rng)
-                    .ok_or_else(|| CeremonyError::Unexpected("Cannot contribute.".to_string()))?,
+        let mut proof = Vec::new();
+        // FIXME: have to check challenge and state lengths are equal
+        for i in 0..challenge.len() {
+            proof.push(
+                contribute(hasher, &challenge[i], &mut state[i], &mut rng).ok_or(
+                    CeremonyError::Unexpected(UnexpectedError::FailedContribution),
+                )?,
             );
         }
-        println!(
-            "{} Waiting for Confirmation from Server... Estimated Waiting Time: {} minutes.",
-            style("[8/9]").bold().dim(),
-            style("3").bold().blue(),
-        );
-        let signed_message = SignedMessage::generate(
-            &self.signing_key,
-            self.nonce.clone(),
-            self.identifier.clone(),
-            ContributeRequest {
-                state,
-                proof: BoxArray::from_vec(proofs),
-            },
-        )
-        .map_err(|_| {
-            CeremonyError::Unexpected(
-                "Cannot sign message since it cannot be serialized.".to_string(),
-            )
-        })?;
-        self.nonce.increment();
-        Ok(signed_message)
+        let signed_message = self.sign(ContributeRequest { state, proof })?;
+        self.client
+            .post("update", &signed_message)
+            .await
+            .map_err(|_| CeremonyError::Network("".into()))
     }
-}
-
-/// Gets state size from server.
-#[inline]
-pub async fn get_start_meta_data<C, const CIRCUIT_COUNT: usize>(
-    identity: C::Identifier,
-    network_client: &KnownUrlClient,
-) -> Result<(CeremonySize<CIRCUIT_COUNT>, C::Nonce), CeremonyError<C>>
-where
-    C: Ceremony,
-    C::Identifier: Serialize,
-    C::Nonce: DeserializeOwned + Debug,
-{
-    network_client
-        .post::<_, Result<(CeremonySize<CIRCUIT_COUNT>, C::Nonce), CeremonyError<C>>>(
-            "start", &identity,
-        )
-        .await
-        .map_err(|_| {
-            CeremonyError::Network(
-                "Should have received starting meta data from server".to_string(),
-            )
-        })?
 }
