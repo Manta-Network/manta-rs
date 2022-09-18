@@ -188,10 +188,19 @@ impl participant::Priority for Participant {
     deny_unknown_fields
 )]
 pub struct Record {
+    ///
     twitter: String,
+
+    ///
     email: String,
+
+    ///
     priority: String,
+
+    ///
     verifying_key: String,
+
+    ///
     signature: String,
 }
 
@@ -330,23 +339,48 @@ pub fn get_client_keys() -> Option<(ed25519::SecretKey, ed25519::PublicKey)> {
 
 /// Contributes to the server.
 #[inline]
-pub async fn client_contribute<C, const CIRCUIT_COUNT: usize>() -> Result<(), CeremonyError<C>>
+pub async fn client_contribute<C>(
+    signing_key: C::SigningKey,
+    identifier: C::Identifier,
+) -> Result<(), CeremonyError<C>>
 where
-    C: Ceremony<
-        Identifier = ed25519::PublicKey,
-        VerifyingKey = ed25519::PublicKey,
-        SigningKey = ed25519::SecretKey,
-    >,
+    C: Ceremony,
     C::Challenge: DeserializeOwned,
     C::Identifier: Serialize,
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
 {
+    let mut client = Client::start(
+        signing_key,
+        identifier,
+        KnownUrlClient::new("http://localhost:8080").expect("Should succeed."),
+    )
+    .await?;
+
+    loop {
+        let state = match client.query().await {
+            Ok(QueryResponse::QueuePosition(position)) => {
+                //
+                todo!()
+            }
+            Ok(QueryResponse::State(state)) => {
+                //
+                todo!()
+            }
+            Err(CeremonyError::Timeout) => todo!(),
+            Err(CeremonyError::NotYourTurn) => todo!(),
+            Err(err) => todo!(),
+        };
+        match client.contribute(&C::Hasher::default(), state).await {
+            Ok(_) => todo!(),
+            Err(CeremonyError::Timeout) => todo!(),
+            Err(CeremonyError::NotRegistered) => todo!(),
+            Err(CeremonyError::NotYourTurn) => todo!(),
+            Err(err) => todo!(),
+        }
+    }
+
     /* TODO:
-    let network_client = KnownUrlClient::new("http://localhost:8080").expect("Should succeed.");
-    let (sk, pk) = get_client_keys().ok_or(CeremonyError::Unexpected(
-        UnexpectedError::IncorrectStateSize,
-    ))?;
     println!(
         "{} Contacting Server for Meta Data...",
         style("[1/9]").bold().dim()

@@ -21,7 +21,7 @@ use crate::{
         participant::{Participant, Priority},
         signature::SignatureScheme,
     },
-    groth16::mpc::Configuration,
+    groth16::mpc::{Configuration, State},
 };
 use alloc::string::String;
 use core::fmt::Debug;
@@ -58,6 +58,27 @@ pub trait Ceremony: Configuration + SignatureScheme {
             VerifyingKey = Self::VerifyingKey,
             Nonce = Self::Nonce,
         > + Priority<Priority = Self::Priority>;
+}
+
+/// MPC States
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        deserialize = "C::Challenge: Deserialize<'de>",
+        serialize = "C::Challenge: Serialize",
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct MpcState<C>
+where
+    C: Ceremony,
+{
+    /// States
+    pub state: Vec<State<C>>,
+
+    /// Challenges
+    pub challenge: Vec<C::Challenge>,
 }
 
 /// Ceremony Error

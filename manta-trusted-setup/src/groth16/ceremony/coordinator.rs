@@ -23,7 +23,7 @@ use crate::{
         signature::{Nonce, SignedMessage},
     },
     groth16::{
-        ceremony::{message::MPCState, Ceremony, CeremonyError, Queue, UnexpectedError},
+        ceremony::{Ceremony, CeremonyError, MpcState, Queue, UnexpectedError},
         mpc::{verify_transform, Proof, State, StateSize},
     },
 };
@@ -165,11 +165,11 @@ where
 
     /// Gets the current state and challenge.
     #[inline]
-    pub fn state_and_challenge(&self) -> MPCState<C>
+    pub fn state_and_challenge(&self) -> MpcState<C>
     where
         C::Challenge: Clone,
     {
-        MPCState {
+        MpcState {
             state: self.state.to_vec(),
             challenge: self.challenge.to_vec(),
         }

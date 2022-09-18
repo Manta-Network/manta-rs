@@ -21,7 +21,7 @@ use crate::{
     groth16::{
         ceremony::{
             message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, UnexpectedError,
+            Ceremony, CeremonyError, MpcState, UnexpectedError,
         },
         mpc::{contribute, State},
     },
@@ -42,12 +42,29 @@ where
 
     /// HTTP Client
     client: KnownUrlClient,
+
+    /// Ceremony Size
+    ceremony_size: CeremonySize,
 }
 
 impl<C> Client<C>
 where
     C: Ceremony,
 {
+    ///
+    #[inline]
+    fn new_unchecked(
+        signer: Signer<C, C::Identifier>,
+        client: KnownUrlClient,
+        ceremony_size: CeremonySize,
+    ) -> Self {
+        Self {
+            signer,
+            client,
+            ceremony_size,
+        }
+    }
+
     ///
     #[inline]
     fn sign<T>(
@@ -67,15 +84,24 @@ where
 
     ///
     #[inline]
-    pub async fn start(&self) -> Result<(CeremonySize, C::Nonce), CeremonyError<C>>
+    pub async fn start(
+        signing_key: C::SigningKey,
+        identifier: C::Identifier,
+        client: KnownUrlClient,
+    ) -> Result<Self, CeremonyError<C>>
     where
         C::Identifier: Serialize,
         C::Nonce: DeserializeOwned,
     {
-        self.client
-            .post("start", &self.signer.identifier())
+        let (ceremony_size, nonce) = client
+            .post("start", &identifier)
             .await
-            .map_err(|_| CeremonyError::Network("".into()))
+            .map_err(|_| CeremonyError::Network("".into()))?;
+        Ok(Self::new_unchecked(
+            Signer::new(nonce, signing_key, identifier),
+            client,
+            ceremony_size,
+        ))
     }
 
     ///
@@ -99,8 +125,7 @@ where
     pub async fn contribute(
         &mut self,
         hasher: &C::Hasher,
-        challenge: &[C::Challenge],
-        mut state: Vec<State<C>>,
+        mut state: MpcState<C>,
     ) -> Result<(), CeremonyError<C>>
     where
         C::Identifier: Serialize,
@@ -108,6 +133,7 @@ where
         C::Signature: Serialize,
         ContributeRequest<C>: Serialize,
     {
+        /*
         let mut rng = OsRng;
         let mut proof = Vec::new();
         // FIXME: have to check challenge and state lengths are equal
@@ -123,5 +149,7 @@ where
             .post("update", &signed_message)
             .await
             .map_err(|_| CeremonyError::Network("".into()))
+        */
+        todo!()
     }
 }
