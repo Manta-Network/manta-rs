@@ -16,11 +16,14 @@
 
 //! Arkworks Algebra Backend
 
-use crate::arkworks::{
-    ec::ProjectiveCurve,
-    ff::{BigInteger, Field, FpParameters, PrimeField},
-    r1cs_std::{fields::fp::FpVar, groups::CurveVar},
-    serialize::CanonicalSerialize,
+use crate::{
+    arkworks::{
+        ec::ProjectiveCurve,
+        ff::{BigInteger, Field, FpParameters, PrimeField},
+        r1cs_std::{fields::fp::FpVar, groups::CurveVar},
+        serialize::CanonicalSerialize,
+    },
+    eclair::bool::BitDecomposition,
 };
 use alloc::vec::Vec;
 use core::marker::PhantomData;
@@ -31,14 +34,26 @@ use manta_util::serde::Serializer;
 /// Constraint Field Type
 type ConstraintField<C> = <<C as ProjectiveCurve>::BaseField as Field>::BasePrimeField;
 
-/// Converts `scalar` to the bit representation of `O`.
+/// Tries to convert `scalar` into the bit representation of `O`.
 #[inline]
-pub fn convert_bits<T, O>(scalar: T) -> O::BigInt
+pub fn try_convert_bits<T, O, M>(scalar: T) -> Result<O::BigInt, T::Error>
 where
-    T: BigInteger,
+    T: BitDecomposition<M>,
     O: PrimeField,
 {
-    O::BigInt::from_bits_le(&scalar.to_bits_le())
+    Ok(O::BigInt::from_bits_le(&BitDecomposition::to_bits_le(
+        &scalar,
+    )?))
+}
+
+/// Converts `scalar` to the bit representation of `O`.
+#[inline]
+pub fn convert_bits<T, O, M>(scalar: T) -> O::BigInt
+where
+    T: BitDecomposition<M, (), Error = ()>,
+    O: PrimeField,
+{
+    try_convert_bits::<T, O, M>(scalar).expect("Bit conversion is not allowed to fail.")
 }
 
 /// Checks that the modulus of `A` is smaller than that of `B`.
@@ -51,9 +66,9 @@ where
     let modulus_a = A::Params::MODULUS;
     let modulus_b = B::Params::MODULUS;
     if modulus_a.num_bits() <= modulus_b.num_bits() {
-        convert_bits::<_, B>(modulus_a) < modulus_b
+        convert_bits::<_, B, _>(modulus_a) < modulus_b
     } else {
-        modulus_a < convert_bits::<_, A>(modulus_b)
+        modulus_a < convert_bits::<_, A, _>(modulus_b)
     }
 }
 

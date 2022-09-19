@@ -23,7 +23,7 @@ use manta_crypto::{
     arkworks::{
         ff::{Field, FpParameters, PrimeField, ToConstraintField},
         r1cs_std::{
-            alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, ToBitsGadget,
+            alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget,
         },
         relations::{
             ns,
@@ -43,7 +43,7 @@ use manta_crypto::{
             mode::{self, Public, Secret},
             Constant, Variable,
         },
-        bool::{Assert, Bool, ConditionalSelect, ConditionalSwap},
+        bool::{Assert, BitDecomposition, Bool, ConditionalSelect, ConditionalSwap, FpVarMarker},
         num::{AssertWithinBitRange, Zero},
         ops::{Add, BitAnd, BitOr},
         Has, NonNative,
@@ -63,6 +63,7 @@ pub use manta_crypto::arkworks::{
     r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar},
     relations::r1cs::SynthesisError,
 };
+use manta_crypto::arkworks::constraint::R1CS;
 
 pub mod codec;
 pub mod pairing;
@@ -383,14 +384,14 @@ pub fn full<T>(value: T) -> impl FnOnce() -> SynthesisResult<T> {
     move || Ok(value)
 }
 
-/// Arkworks Rank-1 Constraint System
-pub struct R1CS<F>
-where
-    F: PrimeField,
-{
-    /// Constraint System
-    pub(crate) cs: ConstraintSystemRef<F>,
-}
+// /// Arkworks Rank-1 Constraint System
+// pub struct R1CS<F>
+// where
+//     F: PrimeField,
+// {
+//     /// Constraint System
+//     pub(crate) cs: ConstraintSystemRef<F>,
+// }
 
 impl<F> R1CS<F>
 where
@@ -454,8 +455,7 @@ where
             BITS < F::Params::MODULUS_BITS as usize,
             "BITS must be strictly less than modulus bits of `F`."
         );
-        let value_bits = value
-            .to_bits_le()
+        let value_bits = BitDecomposition::<FpVarMarker<F>, R1CS<F>>::to_bits_le(value)
             .expect("Bit decomposition is not allowed to fail.");
         for bit in &value_bits[BITS..] {
             bit.enforce_equal(&Boolean::FALSE)

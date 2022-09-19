@@ -20,13 +20,15 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
+use core::marker::PhantomData;
+
 use crate::{
     arkworks::{constraint::R1CS, relations::r1cs::SynthesisError},
     eclair::{cmp::PartialEq, Has, Type},
 };
 use alloc::vec::Vec;
 use ark_ff::{BigInteger, PrimeField};
-use ark_r1cs_std::ToBitsGadget;
+use ark_r1cs_std::{fields::fp::FpVar, ToBitsGadget};
 use manta_util::{iter::IteratorExt, vec::VecExt};
 
 /// Boolean Type Inside of the Compiler
@@ -177,7 +179,7 @@ where
 }
 
 /// Bit Decomposition
-pub trait BitDecomposition<COM = ()>
+pub trait BitDecomposition<M, COM = ()>
 where
     COM: Has<bool> + ?Sized,
 {
@@ -191,23 +193,76 @@ where
     fn to_bits_le(&self) -> Result<Vec<Bool<COM>>, Self::Error>;
 }
 
-impl<F, G> BitDecomposition<R1CS<F>> for G
+impl<B, M, COM> BitDecomposition<&M, COM> for &B
+where
+    B: BitDecomposition<M, COM>,
+    COM: Has<bool> + ?Sized,
+{
+    type Error = B::Error;
+
+    fn to_bits_be(&self) -> Result<Vec<Bool<COM>>, Self::Error> {
+        (*self).to_bits_be()
+    }
+
+    fn to_bits_le(&self) -> Result<Vec<Bool<COM>>, Self::Error> {
+        (*self).to_bits_le()
+    }
+}
+
+impl<B, M, COM> BitDecomposition<Vec<M>, COM> for Vec<B>
+where
+    B: BitDecomposition<M, COM>,
+    COM: Has<bool> + ?Sized,
+{
+    type Error = B::Error;
+
+    fn to_bits_be(&self) -> Result<Vec<Bool<COM>>, Self::Error> {
+        match self
+            .iter()
+            .map(|x| x.to_bits_be())
+            .collect::<Result<Vec<Vec<Bool<COM>>>, Self::Error>>()
+        {
+            Ok(vec) => Ok(vec.into_iter().flatten().collect::<Vec<Bool<COM>>>()),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn to_bits_le(&self) -> Result<Vec<Bool<COM>>, Self::Error> {
+        match self
+            .iter()
+            .map(|x| x.to_bits_le())
+            .collect::<Result<Vec<Vec<Bool<COM>>>, Self::Error>>()
+        {
+            Ok(vec) => Ok(vec.into_iter().flatten().collect::<Vec<Bool<COM>>>()),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+/// FpVar Marker Type
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct FpVarMarker<F: PrimeField>(PhantomData<F>);
+
+impl<F> BitDecomposition<FpVarMarker<F>, R1CS<F>> for FpVar<F>
 where
     F: PrimeField,
-    G: ToBitsGadget<F>,
 {
     type Error = SynthesisError;
 
     fn to_bits_be(&self) -> Result<Vec<Bool<R1CS<F>>>, Self::Error> {
-        self.to_bits_be()
+        ToBitsGadget::to_bits_be(self)
     }
 
     fn to_bits_le(&self) -> Result<Vec<Bool<R1CS<F>>>, Self::Error> {
-        self.to_bits_le()
+        ToBitsGadget::to_bits_le(self)
     }
 }
 
-impl<B> BitDecomposition for B
+/// FpVar Marker Type
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct BigIntegerMarker;
+
+impl<B> BitDecomposition<BigIntegerMarker> for B
 where
     B: BigInteger,
 {
