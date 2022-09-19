@@ -22,23 +22,18 @@ use crate::{
         registry::csv,
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
-    groth16::ceremony::{client, message::QueryResponse, Ceremony, CeremonyError, UnexpectedError},
+    groth16::ceremony::{client, Ceremony, CeremonyError},
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use colored::Colorize;
-use console::{style, Term};
-use core::{fmt::Debug, time::Duration};
+use core::fmt::Debug;
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     signature::VerifyingKeyType,
 };
-use manta_util::{
-    http::reqwest::KnownUrlClient,
-    serde::{de::DeserializeOwned, Deserialize, Serialize},
-};
-use std::thread;
+use manta_util::serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
