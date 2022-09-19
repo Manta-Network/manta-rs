@@ -27,7 +27,9 @@ use manta_util::AsBytes;
 
 pub use ed25519_dalek::*;
 
-/// Implements byte conversion from an array of bytes of length `$len` into the given `$type`.
+/// Implements byte conversion from an array of bytes of length `$len` into the given `$type`. These
+/// implementations are prefered over the ones provided by [`ed25519_dalek`] because they have no
+/// error branch.
 macro_rules! byte_conversion {
     ($name:ident, $type:tt, $len:ident) => {
         #[doc = "Converts the `bytes` fixed-length array into [`"]

@@ -107,7 +107,7 @@ where
     {
         let coordinator = self.coordinator.lock();
         Ok((
-            CeremonySize(coordinator.size().to_vec()),
+            coordinator.size().to_vec().into(),
             coordinator
                 .registry()
                 .get(&request)

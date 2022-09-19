@@ -18,17 +18,21 @@
 
 // FIXME: Use correct serde configuration since we don't assume it's always available
 
-use crate::groth16::{
-    ceremony::{Ceremony, Round},
-    mpc::{Proof, State, StateSize},
+use crate::{
+    groth16::{
+        ceremony::{Ceremony, Round},
+        mpc::{Proof, State, StateSize},
+    },
+    mpc,
 };
 use manta_crypto::arkworks::pairing::Pairing;
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Ceremony Size
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
-pub struct CeremonySize(pub Vec<StateSize>);
+/// Ceremony Size Alias
+///
+/// In the ceremony we always use parallel round structures to support multiple Groth16 circuits at
+/// the same time.
+pub type CeremonySize = mpc::Parallel<StateSize>;
 
 impl CeremonySize {
     /// Checks that each size in `self` matches each [`State`] in `states`.
@@ -37,7 +41,7 @@ impl CeremonySize {
     where
         P: Pairing,
     {
-        self.0.len() == states.len() && self.0.iter().zip(states).all(|(l, r)| l.matches(&r.0))
+        self.len() == states.len() && self.iter().zip(states).all(|(l, r)| l.matches(&r.0))
     }
 }
 

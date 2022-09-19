@@ -65,7 +65,7 @@ pub trait Ceremony: Configuration + SignatureScheme {
 /// Parallel Round Alias
 ///
 /// In the ceremony we always use parallel round structures to support multiple Groth16 circuits at
-/// once.
+/// the same time.
 pub type Round<C> = mpc::ParallelRound<C>;
 
 /// Ceremony Error

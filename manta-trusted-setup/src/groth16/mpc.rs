@@ -18,7 +18,7 @@
 
 use crate::{
     groth16::kzg::{self, Accumulator},
-    mpc::Types,
+    mpc,
     util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
 };
 use alloc::{vec, vec::Vec};
@@ -371,12 +371,13 @@ where
 }
 
 /// Configuration
-pub trait Configuration: Pairing + Types<Proof = Proof<Self>, State = State<Self>> {
+pub trait Configuration: Pairing + mpc::Types<Proof = Proof<Self>, State = State<Self>> {
     /// Hasher Type
     type Hasher: Default + HashToGroup<Self, Self::Challenge>;
 
-    /// Generates the next [`Challenge`](Self::Challenge) from `challenge`, `prev` state, `next` state,
-    /// and `proof`.
+    /// Generates the next [`Challenge`] from `challenge`, `prev` state, `next` state, and `proof`.
+    ///
+    /// [`Challenge`]: mpc::ChallengeType::Challenge
     fn challenge(
         challenge: &Self::Challenge,
         prev: &State<Self>,
@@ -447,9 +448,11 @@ where
     Ok((next_challenge, next))
 }
 
-/// Verifies all contributions in `iter` chaining from an initial `state` and `challenge`
-/// returning the newest [`State`](State<C>) and [`Challenge`](Configuration::Challenge) if all the
-/// contributions in the chain had valid transitions.
+/// Verifies all contributions in `iter` chaining from an initial `state` and `challenge` returning
+/// the newest [`State`] and [`Challenge`] if all the contributions in the chain had valid
+/// transitions.
+///
+/// [`Challenge`]: mpc::ChallengeType::Challenge
 #[inline]
 pub fn verify_transform_all<C, I>(
     mut challenge: C::Challenge,
