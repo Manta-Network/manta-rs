@@ -18,6 +18,7 @@
 
 use crate::{
     groth16::kzg::{self, Accumulator},
+    mpc::Types,
     util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
 };
 use alloc::{vec, vec::Vec};
@@ -370,10 +371,7 @@ where
 }
 
 /// Configuration
-pub trait Configuration: Pairing {
-    /// Challenge Type
-    type Challenge;
-
+pub trait Configuration: Pairing + Types<Proof = Proof<Self>, State = State<Self>> {
     /// Hasher Type
     type Hasher: Default + HashToGroup<Self, Self::Challenge>;
 

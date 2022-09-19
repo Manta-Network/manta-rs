@@ -21,9 +21,9 @@ use crate::{
         participant::{Participant, Priority},
         signature::SignatureScheme,
     },
-    groth16::mpc::{Configuration, State},
+    groth16::mpc::Configuration,
+    mpc,
 };
-use alloc::string::String;
 use core::fmt::Debug;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
@@ -35,9 +35,11 @@ pub mod config;
 pub mod message;
 
 #[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub mod coordinator;
 
 #[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 pub mod server;
 
 /// Participant Queue Type
@@ -60,26 +62,11 @@ pub trait Ceremony: Configuration + SignatureScheme {
         > + Priority<Priority = Self::Priority>;
 }
 
-/// MPC States
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        deserialize = "C::Challenge: Deserialize<'de>",
-        serialize = "C::Challenge: Serialize",
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub struct MpcState<C>
-where
-    C: Ceremony,
-{
-    /// States
-    pub state: Vec<State<C>>,
-
-    /// Challenges
-    pub challenge: Vec<C::Challenge>,
-}
+/// Parallel Round Alias
+///
+/// In the ceremony we always use parallel round structures to support multiple Groth16 circuits at
+/// once.
+pub type Round<C> = mpc::ParallelRound<C>;
 
 /// Ceremony Error
 #[cfg_attr(
@@ -115,11 +102,11 @@ where
     /// Not Your Turn
     NotYourTurn,
 
-    /// Timed-out
+    /// Timed out
     Timeout,
 
     /// Network Error
-    Network(String),
+    Network,
 
     /// Unexpected Server Error
     Unexpected(UnexpectedError),

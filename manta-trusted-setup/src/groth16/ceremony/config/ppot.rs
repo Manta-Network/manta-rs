@@ -22,9 +22,7 @@ use crate::{
         registry::csv,
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
-    groth16::ceremony::{
-        client::Client, message::QueryResponse, Ceremony, CeremonyError, UnexpectedError,
-    },
+    groth16::ceremony::{client, message::QueryResponse, Ceremony, CeremonyError, UnexpectedError},
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use colored::Colorize;
@@ -350,35 +348,53 @@ where
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
 {
+    /*
     let mut client = Client::start(
         signing_key,
         identifier,
         KnownUrlClient::new("http://localhost:8080").expect("Should succeed."),
     )
     .await?;
-
     loop {
+        match client.process().await {
+            Ok(true) => {
+                // TODO:
+                break;
+            }
+            Ok(false) => {
+                // TODO:
+                continue;
+            }
+            Err(err) => return Err(err),
+        }
+
+        /*
         let state = match client.query().await {
             Ok(QueryResponse::QueuePosition(position)) => {
-                //
-                todo!()
+                // TODO:
+                continue;
             }
-            Ok(QueryResponse::State(state)) => {
-                //
-                todo!()
+            Ok(QueryResponse::State(state)) => state,
+            Err(CeremonyError::Timeout) => {
+                // TODO:
+                continue;
             }
-            Err(CeremonyError::Timeout) => todo!(),
-            Err(CeremonyError::NotYourTurn) => todo!(),
-            Err(err) => todo!(),
+            Err(err) => return Err(err),
         };
         match client.contribute(&C::Hasher::default(), state).await {
-            Ok(_) => todo!(),
-            Err(CeremonyError::Timeout) => todo!(),
-            Err(CeremonyError::NotRegistered) => todo!(),
-            Err(CeremonyError::NotYourTurn) => todo!(),
-            Err(err) => todo!(),
+            Ok(_) => {
+                // TODO:
+                break;
+            }
+            Err(CeremonyError::Timeout) | Err(CeremonyError::NotYourTurn) => {
+                // TODO:
+                continue;
+            }
+            Err(err) => return Err(err),
         }
+        */
     }
+    */
 
     /* TODO:
     println!(
@@ -502,7 +518,8 @@ where
     }
     Ok(())
     */
-    todo!()
+
+    client::contribute(signing_key, identifier, "http://localhost:8080", |_| {}).await
 }
 
 /// Testing Suite

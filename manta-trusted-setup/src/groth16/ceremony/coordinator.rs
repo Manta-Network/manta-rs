@@ -23,7 +23,7 @@ use crate::{
         signature::{Nonce, SignedMessage},
     },
     groth16::{
-        ceremony::{Ceremony, CeremonyError, MpcState, Queue, UnexpectedError},
+        ceremony::{Ceremony, CeremonyError, Queue, Round, UnexpectedError},
         mpc::{verify_transform, Proof, State, StateSize},
     },
 };
@@ -163,16 +163,13 @@ where
         &mut self.queue
     }
 
-    /// Gets the current state and challenge.
+    /// Returns the current round state.
     #[inline]
-    pub fn state_and_challenge(&self) -> MpcState<C>
+    pub fn round_state(&self) -> Round<C>
     where
         C::Challenge: Clone,
     {
-        MpcState {
-            state: self.state.to_vec(),
-            challenge: self.challenge.to_vec(),
-        }
+        Round::new(self.state.to_vec().into(), self.challenge.to_vec().into())
     }
 
     /// Preprocesses a request by checking nonce and verifying signature.

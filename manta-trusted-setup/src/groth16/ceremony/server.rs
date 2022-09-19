@@ -132,9 +132,9 @@ where
             .queue_mut()
             .push_back_if_missing(priority.into(), request.identifier);
         if position == 0 {
-            Ok(QueryResponse::State(coordinator.state_and_challenge()))
+            Ok(QueryResponse::State(coordinator.round_state()))
         } else {
-            Ok(QueryResponse::QueuePosition(position))
+            Ok(QueryResponse::QueuePosition(position as u64))
         }
     }
 

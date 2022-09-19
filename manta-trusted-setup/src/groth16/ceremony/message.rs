@@ -19,7 +19,7 @@
 // FIXME: Use correct serde configuration since we don't assume it's always available
 
 use crate::groth16::{
-    ceremony::{Ceremony, MpcState},
+    ceremony::{Ceremony, Round},
     mpc::{Proof, State, StateSize},
 };
 use manta_crypto::arkworks::pairing::Pairing;
@@ -52,8 +52,8 @@ pub struct QueryRequest;
 #[derive(Deserialize, Serialize)]
 #[serde(
     bound(
-        deserialize = "MpcState<C>: Deserialize<'de>",
-        serialize = "MpcState<C>: Serialize"
+        deserialize = "Round<C>: Deserialize<'de>",
+        serialize = "Round<C>: Serialize"
     ),
     crate = "manta_util::serde",
     deny_unknown_fields
@@ -63,10 +63,10 @@ where
     C: Ceremony,
 {
     /// Queue Position
-    QueuePosition(usize),
+    QueuePosition(u64),
 
-    /// MPC State
-    State(MpcState<C>),
+    /// MPC Round State
+    State(Round<C>),
 }
 
 /// Contribute Request
