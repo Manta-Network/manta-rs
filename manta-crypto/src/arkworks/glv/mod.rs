@@ -80,7 +80,6 @@ pub fn decompose_scalar<F>(k: &F, v: (&BigInt, &BigInt), u: (&BigInt, &BigInt)) 
 where
     F: PrimeField,
 {
-    // TODO: Check the bit length of BitInt v.s. BaseField or ScalarField. See if there is any overflow issue.
     let k = BigInt::from_bytes_be(Sign::Plus, &k.into_repr().to_bytes_be());
     let q1 = (u.1 * &k) / ((v.0 * u.1) - (v.1 * u.0));
     let q2 = (-v.1 * &k) / ((v.0 * u.1) - (v.1 * u.0));
@@ -163,8 +162,6 @@ where
     where
         C: AffineCurveExt,
     {
-        // TODO: make sure both output vectors have the same length. I guess into_repr and
-        // to_bits_be() do that already?
         let (k1, k2) = decompose_scalar(scalar, self.basis().0, self.basis().1);
         let (k1_sign, k1) = k1.into_parts();
         let p1 = match k1_sign {
