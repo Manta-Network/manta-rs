@@ -73,7 +73,8 @@ where
 }
 
 /// Given a scalar `k` and basis vectors `v` and `u` finds integer scalars `k1` and `k2`,
-/// so that `(k, 0)` is close to `k1v + k2u`.
+/// so that `(k, 0)` is close to `k1v + k2u`, meaning the norm of the difference `||(k,0) - (k1v + k2u)||`
+/// is at most `max(||v||, ||u||)`.
 #[inline]
 pub fn decompose_scalar<F>(k: &F, v: (&BigInt, &BigInt), u: (&BigInt, &BigInt)) -> (BigInt, BigInt)
 where

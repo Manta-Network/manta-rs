@@ -140,7 +140,7 @@ fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
 
 #[inline]
 fn glv_scalar_multiplication(c: &mut Criterion) {
-    let mut group = c.benchmark_group("glv");
+    let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
     let glv_setup = black_box(GLVMutiplicationSetup::<BLSAffine, _>::setup(&mut rng, ()));
     glv_setup.define_benchmark(&mut group);

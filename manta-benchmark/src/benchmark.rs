@@ -62,7 +62,7 @@ where
     C: AffineCurveExt + HasGLV<M>,
 {
     /// GLV Parameters
-    glv: GLVParameters<C>,
+    glv_parameters: GLVParameters<C>,
 
     /// Scalar
     scalar: C::ScalarField,
@@ -89,7 +89,7 @@ where
         R: RngCore + ?Sized,
     {
         Self {
-            glv: C::glv_parameters(),
+            glv_parameters: C::glv_parameters(),
             scalar: C::ScalarField::rand(rng),
             point: C::Projective::rand(rng).into_affine(),
             __: PhantomData,
@@ -98,6 +98,7 @@ where
 
     #[inline]
     fn benchmark(&self) -> Self::Output {
-        self.glv.scalar_mul(&self.point, &self.scalar)
+        self.glv_parameters
+            .scalar_mul(&black_box(self.point), &black_box(self.scalar))
     }
 }
