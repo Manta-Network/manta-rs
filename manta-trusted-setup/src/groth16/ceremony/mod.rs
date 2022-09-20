@@ -132,6 +132,6 @@ pub enum UnexpectedError {
     /// Incorrect State Size
     IncorrectStateSize,
 
-    /// Unexpected Turn Skip by the Ceremony Server
-    SkippedTurn,
+    /// All Nonces were Used
+    AllNoncesUsed,
 }

@@ -27,18 +27,12 @@ use manta_util::AsBytes;
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Nonce
-pub trait Nonce: Default + PartialEq {
+pub trait Nonce: Default {
     /// Increments the current nonce by one.
     fn increment(&mut self);
 
     /// Checks if the current nonce is valid.
     fn is_valid(&self) -> bool;
-
-    /// Checks that `self` and `rhs` are valid and are both equal.
-    #[inline]
-    fn matches(&self, rhs: &Self) -> bool {
-        self.is_valid() && rhs.is_valid() && self == rhs
-    }
 }
 
 impl Nonce for u64 {
@@ -201,16 +195,13 @@ where
     S: SignatureScheme,
 {
     /// Signature
-    pub signature: S::Signature,
-
-    /// Nonce
-    pub nonce: S::Nonce,
+    signature: S::Signature,
 
     /// Participant Identifier
-    pub identifier: I,
+    identifier: I,
 
     /// Message
-    pub message: T,
+    message: T,
 }
 
 impl<S, I, T> SignedMessage<S, I, T>
@@ -220,15 +211,9 @@ where
     /// Builds a new [`SignedMessage`] without checking that the `signature` actually attests to the
     /// `message`.
     #[inline]
-    pub fn new_unchecked(
-        signature: S::Signature,
-        nonce: S::Nonce,
-        identifier: I,
-        message: T,
-    ) -> Self {
+    pub fn new_unchecked(signature: S::Signature, identifier: I, message: T) -> Self {
         Self {
             signature,
-            nonce,
             identifier,
             message,
         }
@@ -248,27 +233,55 @@ where
         T: Serialize,
     {
         Ok(Self::new_unchecked(
-            sign::<S, _>(signing_key, nonce.clone(), &message)?,
-            nonce,
+            sign::<S, _>(signing_key, nonce, &message)?,
             identifier,
             message,
         ))
+    }
+
+    /// Returns a shared reference to the identifier for this message.
+    #[inline]
+    pub fn identifier(&self) -> &I {
+        &self.identifier
+    }
+
+    /// Returns a shared reference the underlying message.
+    #[inline]
+    pub fn message(&self) -> &T {
+        &self.message
     }
 
     /// Verifies `self` against the `verifying_key`.
     #[cfg(feature = "bincode")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "bincode")))]
     #[inline]
-    pub fn verify(&self, verifying_key: &S::VerifyingKey) -> Result<(), VerificationError<S::Error>>
+    pub fn verify(
+        &self,
+        nonce: S::Nonce,
+        verifying_key: &S::VerifyingKey,
+    ) -> Result<(), VerificationError<S::Error>>
     where
         T: Serialize,
     {
-        verify::<S, _>(
-            verifying_key,
-            self.nonce.clone(),
-            &self.message,
-            &self.signature,
-        )
+        verify::<S, _>(verifying_key, nonce, &self.message, &self.signature)
+    }
+
+    ///
+    #[inline]
+    pub fn into_identifier(self) -> I {
+        self.identifier
+    }
+
+    ///
+    #[inline]
+    pub fn into_message(self) -> T {
+        self.message
+    }
+
+    ///
+    #[inline]
+    pub fn into_inner(self) -> (I, T) {
+        (self.identifier, self.message)
     }
 }
 

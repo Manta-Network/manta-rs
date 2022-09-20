@@ -183,18 +183,18 @@ where
     {
         let participant = self
             .registry
-            .get_mut(&request.identifier)
+            .get_mut(request.identifier())
             .ok_or(CeremonyError::NotRegistered)?;
         if participant.has_contributed() {
             return Err(CeremonyError::AlreadyContributed);
         }
         let participant_nonce = participant.nonce();
-        if !participant_nonce.matches(&request.nonce) {
-            return Err(CeremonyError::NonceNotInSync(participant_nonce.clone()));
-        };
+        if !participant_nonce.is_valid() {
+            return Err(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed));
+        }
         request
-            .verify(participant.verifying_key())
-            .map_err(|_| CeremonyError::BadRequest)?;
+            .verify(participant_nonce.clone(), participant.verifying_key())
+            .map_err(|_| CeremonyError::NonceNotInSync(participant_nonce.clone()))?;
         participant.increment_nonce();
         Ok(participant.priority())
     }

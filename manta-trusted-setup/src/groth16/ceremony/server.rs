@@ -130,7 +130,7 @@ where
         let priority = coordinator.preprocess_request(&request)?;
         let position = coordinator
             .queue_mut()
-            .push_back_if_missing(priority.into(), request.identifier);
+            .push_back_if_missing(priority.into(), request.into_identifier());
         if position == 0 {
             Ok(QueryResponse::State(coordinator.round_state()))
         } else {
@@ -150,9 +150,9 @@ where
     {
         let mut coordinator = self.coordinator.lock();
         coordinator.preprocess_request(&request)?;
-        let message = request.message;
+        let (identifier, message) = request.into_inner();
         coordinator.update(
-            &request.identifier,
+            &identifier,
             BoxArray::from_vec(message.state),
             BoxArray::from_vec(message.proof),
         )?;
