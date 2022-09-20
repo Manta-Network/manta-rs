@@ -21,7 +21,7 @@ use crate::{
         kzg::{self, Accumulator, Configuration, Contribution, Size},
         mpc::{self, contribute, initialize, verify_transform, verify_transform_all, Proof, State},
     },
-    mpc::{ChallengeType, ProofType, StateType, Transcript},
+    mpc::{ChallengeType, ContributionType, ProofType, StateType, Transcript},
     util::{BlakeHasher, HasDistribution, KZGBlakeHasher},
 };
 use alloc::vec::Vec;
@@ -132,7 +132,6 @@ impl kzg::Configuration for Test {
 }
 
 impl mpc::Configuration for Test {
-    type Challenge = [u8; 64];
     type Hasher = BlakeHasher;
 
     #[inline]
@@ -174,16 +173,20 @@ where
     }
 }
 
-impl StateType for Test {
-    type State = State<Test>;
-}
-
 impl ChallengeType for Test {
     type Challenge = [u8; 64];
 }
 
+impl ContributionType for Test {
+    type Contribution = Contribution<Self>;
+}
+
 impl ProofType for Test {
-    type Proof = Proof<Test>;
+    type Proof = Proof<Self>;
+}
+
+impl StateType for Test {
+    type State = State<Self>;
 }
 
 /// Conducts a dummy phase one trusted setup.
