@@ -123,8 +123,13 @@ where
     /// Malformed request that should not come from official client
     BadRequest,
 
-    /// Nonce not in sync, and client needs to update the nonce
-    NonceNotInSync(C::Nonce),
+    /// Invalid Signature
+    InvalidSignature {
+        /// Expected Nonce
+        ///
+        /// We also return the nonce here in case the client has gotten out of sync with the server.
+        expected_nonce: C::Nonce,
+    },
 
     /// Not Registered
     NotRegistered,

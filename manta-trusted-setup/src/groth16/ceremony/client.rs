@@ -90,6 +90,15 @@ where
         }
     }
 
+    /// Updates the client's nonce to the `expected_nonce` returned by the server.
+    #[inline]
+    fn update_nonce(&mut self, expected_nonce: C::Nonce) -> Result<(), CeremonyError<C>> {
+        self.signer
+            .set_valid_nonce(expected_nonce)
+            .then_some(())
+            .ok_or(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed))
+    }
+
     /// Signs the `message` with the signer in `self`, incrementing its nonce if the singing was
     /// successful.
     #[inline]
@@ -246,8 +255,11 @@ where
     .await?;
     loop {
         match client.try_contribute().await {
-            Ok(None) => return Ok(()),
             Ok(Some(update)) => process_update(update),
+            Ok(None) => return Ok(()),
+            Err(CeremonyError::InvalidSignature { expected_nonce }) => {
+                client.update_nonce(expected_nonce)?;
+            }
             Err(err) => return Err(err),
         }
     }

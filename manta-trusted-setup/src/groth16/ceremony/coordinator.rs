@@ -105,7 +105,11 @@ where
         challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
         metadata: Metadata,
     ) -> Self {
-        assert!(metadata.ceremony_size.matches(state.as_slice()));
+        assert!(
+            metadata.ceremony_size.matches(state.as_slice()),
+            "Mismatch of metadata `{:?}` and state.",
+            metadata,
+        );
         Self {
             registry,
             state,
@@ -192,7 +196,9 @@ where
         }
         request
             .verify(participant_nonce.clone(), participant.verifying_key())
-            .map_err(|_| CeremonyError::NonceNotInSync(participant_nonce.clone()))?;
+            .map_err(|_| CeremonyError::InvalidSignature {
+                expected_nonce: participant_nonce.clone(),
+            })?;
         participant.increment_nonce();
         Ok(participant.priority())
     }
@@ -242,6 +248,10 @@ where
     /// Updates the MPC state and challenge using client's contribution. If the contribution is
     /// valid, the participant will be removed from the waiting queue, and cannot participate in
     /// this ceremony again.
+    ///
+    /// # Registration
+    ///
+    /// This method requires that `participant` is already registered.
     #[inline]
     pub fn update(
         &mut self,

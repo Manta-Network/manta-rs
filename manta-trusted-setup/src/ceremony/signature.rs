@@ -27,12 +27,18 @@ use manta_util::AsBytes;
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Nonce
-pub trait Nonce: Default {
+pub trait Nonce: Default + PartialEq {
     /// Increments the current nonce by one.
     fn increment(&mut self);
 
     /// Checks if the current nonce is valid.
     fn is_valid(&self) -> bool;
+
+    /// Checks that `self` and `rhs` are valid and are both equal.
+    #[inline]
+    fn matches(&self, rhs: &Self) -> bool {
+        self.is_valid() && rhs.is_valid() && self == rhs
+    }
 }
 
 impl Nonce for u64 {
@@ -328,6 +334,18 @@ where
     #[inline]
     pub fn increment_nonce(&mut self) {
         self.nonce.increment()
+    }
+
+    /// Sets the current nonce for `self` to `nonce` if it is a valid nonce. If `nonce` is valid,
+    /// `true` is returned and `false` otherwise.
+    #[inline]
+    pub fn set_valid_nonce(&mut self, nonce: S::Nonce) -> bool {
+        if nonce.is_valid() {
+            self.nonce = nonce;
+            true
+        } else {
+            false
+        }
     }
 
     /// Returns the signing key for `self`.
