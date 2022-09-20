@@ -266,19 +266,19 @@ where
         verify::<S, _>(verifying_key, nonce, &self.message, &self.signature)
     }
 
-    ///
+    /// Converts `self` into its underlying identifier.
     #[inline]
     pub fn into_identifier(self) -> I {
         self.identifier
     }
 
-    ///
+    /// Converts `self` into its underlying message.
     #[inline]
     pub fn into_message(self) -> T {
         self.message
     }
 
-    ///
+    /// Converts `self` into its identifier and message.
     #[inline]
     pub fn into_inner(self) -> (I, T) {
         (self.identifier, self.message)
@@ -320,7 +320,7 @@ where
         &self.nonce
     }
 
-    ///
+    /// Increments the nonce for `self`.
     #[inline]
     pub fn increment_nonce(&mut self) {
         self.nonce.increment()
