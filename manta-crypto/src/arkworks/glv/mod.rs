@@ -252,22 +252,7 @@ pub trait HasGLV<M>: AffineCurveExt {
 impl HasGLV<bls12_381::Parameters> for bls12_381::G1Affine {
     #[inline]
     fn glv_parameters() -> GLVParameters<Self> {
-        let beta = <bls12_381::G1Affine as AffineCurve>::BaseField::from_random_bytes(
-            &"793479390729215512621379701633421447060886740281060493010456487427281649075476305620758731620350"
-            .parse::<BigUint>()
-            .unwrap()
-            .to_bytes_le()
-        )
-        .unwrap();
-        let base_v1 = (
-            BigInt::from_str("1").unwrap(),
-            BigInt::from_str("-228988810152649578064853576960394133503").unwrap(),
-        );
-        let base_v2 = (
-            BigInt::from_str("228988810152649578064853576960394133504").unwrap(),
-            BigInt::from_str("1").unwrap(),
-        );
-        GLVParameters::new_unchecked(beta, base_v1, base_v2)
+        parse_glv_parameters::<bls12_381::G1Affine>(include!("precomputed_glv_values/bls_values"))
     }
 }
 
@@ -276,23 +261,29 @@ impl HasGLV<bls12_381::Parameters> for bls12_381::G1Affine {
 impl HasGLV<bn254::Parameters> for bn254::G1Affine {
     #[inline]
     fn glv_parameters() -> GLVParameters<Self> {
-        let beta = <bn254::G1Affine as AffineCurve>::BaseField::from_random_bytes(
-            &"21888242871839275220042445260109153167277707414472061641714758635765020556616"
-                .parse::<BigUint>()
-                .unwrap()
-                .to_bytes_le(),
-        )
-        .unwrap();
-        let base_v1 = (
-            BigInt::from_str("147946756881789319000765030803803410728").unwrap(),
-            BigInt::from_str("-9931322734385697763").unwrap(),
-        );
-        let base_v2 = (
-            BigInt::from_str("9931322734385697763").unwrap(),
-            BigInt::from_str("147946756881789319010696353538189108491").unwrap(),
-        );
-        GLVParameters::new_unchecked(beta, base_v1, base_v2)
+        parse_glv_parameters::<bn254::G1Affine>(include!("precomputed_glv_values/bn_values"))
     }
+}
+
+/// Parses the GLV parameters from strings.
+#[inline]
+pub fn parse_glv_parameters<C>(glv_parameters: [&str; 5]) -> GLVParameters<C>
+where
+    C: AffineCurveExt,
+{
+    let beta = C::BaseField::from_random_bytes(
+        &glv_parameters[0].parse::<BigUint>().unwrap().to_bytes_le(),
+    )
+    .unwrap();
+    let base_v1 = (
+        BigInt::from_str(glv_parameters[1]).unwrap(),
+        BigInt::from_str(glv_parameters[2]).unwrap(),
+    );
+    let base_v2 = (
+        BigInt::from_str(glv_parameters[3]).unwrap(),
+        BigInt::from_str(glv_parameters[4]).unwrap(),
+    );
+    GLVParameters::<C>::new_unchecked(beta, base_v1, base_v2)
 }
 
 /// Testing Suite
@@ -302,46 +293,6 @@ pub mod test {
     use crate::rand::RngCore;
     use ark_ff::UniformRand;
     use rand_core::OsRng;
-
-    /// Parses the GLV parameters from strings.
-    #[inline]
-    pub fn parse_glv_parameters<C>(glv_parameters: [&str; 5]) -> GLVParameters<C>
-    where
-        C: AffineCurveExt,
-    {
-        let beta = C::BaseField::from_random_bytes(
-            &glv_parameters[0].parse::<BigUint>().unwrap().to_bytes_le(),
-        )
-        .unwrap();
-        let base_v1 = (
-            BigInt::from_str(glv_parameters[1]).unwrap(),
-            BigInt::from_str(glv_parameters[2]).unwrap(),
-        );
-        let base_v2 = (
-            BigInt::from_str(glv_parameters[3]).unwrap(),
-            BigInt::from_str(glv_parameters[4]).unwrap(),
-        );
-        GLVParameters::<C>::new_unchecked(beta, base_v1, base_v2)
-    }
-
-    /// Checks the GLV parameters of BLS12 and BN254 match the hardcoded sage outputs.
-    #[test]
-    fn bls_glv_parameters_match() {
-        let bls_hardcoded_parameters = parse_glv_parameters::<bls12_381::G1Affine>(include!(
-            "precomputed_glv_values/bls_values"
-        ));
-        let bls_parameters = bls12_381::G1Affine::glv_parameters();
-        assert_eq!(bls_hardcoded_parameters, bls_parameters);
-    }
-
-    /// Checks the GLV parameters of BN254 match the hardcoded sage outputs.
-    #[test]
-    fn bn_glv_parameters_match() {
-        let bn_hardcoded_parameters =
-            parse_glv_parameters::<bn254::G1Affine>(include!("precomputed_glv_values/bn_values"));
-        let bn_parameters = bn254::G1Affine::glv_parameters();
-        assert_eq!(bn_hardcoded_parameters, bn_parameters);
-    }
 
     /// Checks the GLV scalar multiplication gives the expected result for the curve `C`.
     #[inline]
