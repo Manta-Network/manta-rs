@@ -16,8 +16,6 @@
 
 //! Groth16 Trusted Setup Ceremony Messaging Protocol
 
-// FIXME: Use correct serde configuration since we don't assume it's always available
-
 use crate::{
     groth16::{
         ceremony::{Ceremony, Round},
@@ -26,6 +24,8 @@ use crate::{
     mpc,
 };
 use manta_crypto::arkworks::pairing::Pairing;
+
+#[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Ceremony Size Alias
@@ -46,21 +46,26 @@ impl CeremonySize {
 }
 
 /// Query Request
-#[derive(
-    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct QueryRequest;
 
 /// Response for [`QueryRequest`]
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        deserialize = "Round<C>: Deserialize<'de>",
-        serialize = "Round<C>: Serialize"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Round<C>: Deserialize<'de>",
+            serialize = "Round<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
 pub enum QueryResponse<C>
 where
@@ -74,11 +79,14 @@ where
 }
 
 /// Contribute Request
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(deserialize = "", serialize = "",),
-    crate = "manta_util::serde",
-    deny_unknown_fields
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "", serialize = "",),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
 pub struct ContributeRequest<C>
 where

@@ -75,7 +75,7 @@ impl<C> Client<C>
 where
     C: Ceremony,
 {
-    ///
+    /// Builds a new [`Client`] from `signer`, `client`, and `ceremony_size`.
     #[inline]
     fn new_unchecked(
         signer: Signer<C, C::Identifier>,
@@ -89,7 +89,8 @@ where
         }
     }
 
-    ///
+    /// Signs the `message` with the signer in `self`, incrementing its nonce if the singing was
+    /// successful.
     #[inline]
     fn sign<T>(
         &mut self,
@@ -106,9 +107,11 @@ where
         Ok(signed_message)
     }
 
-    ///
+    /// Builds a new [`Client`] from `signing_key`, `identifier`, and `client` and performs the
+    /// initial synchronization procedure with the ceremony server to establish the correct ceremony
+    /// parameters and registration status.
     #[inline]
-    pub async fn start(
+    pub async fn build(
         signing_key: C::SigningKey,
         identifier: C::Identifier,
         client: KnownUrlClient,
@@ -128,7 +131,8 @@ where
         ))
     }
 
-    ///
+    /// Queries for the state of the ceremony, returning the queue position if the participant is
+    /// not at the front of the queue.
     #[inline]
     async fn query(&mut self) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
@@ -152,7 +156,7 @@ where
         }
     }
 
-    ///
+    /// Performs the ceremony contribution over `round`, sending the result to the ceremony server.
     #[inline]
     async fn contribute(
         &mut self,
@@ -184,7 +188,9 @@ where
             .map_err(into_ceremony_error)
     }
 
-    ///
+    /// Tries to contribute to the ceremony if at the front of the queue. This method returns an
+    /// optional [`Update`] if the status of the unfinalized participant has changed. If the result
+    /// is `Ok(None)` then the ceremony contribution was successful.
     #[inline]
     pub async fn try_contribute(&mut self) -> Result<Option<Update>, CeremonyError<C>>
     where
@@ -212,7 +218,8 @@ where
     }
 }
 
-///
+/// Runs the contribution protocol for `signing_key`, `identifier`, and `server_url`, using
+/// `process_update` as the callback for processing [`Update`] messages from the client.
 #[inline]
 pub async fn contribute<C, U, F>(
     signing_key: C::SigningKey,
@@ -230,7 +237,7 @@ where
     U: IntoUrl,
     F: FnMut(Update),
 {
-    let mut client = Client::start(
+    let mut client = Client::build(
         signing_key,
         identifier,
         KnownUrlClient::new(server_url).map_err(into_ceremony_error)?,

@@ -172,7 +172,7 @@ where
         Round::new(self.state.to_vec().into(), self.challenge.to_vec().into())
     }
 
-    /// Preprocesses a request by checking nonce and verifying signature.
+    /// Preprocesses a request by checking the nonce and verifying the signature.
     #[inline]
     pub fn preprocess_request<T>(
         &mut self,
@@ -213,7 +213,7 @@ where
         }
     }
 
-    /// Updates the expired lock by reducing the priority of it's participant and setting it's
+    /// Updates the expired lock by reducing the priority of its participant and setting its
     /// contained value to the new front of the queue. The previous participant in the lock is
     /// returned.
     #[inline]
@@ -228,7 +228,7 @@ where
         })
     }
 
-    /// Checks lock for `participant`.
+    /// Checks the lock for `participant`.
     #[inline]
     pub fn check_lock(&mut self, participant: &C::Identifier) -> Result<(), CeremonyError<C>> {
         if self.participant_lock.has_expired(TIME_LIMIT) {
