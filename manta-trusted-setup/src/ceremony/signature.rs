@@ -174,13 +174,11 @@ where
     serde(
         bound(
             deserialize = r"
-                S::Nonce: Deserialize<'de>,
                 S::Signature: Deserialize<'de>,
                 I: Deserialize<'de>,
                 T: Deserialize<'de>,
             ",
             serialize = r"
-                S::Nonce: Serialize,
                 S::Signature: Serialize,
                 I: Serialize,
                 T: Serialize,
@@ -237,6 +235,12 @@ where
             identifier,
             message,
         ))
+    }
+
+    /// Returns a shared reference to the signature for this message.
+    #[inline]
+    pub fn signature(&self) -> &S::Signature {
+        &self.signature
     }
 
     /// Returns a shared reference to the identifier for this message.
@@ -324,6 +328,12 @@ where
     #[inline]
     pub fn increment_nonce(&mut self) {
         self.nonce.increment()
+    }
+
+    /// Returns the signing key for `self`.
+    #[inline]
+    pub fn signing_key(&self) -> &S::SigningKey {
+        &self.signing_key
     }
 
     /// Returns the identifier for `self`.

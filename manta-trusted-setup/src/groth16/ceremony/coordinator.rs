@@ -23,18 +23,15 @@ use crate::{
         signature::{Nonce, SignedMessage},
     },
     groth16::{
-        ceremony::{Ceremony, CeremonyError, Queue, Round, UnexpectedError},
-        mpc::{verify_transform, Proof, State, StateSize},
+        ceremony::{Ceremony, CeremonyError, Metadata, Queue, Round, UnexpectedError},
+        mpc::{verify_transform, Proof, State},
     },
 };
-use core::{mem, time::Duration};
+use core::mem;
 use manta_util::{time::lock::Timed, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-/// Time limit for a participant at the front of the queue to contribute with unit as second
-pub const TIME_LIMIT: Duration = Duration::from_secs(360);
 
 /// Ceremony Coordinator
 #[cfg_attr(
@@ -79,8 +76,8 @@ where
     /// Latest Proof
     latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>>,
 
-    /// State Sizes
-    size: BoxArray<StateSize, CIRCUIT_COUNT>,
+    /// Ceremony Metadata
+    metadata: Metadata,
 
     /// Current Round Number
     round: usize,
@@ -106,15 +103,16 @@ where
         registry: R,
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
-        size: BoxArray<StateSize, CIRCUIT_COUNT>,
+        metadata: Metadata,
     ) -> Self {
+        assert!(metadata.ceremony_size.matches(state.as_slice()));
         Self {
             registry,
             state,
             challenge,
             latest_contributor: None,
             latest_proof: None,
-            size,
+            metadata,
             round: 0,
             queue: Default::default(),
             participant_lock: Default::default(),
@@ -133,10 +131,10 @@ where
         self.round += 1;
     }
 
-    /// Returns the state size for each circuit in this ceremony.
+    /// Returns the metadata for this ceremony.
     #[inline]
-    pub fn size(&self) -> &[StateSize; CIRCUIT_COUNT] {
-        &self.size
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
     }
 
     /// Returns the registry.
@@ -231,7 +229,10 @@ where
     /// Checks the lock for `participant`.
     #[inline]
     pub fn check_lock(&mut self, participant: &C::Identifier) -> Result<(), CeremonyError<C>> {
-        if self.participant_lock.has_expired(TIME_LIMIT) {
+        if self
+            .participant_lock
+            .has_expired(self.metadata.contribution_time_limit)
+        {
             Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)
         } else {
             Self::check_lock_update_errors(false, self.participant_lock.get(), participant)

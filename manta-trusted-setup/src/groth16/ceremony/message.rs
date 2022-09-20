@@ -16,34 +16,14 @@
 
 //! Groth16 Trusted Setup Ceremony Messaging Protocol
 
-use crate::{
-    groth16::{
-        ceremony::{Ceremony, Round},
-        mpc::{Proof, State, StateSize},
-    },
-    mpc,
+use crate::groth16::{
+    ceremony::{Ceremony, Round},
+    mpc::{Proof, State},
 };
-use manta_crypto::arkworks::pairing::Pairing;
+use alloc::vec::Vec;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-/// Ceremony Size Alias
-///
-/// In the ceremony we always use parallel round structures to support multiple Groth16 circuits at
-/// the same time.
-pub type CeremonySize = mpc::Parallel<StateSize>;
-
-impl CeremonySize {
-    /// Checks that each size in `self` matches each [`State`] in `states`.
-    #[inline]
-    pub fn matches<P>(&self, states: &[State<P>]) -> bool
-    where
-        P: Pairing,
-    {
-        self.len() == states.len() && self.iter().zip(states).all(|(l, r)| l.matches(&r.0))
-    }
-}
 
 /// Query Request
 #[cfg_attr(

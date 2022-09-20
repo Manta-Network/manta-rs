@@ -25,10 +25,10 @@ use crate::{
     groth16::{
         ceremony::{
             coordinator::Coordinator,
-            message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, Participant as _, UnexpectedError,
+            message::{ContributeRequest, QueryRequest, QueryResponse},
+            Ceremony, CeremonyError, Metadata, Participant as _, UnexpectedError,
         },
-        mpc::{State, StateSize},
+        mpc::State,
     },
 };
 use alloc::sync::Arc;
@@ -70,11 +70,11 @@ where
         challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
         registry: R,
         recovery_directory: PathBuf,
-        size: BoxArray<StateSize, CIRCUIT_COUNT>,
+        metadata: Metadata,
     ) -> Self {
         Self {
             coordinator: Arc::new(Mutex::new(Coordinator::new(
-                registry, state, challenge, size,
+                registry, state, challenge, metadata,
             ))),
             recovery_directory,
         }
@@ -101,13 +101,13 @@ where
     pub async fn start(
         self,
         request: C::Identifier,
-    ) -> Result<(CeremonySize, C::Nonce), CeremonyError<C>>
+    ) -> Result<(Metadata, C::Nonce), CeremonyError<C>>
     where
         C::Nonce: Clone,
     {
         let coordinator = self.coordinator.lock();
         Ok((
-            coordinator.size().to_vec().into(),
+            coordinator.metadata().clone(),
             coordinator
                 .registry()
                 .get(&request)

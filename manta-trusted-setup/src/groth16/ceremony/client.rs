@@ -20,12 +20,13 @@ use crate::{
     ceremony::signature::{SignedMessage, Signer},
     groth16::{
         ceremony::{
-            message::{CeremonySize, ContributeRequest, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, Round, UnexpectedError,
+            message::{ContributeRequest, QueryRequest, QueryResponse},
+            Ceremony, CeremonyError, Metadata, Round, UnexpectedError,
         },
         mpc,
     },
 };
+use alloc::vec::Vec;
 use manta_crypto::rand::OsRng;
 use manta_util::{
     http::reqwest::{self, IntoUrl, KnownUrlClient},
@@ -67,8 +68,8 @@ where
     /// HTTP Client
     client: KnownUrlClient,
 
-    /// Ceremony Size
-    ceremony_size: CeremonySize,
+    /// Ceremony Metadata
+    metadata: Metadata,
 }
 
 impl<C> Client<C>
@@ -80,12 +81,12 @@ where
     fn new_unchecked(
         signer: Signer<C, C::Identifier>,
         client: KnownUrlClient,
-        ceremony_size: CeremonySize,
+        metadata: Metadata,
     ) -> Self {
         Self {
             signer,
             client,
-            ceremony_size,
+            metadata,
         }
     }
 
@@ -120,14 +121,14 @@ where
         C::Identifier: Serialize,
         C::Nonce: DeserializeOwned,
     {
-        let (ceremony_size, nonce) = client
+        let (metadata, nonce) = client
             .post("start", &identifier)
             .await
             .map_err(into_ceremony_error)?;
         Ok(Self::new_unchecked(
             Signer::new(nonce, signing_key, identifier),
             client,
-            ceremony_size,
+            metadata,
         ))
     }
 
@@ -144,7 +145,7 @@ where
         let signed_message = self.sign(QueryRequest)?;
         match self.client.post("query", &signed_message).await {
             Ok(QueryResponse::State(state)) => match state.with_valid_shape() {
-                Some(state) if self.ceremony_size.matches(&state.state) => {
+                Some(state) if self.metadata.ceremony_size.matches(&state.state) => {
                     Ok(QueryResponse::State(state))
                 }
                 _ => Err(CeremonyError::Unexpected(

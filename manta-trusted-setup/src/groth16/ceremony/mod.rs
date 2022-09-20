@@ -21,10 +21,11 @@ use crate::{
         participant::{Participant, Priority},
         signature::SignatureScheme,
     },
-    groth16::mpc::Configuration,
+    groth16::mpc::{Configuration, State, StateSize},
     mpc,
 };
-use core::fmt::Debug;
+use core::{fmt::Debug, time::Duration};
+use manta_crypto::arkworks::pairing::Pairing;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
@@ -67,6 +68,38 @@ pub trait Ceremony: Configuration + SignatureScheme {
 /// In the ceremony we always use parallel round structures to support multiple Groth16 circuits at
 /// the same time.
 pub type Round<C> = mpc::ParallelRound<C>;
+
+/// Ceremony Size Alias
+///
+/// In the ceremony we always use parallel round structures to support multiple Groth16 circuits at
+/// the same time.
+pub type CeremonySize = mpc::Parallel<StateSize>;
+
+impl CeremonySize {
+    /// Checks that each size in `self` matches each [`State`] in `states`.
+    #[inline]
+    pub fn matches<P>(&self, states: &[State<P>]) -> bool
+    where
+        P: Pairing,
+    {
+        self.len() == states.len() && self.iter().zip(states).all(|(l, r)| l.matches(&r.0))
+    }
+}
+
+/// Ceremony Metadata
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub struct Metadata {
+    /// Ceremony Size
+    pub ceremony_size: CeremonySize,
+
+    /// Contribution Time Limit
+    pub contribution_time_limit: Duration,
+}
 
 /// Ceremony Error
 #[cfg_attr(
