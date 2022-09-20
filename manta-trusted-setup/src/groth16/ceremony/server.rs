@@ -138,8 +138,8 @@ where
         }
     }
 
-    /// Processes a request to update the MPC state and remove the participant if successfully
-    /// updated the state. If update succeeds, save the current coordinator to disk.
+    /// Processes a request to update the MPC state and removes the participant if the state was
+    /// updated successfully. If the update succeeds, the current coordinator is saved to disk.
     #[inline]
     pub async fn update(
         self,

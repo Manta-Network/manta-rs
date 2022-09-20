@@ -250,9 +250,11 @@ where
     ) -> Result<(), CeremonyError<C>> {
         self.check_lock(participant)?;
         for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
+            let next_challenge = C::challenge(&self.challenge[i], &self.state[i], &state, &proof);
             self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
                 .map_err(|_| CeremonyError::BadRequest)?
-                .1
+                .1;
+            self.challenge[i] = next_challenge;
         }
         self.latest_proof = Some(proof);
         self.participant_lock.set(self.queue.pop_front());
