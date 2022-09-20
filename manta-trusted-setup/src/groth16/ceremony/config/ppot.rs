@@ -22,10 +22,14 @@ use crate::{
         registry::csv,
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
-    groth16::ceremony::{client, Ceremony, CeremonyError},
+    groth16::ceremony::{
+        client::{self, Update},
+        Ceremony, CeremonyError,
+    },
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use colored::Colorize;
+use console::{style, Term};
 use core::fmt::Debug;
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
@@ -343,178 +347,28 @@ where
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
 {
-    /*
-    let mut client = Client::start(
+    const LOCK_TIME: u64 = 5;
+    let term = Term::stdout();
+    client::contribute(
         signing_key,
         identifier,
-        KnownUrlClient::new("http://localhost:8080").expect("Should succeed."),
-    )
-    .await?;
-    loop {
-        match client.process().await {
-            Ok(true) => {
-                // TODO:
-                break;
-            }
-            Ok(false) => {
-                // TODO:
-                continue;
-            }
-            Err(err) => return Err(err),
-        }
-
-        /*
-        let state = match client.query().await {
-            Ok(QueryResponse::QueuePosition(position)) => {
-                // TODO:
-                continue;
-            }
-            Ok(QueryResponse::State(state)) => state,
-            Err(CeremonyError::Timeout) => {
-                // TODO:
-                continue;
-            }
-            Err(err) => return Err(err),
-        };
-        match client.contribute(&C::Hasher::default(), state).await {
-            Ok(_) => {
-                // TODO:
-                break;
-            }
-            Err(CeremonyError::Timeout) | Err(CeremonyError::NotYourTurn) => {
-                // TODO:
-                continue;
-            }
-            Err(err) => return Err(err),
-        }
-        */
-    }
-    */
-
-    /* TODO:
-    println!(
-        "{} Contacting Server for Meta Data...",
-        style("[1/9]").bold().dim()
-    );
-    let term = Term::stdout();
-    let (size, nonce) = get_start_meta_data::<C, CIRCUIT_COUNT>(&network_client, pk).await?;
-    let mut trusted_setup_client = Client::<C, CIRCUIT_COUNT>::new(pk, nonce, sk);
-    println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
-    loop {
-        let mpc_state = match network_client
-            .post::<_, Result<QueryResponse<C, CIRCUIT_COUNT>, CeremonyError<C>>>(
-                "query",
-                &trusted_setup_client.query()?,
-            )
-            .await
-            .map_err(|_| {
-                CeremonyError::Network(
-                    "Should have received starting meta data from server".to_string(),
-                )
-            })? {
-            Ok(message) => match message {
-                QueryResponse::QueuePosition(position) => {
-                    term.clear_last_lines(1)
-                        .expect("Clear last lines should succeed.");
-                    println!(
-                            "{} Waiting in Queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
-                            style("[2/9]").bold().dim(),
-                            style(position).bold().red(),
-                            style(5*position).bold().blue(),
-                        );
-                    thread::sleep(Duration::from_secs(1));
-                    continue;
-                }
-                QueryResponse::State(mpc_state) => {
-                    term.clear_last_lines(1)
-                        .expect("Clear last lines should succeed.");
-                    println!("{} Waiting in Queue...", style("[2/9]").bold().dim(),);
-                    println!(
-                        "{} Downloading Ceremony States...",
-                        style("[3/9]").bold().dim(),
-                    );
-                    if !size.matches(&mpc_state.state) {
-                        return Err(CeremonyError::Unexpected(
-                            UnexpectedError::IncorrectStateSize,
-                        ));
-                    }
-                    mpc_state
-                }
+        "http://localhost:8080",
+        |state| match state {
+            Update::Timeout => {
+                let _ = term.clear_last_lines(1);
+                println!("You have timed out. Waiting in queue again ...");
             },
-            Err(CeremonyError::Timeout) => {
-                term.clear_last_lines(1)
-                    .expect("Clear last lines should succeed.");
+            Update::Position(position) => {
+                let _ = term.clear_last_lines(1);
                 println!(
-                    "{} You have timed out. Waiting in Queue again...",
-                    style("[2/9]").bold().dim(),
+                    "Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
+                    style(position).bold().red(),
+                    style(LOCK_TIME * position).bold().blue(),
                 );
-                continue;
-            }
-            Err(CeremonyError::NotYourTurn) => {
-                return Err(CeremonyError::Unexpected(UnexpectedError::SkippedTurn));
-            }
-            Err(err) => return Err(err),
-        };
-        println!(
-            "{} Starting contribution to 3 Circuits...",
-            style("[4/9]").bold().dim(),
-        );
-        match network_client
-            .post::<_, Result<(), CeremonyError<C>>>(
-                "update",
-                &trusted_setup_client.contribute(
-                    &C::Hasher::default(),
-                    &mpc_state.challenge,
-                    mpc_state.state,
-                )?,
-            )
-            .await
-            .map_err(|_| {
-                CeremonyError::Network(
-                    "Should have received starting meta data from server".to_string(),
-                )
-            })? {
-            Ok(_) => {
-                term.clear_last_lines(1)
-                    .expect("Clear last lines should succeed.");
-                println!(
-                    "{} Waiting for Confirmation from Server...",
-                    style("[8/9]").bold().dim(),
-                );
-                println!(
-                    "{} Congratulations! You have successfully contributed to Manta Trusted Setup Ceremony!...",
-                    style("[9/9]").bold().dim(),
-                );
-                break;
-            }
-            Err(CeremonyError::Timeout) => {
-                term.clear_last_lines(1)
-                    .expect("Clear last lines should succeed.");
-                println!(
-                    "{} You have timed out. Waiting in Queue again...",
-                    style("[2/9]").bold().dim(),
-                );
-                continue;
-            }
-            Err(CeremonyError::NotRegistered) => {
-                return Err(CeremonyError::Unexpected(
-                    UnexpectedError::MissingRegisteredParticipant,
-                ));
-            }
-            Err(CeremonyError::NotYourTurn) => {
-                println!(
-                    "{} Lag behind server. Contacting Server again...",
-                    style("[8/9]").bold().dim(),
-                );
-                continue;
-            }
-            Err(err) => return Err(err),
-        }
-    }
-    Ok(())
-    */
-
-    client::contribute(signing_key, identifier, "http://localhost:8080", |_| {}).await
+            },
+        },
+    )
+    .await
 }
 
 /// Testing Suite
