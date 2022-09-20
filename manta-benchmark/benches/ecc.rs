@@ -19,7 +19,7 @@
 use core::iter::repeat_with;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_benchmark::{
-    benchmark::{Benchmark, GLVMutiplicationSetup},
+    benchmark::{glv::GLVMutiplicationSetup, Benchmark},
     ecc,
 };
 use manta_crypto::{

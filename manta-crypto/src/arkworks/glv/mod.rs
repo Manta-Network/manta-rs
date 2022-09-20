@@ -18,7 +18,10 @@
 
 use crate::arkworks::{
     ec::{
-        models::{short_weierstrass_jacobian, SWModelParameters},
+        models::{
+            short_weierstrass_jacobian, twisted_edwards_extended, SWModelParameters,
+            TEModelParameters,
+        },
         AffineCurve, ProjectiveCurve,
     },
     ff::PrimeField,
@@ -44,12 +47,6 @@ pub trait AffineCurveExt: AffineCurve {
 
     /// Builds [`Self`] from `x` and `y`.
     fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self;
-
-    /// Applies the GLV endomorphism to `self`.
-    #[inline]
-    fn glv_endomorphism(&self, beta: &Self::BaseField) -> Self {
-        Self::from_xy_unchecked(*self.x() * beta, *self.y())
-    }
 }
 
 impl<P> AffineCurveExt for short_weierstrass_jacobian::GroupAffine<P>
@@ -69,6 +66,26 @@ where
     #[inline]
     fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self {
         Self::new(x, y, false)
+    }
+}
+
+impl<P> AffineCurveExt for twisted_edwards_extended::GroupAffine<P>
+where
+    P: TEModelParameters,
+{
+    #[inline]
+    fn x(&self) -> &Self::BaseField {
+        &self.x
+    }
+
+    #[inline]
+    fn y(&self) -> &Self::BaseField {
+        &self.y
+    }
+
+    #[inline]
+    fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self {
+        Self::new(x, y)
     }
 }
 
@@ -158,13 +175,13 @@ where
     /// Generates scalars and points for the simultaneous multiple
     /// point multiplication.
     #[inline]
-    fn scalars_and_points(
+    fn scalars_and_points<M>(
         &self,
         point: &C,
         scalar: &C::ScalarField,
     ) -> (Vec<bool>, Vec<bool>, C::Projective, C::Projective)
     where
-        C: AffineCurveExt,
+        C: HasGLV<M>,
     {
         let (k1, k2) = decompose_scalar(scalar, self.basis().0, self.basis().1);
         let (k1_sign, k1) = k1.into_parts();
@@ -208,9 +225,9 @@ where
 
     /// Multiplies `point` by `scalar` using the GLV method.
     #[inline]
-    pub fn scalar_mul(&self, point: &C, scalar: &C::ScalarField) -> C
+    pub fn scalar_mul<M>(&self, point: &C, scalar: &C::ScalarField) -> C
     where
-        C: AffineCurveExt,
+        C: HasGLV<M>,
     {
         let (k1, k2, p1, p2) = self.scalars_and_points(point, scalar);
         Self::simultaneous_multiple_point_multiplication(k1, k2, p1, p2)
@@ -218,10 +235,16 @@ where
 }
 
 /// HasGLV Trait
-pub trait HasGLV<M>: AffineCurve {
+pub trait HasGLV<M>: AffineCurveExt {
     /// Generates [`GLVParameters`] from some precomputed parameters encoded
     /// in the marker type `M`.
     fn glv_parameters() -> GLVParameters<Self>;
+
+    /// Applies the GLV endomorphism to `self`.
+    #[inline]
+    fn glv_endomorphism(&self, beta: &Self::BaseField) -> Self {
+        Self::from_xy_unchecked(*self.x() * beta, *self.y())
+    }
 }
 
 #[cfg(feature = "ark-bls12-381")]
@@ -268,7 +291,7 @@ impl HasGLV<bn254::Parameters> for bn254::G1Affine {
             BigInt::from_str("9931322734385697763").unwrap(),
             BigInt::from_str("147946756881789319010696353538189108491").unwrap(),
         );
-        GLVParameters::<Self>::new_unchecked(beta, base_v1, base_v2)
+        GLVParameters::new_unchecked(beta, base_v1, base_v2)
     }
 }
 

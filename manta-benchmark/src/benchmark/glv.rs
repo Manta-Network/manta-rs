@@ -16,9 +16,10 @@
 
 //! Benchmark trait
 
+use crate::benchmark::Benchmark;
 use ark_ec::ProjectiveCurve;
 use core::marker::PhantomData;
-use criterion::{black_box, measurement::Measurement, BenchmarkGroup};
+use criterion::black_box;
 use manta_crypto::{
     arkworks::{
         ff::UniformRand,
@@ -26,35 +27,6 @@ use manta_crypto::{
     },
     rand::RngCore,
 };
-
-/// Benchmark trait
-pub trait Benchmark {
-    /// Benchmark Name
-    const NAME: &'static str;
-
-    /// Benchmark Output Type
-    type Output;
-
-    /// Benchmark Parameters
-    type Parameters;
-
-    /// Generates a randomized instance of `Self` from `parameters`.
-    fn setup<R>(rng: &mut R, parameters: Self::Parameters) -> Self
-    where
-        R: RngCore + ?Sized;
-
-    /// A function of `self` which will be benchmarked.
-    fn benchmark(&self) -> Self::Output;
-
-    /// Defines a benchmark from `benchmark`.
-    #[inline]
-    fn define_benchmark<M>(&self, group: &mut BenchmarkGroup<M>)
-    where
-        M: Measurement,
-    {
-        group.bench_function(Self::NAME, |b| b.iter(|| black_box(self.benchmark())));
-    }
-}
 
 /// GLV Multiplication Setup
 pub struct GLVMutiplicationSetup<C, M>
