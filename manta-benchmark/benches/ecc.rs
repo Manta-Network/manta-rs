@@ -140,15 +140,12 @@ fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
 
 #[inline]
 fn glv_scalar_multiplication(c: &mut Criterion) {
-    let mut group = c.benchmark_group("bench");
-    let mut rng = OsRng;
-    let glv_setup = black_box(GLVMutiplicationSetup::<BLSAffine, _>::setup(&mut rng, ()));
-    glv_setup.define_benchmark(&mut group);
+    black_box(GLVMutiplicationSetup::<BLSAffine, _>::setup(&mut OsRng, ()))
+        .define_benchmark(&mut c.benchmark_group("bench"));
 }
 
 criterion_group!(
     ecc,
-    glv_scalar_multiplication,
     affine_affine_addition,
     projective_affine_addition,
     projective_projective_addition,
@@ -157,5 +154,6 @@ criterion_group!(
     projective_to_affine_normalization,
     batch_vector_projective_to_affine_normalization,
     naive_vector_projective_to_affine_normalization,
+    glv_scalar_multiplication,
 );
 criterion_main!(ecc);

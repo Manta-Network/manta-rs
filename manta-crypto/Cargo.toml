@@ -51,8 +51,6 @@ serde = [
 
 # Standard Library
 std = [
-    "ark-bls12-381?/std",
-    "ark-bn254?/std",
     "ark-ec?/std",
     "ark-ed-on-bls12-381?/std",
     "ark-ed-on-bn254?/std",

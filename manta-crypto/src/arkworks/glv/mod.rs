@@ -45,7 +45,7 @@ pub trait AffineCurveExt: AffineCurve {
     /// Builds [`Self`] from `x` and `y`.
     fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self;
 
-    /// Applies the GLV endomorphism to `self`
+    /// Applies the GLV endomorphism to `self`.
     #[inline]
     fn glv_endomorphism(&self, beta: &Self::BaseField) -> Self {
         Self::from_xy_unchecked(*self.x() * beta, *self.y())
@@ -88,8 +88,9 @@ where
     (k1, k2)
 }
 
-#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 /// GLV Parameters
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct GLVParameters<C>
 where
     C: AffineCurve,
@@ -134,16 +135,19 @@ where
     }
 
     /// Returns a reference to `beta`.
+    #[inline]
     pub fn beta(&self) -> &C::BaseField {
         &self.beta
     }
 
     /// Returns `beta`, dropping `self`.
+    #[inline]
     pub fn into_beta(self) -> C::BaseField {
         self.beta
     }
 
     /// Returns a reference to the basis elements.
+    #[inline]
     pub fn basis(&self) -> ((&BigInt, &BigInt), (&BigInt, &BigInt)) {
         (
             (&self.base_v1.0, &self.base_v1.1),
@@ -196,7 +200,7 @@ where
         let table = vec![C::zero().into_projective(), p, q, p + q];
         let mut r = C::zero().into_projective();
         for i in 0..u.len() {
-            ProjectiveCurve::double_in_place(&mut r);
+            r.double_in_place();
             r += table[u[i] as usize + 2 * (v[i] as usize)]
         }
         r.into_affine()
@@ -240,7 +244,7 @@ impl HasGLV<bls12_381::Parameters> for bls12_381::G1Affine {
             BigInt::from_str("228988810152649578064853576960394133504").unwrap(),
             BigInt::from_str("1").unwrap(),
         );
-        GLVParameters::<Self>::new_unchecked(beta, base_v1, base_v2)
+        GLVParameters::new_unchecked(beta, base_v1, base_v2)
     }
 }
 
@@ -276,9 +280,9 @@ pub mod test {
     use ark_ff::UniformRand;
     use rand_core::OsRng;
 
-    /// Extracts the GLV parameters from a file.
+    /// Parses the GLV parameters from strings.
     #[inline]
-    fn extract_glv_parameters<C>(glv_parameters: [&str; 5]) -> GLVParameters<C>
+    pub fn parse_glv_parameters<C>(glv_parameters: [&str; 5]) -> GLVParameters<C>
     where
         C: AffineCurveExt,
     {
@@ -299,21 +303,26 @@ pub mod test {
 
     /// Checks the GLV parameters of BLS12 and BN254 match the hardcoded sage outputs.
     #[test]
-    fn glv_parameters_match() {
-        let bls_hardcoded_parameters = extract_glv_parameters::<bls12_381::G1Affine>(include!(
+    fn bls_glv_parameters_match() {
+        let bls_hardcoded_parameters = parse_glv_parameters::<bls12_381::G1Affine>(include!(
             "precomputed_glv_values/bls_values"
         ));
-        let bn_hardcoded_parameters =
-            extract_glv_parameters::<bn254::G1Affine>(include!("precomputed_glv_values/bn_values"));
         let bls_parameters = bls12_381::G1Affine::glv_parameters();
-        let bn_parameters = bn254::G1Affine::glv_parameters();
         assert_eq!(bls_hardcoded_parameters, bls_parameters);
+    }
+
+    /// Checks the GLV parameters of BN254 match the hardcoded sage outputs.
+    #[test]
+    fn bn_glv_parameters_match() {
+        let bn_hardcoded_parameters =
+            parse_glv_parameters::<bn254::G1Affine>(include!("precomputed_glv_values/bn_values"));
+        let bn_parameters = bn254::G1Affine::glv_parameters();
         assert_eq!(bn_hardcoded_parameters, bn_parameters);
     }
 
     /// Checks the GLV scalar multiplication gives the expected result for the curve `C`.
     #[inline]
-    fn glv_is_correct<C, R, M>(rng: &mut R)
+    pub fn glv_is_correct<C, R, M>(rng: &mut R)
     where
         C: AffineCurveExt + HasGLV<M>,
         R: RngCore + ?Sized,
@@ -329,13 +338,13 @@ pub mod test {
 
     /// Checks the implementation of GLV for BLS is correct.
     #[test]
-    pub fn glv_bls_is_correct() {
+    fn glv_bls_is_correct() {
         glv_is_correct::<bls12_381::G1Affine, _, _>(&mut OsRng)
     }
 
     /// Checks the implementation of GLV for BN is correct.
     #[test]
-    pub fn glv_bn_is_correct() {
+    fn glv_bn_is_correct() {
         glv_is_correct::<bn254::G1Affine, _, _>(&mut OsRng);
     }
 }

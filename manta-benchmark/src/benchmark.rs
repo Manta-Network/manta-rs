@@ -17,6 +17,7 @@
 //! Benchmark trait
 
 use ark_ec::ProjectiveCurve;
+use core::marker::PhantomData;
 use criterion::{black_box, measurement::Measurement, BenchmarkGroup};
 use manta_crypto::{
     arkworks::{
@@ -25,7 +26,6 @@ use manta_crypto::{
     },
     rand::RngCore,
 };
-use std::marker::PhantomData;
 
 /// Benchmark trait
 pub trait Benchmark {
@@ -74,9 +74,9 @@ where
     __: PhantomData<M>,
 }
 
-impl<C, T> Benchmark for GLVMutiplicationSetup<C, T>
+impl<C, M> Benchmark for GLVMutiplicationSetup<C, M>
 where
-    C: AffineCurveExt + HasGLV<T>,
+    C: AffineCurveExt + HasGLV<M>,
 {
     const NAME: &'static str = "GLV scalar multiplication";
 
