@@ -99,7 +99,7 @@ where
             .ok_or(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed))
     }
 
-    /// Signs the `message` with the signer in `self`, incrementing its nonce if the singing was
+    /// Signs the `message` with the signer in `self`, incrementing its nonce if the signing was
     /// successful.
     #[inline]
     fn sign<T>(

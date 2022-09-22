@@ -310,7 +310,7 @@ pub fn register(twitter_account: String, email: String) {
 #[inline]
 pub fn get_client_keys() -> Option<(ed25519::SecretKey, ed25519::PublicKey)> {
     println!(
-        "Please enter your {} that you get when you registered yourself using this tool.",
+        "Please enter the {} you received when you registered yourself using this tool.",
         "Secret".italic()
     );
     let seed_bytes = Seed::new(
