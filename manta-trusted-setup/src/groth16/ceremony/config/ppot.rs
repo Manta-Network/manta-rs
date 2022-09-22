@@ -185,19 +185,19 @@ impl participant::Priority for Participant {
     deny_unknown_fields
 )]
 pub struct Record {
-    ///
+    /// Twitter Account
     twitter: String,
 
-    ///
+    /// Email Account
     email: String,
 
-    ///
+    /// Priority Level
     priority: String,
 
-    ///
+    /// Verifying Key
     verifying_key: String,
 
-    ///
+    /// Signature
     signature: String,
 }
 
