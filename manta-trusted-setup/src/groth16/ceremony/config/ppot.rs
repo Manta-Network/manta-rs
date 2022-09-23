@@ -371,6 +371,26 @@ where
     .await
 }
 
+// TODO: figure out how to implement Ceremony for this marker type
+
+/// Groth16 Ceremony Structure
+pub struct Groth16Ceremony;
+
+impl Ceremony for Groth16Ceremony {
+    type Identifier = Self::Participant::Identifier;
+
+    type Priority = usize;
+
+    type Participant = participant::Participant<Ed25519, Identifier = ed25519::PublicKey, VerifyingKey = ed25519::SecretKey, Nonce = usize>;
+}
+
+impl Participant for Ed25519 {
+    type Identifier = ed25519::PublicKey;
+    type VerifyingKey = ed25519::SecretKey;
+}
+
+impl SignatureScheme for Groth16Ceremony {}
+
 /// Testing Suite
 #[cfg(test)]
 mod test {

@@ -60,6 +60,7 @@ blake2 = { version = "0.10.4", default-features = false }
 bs58 = { version = "0.4", default-features = false, features = ["alloc"] }
 colored = { version = "2.0.0", default-features = false }
 console = { version = "0.15.1", default-features = false }
+clap = { version = "3.2.16", default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
 csv = { version = "1.1.6", optional = true, default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 dialoguer = { version = "0.10.2", default-features = false }
@@ -67,6 +68,7 @@ manta-crypto = { path = "../manta-crypto", default-features = false, features = 
 manta-util = { path = "../manta-util", default-features = false, features = ["reqwest"] }
 parking_lot = { version = "0.12.1", default-features = false }
 tiny-bip39 = { version = "1.0.0", default-features = false } 
+tokio = { version = "1.20.1", default-features = false, features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 ark-snark = { version = "0.3.0", default-features = false }
