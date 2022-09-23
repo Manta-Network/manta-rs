@@ -19,7 +19,6 @@
 pub use ark_ec as ec;
 pub use ark_r1cs_std as r1cs_std;
 pub use ark_relations as relations;
-pub use ark_serialize as serialize;
 
 #[cfg(feature = "ark-bls12-381")]
 pub use ark_bls12_381 as bls12_381;
@@ -39,3 +38,4 @@ pub mod ff;
 pub mod pairing;
 pub mod rand;
 pub mod ratio;
+pub mod serialize;
