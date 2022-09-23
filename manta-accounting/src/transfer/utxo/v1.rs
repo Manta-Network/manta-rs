@@ -1117,7 +1117,7 @@ where
             receiving_key,
             &secret.outgoing_randomness,
             EmptyHeader::default(),
-            &secret.plaintext.asset,
+            &asset,
             &mut (),
         );
         let nullifier_commitment = self.base.nullifier_commitment_scheme.commit(
@@ -1905,6 +1905,7 @@ where
         group_generator: &C::Group,
         outgoing_base_encryption_scheme: &C::OutgoingBaseEncryptionScheme,
         receiving_key: &C::Group,
+        asset: &Asset<C, COM>,
         compiler: &mut COM,
     ) -> OutgoingNote<C, COM> {
         Hybrid::new(
@@ -1915,7 +1916,7 @@ where
             receiving_key,
             &self.outgoing_randomness,
             EmptyHeader::default(),
-            &self.plaintext.asset,
+            asset,
             compiler,
         )
     }
@@ -1960,6 +1961,7 @@ where
             parameters.group_generator.generator(),
             &parameters.outgoing_base_encryption_scheme,
             receiving_key,
+            &asset,
             compiler,
         );
         let item = parameters.item_hash(utxo, compiler);
