@@ -21,10 +21,11 @@ extern crate alloc;
 use clap::{Parser, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Input};
 
+use manta_trusted_setup::groth16::ceremony::CeremonyError;
 #[cfg(all(feature = "bincode", feature = "serde"))]
 use manta_trusted_setup::groth16::ceremony::{
     client::{handle_error, Error},
-    config::ppot::{client_contribute, get_client_keys, register},
+    config::ppot::{client_contribute, get_client_keys, register, Config},
 };
 
 /// Welcome Message
@@ -60,7 +61,7 @@ pub struct Arguments {
 impl Arguments {
     /// Takes command line arguments and executes the corresponding operations.
     #[inline]
-    pub fn run(self) -> Result<(), Error> {
+    pub fn run(self) -> Result<(), CeremonyError<Config>> {
         println!("{}", TITLE);
         match self.command {
             Command::Register => {
@@ -76,16 +77,18 @@ impl Arguments {
                 Ok(())
             }
             Command::Contribute => {
-                let (sk, pk) = get_client_keys().expect("Extracting the keys is not supposed to fail.");
+                let (sk, pk) =
+                    get_client_keys().expect("Extracting the keys is not supposed to fail.");
                 match tokio::runtime::Builder::new_multi_thread()
                     .worker_threads(4)
                     .enable_io()
                     .enable_time()
                     .build()
                 {
-                    Ok(runtime) => runtime
-                        .block_on(async { client_contribute::<Ceremony_concrete>(sk, pk).await }),
-                    Err(err) => Err(Error::UnexpectedError(format!("{}", err))),
+                    Ok(runtime) => {
+                        runtime.block_on(async { client_contribute::<Config>(sk, pk).await })
+                    }
+                    Err(err) => Err(CeremonyError::UnexpectedError(format!("{}", err))),
                 }
             }
         }

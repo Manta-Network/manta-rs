@@ -22,22 +22,40 @@ use crate::{
         registry::csv,
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
-    groth16::ceremony::{
-        client::{self, Update},
-        Ceremony, CeremonyError,
+    groth16::{
+        ceremony::{
+            client::{self, Update},
+            Ceremony, CeremonyError,
+        },
+        kzg::{self, Accumulator, Contribution, Size},
+        mpc::{Configuration, Proof, State},
     },
+    mpc::{ChallengeType, ContributionType, ProofType, StateType},
+    util::{BlakeHasher, KZGBlakeHasher},
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
+use blake2::Digest;
 use colored::Colorize;
 use console::{style, Term};
 use core::fmt::Debug;
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
+    arkworks::{
+        bn254,
+        ec::{AffineCurve, PairingEngine},
+        pairing::Pairing,
+        ratio::HashToGroup,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+    },
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
-    rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
-    signature::VerifyingKeyType,
+    rand::{ChaCha20Rng, OsRng, Rand, Sample, SeedableRng},
+    signature::{self, VerifyingKeyType},
 };
-use manta_util::serde::{de::DeserializeOwned, Deserialize, Serialize};
+use manta_util::{
+    into_array_unchecked,
+    serde::{de::DeserializeOwned, Deserialize, Serialize},
+};
+use std::io::{Read, Write};
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
@@ -371,25 +389,242 @@ where
     .await
 }
 
-// TODO: figure out how to implement Ceremony for this marker type
+/// Configuration for the Groth16 Phase2 Server.
+#[derive(Clone, Default)]
+pub struct Config(Ed25519<RawMessage<u64>>);
 
-/// Groth16 Ceremony Structure
-pub struct Groth16Ceremony;
+// impl HasDistribution for Config {
+//     type Distribution = ();
+// }
 
-impl Ceremony for Groth16Ceremony {
-    type Identifier = Self::Participant::Identifier;
+impl Pairing for Config {
+    type Scalar = bn254::Fr;
+    type G1 = bn254::G1Affine;
+    type G1Prepared = <bn254::Bn254 as PairingEngine>::G1Prepared;
+    type G2 = bn254::G2Affine;
+    type G2Prepared = <bn254::Bn254 as PairingEngine>::G2Prepared;
+    type Pairing = bn254::Bn254;
 
-    type Priority = usize;
+    #[inline]
+    fn g1_prime_subgroup_generator() -> Self::G1 {
+        bn254::G1Affine::prime_subgroup_generator()
+    }
 
-    type Participant = participant::Participant<Ed25519, Identifier = ed25519::PublicKey, VerifyingKey = ed25519::SecretKey, Nonce = usize>;
+    #[inline]
+    fn g2_prime_subgroup_generator() -> Self::G2 {
+        bn254::G2Affine::prime_subgroup_generator()
+    }
 }
 
-impl Participant for Ed25519 {
-    type Identifier = ed25519::PublicKey;
-    type VerifyingKey = ed25519::SecretKey;
+impl Size for Config {
+    const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
+    const G2_POWERS: usize = 1 << 17;
 }
 
-impl SignatureScheme for Groth16Ceremony {}
+impl kzg::Configuration for Config {
+    type DomainTag = u8;
+    type Challenge = [u8; 64];
+    type Response = [u8; 64];
+    type HashToGroup = KZGBlakeHasher<Self>;
+
+    const TAU_DOMAIN_TAG: Self::DomainTag = 0;
+    const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
+    const BETA_DOMAIN_TAG: Self::DomainTag = 2;
+
+    #[inline]
+    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
+        Self::HashToGroup { domain_tag }
+    }
+
+    #[inline]
+    fn response(
+        state: &Accumulator<Self>,
+        challenge: &Self::Challenge,
+        proof: &kzg::Proof<Self>,
+    ) -> Self::Response {
+        let mut hasher = BlakeHasher::default();
+        for item in &state.tau_powers_g1 {
+            item.serialize_uncompressed(&mut hasher).unwrap();
+        }
+        for item in &state.tau_powers_g2 {
+            item.serialize_uncompressed(&mut hasher).unwrap();
+        }
+        for item in &state.alpha_tau_powers_g1 {
+            item.serialize_uncompressed(&mut hasher).unwrap();
+        }
+        for item in &state.beta_tau_powers_g1 {
+            item.serialize_uncompressed(&mut hasher).unwrap();
+        }
+        state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
+        hasher.0.update(&challenge);
+        proof
+            .tau
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of tau failed.");
+        proof
+            .alpha
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of alpha failed.");
+        proof
+            .beta
+            .serialize(&mut hasher)
+            .expect("Consuming ratio proof of beta failed.");
+        into_array_unchecked(hasher.0.finalize())
+    }
+}
+
+impl StateType for Config {
+    type State = State<Self>;
+}
+
+impl ProofType for Config {
+    type Proof = Proof<Self>;
+}
+
+#[derive(Clone, Copy, Debug)]
+/// Challenge
+// we wrap this challenge to make it serializable
+pub struct Challenge([u8; 64]);
+
+impl CanonicalSerialize for Challenge {
+    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
+        writer.write_all(&self.0)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self) -> usize {
+        64
+    }
+}
+
+impl CanonicalDeserialize for Challenge {
+    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
+        let mut buf = [0u8; 64];
+        reader.read_exact(&mut buf)?;
+        Ok(Challenge(buf))
+    }
+}
+
+impl From<[u8; 64]> for Challenge {
+    #[inline]
+    fn from(challenge: [u8; 64]) -> Self {
+        Challenge(challenge)
+    }
+}
+
+impl From<Challenge> for [u8; 64] {
+    #[inline]
+    fn from(challenge: Challenge) -> Self {
+        challenge.0
+    }
+}
+
+impl<P> HashToGroup<P, Challenge> for BlakeHasher
+where
+    P: Pairing,
+    P::G2: Sample,
+{
+    #[inline]
+    fn hash(&self, challenge: &Challenge, ratio: (&P::G1, &P::G1)) -> P::G2 {
+        <Self as HashToGroup<P, [u8; 64]>>::hash(self, &challenge.0, ratio)
+    }
+}
+
+impl ChallengeType for Config {
+    type Challenge = Challenge;
+}
+
+impl ContributionType for Config {
+    type Contribution = Contribution<Self>;
+}
+
+impl Configuration for Config {
+    type Hasher = BlakeHasher;
+
+    #[inline]
+    fn challenge(
+        challenge: &Self::Challenge,
+        prev: &State<Self>,
+        next: &State<Self>,
+        proof: &Proof<Self>,
+    ) -> Self::Challenge {
+        let mut hasher = Self::Hasher::default();
+        hasher.0.update(challenge.0);
+        prev.0
+            .serialize_uncompressed(&mut hasher)
+            .expect("Consuming the previous state failed.");
+        next.0
+            .serialize_uncompressed(&mut hasher)
+            .expect("Consuming the current state failed.");
+        proof
+            .0
+            .serialize_uncompressed(&mut hasher)
+            .expect("Consuming proof failed");
+        into_array_unchecked(hasher.0.finalize()).into()
+    }
+}
+
+impl signature::SignatureType for Config {
+    type Signature = <Ed25519<RawMessage<u64>> as signature::SignatureType>::Signature;
+}
+
+impl signature::SigningKeyType for Config {
+    type SigningKey = <Ed25519<RawMessage<u64>> as signature::SigningKeyType>::SigningKey;
+}
+
+impl signature::MessageType for Config {
+    type Message = <Ed25519<RawMessage<u64>> as signature::MessageType>::Message;
+}
+
+impl signature::RandomnessType for Config {
+    type Randomness = <Ed25519<RawMessage<u64>> as signature::RandomnessType>::Randomness;
+}
+
+impl signature::VerifyingKeyType for Config {
+    type VerifyingKey = <Ed25519<RawMessage<u64>> as signature::VerifyingKeyType>::VerifyingKey;
+}
+
+impl signature::Sign for Config {
+    fn sign(
+        &self,
+        signing_key: &Self::SigningKey,
+        randomness: &Self::Randomness,
+        message: &Self::Message,
+        compiler: &mut (),
+    ) -> Self::Signature {
+        self.0.sign(signing_key, randomness, message, compiler)
+    }
+}
+
+impl signature::Verify for Config {
+    type Verification = <Ed25519<RawMessage<u64>> as signature::Verify>::Verification;
+    fn verify(
+        &self,
+        verifying_key: &Self::VerifyingKey,
+        message: &Self::Message,
+        signature: &Self::Signature,
+        compiler: &mut (),
+    ) -> Self::Verification {
+        self.0.verify(verifying_key, message, signature, compiler)
+    }
+}
+
+impl SignatureScheme for Config {
+    type Nonce = <Ed25519<RawMessage<u64>> as SignatureScheme>::Nonce;
+
+    type Error = <Ed25519<RawMessage<u64>> as SignatureScheme>::Error;
+}
+
+impl Ceremony for Config {
+    /// Participant Identifier Type
+    type Identifier = Self::VerifyingKey;
+
+    /// Participant Priority Type
+    type Priority = Priority;
+
+    /// Participant Type
+    type Participant = Participant;
+}
 
 /// Testing Suite
 #[cfg(test)]
