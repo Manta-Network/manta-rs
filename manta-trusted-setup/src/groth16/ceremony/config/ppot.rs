@@ -563,6 +563,8 @@ impl signature::VerifyingKeyType for Config {
 }
 
 impl signature::Sign for Config {
+
+    #[inline]
     fn sign(
         &self,
         signing_key: &Self::SigningKey,
@@ -576,6 +578,8 @@ impl signature::Sign for Config {
 
 impl signature::Verify for Config {
     type Verification = <Ed25519<RawMessage<u64>> as signature::Verify>::Verification;
+
+    #[inline]
     fn verify(
         &self,
         verifying_key: &Self::VerifyingKey,
@@ -589,19 +593,13 @@ impl signature::Verify for Config {
 
 impl SignatureScheme for Config {
     type Nonce = <Ed25519<RawMessage<u64>> as SignatureScheme>::Nonce;
-
     type Error = <Ed25519<RawMessage<u64>> as SignatureScheme>::Error;
 }
 
 #[cfg(feature = "ark-bn254")]
 impl Ceremony for Config {
-    /// Participant Identifier Type
     type Identifier = Self::VerifyingKey;
-
-    /// Participant Priority Type
     type Priority = Priority;
-
-    /// Participant Type
     type Participant = Participant;
 }
 
