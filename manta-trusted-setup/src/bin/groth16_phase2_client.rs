@@ -19,24 +19,10 @@
 extern crate alloc;
 
 use clap::{Parser, Subcommand};
-
-#[cfg(all(
-    feature = "bincode",
-    feature = "serde",
-    feature = "csv",
-    feature = "ark-bn254"
-))]
 use dialoguer::{theme::ColorfulTheme, Input};
-
-#[cfg(all(
-    feature = "bincode",
-    feature = "serde",
-    feature = "csv",
-    feature = "ark-bn254"
-))]
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{client_contribute, get_client_keys, handle_error, register, Config},
-    CeremonyError, UnexpectedError,
+    CeremonyError,
 };
 
 /// Welcome Message
@@ -69,12 +55,6 @@ pub struct Arguments {
     command: Command,
 }
 
-#[cfg(all(
-    feature = "bincode",
-    feature = "serde",
-    feature = "csv",
-    feature = "ark-bn254"
-))]
 impl Arguments {
     /// Takes command line arguments and executes the corresponding operations.
     #[inline]
@@ -94,8 +74,10 @@ impl Arguments {
                 Ok(())
             }
             Command::Contribute => {
-                let (sk, pk) =
-                    get_client_keys().expect("Extracting the keys is not supposed to fail.");
+                let (sk, pk) = match get_client_keys() {
+                    Ok(keys) => keys,
+                    Err(e) => panic!("Error while extracting the client keys: {}", e),
+                };
                 match tokio::runtime::Builder::new_multi_thread()
                     .worker_threads(4)
                     .enable_io()
@@ -105,9 +87,7 @@ impl Arguments {
                     Ok(runtime) => {
                         runtime.block_on(async { client_contribute::<Config>(sk, pk).await })
                     }
-                    Err(err) => Err(CeremonyError::Unexpected(UnexpectedError::Unexpected(
-                        format!("{}", err),
-                    ))),
+                    Err(e) => panic!("I/O Error while setting up the tokio Runtime: {:?}", e),
                 }
             }
         }
@@ -115,11 +95,5 @@ impl Arguments {
 }
 
 fn main() {
-    #[cfg(all(
-        feature = "bincode",
-        feature = "serde",
-        feature = "csv",
-        feature = "ark-bn254"
-    ))]
     handle_error(Arguments::parse().run());
 }

@@ -27,46 +27,34 @@ use crate::{
             client::{self, Update},
             Ceremony, CeremonyError,
         },
-        kzg::Size,
+        kzg::{self, Accumulator, Contribution, Size},
+        mpc::{Configuration, Proof, State},
     },
-    mpc::ChallengeType,
-    util::BlakeHasher,
+    mpc::{ChallengeType, ContributionType, ProofType, StateType},
+    util::{BlakeHasher, KZGBlakeHasher},
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
+use blake2::Digest;
 use colored::Colorize;
 use console::{style, Term};
-use core::fmt::Debug;
+use core::fmt::{Debug, Display, Formatter};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
-    arkworks::{pairing::Pairing, ratio::HashToGroup},
+    arkworks::{
+        bn254,
+        ec::{AffineCurve, PairingEngine},
+        pairing::Pairing,
+        ratio::HashToGroup,
+        serialize::CanonicalSerialize,
+    },
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
     rand::{ChaCha20Rng, OsRng, Rand, Sample, SeedableRng},
     signature::{self, VerifyingKeyType},
 };
-use manta_util::serde::{de::DeserializeOwned, Deserialize, Serialize};
-
-#[cfg(feature = "ark-bn254")]
-use crate::{
-    groth16::ceremony::{
-        kzg::{self, Accumulator, Contribution},
-        mpc::{Configuration, Proof, State},
-    },
-    mpc::{ContributionType, ProofType, StateType},
-    util::KZGBlakeHasher,
+use manta_util::{
+    into_array_unchecked,
+    serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
-
-#[cfg(feature = "ark-bn254")]
-use blake2::Digest;
-
-#[cfg(feature = "ark-bn254")]
-use manta_crypto::arkworks::{
-    bn254,
-    ec::{AffineCurve, PairingEngine},
-    serialize::CanonicalSerialize,
-};
-
-#[cfg(feature = "ark-bn254")]
-use manta_util::into_array_unchecked;
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
@@ -337,30 +325,65 @@ pub fn register(twitter_account: String, email: String) {
 
 /// Prompts the client information and get client keys.
 #[inline]
-pub fn get_client_keys() -> Option<(ed25519::SecretKey, ed25519::PublicKey)> {
+pub fn get_client_keys() -> Result<(ed25519::SecretKey, ed25519::PublicKey), ClientKeyError> {
     println!(
         "Please enter the {} you received when you registered yourself using this tool.",
         "Secret".italic()
     );
-    let seed_bytes = Seed::new(
-        &Mnemonic::from_phrase(
-            Input::with_theme(&ColorfulTheme::default())
-                .with_prompt("Your Secret")
-                .validate_with(|input: &String| -> Result<(), &str> {
-                    Mnemonic::validate(input, Language::English)
-                        .map_err(|_| "This is not a valid secret.")
-                })
-                .interact_text()
-                .expect("Please enter your secret received during `Register`.")
-                .as_str(),
-            Language::English,
-        )
-        .expect("Should produce a mnemonic from the secret."),
-        "manta-trusted-setup",
-    )
-    .as_bytes()
-    .to_vec();
-    generate_keys(&seed_bytes)
+    let text = match Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Your Secret")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            Mnemonic::validate(input, Language::English).map_err(|_| "This is not a valid secret.")
+        })
+        .interact_text()
+    {
+        Ok(text) => text,
+        Err(_) => return Err(ClientKeyError::InvalidSecret),
+    };
+    let mnemonic = match Mnemonic::from_phrase(text.as_str(), Language::English) {
+        Ok(mnemonic) => mnemonic,
+        Err(_) => return Err(ClientKeyError::MnemonicFailure),
+    };
+    let seed_bytes = Seed::new(&mnemonic, "manta-trusted-setup")
+        .as_bytes()
+        .to_vec();
+    match generate_keys(&seed_bytes) {
+        Some(keys) => Ok(keys),
+        None => Err(ClientKeyError::KeyGenerationFailure),
+    }
+}
+
+/// Client Key Error
+pub enum ClientKeyError {
+    /// Invalid Secret
+    InvalidSecret,
+
+    /// Mnemonic Generation Failure
+    MnemonicFailure,
+
+    /// Key Generation Failure
+    KeyGenerationFailure,
+}
+
+impl Display for ClientKeyError {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        match self {
+            ClientKeyError::InvalidSecret => {
+                write!(
+                    f,
+                    "Your {} is invalid. Please enter your secret received during `Register`.",
+                    "secret".italic()
+                )
+            }
+            ClientKeyError::MnemonicFailure => {
+                write!(f, "Should produce a mnemonic from the secret.")
+            }
+            ClientKeyError::KeyGenerationFailure => {
+                write!(f, "Failed to generate keys from seed bytes.")
+            }
+        }
+    }
 }
 
 /// Contributes to the server.
@@ -404,7 +427,6 @@ where
 #[derive(Clone, Default)]
 pub struct Config(Ed25519<RawMessage<u64>>);
 
-#[cfg(feature = "ark-bn254")]
 impl Pairing for Config {
     type Scalar = bn254::Fr;
     type G1 = bn254::G1Affine;
@@ -429,7 +451,6 @@ impl Size for Config {
     const G2_POWERS: usize = 1 << 17;
 }
 
-#[cfg(feature = "ark-bn254")]
 impl kzg::Configuration for Config {
     type DomainTag = u8;
     type Challenge = [u8; 64];
@@ -482,12 +503,10 @@ impl kzg::Configuration for Config {
     }
 }
 
-#[cfg(feature = "ark-bn254")]
 impl StateType for Config {
     type State = State<Self>;
 }
 
-#[cfg(feature = "ark-bn254")]
 impl ProofType for Config {
     type Proof = Proof<Self>;
 }
@@ -510,12 +529,10 @@ impl ChallengeType for Config {
     type Challenge = Challenge;
 }
 
-#[cfg(feature = "ark-bn254")]
 impl ContributionType for Config {
     type Contribution = Contribution<Self>;
 }
 
-#[cfg(feature = "ark-bn254")]
 impl Configuration for Config {
     type Hasher = BlakeHasher;
 
@@ -595,7 +612,6 @@ impl SignatureScheme for Config {
     type Error = <Ed25519<RawMessage<u64>> as SignatureScheme>::Error;
 }
 
-#[cfg(feature = "ark-bn254")]
 impl Ceremony for Config {
     type Identifier = Self::VerifyingKey;
     type Priority = Priority;
