@@ -19,9 +19,21 @@
 extern crate alloc;
 
 use clap::{Parser, Subcommand};
+
+#[cfg(all(
+    feature = "bincode",
+    feature = "serde",
+    feature = "csv",
+    feature = "ark-bn254"
+))]
 use dialoguer::{theme::ColorfulTheme, Input};
 
-#[cfg(all(feature = "bincode", feature = "serde"))]
+#[cfg(all(
+    feature = "bincode",
+    feature = "serde",
+    feature = "csv",
+    feature = "ark-bn254"
+))]
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{client_contribute, get_client_keys, handle_error, register, Config},
     CeremonyError, UnexpectedError,
@@ -57,6 +69,12 @@ pub struct Arguments {
     command: Command,
 }
 
+#[cfg(all(
+    feature = "bincode",
+    feature = "serde",
+    feature = "csv",
+    feature = "ark-bn254"
+))]
 impl Arguments {
     /// Takes command line arguments and executes the corresponding operations.
     #[inline]
@@ -97,5 +115,11 @@ impl Arguments {
 }
 
 fn main() {
+    #[cfg(all(
+        feature = "bincode",
+        feature = "serde",
+        feature = "csv",
+        feature = "ark-bn254"
+    ))]
     handle_error(Arguments::parse().run());
 }

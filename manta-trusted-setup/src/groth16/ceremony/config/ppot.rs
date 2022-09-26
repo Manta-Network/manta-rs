@@ -27,34 +27,46 @@ use crate::{
             client::{self, Update},
             Ceremony, CeremonyError,
         },
-        kzg::{self, Accumulator, Contribution, Size},
-        mpc::{Configuration, Proof, State},
+        kzg::Size,
     },
-    mpc::{ChallengeType, ContributionType, ProofType, StateType},
-    util::{BlakeHasher, KZGBlakeHasher},
+    mpc::ChallengeType,
+    util::BlakeHasher,
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
-use blake2::Digest;
 use colored::Colorize;
 use console::{style, Term};
 use core::fmt::Debug;
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
-    arkworks::{
-        bn254,
-        ec::{AffineCurve, PairingEngine},
-        pairing::Pairing,
-        ratio::HashToGroup,
-        serialize::CanonicalSerialize,
-    },
+    arkworks::{pairing::Pairing, ratio::HashToGroup},
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
     rand::{ChaCha20Rng, OsRng, Rand, Sample, SeedableRng},
     signature::{self, VerifyingKeyType},
 };
-use manta_util::{
-    into_array_unchecked,
-    serde::{de::DeserializeOwned, Deserialize, Serialize},
+use manta_util::serde::{de::DeserializeOwned, Deserialize, Serialize};
+
+#[cfg(feature = "ark-bn254")]
+use crate::{
+    groth16::ceremony::{
+        kzg::{self, Accumulator, Contribution},
+        mpc::{Configuration, Proof, State},
+    },
+    mpc::{ContributionType, ProofType, StateType},
+    util::KZGBlakeHasher,
 };
+
+#[cfg(feature = "ark-bn254")]
+use blake2::Digest;
+
+#[cfg(feature = "ark-bn254")]
+use manta_crypto::arkworks::{
+    bn254,
+    ec::{AffineCurve, PairingEngine},
+    serialize::CanonicalSerialize,
+};
+
+#[cfg(feature = "ark-bn254")]
+use manta_util::into_array_unchecked;
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
@@ -392,6 +404,7 @@ where
 #[derive(Clone, Default)]
 pub struct Config(Ed25519<RawMessage<u64>>);
 
+#[cfg(feature = "ark-bn254")]
 impl Pairing for Config {
     type Scalar = bn254::Fr;
     type G1 = bn254::G1Affine;
@@ -416,6 +429,7 @@ impl Size for Config {
     const G2_POWERS: usize = 1 << 17;
 }
 
+#[cfg(feature = "ark-bn254")]
 impl kzg::Configuration for Config {
     type DomainTag = u8;
     type Challenge = [u8; 64];
@@ -468,10 +482,12 @@ impl kzg::Configuration for Config {
     }
 }
 
+#[cfg(feature = "ark-bn254")]
 impl StateType for Config {
     type State = State<Self>;
 }
 
+#[cfg(feature = "ark-bn254")]
 impl ProofType for Config {
     type Proof = Proof<Self>;
 }
@@ -494,10 +510,12 @@ impl ChallengeType for Config {
     type Challenge = Challenge;
 }
 
+#[cfg(feature = "ark-bn254")]
 impl ContributionType for Config {
     type Contribution = Contribution<Self>;
 }
 
+#[cfg(feature = "ark-bn254")]
 impl Configuration for Config {
     type Hasher = BlakeHasher;
 
@@ -575,6 +593,7 @@ impl SignatureScheme for Config {
     type Error = <Ed25519<RawMessage<u64>> as SignatureScheme>::Error;
 }
 
+#[cfg(feature = "ark-bn254")]
 impl Ceremony for Config {
     /// Participant Identifier Type
     type Identifier = Self::VerifyingKey;

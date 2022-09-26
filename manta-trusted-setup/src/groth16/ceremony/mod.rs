@@ -24,6 +24,7 @@ use crate::{
     groth16::mpc::{Configuration, State, StateSize},
     mpc,
 };
+use alloc::string::String;
 use core::{fmt::Debug, time::Duration};
 use manta_crypto::arkworks::pairing::Pairing;
 use manta_util::{
