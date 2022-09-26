@@ -172,4 +172,7 @@ pub enum UnexpectedError {
 
     /// All Nonces were Used
     AllNoncesUsed,
+
+    /// Unexpected error
+    Unexpected(String),
 }

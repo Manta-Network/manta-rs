@@ -45,7 +45,7 @@ use manta_crypto::{
         ec::{AffineCurve, PairingEngine},
         pairing::Pairing,
         ratio::HashToGroup,
-        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+        serialize::CanonicalSerialize,
     },
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
     rand::{ChaCha20Rng, OsRng, Rand, Sample, SeedableRng},
@@ -55,7 +55,6 @@ use manta_util::{
     into_array_unchecked,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
-use std::io::{Read, Write};
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
@@ -393,10 +392,6 @@ where
 #[derive(Clone, Default)]
 pub struct Config(Ed25519<RawMessage<u64>>);
 
-// impl HasDistribution for Config {
-//     type Distribution = ();
-// }
-
 impl Pairing for Config {
     type Scalar = bn254::Fr;
     type G1 = bn254::G1Affine;
@@ -456,7 +451,7 @@ impl kzg::Configuration for Config {
             item.serialize_uncompressed(&mut hasher).unwrap();
         }
         state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
-        hasher.0.update(&challenge);
+        hasher.0.update(challenge);
         proof
             .tau
             .serialize(&mut hasher)
@@ -481,43 +476,8 @@ impl ProofType for Config {
     type Proof = Proof<Self>;
 }
 
-#[derive(Clone, Copy, Debug)]
-/// Challenge
-// we wrap this challenge to make it serializable
-pub struct Challenge([u8; 64]);
-
-impl CanonicalSerialize for Challenge {
-    fn serialize<W: Write>(&self, mut writer: W) -> Result<(), SerializationError> {
-        writer.write_all(&self.0)?;
-        Ok(())
-    }
-
-    fn serialized_size(&self) -> usize {
-        64
-    }
-}
-
-impl CanonicalDeserialize for Challenge {
-    fn deserialize<R: Read>(mut reader: R) -> Result<Self, SerializationError> {
-        let mut buf = [0u8; 64];
-        reader.read_exact(&mut buf)?;
-        Ok(Challenge(buf))
-    }
-}
-
-impl From<[u8; 64]> for Challenge {
-    #[inline]
-    fn from(challenge: [u8; 64]) -> Self {
-        Challenge(challenge)
-    }
-}
-
-impl From<Challenge> for [u8; 64] {
-    #[inline]
-    fn from(challenge: Challenge) -> Self {
-        challenge.0
-    }
-}
+/// Challenge Type
+pub type Challenge = manta_util::Array<u8, 64>;
 
 impl<P> HashToGroup<P, Challenge> for BlakeHasher
 where
@@ -624,6 +584,22 @@ impl Ceremony for Config {
 
     /// Participant Type
     type Participant = Participant;
+}
+
+/// Handles errors.
+#[inline]
+pub fn handle_error<T, C>(result: Result<T, CeremonyError<C>>) -> T
+where
+    C: Ceremony,
+    C::Nonce: Debug,
+{
+    match result {
+        Ok(x) => x,
+        Err(e) => {
+            println!("{}: {:?}", "error".red().bold(), e);
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Testing Suite

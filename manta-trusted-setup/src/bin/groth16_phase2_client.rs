@@ -21,11 +21,10 @@ extern crate alloc;
 use clap::{Parser, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Input};
 
-use manta_trusted_setup::groth16::ceremony::CeremonyError;
 #[cfg(all(feature = "bincode", feature = "serde"))]
 use manta_trusted_setup::groth16::ceremony::{
-    client::{handle_error, Error},
-    config::ppot::{client_contribute, get_client_keys, register, Config},
+    config::ppot::{client_contribute, get_client_keys, handle_error, register, Config},
+    CeremonyError, UnexpectedError,
 };
 
 /// Welcome Message
@@ -88,7 +87,9 @@ impl Arguments {
                     Ok(runtime) => {
                         runtime.block_on(async { client_contribute::<Config>(sk, pk).await })
                     }
-                    Err(err) => Err(CeremonyError::UnexpectedError(format!("{}", err))),
+                    Err(err) => Err(CeremonyError::Unexpected(UnexpectedError::Unexpected(
+                        format!("{}", err),
+                    ))),
                 }
             }
         }
