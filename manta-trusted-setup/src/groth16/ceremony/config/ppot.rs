@@ -563,7 +563,6 @@ impl signature::VerifyingKeyType for Config {
 }
 
 impl signature::Sign for Config {
-
     #[inline]
     fn sign(
         &self,
