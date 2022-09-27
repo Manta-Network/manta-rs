@@ -59,7 +59,7 @@ pub enum Continue {
 }
 
 /// Client Update States
-pub type Update = ControlFlow<ContributeResponse, Continue>;
+pub type Update<C> = ControlFlow<ContributeResponse<C>, Continue>;
 
 /// Client
 pub struct Client<C>
@@ -176,12 +176,13 @@ where
         &mut self,
         hasher: &C::Hasher,
         mut round: Round<C>,
-    ) -> Result<ContributeResponse, CeremonyError<C>>
+    ) -> Result<ContributeResponse<C>, CeremonyError<C>>
     where
         C::Identifier: Serialize,
         C::Nonce: Serialize,
         C::Signature: Serialize,
         ContributeRequest<C>: Serialize,
+        ContributeResponse<C>: DeserializeOwned,
     {
         let mut rng = OsRng;
         let mut proof = Vec::new();
@@ -207,13 +208,14 @@ where
     /// is `Ok(Response::Break)` then the ceremony contribution was successful and the success
     /// response is returned
     #[inline]
-    pub async fn try_contribute(&mut self) -> Result<Update, CeremonyError<C>>
+    pub async fn try_contribute(&mut self) -> Result<Update<C>, CeremonyError<C>>
     where
         C::Identifier: Serialize,
         C::Nonce: Serialize,
         C::Signature: Serialize,
-        ContributeRequest<C>: Serialize,
         QueryResponse<C>: DeserializeOwned,
+        ContributeRequest<C>: Serialize,
+        ContributeResponse<C>: DeserializeOwned,
     {
         let state = match self.query().await {
             Ok(QueryResponse::State(state)) => state,
@@ -241,14 +243,15 @@ pub async fn contribute<C, U, F>(
     identifier: C::Identifier,
     server_url: U,
     mut process_continuation: F,
-) -> Result<ContributeResponse, CeremonyError<C>>
+) -> Result<ContributeResponse<C>, CeremonyError<C>>
 where
     C: Ceremony,
     C::Identifier: Serialize,
     C::Nonce: DeserializeOwned + Serialize,
     C::Signature: Serialize,
-    ContributeRequest<C>: Serialize,
     QueryResponse<C>: DeserializeOwned,
+    ContributeRequest<C>: Serialize,
+    ContributeResponse<C>: DeserializeOwned,
     U: IntoUrl,
     F: FnMut(&Metadata, Continue),
 {
