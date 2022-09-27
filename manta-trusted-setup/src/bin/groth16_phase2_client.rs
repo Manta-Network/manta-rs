@@ -21,7 +21,7 @@ extern crate alloc;
 use clap::{Parser, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::{client_contribute, get_client_keys, handle_error, register, Config},
+    config::ppot::{client_contribute, exit_on_error, get_client_keys, register, Config},
     CeremonyError,
 };
 
@@ -95,5 +95,5 @@ impl Arguments {
 }
 
 fn main() {
-    handle_error(Arguments::parse().run());
+    exit_on_error(Arguments::parse().run());
 }

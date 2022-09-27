@@ -37,18 +37,17 @@ use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use blake2::Digest;
 use colored::Colorize;
 use console::{style, Term};
-use core::fmt::{Debug, Display, Formatter};
+use core::fmt::{self, Debug};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     arkworks::{
         bn254,
         ec::{AffineCurve, PairingEngine},
         pairing::Pairing,
-        ratio::HashToGroup,
         serialize::CanonicalSerialize,
     },
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
-    rand::{ChaCha20Rng, OsRng, Rand, Sample, SeedableRng},
+    rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     signature::{self, VerifyingKeyType},
 };
 use manta_util::{
@@ -330,30 +329,24 @@ pub fn get_client_keys() -> Result<(ed25519::SecretKey, ed25519::PublicKey), Cli
         "Please enter the {} you received when you registered yourself using this tool.",
         "Secret".italic()
     );
-    let text = match Input::with_theme(&ColorfulTheme::default())
+    let text = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Your Secret")
         .validate_with(|input: &String| -> Result<(), &str> {
             Mnemonic::validate(input, Language::English).map_err(|_| "This is not a valid secret.")
         })
         .interact_text()
-    {
-        Ok(text) => text,
-        Err(_) => return Err(ClientKeyError::InvalidSecret),
-    };
-    let mnemonic = match Mnemonic::from_phrase(text.as_str(), Language::English) {
-        Ok(mnemonic) => mnemonic,
-        Err(_) => return Err(ClientKeyError::MnemonicFailure),
-    };
+        .map_err(|_| ClientKeyError::InvalidSecret)?;
+    let mnemonic = Mnemonic::from_phrase(text.as_str(), Language::English)
+        .map_err(|_| ClientKeyError::MnemonicFailure)?;
     let seed_bytes = Seed::new(&mnemonic, "manta-trusted-setup")
         .as_bytes()
         .to_vec();
-    match generate_keys(&seed_bytes) {
-        Some(keys) => Ok(keys),
-        None => Err(ClientKeyError::KeyGenerationFailure),
-    }
+    generate_keys(&seed_bytes).ok_or(ClientKeyError::KeyGenerationFailure)
 }
 
 /// Client Key Error
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(crate = "manta_util::serde", deny_unknown_fields)]
 pub enum ClientKeyError {
     /// Invalid Secret
     InvalidSecret,
@@ -365,21 +358,21 @@ pub enum ClientKeyError {
     KeyGenerationFailure,
 }
 
-impl Display for ClientKeyError {
+impl fmt::Display for ClientKeyError {
     #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClientKeyError::InvalidSecret => {
+            Self::InvalidSecret => {
                 write!(
                     f,
                     "Your {} is invalid. Please enter your secret received during `Register`.",
                     "secret".italic()
                 )
             }
-            ClientKeyError::MnemonicFailure => {
+            Self::MnemonicFailure => {
                 write!(f, "Should produce a mnemonic from the secret.")
             }
-            ClientKeyError::KeyGenerationFailure => {
+            Self::KeyGenerationFailure => {
                 write!(f, "Failed to generate keys from seed bytes.")
             }
         }
@@ -514,17 +507,6 @@ impl ProofType for Config {
 /// Challenge Type
 pub type Challenge = manta_util::Array<u8, 64>;
 
-impl<P> HashToGroup<P, Challenge> for BlakeHasher
-where
-    P: Pairing,
-    P::G2: Sample,
-{
-    #[inline]
-    fn hash(&self, challenge: &Challenge, ratio: (&P::G1, &P::G1)) -> P::G2 {
-        <Self as HashToGroup<P, [u8; 64]>>::hash(self, &challenge.0, ratio)
-    }
-}
-
 impl ChallengeType for Config {
     type Challenge = Challenge;
 }
@@ -618,20 +600,15 @@ impl Ceremony for Config {
     type Participant = Participant;
 }
 
-/// Handles errors.
+/// Panics whenever `result` is an `Err`-variant and formats the error.
 #[inline]
-pub fn handle_error<T, C>(result: Result<T, CeremonyError<C>>) -> T
+pub fn exit_on_error<T, E>(result: Result<T, E>) -> T
 where
-    C: Ceremony,
-    C::Nonce: Debug,
+    E: Debug,
 {
-    match result {
-        Ok(x) => x,
-        Err(e) => {
-            println!("{}: {:?}", "error".red().bold(), e);
-            std::process::exit(1);
-        }
-    }
+    result.unwrap_or_else(|e| {
+        panic!("{}: {:?}", "error".red().bold(), e);
+    })
 }
 
 /// Testing Suite

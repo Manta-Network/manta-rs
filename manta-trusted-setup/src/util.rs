@@ -378,6 +378,17 @@ where
     }
 }
 
+impl<P, const N: usize> HashToGroup<P, manta_util::Array<u8, N>> for BlakeHasher
+where
+    P: Pairing,
+    P::G2: Sample,
+{
+    #[inline]
+    fn hash(&self, challenge: &manta_util::Array<u8, N>, ratio: (&P::G1, &P::G1)) -> P::G2 {
+        <Self as HashToGroup<P, [u8; N]>>::hash(self, &challenge.0, ratio)
+    }
+}
+
 /// KZG Blake Hasher
 pub struct KZGBlakeHasher<C>
 where
