@@ -25,7 +25,7 @@ use crate::{
     groth16::{
         ceremony::{
             coordinator::Coordinator,
-            message::{ContributeRequest, QueryRequest, QueryResponse},
+            message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, Metadata, Participant as _, UnexpectedError,
         },
         mpc::State,
@@ -141,10 +141,10 @@ where
     /// Processes a request to update the MPC state and removes the participant if the state was
     /// updated successfully. If the update succeeds, the current coordinator is saved to disk.
     #[inline]
-    pub async fn update(
+    pub async fn contribute(
         self,
         request: SignedMessage<C, C::Identifier, ContributeRequest<C>>,
-    ) -> Result<(), CeremonyError<C>>
+    ) -> Result<ContributeResponse, CeremonyError<C>>
     where
         Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: Serialize,
     {
@@ -164,6 +164,8 @@ where
         )
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         println!("{} participants have contributed.", coordinator.round());
-        Ok(())
+        Ok(ContributeResponse {
+            index: coordinator.round(),
+        })
     }
 }

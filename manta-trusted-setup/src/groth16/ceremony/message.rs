@@ -78,3 +78,18 @@ where
     /// Proof
     pub proof: Vec<Proof<C>>,
 }
+
+/// Contribution Response
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "", serialize = "",),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+pub struct ContributeResponse {
+    /// Contribution Index
+    pub index: u64,
+}

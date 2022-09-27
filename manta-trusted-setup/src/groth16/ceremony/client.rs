@@ -20,7 +20,7 @@ use crate::{
     ceremony::signature::{SignedMessage, Signer},
     groth16::{
         ceremony::{
-            message::{ContributeRequest, QueryRequest, QueryResponse},
+            message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, Metadata, Round, UnexpectedError,
         },
         mpc,
@@ -30,6 +30,7 @@ use alloc::vec::Vec;
 use manta_crypto::rand::OsRng;
 use manta_util::{
     http::reqwest::{self, IntoUrl, KnownUrlClient},
+    ops::ControlFlow,
     serde::{de::DeserializeOwned, Serialize},
 };
 
@@ -47,15 +48,18 @@ where
     }
 }
 
-/// Client Update States
+/// Client Continuation States
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum Update {
+pub enum Continue {
     /// Position Updated
     Position(u64),
 
     /// Timeout
     Timeout,
 }
+
+/// Client Update States
+pub type Update = ControlFlow<ContributeResponse, Continue>;
 
 /// Client
 pub struct Client<C>
@@ -172,7 +176,7 @@ where
         &mut self,
         hasher: &C::Hasher,
         mut round: Round<C>,
-    ) -> Result<(), CeremonyError<C>>
+    ) -> Result<ContributeResponse, CeremonyError<C>>
     where
         C::Identifier: Serialize,
         C::Nonce: Serialize,
@@ -193,16 +197,17 @@ where
             proof,
         })?;
         self.client
-            .post("update", &signed_message)
+            .post("contribute", &signed_message)
             .await
             .map_err(into_ceremony_error)
     }
 
     /// Tries to contribute to the ceremony if at the front of the queue. This method returns an
-    /// optional [`Update`] if the status of the unfinalized participant has changed. If the result
-    /// is `Ok(None)` then the ceremony contribution was successful.
+    /// [`Update`] if the status of the unfinalized participant has changed. If the result
+    /// is `Ok(Response::Break)` then the ceremony contribution was successful and the success
+    /// response is returned
     #[inline]
-    pub async fn try_contribute(&mut self) -> Result<Option<Update>, CeremonyError<C>>
+    pub async fn try_contribute(&mut self) -> Result<Update, CeremonyError<C>>
     where
         C::Identifier: Serialize,
         C::Nonce: Serialize,
@@ -213,15 +218,15 @@ where
         let state = match self.query().await {
             Ok(QueryResponse::State(state)) => state,
             Ok(QueryResponse::QueuePosition(position)) => {
-                return Ok(Some(Update::Position(position)))
+                return Ok(Update::Continue(Continue::Position(position)))
             }
-            Err(CeremonyError::Timeout) => return Ok(Some(Update::Timeout)),
+            Err(CeremonyError::Timeout) => return Ok(Update::Continue(Continue::Timeout)),
             Err(err) => return Err(err),
         };
         match self.contribute(&C::Hasher::default(), state).await {
-            Ok(_) => Ok(None),
+            Ok(response) => Ok(Update::Break(response)),
             Err(CeremonyError::Timeout) | Err(CeremonyError::NotYourTurn) => {
-                Ok(Some(Update::Timeout))
+                Ok(Update::Continue(Continue::Timeout))
             }
             Err(err) => Err(err),
         }
@@ -229,14 +234,14 @@ where
 }
 
 /// Runs the contribution protocol for `signing_key`, `identifier`, and `server_url`, using
-/// `process_update` as the callback for processing [`Update`] messages from the client.
+/// `process_update` as the callback for processing [`Continue`] messages from the client.
 #[inline]
 pub async fn contribute<C, U, F>(
     signing_key: C::SigningKey,
     identifier: C::Identifier,
     server_url: U,
-    mut process_update: F,
-) -> Result<(), CeremonyError<C>>
+    mut process_continuation: F,
+) -> Result<ContributeResponse, CeremonyError<C>>
 where
     C: Ceremony,
     C::Identifier: Serialize,
@@ -245,7 +250,7 @@ where
     ContributeRequest<C>: Serialize,
     QueryResponse<C>: DeserializeOwned,
     U: IntoUrl,
-    F: FnMut(Update),
+    F: FnMut(Continue),
 {
     let mut client = Client::build(
         signing_key,
@@ -255,8 +260,8 @@ where
     .await?;
     loop {
         match client.try_contribute().await {
-            Ok(Some(update)) => process_update(update),
-            Ok(None) => return Ok(()),
+            Ok(Update::Continue(update)) => process_continuation(update),
+            Ok(Update::Break(response)) => return Ok(response),
             Err(CeremonyError::InvalidSignature { expected_nonce }) => {
                 client.update_nonce(expected_nonce)?;
             }

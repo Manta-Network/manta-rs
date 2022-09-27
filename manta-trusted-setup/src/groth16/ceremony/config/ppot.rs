@@ -24,7 +24,7 @@ use crate::{
     },
     groth16::{
         ceremony::{
-            client::{self, Update},
+            client::{self, Continue},
             Ceremony, CeremonyError,
         },
         kzg::{self, Accumulator, Contribution, Size},
@@ -394,16 +394,16 @@ where
 {
     const LOCK_TIME: u64 = 5;
     let term = Term::stdout();
-    client::contribute(
+    let response = client::contribute(
         signing_key,
         identifier,
         "http://localhost:8080",
         |state| match state {
-            Update::Timeout => {
+            Continue::Timeout => {
                 let _ = term.clear_last_lines(1);
                 println!("You have timed out. Waiting in queue again ...");
             },
-            Update::Position(position) => {
+            Continue::Position(position) => {
                 let _ = term.clear_last_lines(1);
                 println!(
                     "Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
@@ -413,7 +413,9 @@ where
             },
         },
     )
-    .await
+    .await?;
+    println!("Success! You are contributor number {}.", response.index);
+    Ok(())
 }
 
 /// Configuration for the Groth16 Phase2 Server.

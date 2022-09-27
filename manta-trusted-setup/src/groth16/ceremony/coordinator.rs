@@ -80,7 +80,7 @@ where
     metadata: Metadata,
 
     /// Current Round Number
-    round: usize,
+    round: u64,
 
     /// Participant Queue
     #[cfg_attr(feature = "serde", serde(skip))]
@@ -125,7 +125,7 @@ where
 
     /// Returns the current round number.
     #[inline]
-    pub fn round(&self) -> usize {
+    pub fn round(&self) -> u64 {
         self.round
     }
 

@@ -34,7 +34,7 @@ use manta_crypto::{
     },
     rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
 };
-use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked};
+use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked, Array};
 
 #[cfg(feature = "rayon")]
 use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -378,14 +378,14 @@ where
     }
 }
 
-impl<P, const N: usize> HashToGroup<P, manta_util::Array<u8, N>> for BlakeHasher
+impl<P, const N: usize> HashToGroup<P, Array<u8, N>> for BlakeHasher
 where
     P: Pairing,
     P::G2: Sample,
 {
     #[inline]
-    fn hash(&self, challenge: &manta_util::Array<u8, N>, ratio: (&P::G1, &P::G1)) -> P::G2 {
-        <Self as HashToGroup<P, [u8; N]>>::hash(self, &challenge.0, ratio)
+    fn hash(&self, challenge: &Array<u8, N>, ratio: (&P::G1, &P::G1)) -> P::G2 {
+        <Self as HashToGroup<P, _>>::hash(self, &challenge.0, ratio)
     }
 }
 
