@@ -44,7 +44,7 @@ use manta_crypto::{
         bn254,
         ec::{AffineCurve, PairingEngine},
         pairing::Pairing,
-        serialize::CanonicalSerialize,
+        serialize::{CanonicalSerialize, SerializationError},
     },
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
@@ -605,6 +605,11 @@ impl Ceremony for Config {
     type Identifier = Self::VerifyingKey;
     type Priority = Priority;
     type Participant = Participant;
+    type SerializationError = SerializationError;
+
+    fn check_state(state: &Self::State) -> Result<(), Self::SerializationError> {
+        state.check()
+    }
 }
 
 /// Panics whenever `result` is an `Err`-variant and formats the error.

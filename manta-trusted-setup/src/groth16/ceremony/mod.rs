@@ -61,6 +61,12 @@ pub trait Ceremony: Configuration + SignatureScheme {
             VerifyingKey = Self::VerifyingKey,
             Nonce = Self::Nonce,
         > + Priority<Priority = Self::Priority>;
+
+    /// State deserialization error type
+    type SerializationError;
+
+    /// Checks state is valid before verifying a contribution.
+    fn check_state(state: &Self::State) -> Result<(), Self::SerializationError>;
 }
 
 /// Parallel Round Alias

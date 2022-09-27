@@ -24,20 +24,27 @@ use crate::{
 use alloc::{vec, vec::Vec};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
+use core::iter::once;
 use manta_crypto::{
     arkworks::{
-        ec::{AffineCurve, PairingEngine, ProjectiveCurve},
+        ec::{
+            models::short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine,
+            ProjectiveCurve, SWModelParameters,
+        },
         ff::{Field, PrimeField, UniformRand, Zero},
         pairing::{Pairing, PairingEngineExt},
         ratio::{HashToGroup, RatioProof},
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
+        serialize::SerializationError,
     },
     rand::{CryptoRng, RngCore},
 };
 
 #[cfg(feature = "serde")]
 use {
-    manta_crypto::arkworks::serialize::{canonical_deserialize, canonical_serialize},
+    manta_crypto::arkworks::serialize::{
+        canonical_deserialize, canonical_deserialize_unchecked, canonical_serialize,
+    },
     manta_util::serde::{Deserialize, Serialize},
 };
 
@@ -54,13 +61,53 @@ pub struct State<P>(
         feature = "serde",
         serde(
             serialize_with = "canonical_serialize::<ProvingKey<P::Pairing>, _>",
-            deserialize_with = "canonical_deserialize::<'de, _, ProvingKey<P::Pairing>>"
+            deserialize_with = "canonical_deserialize_unchecked::<'de, _, ProvingKey<P::Pairing>>"
         )
     )]
     pub ProvingKey<P::Pairing>,
 )
 where
     P: Pairing + ?Sized;
+
+// TODO: A macro should impl this for SWModel and TEModel
+impl<P, R1, R2> State<P>
+where
+    P: Pairing<G1 = GroupAffine<R1>, G2 = GroupAffine<R2>> + ?Sized,
+    R1: SWModelParameters,
+    R2: SWModelParameters,
+{
+    /// We deserialize a [`State`] unchecked by default, so a ceremony
+    /// coordinator needs to perform the deserialization checks manually.
+    #[inline]
+    pub fn check(&self) -> Result<(), SerializationError> {
+        once(&self.0.vk.alpha_g1)
+            .chain(self.0.vk.gamma_abc_g1.iter())
+            .chain(once(&self.0.beta_g1))
+            .chain(once(&self.0.delta_g1))
+            .chain(self.0.a_query.iter())
+            .chain(self.0.b_g1_query.iter())
+            .chain(self.0.h_query.iter())
+            .chain(self.0.l_query.iter())
+            .try_for_each(curve_point_checks)?;
+
+        once(&self.0.vk.beta_g2)
+            .chain(once(&self.0.vk.gamma_g2))
+            .chain(once(&self.0.vk.delta_g2))
+            .chain(self.0.b_g2_query.iter())
+            .try_for_each(curve_point_checks)
+    }
+}
+
+fn curve_point_checks<P>(p: &GroupAffine<P>) -> Result<(), SerializationError>
+where
+    P: SWModelParameters,
+{
+    if !(p.is_on_curve() && p.is_in_correct_subgroup_assuming_on_curve()) {
+        Err(SerializationError::InvalidData)
+    } else {
+        Ok(())
+    }
+}
 
 /// MPC Proof
 #[cfg_attr(
