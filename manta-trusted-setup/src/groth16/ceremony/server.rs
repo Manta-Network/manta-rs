@@ -144,9 +144,10 @@ where
     pub async fn contribute(
         self,
         request: SignedMessage<C, C::Identifier, ContributeRequest<C>>,
-    ) -> Result<ContributeResponse, CeremonyError<C>>
+    ) -> Result<ContributeResponse<C>, CeremonyError<C>>
     where
         Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: Serialize,
+        C::Challenge: Clone,
     {
         let mut coordinator = self.coordinator.lock();
         coordinator.preprocess_request(&request)?;
@@ -166,6 +167,7 @@ where
         println!("{} participants have contributed.", coordinator.round());
         Ok(ContributeResponse {
             index: coordinator.round(),
+            challenge: coordinator.challenge().to_vec(),
         })
     }
 }

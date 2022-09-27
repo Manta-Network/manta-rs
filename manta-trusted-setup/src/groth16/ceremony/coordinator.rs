@@ -174,6 +174,12 @@ where
         Round::new(self.state.to_vec().into(), self.challenge.to_vec().into())
     }
 
+    /// Returns the current challenge.
+    #[inline]
+    pub fn challenge(&self) -> &[C::Challenge; CIRCUIT_COUNT] {
+        &self.challenge
+    }
+
     /// Preprocesses a request by checking the nonce and verifying the signature.
     #[inline]
     pub fn preprocess_request<T>(

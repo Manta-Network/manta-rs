@@ -387,7 +387,7 @@ pub async fn client_contribute<C>(
 ) -> Result<(), CeremonyError<C>>
 where
     C: Ceremony,
-    C::Challenge: DeserializeOwned,
+    C::Challenge: Debug + DeserializeOwned,
     C::Identifier: Serialize,
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
@@ -419,7 +419,10 @@ where
         },
     )
     .await?;
-    println!("Success! You are contributor number {}.", response.index);
+    println!(
+        "Success! You are contributor number {} with this challenge hash: {:?}.",
+        response.index, response.challenge
+    );
     Ok(())
 }
 
