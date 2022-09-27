@@ -54,7 +54,7 @@ where
 }
 
 /// Deserializes data of type `T` using the [`CanonicalDeserialize`] format with `D` as the
-/// [`Deserializer`].
+/// [`Deserializer`] without checking for correctness.
 #[cfg(feature = "serde")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 #[inline]
