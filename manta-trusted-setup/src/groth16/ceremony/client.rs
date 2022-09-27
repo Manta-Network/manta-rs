@@ -234,7 +234,7 @@ where
 }
 
 /// Runs the contribution protocol for `signing_key`, `identifier`, and `server_url`, using
-/// `process_update` as the callback for processing [`Continue`] messages from the client.
+/// `process_continuation` as the callback for processing [`Continue`] messages from the client.
 #[inline]
 pub async fn contribute<C, U, F>(
     signing_key: C::SigningKey,
@@ -250,7 +250,7 @@ where
     ContributeRequest<C>: Serialize,
     QueryResponse<C>: DeserializeOwned,
     U: IntoUrl,
-    F: FnMut(Continue),
+    F: FnMut(&Metadata, Continue),
 {
     let mut client = Client::build(
         signing_key,
@@ -260,7 +260,7 @@ where
     .await?;
     loop {
         match client.try_contribute().await {
-            Ok(Update::Continue(update)) => process_continuation(update),
+            Ok(Update::Continue(update)) => process_continuation(&client.metadata, update),
             Ok(Update::Break(response)) => return Ok(response),
             Err(CeremonyError::InvalidSignature { expected_nonce }) => {
                 client.update_nonce(expected_nonce)?;

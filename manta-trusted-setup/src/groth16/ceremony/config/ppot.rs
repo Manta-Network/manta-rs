@@ -392,24 +392,29 @@ where
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
 {
-    const LOCK_TIME: u64 = 5;
     let term = Term::stdout();
     let response = client::contribute(
         signing_key,
         identifier,
         "http://localhost:8080",
-        |state| match state {
+        |metadata, state| match state {
             Continue::Timeout => {
                 let _ = term.clear_last_lines(1);
                 println!("You have timed out. Waiting in queue again ...");
             },
             Continue::Position(position) => {
                 let _ = term.clear_last_lines(1);
-                println!(
-                    "Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {} minutes.",
-                    style(position).bold().red(),
-                    style(LOCK_TIME * position).bold().blue(),
-                );
+                if position <= u32::MAX.into() {
+                    println!(
+                        "Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.",
+                        style(position).bold().red(),
+                        style(format!("{:?}", metadata.contribution_time_limit * (position as u32))).bold().blue(),
+                    );
+                } else {
+                    println!(
+                        "Waiting in queue... There are many people ahead of you. Estimated Waiting Time: forever.",
+                    );
+                }
             },
         },
     )
