@@ -19,13 +19,14 @@
 use crate::{
     ceremony::{
         participant,
-        registry::csv,
+        registry::{csv, Registry},
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
     groth16::{
         ceremony::{
             client::{self, Continue},
             message::ContributeResponse,
+            server::Server,
             Ceremony, CeremonyError,
         },
         kzg::{Contribution, Size},

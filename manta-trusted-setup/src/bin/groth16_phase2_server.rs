@@ -17,9 +17,10 @@
 //! Trusted Setup Ceremony Server
 
 use clap::{Parser, Subcommand};
-use manta_trusted_setup::groth16::ceremony::{ CeremonyError,
+use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{exit_on_error, Config},
     server::Server,
+    CeremonyError,
 };
 use manta_util::http::tide;
 
