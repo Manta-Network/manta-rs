@@ -158,7 +158,7 @@ where
 {
     #[inline]
     /// Gets [`Mnemonic`]
-    fn expose_mnemonic(& self) -> &'static Mnemonic {
+    fn expose_mnemonic<'a>(&'a self) -> &'a Mnemonic {
         &self.mnemonic
     }
 
