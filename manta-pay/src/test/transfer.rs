@@ -21,15 +21,10 @@ use crate::{
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
-use ark_std::rand::RngCore;
-use core::fmt::Debug;
-use manta_accounting::transfer::{
-    test::assert_valid_proof, Configuration, ProofSystemError, TransferPost, VerifyingContext,
-};
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::{self, measure::Measure, test::verify_fuzz_public_input, ProofSystem as _},
-    rand::{fuzz::Fuzz, OsRng, Rand, Sample},
+    constraint::{measure::Measure, ProofSystem as _},
+    rand::{OsRng, Rand},
 };
 use std::io::Cursor;
 
@@ -171,6 +166,7 @@ fn to_public_generate_proof_input_is_compatibile() {
     );
 }
 
+/*
 /// Checks that a [`TransferPost`] is valid, and that its proof cannot be verified when tested against a fuzzed
 /// or randomized `public_input`.
 #[inline]
@@ -203,26 +199,26 @@ fn validity_check_with_fuzzing<C, R, A, M>(
     );
 }
 
-/// Tests a [`Mint`] proof is valid verified against the right public input and invalid
+/// Tests a [`ToPublic`] proof is valid verified against the right public input and invalid
 /// when the public input has been fuzzed or randomly generated.
 #[test]
 fn mint_proof_validity() {
     let mut rng = OsRng;
     let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let (proving_context, verifying_context) = Mint::generate_context(
+    let (proving_context, verifying_context) = ToPublic::generate_context(
         &(),
         FullParameters::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
-    let post = Mint::sample_post(
+    let post = ToPublic::sample_post(
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
         &mut rng,
     )
-    .expect("Random Mint should have produced a proof.");
+    .expect("Random ToPublic should have produced a proof.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
 
@@ -271,6 +267,7 @@ fn reclaim_proof_validity() {
     .expect("Random Reclaim should have produced a proof.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
+*/
 
 /// Asserts that `proof` can be SCALE encoded and decoded with at least [`Vec`], [`Cursor`], and
 /// [`File`](std::fs::File).

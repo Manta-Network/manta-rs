@@ -724,10 +724,12 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::config::Bls12_381_Edwards;
     use manta_crypto::{
         algebra::{test::window_correctness, PrecomputedBaseTable, ScalarMul},
-        arkworks::{algebra::scalar_bits, r1cs_std::groups::curves::twisted_edwards::AffineVar},
+        arkworks::{
+            algebra::scalar_bits, ed_on_bls12_381::EdwardsProjective as Bls12_381_Edwards,
+            r1cs_std::groups::curves::twisted_edwards::AffineVar,
+        },
         constraint::{measure::Measure, Satisfied},
         eclair::bool::AssertEq,
         rand::OsRng,
