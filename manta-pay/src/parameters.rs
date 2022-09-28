@@ -27,10 +27,12 @@ use manta_parameters::Get;
 use manta_util::codec::Decode;
 use rand_chacha::ChaCha20Rng;
 
+#[cfg(feature = "download")]
+use manta_parameters::Download;
+
 #[cfg(feature = "std")]
 use {
     crate::config::ProvingContext,
-    manta_parameters::Download,
     manta_util::codec::IoReader,
     std::{fs::File, path::Path},
 };
