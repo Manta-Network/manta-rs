@@ -134,7 +134,7 @@ type SeedBytes = Array<u8, { Seed::SIZE }>;
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
@@ -158,7 +158,7 @@ where
 {
     #[inline]
     /// Gets [`Mnemonic`]
-    fn expose_mnemonic() -> &Mnemonic {
+    fn expose_mnemonic(& self) -> &'static Mnemonic {
         &self.mnemonic
     }
 
