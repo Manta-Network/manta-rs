@@ -390,6 +390,7 @@ pub async fn client_contribute<C>(
 where
     C: Ceremony,
     C::Challenge: Debug + DeserializeOwned,
+    C::ContributionHash: Debug,
     C::Identifier: Serialize,
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
@@ -559,6 +560,7 @@ impl Ceremony for Config {
     type Priority = Priority;
     type Participant = Participant;
     type SerializationError = SerializationError;
+    type ContributionHash = manta_util::Array<u8, 16>;
 
     #[inline]
     fn check_state(state: &Self::State) -> Result<(), Self::SerializationError> {
@@ -566,16 +568,19 @@ impl Ceremony for Config {
     }
 
     #[inline]
-    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::Challenge {
-        let mut hasher = Self::Hasher::default();
+    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::ContributionHash {
+        let mut hasher = blake2::Blake2b::default();
         response
             .index
             .serialize_uncompressed(&mut hasher)
             .expect("Consuming the contribution number failed.");
         for challenge in &response.challenge {
-            hasher.0.update(challenge.0);
+            challenge
+                .0
+                .serialize_uncompressed(&mut hasher)
+                .expect("Consuming the challenge number failed.");
         }
-        into_array_unchecked(hasher.0.finalize()).into()
+        into_array_unchecked(hasher.finalize()).into()
     }
 }
 
