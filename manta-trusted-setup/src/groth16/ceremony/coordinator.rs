@@ -36,6 +36,7 @@ use std::sync::Mutex;
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Queue and Participant Lock
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct LockQueue<C, const LEVEL_COUNT: usize>
 where
     C: Ceremony,
@@ -66,6 +67,7 @@ where
         deny_unknown_fields
     )
 )]
+#[derive(Clone)]
 pub struct StateChallengeProof<C, const CIRCUIT_COUNT: usize>
 where
     C: Ceremony,
@@ -157,7 +159,7 @@ where
 
     /// Returns the registry.
     #[inline]
-    pub fn registry(&mut self) -> &R {
+    pub fn registry(&self) -> &R {
         &self
             .registry
             .get_mut()
@@ -264,6 +266,7 @@ where
         if participant.has_contributed() {
             return Err(CeremonyError::AlreadyContributed);
         }
+        self.check_lock(participant.id());
         let participant_nonce = participant.nonce();
         if !participant_nonce.is_valid() {
             return Err(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed));
@@ -333,7 +336,6 @@ where
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
     ) -> Result<(), CeremonyError<C>> {
-        self.check_lock(participant)?;
         for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
             let next_challenge =
                 C::challenge(&self.challenge()[i], &self.state_mut()[i], &state, &proof);
