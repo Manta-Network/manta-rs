@@ -67,6 +67,13 @@ pub trait Ceremony: Configuration + SignatureScheme {
 
     /// Checks state is valid before verifying a contribution.
     fn check_state(state: &Self::State) -> Result<(), Self::SerializationError>;
+
+    /// Hashes `contribution_number` and a slice of challenges into a new challenge,
+    /// which will be the hash of the contribution.
+    fn contribution_hash(
+        contribution_number: u64,
+        challenges: &[Self::Challenge],
+    ) -> Self::Challenge;
 }
 
 /// Parallel Round Alias

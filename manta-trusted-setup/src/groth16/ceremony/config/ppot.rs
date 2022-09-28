@@ -27,11 +27,11 @@ use crate::{
             client::{self, Continue},
             Ceremony, CeremonyError,
         },
-        kzg::{self, Accumulator, Contribution, Size},
+        kzg::{Contribution, Size},
         mpc::{Configuration, Proof, State},
     },
     mpc::{ChallengeType, ContributionType, ProofType, StateType},
-    util::{BlakeHasher, KZGBlakeHasher},
+    util::BlakeHasher,
 };
 use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use blake2::Digest;
@@ -420,8 +420,8 @@ where
     )
     .await?;
     println!(
-        "Success! You are contributor number {} with this challenge hash: {:?}.",
-        response.index, response.challenge
+        "Success! To ensure the integrity of the ceremony, please tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
+        response.index, C::contribution_hash(response.index, &response.challenge)
     );
     Ok(())
 }
@@ -452,58 +452,6 @@ impl Pairing for Config {
 impl Size for Config {
     const G1_POWERS: usize = (Self::G2_POWERS << 1) - 1;
     const G2_POWERS: usize = 1 << 17;
-}
-
-impl kzg::Configuration for Config {
-    type DomainTag = u8;
-    type Challenge = [u8; 64];
-    type Response = [u8; 64];
-    type HashToGroup = KZGBlakeHasher<Self>;
-
-    const TAU_DOMAIN_TAG: Self::DomainTag = 0;
-    const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
-    const BETA_DOMAIN_TAG: Self::DomainTag = 2;
-
-    #[inline]
-    fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
-        Self::HashToGroup { domain_tag }
-    }
-
-    #[inline]
-    fn response(
-        state: &Accumulator<Self>,
-        challenge: &Self::Challenge,
-        proof: &kzg::Proof<Self>,
-    ) -> Self::Response {
-        let mut hasher = BlakeHasher::default();
-        for item in &state.tau_powers_g1 {
-            item.serialize_uncompressed(&mut hasher).unwrap();
-        }
-        for item in &state.tau_powers_g2 {
-            item.serialize_uncompressed(&mut hasher).unwrap();
-        }
-        for item in &state.alpha_tau_powers_g1 {
-            item.serialize_uncompressed(&mut hasher).unwrap();
-        }
-        for item in &state.beta_tau_powers_g1 {
-            item.serialize_uncompressed(&mut hasher).unwrap();
-        }
-        state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
-        hasher.0.update(challenge);
-        proof
-            .tau
-            .serialize(&mut hasher)
-            .expect("Consuming ratio proof of tau failed.");
-        proof
-            .alpha
-            .serialize(&mut hasher)
-            .expect("Consuming ratio proof of alpha failed.");
-        proof
-            .beta
-            .serialize(&mut hasher)
-            .expect("Consuming ratio proof of beta failed.");
-        into_array_unchecked(hasher.0.finalize())
-    }
 }
 
 impl StateType for Config {
@@ -610,8 +558,24 @@ impl Ceremony for Config {
     type Participant = Participant;
     type SerializationError = SerializationError;
 
+    #[inline]
     fn check_state(state: &Self::State) -> Result<(), Self::SerializationError> {
         state.check()
+    }
+
+    #[inline]
+    fn contribution_hash(
+        contribution_number: u64,
+        challenges: &[Self::Challenge],
+    ) -> Self::Challenge {
+        let mut hasher = Self::Hasher::default();
+        contribution_number
+            .serialize_uncompressed(&mut hasher)
+            .expect("Consuming the contribution number failed.");
+        for challenge in challenges {
+            hasher.0.update(challenge.0);
+        }
+        into_array_unchecked(hasher.0.finalize()).into()
     }
 }
 
