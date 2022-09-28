@@ -134,10 +134,17 @@ where
         C::Identifier: Serialize,
         C::Nonce: DeserializeOwned,
     {
-        let (metadata, nonce) = client
+        let mut client_data = client
             .post("start", &identifier)
             .await
-            .map_err(into_ceremony_error)?;
+            .map_err(into_ceremony_error);
+        while let Err(CeremonyError::NotRegistered) = client_data {
+            client_data = client
+                .post("start", &identifier)
+                .await
+                .map_err(into_ceremony_error);
+        }
+        let (metadata, nonce) = client_data?;
         Ok(Self::new_unchecked(
             Signer::new(nonce, signing_key, identifier),
             client,
