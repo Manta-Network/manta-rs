@@ -105,11 +105,13 @@ where
     where
         C::Nonce: Clone,
     {
-        let coordinator = self.coordinator.lock();
+        let mut coordinator = self.coordinator.lock();
         Ok((
             coordinator.metadata().clone(),
             coordinator
                 .registry()
+                .lock()
+                .expect("Returning the registry is not supposed to fail.")
                 .get(&request)
                 .ok_or(CeremonyError::NotRegistered)?
                 .nonce()

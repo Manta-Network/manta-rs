@@ -19,7 +19,7 @@
 use crate::{
     ceremony::{
         participant::{Participant, Priority},
-        registry::Registry,
+        registry::{self, Registry},
         signature::{Nonce, SignedMessage},
     },
     groth16::{
@@ -28,7 +28,7 @@ use crate::{
     },
 };
 use alloc::sync::Arc;
-use core::{mem, sync::atomic::AtomicU64};
+use core::{marker::PhantomData, mem, sync::atomic::AtomicU64};
 use manta_util::{time::lock::Timed, BoxArray};
 use std::sync::Mutex;
 
@@ -46,6 +46,97 @@ where
 
     /// Participant Lock
     participant_lock: Timed<Option<C::Identifier>>,
+}
+
+impl<C, const LEVEL_COUNT: usize> LockQueue<C, LEVEL_COUNT>
+where
+    C: Ceremony,
+{
+    /// Returns a mutable reference to `queue`.
+    #[inline]
+    pub fn queue_mut(&mut self) -> &mut Queue<C, LEVEL_COUNT> {
+        &mut self.queue
+    }
+
+    /// Checks the lock update errors for the [`Coordinator::update`] method.
+    #[inline]
+    pub fn check_lock_update_errors(
+        has_expired: bool,
+        lhs: &Option<C::Identifier>,
+        rhs: &C::Identifier,
+    ) -> Result<(), CeremonyError<C>> {
+        match lhs {
+            Some(lhs) if lhs == rhs && has_expired => Err(CeremonyError::Timeout),
+            Some(lhs) if lhs != rhs => Err(CeremonyError::NotYourTurn),
+            _ => Ok(()),
+        }
+    }
+
+    /// Updates the expired lock by reducing the priority of its participant and setting its
+    /// contained value to the new front of the queue. The previous participant in the lock is
+    /// returned.
+    #[inline]
+    pub fn update_expired_lock<R>(&mut self, registry: &R) -> Option<C::Identifier>
+    where
+        R: Registry<C::Identifier, C::Participant>,
+    {
+        self.participant_lock.mutate(|p| {
+            if let Some(identifier) = p {
+                if let Some(participant) = registry.get_mut(identifier) {
+                    participant.reduce_priority();
+                }
+            }
+            mem::replace(p, self.queue.pop_front())
+        })
+    }
+
+    /// Checks the lock for `participant`.
+    #[inline]
+    pub fn check_lock(
+        &mut self,
+        participant: &C::Identifier,
+        registry: &R,
+        metadata: &Metadata,
+    ) -> Result<(), CeremonyError<C>> {
+        if self
+            .participant_lock
+            .has_expired(metadata.contribution_time_limit)
+        {
+            Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)
+        } else {
+            Self::check_lock_update_errors(false, self.participant_lock.get(), participant)
+        }
+    }
+
+    /// Updates the MPC state and challenge using client's contribution. If the contribution is
+    /// valid, the participant will be removed from the waiting queue, and cannot participate in
+    /// this ceremony again.
+    ///
+    /// # Registration
+    ///
+    /// This method requires that `participant` is already registered.
+    #[inline]
+    pub fn update<R>(
+        &mut self,
+        participant: &C::Identifier,
+        coordinator_registry: CoordinatorRegistry<C, R>,
+        metadata: &Metadata,
+    ) -> Result<(), CeremonyError<C>>
+    where
+        R: Registry<C::Identifier, C::Participant>,
+    {
+        self.check_lock(participant, &(coordinator_registry.registry), metadata)?;
+        self.participant_lock.set(self.queue.pop_front());
+        match coordinator_registry.participant_mut(participant) {
+            Some(participant) => participant.set_contributed(),
+            _ => {
+                return Err(CeremonyError::Unexpected(
+                    UnexpectedError::MissingRegisteredParticipant,
+                ));
+            }
+        };
+        Ok(())
+    }
 }
 
 /// State, Challenge and Latest Proof
@@ -82,6 +173,121 @@ where
     latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>>,
 }
 
+impl<C, const CIRCUIT_COUNT: usize> StateChallengeProof<C, CIRCUIT_COUNT>
+where
+    C: Ceremony,
+{
+    /// Returns the current round state.
+    #[inline]
+    pub fn round_state(&self) -> Round<C>
+    where
+        C::Challenge: Clone,
+    {
+        Round::new(self.state.to_vec().into(), self.challenge.to_vec().into())
+    }
+
+    /// Updates the MPC state and challenge using client's contribution. If the contribution is
+    /// valid, the participant will be removed from the waiting queue, and cannot participate in
+    /// this ceremony again.
+    ///
+    /// # Registration
+    ///
+    /// This method requires that `participant` is already registered.
+    #[inline]
+    pub fn update(
+        &mut self,
+        participant: &C::Identifier,
+        state: BoxArray<State<C>, CIRCUIT_COUNT>,
+        proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
+    ) -> Result<(), CeremonyError<C>> {
+        for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
+            let next_challenge = C::challenge(&self.challenge[i], &self.state[i], &state, &proof);
+            self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
+                .map_err(|_| CeremonyError::BadRequest)?
+                .1;
+            self.challenge[i] = next_challenge;
+        }
+        self.latest_proof = Some(proof);
+        Ok(())
+    }
+}
+
+/// Coordinator Registry
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct CoordinatorRegistry<C, R>
+where
+    C: Ceremony,
+    R: Registry<C::Identifier, C::Participant>,
+{
+    /// Registry
+    pub registry: R,
+
+    /// Marker Type
+    __: PhantomData<C>,
+}
+
+impl<C, R> CoordinatorRegistry<C, R>
+where
+    C: Ceremony,
+    R: Registry<C::Identifier, C::Participant>,
+{
+    /// Builds a new [`CoordinatorRegistry`] from `registry`.
+    #[inline]
+    pub fn new(registry: R) -> Self {
+        Self {
+            registry,
+            __: PhantomData,
+        }
+    }
+
+    /// Returns the registry.
+    #[inline]
+    pub fn registry(&self) -> &R {
+        &self.registry
+    }
+
+    /// Returns a shared reference to the participant data for `id` from the registry.
+    #[inline]
+    pub fn participant(&self, id: &C::Identifier) -> Option<&C::Participant> {
+        self.registry.get(id)
+    }
+
+    /// Returns a mutable reference to the participant data for `id` from the registry.
+    #[inline]
+    pub fn participant_mut(&mut self, id: &C::Identifier) -> Option<&mut C::Participant> {
+        self.registry.get_mut(id)
+    }
+
+    /// Preprocesses a request by checking the nonce and verifying the signature.
+    #[inline]
+    pub fn preprocess_request<T>(
+        &mut self,
+        request: &SignedMessage<C, C::Identifier, T>,
+    ) -> Result<C::Priority, CeremonyError<C>>
+    where
+        T: Serialize,
+    {
+        let participant = self
+            .registry
+            .get_mut(request.identifier())
+            .ok_or(CeremonyError::NotRegistered)?;
+        if participant.has_contributed() {
+            return Err(CeremonyError::AlreadyContributed);
+        }
+        let participant_nonce = participant.nonce();
+        if !participant_nonce.is_valid() {
+            return Err(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed));
+        }
+        request
+            .verify(participant_nonce.clone(), participant.verifying_key())
+            .map_err(|_| CeremonyError::InvalidSignature {
+                expected_nonce: participant_nonce.clone(),
+            })?;
+        participant.increment_nonce();
+        Ok(participant.priority())
+    }
+}
+
 /// Ceremony Coordinator
 pub struct Coordinator<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
 where
@@ -92,7 +298,7 @@ where
     lock_queue: Arc<Mutex<LockQueue<C, LEVEL_COUNT>>>,
 
     /// Participant Registry
-    registry: Arc<Mutex<R>>,
+    coordinator_registry: Arc<Mutex<CoordinatorRegistry<C, R>>>,
 
     /// State, Challenge and Latest Proof
     sclp: Arc<Mutex<StateChallengeProof<C, CIRCUIT_COUNT>>>,
@@ -128,7 +334,7 @@ where
                 queue: Default::default(),
                 participant_lock: Default::default(),
             })),
-            registry: Arc::new(Mutex::new(registry)),
+            coordinator_registry: Arc::new(Mutex::new(CoordinatorRegistry::new(registry))),
             sclp: Arc::new(Mutex::new(StateChallengeProof {
                 state: state,
                 challenge: challenge,
@@ -157,99 +363,6 @@ where
         &self.metadata
     }
 
-    /// Returns the registry.
-    #[inline]
-    pub fn registry(&self) -> &R {
-        &self
-            .registry
-            .get_mut()
-            .expect("Returning the registry is not allowed to fail.")
-    }
-
-    /// Returns a shared reference to the participant data for `id` from the registry.
-    #[inline]
-    pub fn participant(&self, id: &C::Identifier) -> Option<&C::Participant> {
-        self.registry().get(id)
-    }
-
-    /// Returns a mutable reference to the participant data for `id` from the registry.
-    #[inline]
-    pub fn participant_mut(&mut self, id: &C::Identifier) -> Option<&mut C::Participant> {
-        self.registry().get_mut(id)
-    }
-
-    /// Returns a mutable reference to `queue`.
-    #[inline]
-    pub fn queue_mut(&mut self) -> &mut Queue<C, LEVEL_COUNT> {
-        &mut self
-            .lock_queue
-            .get_mut()
-            .expect("Returning the lock and the queue is not allowed to fail.")
-            .queue
-    }
-
-    /// Returns a mutable reference to `participant_lock`.
-    #[inline]
-    fn participant_lock_mut(&mut self) -> &mut Timed<Option<C::Identifier>> {
-        &mut self
-            .lock_queue
-            .get_mut()
-            .expect("Returning the lock and the queue is not allowed to fail.")
-            .participant_lock
-    }
-
-    /// Returns a reference to the current state.
-    #[inline]
-    fn state(&mut self) -> &BoxArray<State<C>, CIRCUIT_COUNT> {
-        &self
-            .sclp
-            .get_mut()
-            .expect("Returning state, challenge and proof is not allowed to fail.")
-            .state
-    }
-
-    /// Returns a mutable reference to the current state.
-    #[inline]
-    fn state_mut(&mut self) -> &mut BoxArray<State<C>, CIRCUIT_COUNT> {
-        &mut self
-            .sclp
-            .get_mut()
-            .expect("Returning state, challenge and proof is not allowed to fail.")
-            .state
-    }
-
-    /// Returns a mutable reference to `latest_proof`.
-    #[inline]
-    fn latest_proof_mut(&mut self) -> &mut Option<BoxArray<Proof<C>, CIRCUIT_COUNT>> {
-        &mut self
-            .sclp
-            .get_mut()
-            .expect("Returning state, challenge and proof is not allowed to fail.")
-            .latest_proof
-    }
-
-    /// Returns the current round state.
-    #[inline]
-    pub fn round_state(&self) -> Round<C>
-    where
-        C::Challenge: Clone,
-    {
-        Round::new(
-            self.state().to_vec().into(),
-            self.challenge().to_vec().into(),
-        )
-    }
-
-    /// Returns the current challenge.
-    #[inline]
-    pub fn challenge(&self) -> &[C::Challenge; CIRCUIT_COUNT] {
-        &self
-            .sclp
-            .get_mut()
-            .expect("Returning state, challenge and proof is not allowed to fail.")
-            .challenge
-    }
-
     /// Preprocesses a request by checking the nonce and verifying the signature.
     #[inline]
     pub fn preprocess_request<T>(
@@ -260,13 +373,12 @@ where
         T: Serialize,
     {
         let participant = self
-            .registry()
+            .registry
             .get_mut(request.identifier())
             .ok_or(CeremonyError::NotRegistered)?;
         if participant.has_contributed() {
             return Err(CeremonyError::AlreadyContributed);
         }
-        self.check_lock(participant.id());
         let participant_nonce = participant.nonce();
         if !participant_nonce.is_valid() {
             return Err(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed));
@@ -278,48 +390,6 @@ where
             })?;
         participant.increment_nonce();
         Ok(participant.priority())
-    }
-
-    /// Checks the lock update errors for the [`Coordinator::update`] method.
-    #[inline]
-    pub fn check_lock_update_errors(
-        has_expired: bool,
-        lhs: &Option<C::Identifier>,
-        rhs: &C::Identifier,
-    ) -> Result<(), CeremonyError<C>> {
-        match lhs {
-            Some(lhs) if lhs == rhs && has_expired => Err(CeremonyError::Timeout),
-            Some(lhs) if lhs != rhs => Err(CeremonyError::NotYourTurn),
-            _ => Ok(()),
-        }
-    }
-
-    /// Updates the expired lock by reducing the priority of its participant and setting its
-    /// contained value to the new front of the queue. The previous participant in the lock is
-    /// returned.
-    #[inline]
-    pub fn update_expired_lock(&mut self) -> Option<C::Identifier> {
-        self.participant_lock_mut().mutate(|p| {
-            if let Some(identifier) = p {
-                if let Some(participant) = self.registry().get_mut(identifier) {
-                    participant.reduce_priority();
-                }
-            }
-            mem::replace(p, self.queue_mut().pop_front())
-        })
-    }
-
-    /// Checks the lock for `participant`.
-    #[inline]
-    pub fn check_lock(&mut self, participant: &C::Identifier) -> Result<(), CeremonyError<C>> {
-        if self
-            .participant_lock_mut()
-            .has_expired(self.metadata.contribution_time_limit)
-        {
-            Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)
-        } else {
-            Self::check_lock_update_errors(false, self.participant_lock_mut().get(), participant)
-        }
     }
 
     /// Updates the MPC state and challenge using client's contribution. If the contribution is
@@ -336,18 +406,16 @@ where
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
     ) -> Result<(), CeremonyError<C>> {
+        self.check_lock(participant)?;
         for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
-            let next_challenge =
-                C::challenge(&self.challenge()[i], &self.state_mut()[i], &state, &proof);
-            self.state_mut()[i] =
-                verify_transform(&self.challenge()[i], &self.state_mut()[i], state, proof)
-                    .map_err(|_| CeremonyError::BadRequest)?
-                    .1;
-            self.challenge()[i] = next_challenge;
+            let next_challenge = C::challenge(&self.challenge[i], &self.state[i], &state, &proof);
+            self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
+                .map_err(|_| CeremonyError::BadRequest)?
+                .1;
+            self.challenge[i] = next_challenge;
         }
-        *self.latest_proof_mut() = Some(proof);
-        self.participant_lock_mut()
-            .set(self.queue_mut().pop_front());
+        self.latest_proof = Some(proof);
+        self.participant_lock.set(self.queue.pop_front());
         match self.participant_mut(participant) {
             Some(participant) => participant.set_contributed(),
             _ => {
