@@ -21,7 +21,10 @@ use crate::{
         participant::{Participant, Priority},
         signature::SignatureScheme,
     },
-    groth16::mpc::{Configuration, State, StateSize},
+    groth16::{
+        ceremony::message::ContributeResponse,
+        mpc::{Configuration, State, StateSize},
+    },
     mpc,
 };
 use core::{fmt::Debug, time::Duration};
@@ -68,12 +71,8 @@ pub trait Ceremony: Configuration + SignatureScheme {
     /// Checks state is valid before verifying a contribution.
     fn check_state(state: &Self::State) -> Result<(), Self::SerializationError>;
 
-    /// Hashes `contribution_number` and a slice of challenges into a new challenge,
-    /// which will be the hash of the contribution.
-    fn contribution_hash(
-        contribution_number: u64,
-        challenges: &[Self::Challenge],
-    ) -> Self::Challenge;
+    /// Hashes the contribution response.
+    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::Challenge;
 }
 
 /// Parallel Round Alias

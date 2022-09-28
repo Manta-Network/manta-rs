@@ -25,6 +25,7 @@ use crate::{
     groth16::{
         ceremony::{
             client::{self, Continue},
+            message::ContributeResponse,
             Ceremony, CeremonyError,
         },
         kzg::{Contribution, Size},
@@ -421,7 +422,7 @@ where
     .await?;
     println!(
         "Success! To ensure the integrity of the ceremony, please tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
-        response.index, C::contribution_hash(response.index, &response.challenge)
+        response.index, C::contribution_hash(&response)
     );
     Ok(())
 }
@@ -564,15 +565,13 @@ impl Ceremony for Config {
     }
 
     #[inline]
-    fn contribution_hash(
-        contribution_number: u64,
-        challenges: &[Self::Challenge],
-    ) -> Self::Challenge {
+    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::Challenge {
         let mut hasher = Self::Hasher::default();
-        contribution_number
+        response
+            .index
             .serialize_uncompressed(&mut hasher)
             .expect("Consuming the contribution number failed.");
-        for challenge in challenges {
+        for challenge in &response.challenge {
             hasher.0.update(challenge.0);
         }
         into_array_unchecked(hasher.0.finalize()).into()
