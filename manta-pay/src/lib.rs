@@ -36,8 +36,8 @@ pub mod config;
 pub mod key;
 */
 
-#[cfg(all(feature = "groth16", feature = "test"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "test"))))]
+#[cfg(all(feature = "parameters",))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "parameters",))))]
 pub mod parameters;
 
 /*
