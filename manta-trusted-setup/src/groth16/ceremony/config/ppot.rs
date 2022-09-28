@@ -422,7 +422,7 @@ where
     )
     .await?;
     println!(
-        "Success! To ensure the integrity of the ceremony, please tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
+        "Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
         response.index, C::contribution_hash(&response)
     );
     Ok(())

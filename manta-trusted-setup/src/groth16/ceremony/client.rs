@@ -142,7 +142,7 @@ where
             .map_err(into_ceremony_error);
         let term = Term::stdout();
         let mut counter = 0u8;
-        println!("Connecting server for Metadata");
+        println!("Connecting to server for Metadata");
         while let Err(CeremonyError::NotRegistered) = client_data {
             if counter >= 60 {
                 panic!("This is taking longer than expected, please try again later.");
