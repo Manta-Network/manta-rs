@@ -164,24 +164,25 @@ where
 
     /// Builds a [`KeySecret`] from raw bytes.
     #[inline]
-    fn build(seed: [u8; Seed::SIZE]) -> Self {
+    fn build(seed: [u8; Seed::SIZE], mnemonic: Mnemonic) -> Self {
         Self {
             seed: seed.into(),
+            mnemonic,
             __: PhantomData,
         }
     }
 
     /// Builds a [`KeySecret`] from a `seed`.
     #[inline]
-    fn from_seed(seed: Seed) -> Self {
-        Self::build(*seed.as_bytes())
+    fn from_seed(seed: Seed, mnemonic: Mnemonic) -> Self {
+        Self::build(*seed.as_bytes(), mnemonic)
     }
 
     /// Converts a `mnemonic` phrase into a [`KeySecret`], locking it with `password`.
     #[inline]
     #[must_use]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
-        Self::from_seed(mnemonic.to_seed(password))
+        Self::from_seed(mnemonic.to_seed(password), mnemonic)
     }
 }
 
