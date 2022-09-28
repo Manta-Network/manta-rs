@@ -52,3 +52,17 @@ where
     let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
     CanonicalDeserialize::deserialize(bytes.as_slice()).map_err(de::Error::custom)
 }
+
+/// Deserializes data of type `T` using the [`CanonicalDeserialize`] format with `D` as the
+/// [`Deserializer`] without checking for correctness.
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+#[inline]
+pub fn canonical_deserialize_unchecked<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: CanonicalDeserialize,
+{
+    let bytes: Vec<u8> = Deserialize::deserialize(deserializer)?;
+    CanonicalDeserialize::deserialize_unchecked(bytes.as_slice()).map_err(de::Error::custom)
+}

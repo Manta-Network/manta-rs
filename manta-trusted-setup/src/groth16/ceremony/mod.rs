@@ -21,7 +21,10 @@ use crate::{
         participant::{Participant, Priority},
         signature::SignatureScheme,
     },
-    groth16::mpc::{Configuration, State, StateSize},
+    groth16::{
+        ceremony::message::ContributeResponse,
+        mpc::{Configuration, State, StateSize},
+    },
     mpc,
 };
 use core::{fmt::Debug, time::Duration};
@@ -61,6 +64,15 @@ pub trait Ceremony: Configuration + SignatureScheme {
             VerifyingKey = Self::VerifyingKey,
             Nonce = Self::Nonce,
         > + Priority<Priority = Self::Priority>;
+
+    /// State deserialization error type
+    type SerializationError;
+
+    /// Checks state is valid before verifying a contribution.
+    fn check_state(state: &Self::State) -> Result<(), Self::SerializationError>;
+
+    /// Hashes the contribution response.
+    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::Challenge;
 }
 
 /// Parallel Round Alias
