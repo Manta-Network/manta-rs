@@ -68,11 +68,14 @@ pub trait Ceremony: Configuration + SignatureScheme {
     /// State deserialization error type
     type SerializationError;
 
+    /// Contribution Hash Type
+    type ContributionHash;
+
     /// Checks state is valid before verifying a contribution.
     fn check_state(state: &Self::State) -> Result<(), Self::SerializationError>;
 
     /// Hashes the contribution response.
-    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::Challenge;
+    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::ContributionHash;
 }
 
 /// Parallel Round Alias

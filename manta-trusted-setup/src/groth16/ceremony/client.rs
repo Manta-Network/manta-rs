@@ -33,6 +33,7 @@ use manta_util::{
     ops::ControlFlow,
     serde::{de::DeserializeOwned, Serialize},
 };
+use tokio::time::{sleep, Duration};
 
 /// Converts the [`reqwest`] error `err` into a [`CeremonyError`] depending on whether it comes from
 /// a timeout or other network error.
@@ -139,10 +140,12 @@ where
             .await
             .map_err(into_ceremony_error);
         while let Err(CeremonyError::NotRegistered) = client_data {
+            println!("Waiting for server registry update. Please make sure you are registered.");
             client_data = client
                 .post("start", &identifier)
                 .await
                 .map_err(into_ceremony_error);
+            sleep(Duration::from_millis(1000)).await;
         }
         let (metadata, nonce) = client_data?;
         Ok(Self::new_unchecked(
