@@ -819,6 +819,12 @@ where
         Self { keys, accounts }
     }
 
+    /// Get keys
+    #[inline]
+    pub fn keys(&self) -> &H {
+        &self.keys
+    }
+
     /// Returns the secret key pair associated to `account` if it exists, using `index` if it does
     /// not exceed the maximum key index.
     #[inline]

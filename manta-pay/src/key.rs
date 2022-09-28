@@ -145,6 +145,9 @@ where
     /// Key Seed
     seed: SeedBytes,
 
+    /// Mnemonic
+    mnemonic: Mnemonic,
+
     /// Type Parameter Marker
     __: PhantomData<C>,
 }
@@ -153,6 +156,12 @@ impl<C> KeySecret<C>
 where
     C: CoinType,
 {
+    #[inline]
+    /// Gets [`Mnemonic`]
+    fn expose_mnemonic() -> &Mnemonic {
+        &self.mnemonic
+    }
+
     /// Builds a [`KeySecret`] from raw bytes.
     #[inline]
     fn build(seed: [u8; Seed::SIZE]) -> Self {
