@@ -193,7 +193,7 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: RngCore + ?Sized,
+        R: RngCore + CryptoRng + ?Sized,
     {
         let sample_mnemonic = Mnemonic::sample(rng);
         let seed = sample_mnemonic.to_seed("");
