@@ -29,7 +29,7 @@ use core::marker::PhantomData;
 use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
-use manta_crypto::rand::{CryptoRng, RngCore, Sample};
+use manta_crypto::rand::{CryptoRng, RngCore, Sample, OsRng};
 use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
@@ -193,9 +193,9 @@ where
     #[inline]
     fn sample<R>(_: (), rng: &mut R) -> Self
     where
-        R: RngCore + CryptoRng + ?Sized,
+        R: RngCore + ?Sized,
     {
-        let sample_mnemonic = Mnemonic::sample(rng);
+        let sample_mnemonic = Mnemonic::sample(&mut OsRng);
         let seed = sample_mnemonic.to_seed("");
         Self::build(*seed.as_bytes(), sample_mnemonic)
     }
