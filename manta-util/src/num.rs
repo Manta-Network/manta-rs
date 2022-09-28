@@ -79,3 +79,57 @@ pub trait CheckedDecrement {
     /// Decrements `self` returning `None` if it would underflow.
     fn checked_decrement(&mut self) -> Option<&mut Self>;
 }
+
+/// Implements checked operations for the native integer `$type`.
+macro_rules! impl_checked {
+    ($($type:tt),* $(,)?) => {
+        $(
+
+            impl CheckedAdd for $type {
+                type Output = Self;
+
+                #[inline]
+                fn checked_add(self, rhs: Self) -> Option<Self::Output> {
+                    self.checked_add(rhs)
+                }
+            }
+
+            impl CheckedSub for $type {
+                type Output = Self;
+
+                #[inline]
+                fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
+                    self.checked_sub(rhs)
+                }
+            }
+
+            impl CheckedIncrement for $type {
+                #[inline]
+                fn checked_increment(&mut self) -> Option<&mut Self> {
+                    match self.checked_add(1) {
+                        Some(next) => {
+                            *self = next;
+                            Some(self)
+                        }
+                        _ => None,
+                    }
+                }
+            }
+
+            impl CheckedDecrement for $type {
+                #[inline]
+                fn checked_decrement(&mut self) -> Option<&mut Self> {
+                    match self.checked_sub(1) {
+                        Some(prev) => {
+                            *self = prev;
+                            Some(self)
+                        }
+                        _ => None,
+                    }
+                }
+            }
+        )*
+    };
+}
+
+impl_checked!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
