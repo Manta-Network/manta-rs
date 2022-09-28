@@ -139,7 +139,7 @@ where
 
     /// Returns the current round number.
     #[inline]
-    pub fn round(&self) -> u64 {
+    pub fn round(&mut self) -> u64 {
         *self.round.get_mut()
     }
 
@@ -157,7 +157,7 @@ where
 
     /// Returns the registry.
     #[inline]
-    pub fn registry(&self) -> &R {
+    pub fn registry(&mut self) -> &R {
         &self
             .registry
             .get_mut()
@@ -198,7 +198,7 @@ where
 
     /// Returns a reference to the current state.
     #[inline]
-    fn state(&mut self) -> & BoxArray<State<C>, CIRCUIT_COUNT> {
+    fn state(&mut self) -> &BoxArray<State<C>, CIRCUIT_COUNT> {
         &self
             .sclp
             .get_mut()
