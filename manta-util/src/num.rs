@@ -106,26 +106,16 @@ macro_rules! impl_checked {
             impl CheckedIncrement for $type {
                 #[inline]
                 fn checked_increment(&mut self) -> Option<&mut Self> {
-                    match self.checked_add(1) {
-                        Some(next) => {
-                            *self = next;
-                            Some(self)
-                        }
-                        _ => None,
-                    }
+                    *self = self.checked_add(1)?;
+                    Some(self)
                 }
             }
 
             impl CheckedDecrement for $type {
                 #[inline]
                 fn checked_decrement(&mut self) -> Option<&mut Self> {
-                    match self.checked_sub(1) {
-                        Some(prev) => {
-                            *self = prev;
-                            Some(self)
-                        }
-                        _ => None,
-                    }
+                    *self = self.checked_sub(1)?;
+                    Some(self)
                 }
             }
         )*
