@@ -195,9 +195,9 @@ where
     where
         R: RngCore + ?Sized,
     {
-        let mut seed = [0; Seed::SIZE];
-        rng.fill_bytes(&mut seed);
-        Self::build(seed)
+        let sample_mnemonic = Mnemonic::sample(rng);
+        let seed = sample_mnemonic.to_seed("");
+        Self::build(*seed.as_bytes(), sample_mnemonic)
     }
 }
 
