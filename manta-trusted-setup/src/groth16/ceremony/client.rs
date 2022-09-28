@@ -27,6 +27,7 @@ use crate::{
     },
 };
 use alloc::vec::Vec;
+use console::Term;
 use manta_crypto::rand::OsRng;
 use manta_util::{
     http::reqwest::{self, IntoUrl, KnownUrlClient},
@@ -139,13 +140,22 @@ where
             .post("start", &identifier)
             .await
             .map_err(into_ceremony_error);
+        let term = Term::stdout();
+        let mut counter = 0u8;
+        println!("Connecting server for Metadata");
         while let Err(CeremonyError::NotRegistered) = client_data {
+            if counter >= 60 {
+                panic!("This is taking longer than expected, please try again later.");
+            }
+            term.clear_last_lines(1)
+                .expect("Clear last lines should succeed.");
             println!("Waiting for server registry update. Please make sure you are registered.");
+            sleep(Duration::from_millis(1000)).await;
             client_data = client
                 .post("start", &identifier)
                 .await
                 .map_err(into_ceremony_error);
-            sleep(Duration::from_millis(1000)).await;
+            counter += 1;
         }
         let (metadata, nonce) = client_data?;
         Ok(Self::new_unchecked(
