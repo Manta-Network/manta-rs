@@ -35,8 +35,8 @@ use manta_accounting::{
 use manta_crypto::{
     arkworks::{ec::ProjectiveCurve, ff::PrimeField},
     key::kdf::KeyDerivationFunction,
-    merkle_tree,
-    merkle_tree::forest::Configuration,
+    merkle_tree::{self, forest::Configuration},
+    rand::ChaCha20Rng,
 };
 
 #[cfg(feature = "serde")]
@@ -89,7 +89,7 @@ impl wallet::signer::Configuration for Config {
         key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<AssetMapKey<Self>>;
-    type Rng = rand_chacha::ChaCha20Rng;
+    type Rng = ChaCha20Rng;
 }
 
 impl signer::Checkpoint<Config> for Checkpoint {

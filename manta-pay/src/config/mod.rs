@@ -20,21 +20,18 @@ use crate::crypto::{
     constraint::arkworks::{groth16, FpVar, R1CS},
     ecc,
 };
-use bls12_381::Bls12_381;
-use bls12_381_ed::constraints::EdwardsVar as Bls12_381_EdwardsVar;
 use manta_accounting::transfer;
-use manta_crypto::arkworks::algebra::ScalarVar;
+use manta_crypto::arkworks::{
+    algebra::ScalarVar,
+    bls12_381::{self, Bls12_381},
+    ed_on_bls12_381::{
+        self, constraints::EdwardsVar as Bls12_381_EdwardsVar,
+        EdwardsProjective as Bls12_381_Edwards,
+    },
+};
 
 #[cfg(feature = "bs58")]
 use {alloc::string::String, manta_util::codec::Encode};
-
-#[doc(inline)]
-pub use ark_bls12_381 as bls12_381;
-
-#[doc(inline)]
-pub use ark_ed_on_bls12_381 as bls12_381_ed;
-
-pub(crate) use bls12_381_ed::EdwardsProjective as Bls12_381_Edwards;
 
 pub mod poseidon;
 pub mod utxo;
@@ -43,7 +40,7 @@ pub mod utxo;
 pub type PairingCurve = Bls12_381;
 
 /// Embedded Scalar Field Type
-pub type EmbeddedScalarField = bls12_381_ed::Fr;
+pub type EmbeddedScalarField = ed_on_bls12_381::Fr;
 
 /// Embedded Scalar Type
 pub type EmbeddedScalar = ecc::arkworks::Scalar<GroupCurve>;
@@ -55,7 +52,7 @@ pub type EmbeddedScalarVar = ScalarVar<GroupCurve, GroupCurveVar>;
 pub type GroupCurve = Bls12_381_Edwards;
 
 /// Embedded Group Curve Type
-pub type GroupCurveAffine = bls12_381_ed::EdwardsAffine;
+pub type GroupCurveAffine = ed_on_bls12_381::EdwardsAffine;
 
 /// Embedded Group Curve Variable Type
 pub type GroupCurveVar = Bls12_381_EdwardsVar;

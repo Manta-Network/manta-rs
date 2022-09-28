@@ -51,8 +51,16 @@ pub trait Bytes<const SIZE: usize>: FromBytes<SIZE> + IntoBytes<SIZE> {}
 
 impl<B, const SIZE: usize> Bytes<SIZE> for B where B: FromBytes<SIZE> + IntoBytes<SIZE> {}
 
-/// Implements [`Bytes`] for the primitive `$type` of a given `$size` using `from_le_bytes` and
-/// `to_le_bytes` for little-endian conversion.
+/// Byte Vector Conversion
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+pub trait AsBytes {
+    /// Returns an owned byte representation of `self`.
+    fn as_bytes(&self) -> Vec<u8>;
+}
+
+/// Implements [`Bytes`] and [`AsBytes`] for the primitive `$type` of a given `$size` using
+/// `from_le_bytes` and `to_le_bytes` for little-endian conversion.
 macro_rules! impl_bytes_primitive {
     ($type:tt, $size:expr) => {
         impl FromBytes<$size> for $type {
@@ -66,6 +74,15 @@ macro_rules! impl_bytes_primitive {
             #[inline]
             fn into_bytes(self) -> [u8; $size] {
                 self.to_le_bytes()
+            }
+        }
+
+        #[cfg(feature = "alloc")]
+        #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+        impl AsBytes for $type {
+            #[inline]
+            fn as_bytes(&self) -> Vec<u8> {
+                self.to_le_bytes().to_vec()
             }
         }
     };
@@ -97,12 +114,4 @@ impl<const N: usize> IntoBytes<N> for [u8; N] {
     fn into_bytes(self) -> [u8; N] {
         self
     }
-}
-
-/// Byte Vector Conversion
-#[cfg(feature = "alloc")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
-pub trait AsBytes {
-    /// Returns an owned byte representation of `self`.
-    fn as_bytes(&self) -> Vec<u8>;
 }

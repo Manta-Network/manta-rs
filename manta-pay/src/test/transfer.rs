@@ -21,10 +21,15 @@ use crate::{
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
+use ark_std::rand::RngCore;
+use core::fmt::Debug;
+use manta_accounting::transfer::{
+    test::assert_valid_proof, Configuration, ProofSystemError, TransferPost, VerifyingContext,
+};
 use manta_crypto::{
     accumulator::Accumulator,
-    constraint::{measure::Measure, ProofSystem as _},
-    rand::{OsRng, Rand},
+    constraint::{self, measure::Measure, test::verify_fuzz_public_input, ProofSystem as _},
+    rand::{fuzz::Fuzz, OsRng, Rand, Sample},
 };
 use std::io::Cursor;
 
@@ -164,6 +169,107 @@ fn to_public_generate_proof_input_is_compatibile() {
         ),
         "For a random ToPublic, `generate_proof_input` from `Transfer` and `TransferPost` should have given the same `ProofInput`."
     );
+}
+
+/// Checks that a [`TransferPost`] is valid, and that its proof cannot be verified when tested against a fuzzed
+/// or randomized `public_input`.
+#[inline]
+fn validity_check_with_fuzzing<C, R, A, M>(
+    verifying_context: &VerifyingContext<C>,
+    post: &TransferPost<C>,
+    rng: &mut R,
+) where
+    A: Clone + Sample + Fuzz<M>,
+    C: Configuration,
+    C::ProofSystem: constraint::ProofSystem<Input = Vec<A>>,
+    ProofSystemError<C>: Debug,
+    R: RngCore + ?Sized,
+    TransferPost<C>: Debug,
+{
+    let public_input = post.generate_proof_input();
+    let proof = &post.validity_proof;
+    assert_valid_proof(verifying_context, post);
+    verify_fuzz_public_input::<C::ProofSystem, _>(
+        verifying_context,
+        &public_input,
+        proof,
+        |input| input.fuzz(rng),
+    );
+    verify_fuzz_public_input::<C::ProofSystem, _>(
+        verifying_context,
+        &public_input,
+        proof,
+        |input| (0..input.len()).map(|_| rng.gen()).collect(),
+    );
+}
+
+/// Tests a [`Mint`] proof is valid verified against the right public input and invalid
+/// when the public input has been fuzzed or randomly generated.
+#[test]
+fn mint_proof_validity() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = Mint::generate_context(
+        &(),
+        FullParameters::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = Mint::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Mint should have produced a proof.");
+    validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
+}
+
+/// Tests a [`PrivateTransfer`] proof is valid verified against the right public input and invalid
+/// when the public input has been fuzzed or randomly generated.
+#[test]
+fn private_transfer_proof_validity() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = PrivateTransfer::generate_context(
+        &(),
+        FullParameters::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = PrivateTransfer::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Private Transfer should have produced a proof.");
+    validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
+}
+
+/// Tests a [`Reclaim`] proof is valid verified against the right public input and invalid
+/// when the public input has been fuzzed or randomly generated.
+#[test]
+fn reclaim_proof_validity() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = Reclaim::generate_context(
+        &(),
+        FullParameters::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = Reclaim::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        &mut rng,
+    )
+    .expect("Random Reclaim should have produced a proof.");
+    validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
 
 /// Asserts that `proof` can be SCALE encoded and decoded with at least [`Vec`], [`Cursor`], and

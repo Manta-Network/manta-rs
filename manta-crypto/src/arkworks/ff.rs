@@ -57,7 +57,10 @@ field_try_into! {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::rand::{OsRng, Rand, RngCore, Sample};
+    use crate::{
+        arkworks::bn254::Fr,
+        rand::{OsRng, Rand, RngCore, Sample},
+    };
     use alloc::vec::Vec;
     use core::fmt::Debug;
 
@@ -101,7 +104,7 @@ mod test {
         ($name:ident, $convert:ident, $type:tt) => {
             #[test]
             fn $name() {
-                assert_valid_integer_conversions::<ark_bn254::Fr, _, _, _, 0xFFFF>(
+                assert_valid_integer_conversions::<Fr, _, _, _, 0xFFFF>(
                     $convert,
                     vec![0, 1, 2, $type::MAX - 2, $type::MAX - 1, $type::MAX],
                     &mut OsRng,

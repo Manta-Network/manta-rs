@@ -21,19 +21,19 @@ use crate::{
         kzg::{self, Accumulator, Configuration, Contribution, Size},
         mpc::{self, contribute, initialize, verify_transform, verify_transform_all, Proof, State},
     },
-    mpc::{ChallengeType, ProofType, StateType, Transcript},
+    mpc::{ChallengeType, ContributionType, ProofType, StateType, Transcript},
     util::{BlakeHasher, HasDistribution, KZGBlakeHasher},
 };
 use alloc::vec::Vec;
-use ark_bn254::{Bn254, Fr, G1Affine, G2Affine};
 use ark_groth16::{Groth16, ProvingKey};
 use ark_snark::SNARK;
 use blake2::Digest;
 use manta_crypto::{
     arkworks::{
+        bn254::{Bn254, Fr, G1Affine, G2Affine},
         ec::{AffineCurve, PairingEngine},
         ff::{field_new, UniformRand},
-        pairing::{test::assert_valid_pairing_ratio, Pairing},
+        pairing::Pairing,
         r1cs_std::eq::EqGadget,
         ratio::test::assert_valid_ratio_proof,
         serialize::CanonicalSerialize,
@@ -114,7 +114,7 @@ impl kzg::Configuration for Test {
             item.serialize_uncompressed(&mut hasher).unwrap();
         }
         state.beta_g2.serialize_uncompressed(&mut hasher).unwrap();
-        hasher.0.update(&challenge);
+        hasher.0.update(challenge);
         proof
             .tau
             .serialize(&mut hasher)
@@ -132,7 +132,6 @@ impl kzg::Configuration for Test {
 }
 
 impl mpc::Configuration for Test {
-    type Challenge = [u8; 64];
     type Hasher = BlakeHasher;
 
     #[inline]
@@ -144,11 +143,14 @@ impl mpc::Configuration for Test {
     ) -> Self::Challenge {
         let mut hasher = Self::Hasher::default();
         hasher.0.update(challenge);
-        prev.serialize(&mut hasher)
+        prev.0
+            .serialize(&mut hasher)
             .expect("Consuming the previous state failed.");
-        next.serialize(&mut hasher)
+        next.0
+            .serialize(&mut hasher)
             .expect("Consuming the current state failed.");
         proof
+            .0
             .serialize(&mut hasher)
             .expect("Consuming proof failed");
         into_array_unchecked(hasher.0.finalize())
@@ -171,16 +173,20 @@ where
     }
 }
 
-impl StateType for Test {
-    type State = State<Test>;
-}
-
 impl ChallengeType for Test {
     type Challenge = [u8; 64];
 }
 
+impl ContributionType for Test {
+    type Contribution = Contribution<Self>;
+}
+
 impl ProofType for Test {
-    type Proof = Proof<Test>;
+    type Proof = Proof<Self>;
+}
+
+impl StateType for Test {
+    type State = State<Self>;
 }
 
 /// Conducts a dummy phase one trusted setup.
@@ -215,7 +221,7 @@ pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
 pub fn dummy_prover_key() -> ProvingKey<Bn254> {
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);
-    initialize(dummy_phase_one_trusted_setup(), cs).unwrap()
+    initialize(dummy_phase_one_trusted_setup(), cs).unwrap().0
 }
 
 /// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
@@ -236,17 +242,6 @@ where
     );
 }
 
-/// Tests if bls13_381 pairing ratio is valid.
-#[test]
-fn has_valid_bn254_pairing_ratio() {
-    let mut rng = OsRng;
-    assert_valid_pairing_ratio::<Bn254>(
-        <G1Affine as Sample<()>>::gen(&mut rng),
-        <G2Affine as Sample<()>>::gen(&mut rng),
-        Fr::gen(&mut rng),
-    );
-}
-
 /// Tests if proving and verifying ratio proof is correct.
 #[test]
 fn proving_and_verifying_ratio_proof_is_correct() {
@@ -263,9 +258,9 @@ fn proving_and_verifying_ratio_proof_is_correct() {
 #[test]
 fn trusted_setup_phase_two_is_valid() {
     let mut rng = OsRng;
-    let mut state = dummy_prover_key();
+    let mut state = State(dummy_prover_key());
     let mut transcript = Transcript::<Test> {
-        initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state),
+        initial_challenge: <Test as mpc::ProvingKeyHasher<Test>>::hash(&state.0),
         initial_state: state.clone(),
         rounds: Vec::new(),
     };
@@ -275,7 +270,7 @@ fn trusted_setup_phase_two_is_valid() {
     for _ in 0..5 {
         prev_state = state.clone();
         proof = contribute(&hasher, &challenge, &mut state, &mut rng).unwrap();
-        (challenge, state) = verify_transform(&challenge, prev_state, state, proof.clone())
+        (challenge, state) = verify_transform(&challenge, &prev_state, state, proof.clone())
             .expect("Verify transform failed");
         transcript.rounds.push((state.clone(), proof));
     }
@@ -287,5 +282,5 @@ fn trusted_setup_phase_two_is_valid() {
     .expect("Verifying all transformations failed.");
     let mut cs = R1CS::for_proofs();
     dummy_circuit(&mut cs);
-    prove_and_verify_circuit(state, cs, &mut rng);
+    prove_and_verify_circuit(state.0, cs, &mut rng);
 }

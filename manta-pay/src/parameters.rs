@@ -22,10 +22,9 @@ use crate::config::{
     UtxoAccumulatorModel, VerifyingContext,
 };
 use core::fmt::Debug;
-use manta_crypto::rand::{Rand, SeedableRng};
+use manta_crypto::rand::{ChaCha20Rng, Rand, SeedableRng};
 use manta_parameters::Get;
 use manta_util::codec::Decode;
-use rand_chacha::ChaCha20Rng;
 
 #[cfg(feature = "download")]
 use manta_parameters::Download;

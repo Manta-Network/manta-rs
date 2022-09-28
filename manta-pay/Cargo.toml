@@ -35,9 +35,9 @@ required-features = ["clap", "groth16", "simulation"]
 [features]
 # Enable Arkworks Backend
 arkworks = [
-    "ark-bls12-381",
-    "ark-ed-on-bls12-381",
     "ark-std",
+    "manta-crypto/ark-bls12-381",
+    "manta-crypto/ark-ed-on-bls12-381",
     "manta-crypto/arkworks",
     "num-bigint",
     "num-integer",
@@ -68,9 +68,9 @@ serde = ["manta-accounting/serde", "manta-crypto/serde"]
 simulation = [
     "indexmap",
     "parking_lot",
-    "rayon",
+    "manta-util/rayon",
     "test",
-    "tide",
+    "manta-util/tide",
     "tokio/io-std",
     "tokio/io-util",
     "tokio/macros",
@@ -105,32 +105,27 @@ websocket = [
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
-ark-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["curve"] }
-ark-ed-on-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["r1cs"] }
 ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
 ark-snark = { version = "0.3.0", optional = true, default-features = false }
 ark-std = { version = "0.3.0", optional = true, default-features = false }
 bip32 = { version = "0.3.0", optional = true, default-features = false, features = ["bip39", "secp256k1"] }
 blake2 = { version = "0.10.4", default-features = false }
 bs58 = { version = "0.4.0", optional = true, default-features = false, features = ["alloc"] }
-clap = { version = "3.2.20", optional = true, default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
+clap = { version = "3.2.22", optional = true, default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 futures = { version = "0.3.24", optional = true, default-features = false }
-indexmap = { version = "1.8.2", optional = true, default-features = false }
+indexmap = { version = "1.9.1", optional = true, default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
-manta-crypto = { path = "../manta-crypto", default-features = false }
+manta-crypto = { path = "../manta-crypto", default-features = false, features = ["rand_chacha"] }
 manta-parameters = { path = "../manta-parameters", optional = true, default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
 num-bigint = { version = "0.4.3", optional = true, default-features = false }
 num-integer = { version = "0.1.45", optional = true, default-features = false }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
-rand_chacha = { version = "0.3.1", default-features = false }
-rayon = { version = "1.5.1", optional = true, default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.1.2", optional = true, default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.85", optional = true, default-features = false, features = ["alloc"] }
 tempfile = { version = "3.3.0", optional = true, default-features = false }
-tide = { version = "0.16.0", optional = true, default-features = false, features = ["h1-server"] }
 tokio = { version = "1.21.2", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
 ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }

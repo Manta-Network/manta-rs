@@ -16,10 +16,14 @@
 
 //! Elliptic Curve Cryptography Utilities
 
-use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::UniformRand;
 use core::ops::AddAssign;
-use manta_crypto::rand::RngCore;
+use manta_crypto::{
+    arkworks::{
+        ec::{AffineCurve, ProjectiveCurve},
+        ff::UniformRand,
+    },
+    rand::RngCore,
+};
 
 /// Samples an affine point.
 #[inline]
@@ -123,11 +127,11 @@ where
     point_vec.iter().map(P::into_affine).collect()
 }
 
+/// Testing Suite
 #[cfg(test)]
 mod test {
     use super::*;
-    use ark_bls12_381::G1Affine;
-    use manta_crypto::rand::OsRng;
+    use manta_crypto::{arkworks::bls12_381::G1Affine, rand::OsRng};
 
     /// Tests if affine-affine addition, affine-projective addition, and projective-projective
     /// addition give same results.

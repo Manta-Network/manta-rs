@@ -14,16 +14,34 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Trusted Setup
+//! Trusted Setup Ceremony Utilities
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
-#![forbid(rustdoc::broken_intra_doc_links)]
-#![forbid(missing_docs)]
+use manta_util::serde::{de::DeserializeOwned, Serialize};
+use std::{
+    fs::{File, OpenOptions},
+    path::Path,
+};
 
-extern crate alloc;
+/// Serializes `data` to a file at `path` with the given `open_options`.
+#[inline]
+pub fn serialize_into_file<T, P>(
+    open_options: &mut OpenOptions,
+    path: &P,
+    data: &T,
+) -> bincode::Result<()>
+where
+    P: AsRef<Path>,
+    T: Serialize,
+{
+    bincode::serialize_into(open_options.open(path)?, data)
+}
 
-pub mod ceremony;
-pub mod groth16;
-pub mod mpc;
-pub mod util;
+/// Deserializes an element of type `T` from the file at `path`.
+#[inline]
+pub fn deserialize_from_file<T, P>(path: P) -> bincode::Result<T>
+where
+    P: AsRef<Path>,
+    T: DeserializeOwned,
+{
+    bincode::deserialize_from(File::open(path)?)
+}
