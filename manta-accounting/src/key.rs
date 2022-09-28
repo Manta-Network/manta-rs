@@ -231,6 +231,12 @@ where
             key_derivation_function,
         }
     }
+
+    /// Returns `base`
+    #[inline]
+    pub fn get_base(&self) -> &H {
+        &self.base
+    }
 }
 
 impl<H, F> HierarchicalKeyDerivationScheme for Map<H, F>
