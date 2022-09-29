@@ -150,7 +150,7 @@ where
             term.clear_last_lines(1)
                 .expect("Clear last lines should succeed.");
             println!("Waiting for server registry update. Please make sure you are registered.");
-            sleep(Duration::from_millis(1000)).await;
+            sleep(Duration::from_millis(10000)).await;
             client_data = client
                 .post("start", &identifier)
                 .await
