@@ -185,7 +185,7 @@ where
     C: CoinType,
 {
     #[inline]
-    fn sample<R>(_: (), rng: &mut R) -> Self
+    fn sample<R>(_: (), _rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
