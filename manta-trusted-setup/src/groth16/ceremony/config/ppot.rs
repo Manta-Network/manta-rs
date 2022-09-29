@@ -569,15 +569,9 @@ impl Ceremony for Config {
     #[inline]
     fn contribution_hash(response: &ContributeResponse<Self>) -> Self::ContributionHash {
         let mut hasher = blake2::Blake2b::default();
-        response
-            .index
-            .serialize_uncompressed(&mut hasher)
-            .expect("Consuming the contribution number failed.");
+        hasher.update(response.index.to_le_bytes());
         for challenge in &response.challenge {
-            challenge
-                .0
-                .serialize_uncompressed(&mut hasher)
-                .expect("Consuming the challenge number failed.");
+            hasher.update(challenge.0);
         }
         into_array_unchecked(hasher.finalize())
     }

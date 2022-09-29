@@ -22,7 +22,7 @@ use manta_trusted_setup::groth16::ceremony::{
     server::Server,
     CeremonyError,
 };
-use manta_util::http::tide;
+// TODO: use manta_util::http::tide;
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -34,12 +34,14 @@ pub enum Command {
     Create {
         registry_path: String,
         recovery_dir_path: String,
+        server_url: String,
     },
 
     /// Recovers a server from disk.
     Recover {
         recovery_path: String,
         recovery_dir_path: String,
+        server_url: String,
     },
 }
 
@@ -55,6 +57,22 @@ impl Arguments {
     /// Runs a server.
     #[inline]
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
+        /*
+        let server = match self.command {
+            Command::Prepare => todo!(),
+            Command::Create {
+                registry_path,
+                recovery_dir_path,
+            } => todo!(),
+            Command::Recover {
+                recovery_path,
+                recovery_dir_path,
+            } => todo!(),
+        };
+        */
+
+        println!("Ceremony is starting up.");
+
         // let server = match self.command {
         //     Command::Create {
         //         registry_path,
@@ -65,14 +83,15 @@ impl Arguments {
         //         recovery_dir_path,
         //     } => recover(recovery_path, recovery_dir_path),
         // };
-        // println!("Network starts to run!");
-        // let mut api = tide::Server::with_state(server);
-        // api.at("/start").post(|r| S::execute(r, Server::start));
-        // api.at("/query").post(|r| S::execute(r, Server::query));
-        // api.at("/update").post(|r| S::execute(r, Server::update));
-        // api.listen("127.0.0.1:8080")
-        //     .await
-        //     .expect("Should create a listener."); // TODO: use TLS
+        /*
+        let mut api = tide::Server::with_state(server);
+        api.at("/start").post(|r| S::execute(r, Server::start));
+        api.at("/query").post(|r| S::execute(r, Server::query));
+        api.at("/update").post(|r| S::execute(r, Server::update));
+        api.listen(server_url)
+            .await
+            .expect("Listener failed to start up.");
+        */
         todo!()
     }
 }
