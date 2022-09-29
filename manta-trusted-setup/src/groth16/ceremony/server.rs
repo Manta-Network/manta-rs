@@ -26,7 +26,7 @@ use crate::{
     groth16::{
         ceremony::{
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, Metadata, Participant as _, UnexpectedError,
+            Ceremony, CeremonyError, Metadata, UnexpectedError,
         },
         mpc::State,
     },
@@ -41,6 +41,7 @@ use std::{
     fs::OpenOptions,
     path::{Path, PathBuf},
 };
+use tokio::task;
 
 use super::coordinator::{preprocess_request, LockQueue, StateChallengeProof};
 
@@ -124,27 +125,31 @@ where
 
     /// Gets the server state size and the current nonce of the participant.
     #[inline]
-    pub fn start(
+    pub async fn start(
         self,
         request: C::Identifier,
     ) -> Result<(Metadata, C::Nonce), CeremonyError<C>>
     where
-        C::Nonce: Clone,
+        C::Nonce: Clone + Send, 
     {
-        Ok((
-            self.metadata().clone(),
-            self.registry
-                .lock()
-                .get(&request)
-                .ok_or(CeremonyError::NotRegistered)?
-                .nonce()
-                .clone(),
-        ))
+        let nonce = self
+            .registry
+            .lock()
+            .get(&request)
+            .ok_or(CeremonyError::NotRegistered)?
+            .nonce()
+            .clone();
+        task::spawn(async {
+            if self.update_registry().await.is_err() {
+                todo!() // We need to add logging here
+            }
+        });
+        Ok((self.metadata().clone(), nonce))
     }
 
     /// Queries the server state
     #[inline]
-    pub fn query(
+    pub async fn query(
         self,
         request: SignedMessage<C, C::Identifier, QueryRequest>,
     ) -> Result<QueryResponse<C>, CeremonyError<C>>
@@ -166,38 +171,65 @@ where
 
     /// Updates the registry.
     #[inline]
-    pub fn update_registry(&mut self) -> Result<(), CeremonyError<C>> {
-        load_append_entries::<_, _, R::Record, _, _>(
-            &self.registry_path,
-            &mut *self.registry.lock(),
-        )
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))
+    pub async fn update_registry(&self) -> Result<(), CeremonyError<C>>
+    where
+        C::Nonce: Send,
+        R::Registry: Send,
+        C::Identifier: Send,
+        C::Challenge: Send,
+        C: 'static,
+        R: 'static,
+    {
+        let registry_path = self.registry_path.clone();
+        let registry = self.registry.clone();
+        task::spawn_blocking(move || {
+            load_append_entries::<_, _, R::Record, _, _>(&registry_path, &mut *registry.lock())
+                .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))
+        })
+        .await
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?
     }
 
     /// Saves `self` into `self.recovery_directory`.
-    pub fn save_server(&self, round: u64) -> Result<(), CeremonyError<C>>
+    pub async fn save_server(&self, round: u64) -> Result<(), CeremonyError<C>>
     where
         Self: Serialize,
-        C::Challenge: Clone,
+        C::Challenge: Clone + Send,
+        C::Nonce: Send,
+        R::Registry: Send,
+        C::Identifier: Send,
+        C: 'static,
+        R: 'static,
     {
-        serialize_into_file(
-            OpenOptions::new().write(true).create_new(true),
-            &Path::new(&self.recovery_directory).join(format!("transcript{}.data", round)),
-            &self.clone(),
-        )
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))
+        let server = self.clone();
+        task::spawn_blocking(move || {
+            serialize_into_file(
+                OpenOptions::new().write(true).create_new(true),
+                &Path::new(&server.recovery_directory).join(format!("transcript{}.data", round)),
+                &server,
+            )
+            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))
+        })
+        .await
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?
     }
 
     /// Processes a request to update the MPC state and removes the participant if the state was
     /// updated successfully. If the update succeeds, the current coordinator is saved to disk.
     #[inline]
-    pub fn contribute(
-        mut self,
+    pub async fn contribute(
+        self,
         request: SignedMessage<C, C::Identifier, ContributeRequest<C>>,
     ) -> Result<ContributeResponse<C>, CeremonyError<C>>
     where
         Self: Serialize,
-        C::Challenge: Clone,
+        C: 'static,
+        C::Challenge: Clone + Send,
+        C::Identifier: Send,
+        C::Nonce: Send,
+        StateChallengeProof<C, CIRCUIT_COUNT>: Send,
+        R::Registry: Send,
+        R: 'static,
     {
         let mut registry = self.registry.lock();
         preprocess_request(&mut *registry, &request)?;
@@ -206,17 +238,18 @@ where
             .lock()
             .update(&identifier, &mut *registry, self.metadata())?;
         drop(registry);
-        let mut sclp = self.sclp.lock();
-        sclp.update(
-            BoxArray::from_vec(message.state),
-            BoxArray::from_vec(message.proof),
-        )?;
-        sclp.increment_round();
-        let round = sclp.round();
-        drop(sclp);
-        self.save_server(round)?;
+        let sclp = self.sclp.clone();
+        let round = task::spawn_blocking(move || {
+            sclp.lock().update(
+                BoxArray::from_vec(message.state),
+                BoxArray::from_vec(message.proof),
+            )
+        })
+        .await
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
+        self.save_server(round).await?;
         println!("{} participants have contributed.", round);
-        self.update_registry()?;
+        self.update_registry().await?;
         Ok(ContributeResponse {
             index: round,
             challenge: self.sclp.lock().challenge().to_vec(),

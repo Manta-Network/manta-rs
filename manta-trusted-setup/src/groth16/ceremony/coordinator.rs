@@ -241,7 +241,7 @@ where
         &mut self,
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
-    ) -> Result<(), CeremonyError<C>> {
+    ) -> Result<u64, CeremonyError<C>> {
         for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
             let next_challenge = C::challenge(&self.challenge[i], &self.state[i], &state, &proof);
             self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
@@ -250,7 +250,8 @@ where
             self.challenge[i] = next_challenge;
         }
         self.latest_proof = Some(proof);
-        Ok(())
+        self.increment_round();
+        Ok(self.round())
     }
 }
 

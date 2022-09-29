@@ -187,4 +187,7 @@ pub enum UnexpectedError {
 
     /// All Nonces were Used
     AllNoncesUsed,
+
+    /// Task Error
+    TaskError,
 }
