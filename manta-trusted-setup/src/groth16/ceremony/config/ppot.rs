@@ -52,9 +52,9 @@ use manta_crypto::{
     signature::{self, VerifyingKeyType},
 };
 use manta_util::{
-    Array,
     into_array_unchecked,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
+    Array,
 };
 use std::collections::HashMap;
 

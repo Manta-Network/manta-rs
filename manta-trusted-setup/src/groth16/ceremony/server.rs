@@ -25,15 +25,16 @@ use crate::{
     },
     groth16::{
         ceremony::{
+            log::{info, warn},
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, CeremonySize, Metadata, Participant as _, UnexpectedError,
+            Ceremony, CeremonyError, CeremonySize, Metadata, UnexpectedError,
         },
         mpc::{State, StateSize},
     },
     mpc::{ChallengeType, StateType},
 };
 use alloc::sync::Arc;
-use core::{fmt::Debug, ops::Deref};
+use core::fmt::Debug;
 use manta_util::{
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     BoxArray,
@@ -153,7 +154,9 @@ where
         let metadata = self.metadata().clone();
         task::spawn(async move {
             if self.update_registry().await.is_err() {
-                todo!() // We need to add logging here
+                warn!("Registry couldn't be updated.");
+            } else {
+                info!("Registry successfully updated.")
             }
         });
         Ok((metadata, nonce))
@@ -281,7 +284,11 @@ where
     C: Ceremony,
     C::Challenge: DeserializeOwned,
     R: Registry<C::Identifier, C::Participant>,
-    R: registry::Configuration<Identifier = C::Identifier, Participant = C::Participant, Registry = R>,
+    R: registry::Configuration<
+        Identifier = C::Identifier,
+        Participant = C::Participant,
+        Registry = R,
+    >,
     T: Record<C::Identifier, C::Participant>,
     T::Error: Debug,
 {
@@ -291,13 +298,17 @@ where
 
     println!("About to load states");
     let mpc_state0: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_mint.data");
-    let mpc_state1: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_private_transfer.data");
+    let mpc_state1: MpcState<C> =
+        load_from_file(&"manta-trusted-setup/data/prepared_private_transfer.data");
     let mpc_state2: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_reclaim.data");
     println!("I just loaded states");
 
     let state = vec![mpc_state0.state, mpc_state1.state, mpc_state2.state];
-    let challenge = vec![mpc_state0.challenge, mpc_state1.challenge, mpc_state2.challenge];
-
+    let challenge = vec![
+        mpc_state0.challenge,
+        mpc_state1.challenge,
+        mpc_state2.challenge,
+    ];
 
     let ceremony_size = CeremonySize::from(vec![
         StateSize::from_proving_key(&state[0].0),
@@ -316,7 +327,7 @@ where
         registry,
         recovery_dir_path.into(),
         metadata,
-        registry_path.into()
+        registry_path.into(),
     )
 }
 

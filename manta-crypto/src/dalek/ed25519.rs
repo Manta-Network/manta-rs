@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use core::marker::PhantomData;
-use manta_util::{AsBytes, Array};
+use manta_util::{Array, AsBytes};
 
 pub use ed25519_dalek::*;
 

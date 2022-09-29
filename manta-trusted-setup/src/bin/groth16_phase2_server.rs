@@ -19,7 +19,7 @@
 use clap::{Parser, Subcommand};
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{exit_on_error, Config, Record, Registry},
-    server::{init_server},
+    server::init_server,
     CeremonyError,
 };
 use manta_util::http::tide;
@@ -73,7 +73,7 @@ impl Arguments {
             //     recovery_dir_path,
             // } => recover(recovery_path, recovery_dir_path),
         };
-        
+
         println!("Network starts to run!");
         let mut api = tide::Server::with_state(server);
         // api.at("/start").post(|r| S::execute(r, Server::start));
@@ -90,5 +90,5 @@ fn main() {
     exit_on_error(Arguments::parse().run());
 }
 
-// run with 
+// run with
 // cargo run --all-features --bin groth16_phase2_server create manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data manta-trusted-setup/data server_url

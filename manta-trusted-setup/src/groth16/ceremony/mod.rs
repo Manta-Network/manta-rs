@@ -36,6 +36,7 @@ use manta_util::{
 
 pub mod client;
 pub mod config;
+pub mod log;
 pub mod message;
 
 #[cfg(feature = "std")]
