@@ -130,7 +130,12 @@ where
         request: C::Identifier,
     ) -> Result<(Metadata, C::Nonce), CeremonyError<C>>
     where
-        C::Nonce: Clone + Send, 
+        C::Nonce: Clone + Send,
+        R::Registry: Send,
+        C::Challenge: Send,
+        C::Identifier: Send,
+        C: 'static,
+        R: 'static,
     {
         let nonce = self
             .registry
@@ -139,12 +144,13 @@ where
             .ok_or(CeremonyError::NotRegistered)?
             .nonce()
             .clone();
-        task::spawn(async {
+        let metadata = self.metadata().clone();
+        task::spawn(async move {
             if self.update_registry().await.is_err() {
                 todo!() // We need to add logging here
             }
         });
-        Ok((self.metadata().clone(), nonce))
+        Ok((metadata, nonce))
     }
 
     /// Queries the server state
