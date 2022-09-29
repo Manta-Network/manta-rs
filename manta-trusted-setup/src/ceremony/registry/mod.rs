@@ -16,6 +16,8 @@
 
 //! Trusted Setup Ceremony Registry
 
+#[cfg(feature = "csv")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
 use self::csv::Record;
 
 #[cfg(feature = "std")]
@@ -51,6 +53,8 @@ pub trait Registry<I, P> {
 }
 
 /// Registry Configuration
+#[cfg(feature = "csv")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
 pub trait Configuration {
     ///
     type Identifier;

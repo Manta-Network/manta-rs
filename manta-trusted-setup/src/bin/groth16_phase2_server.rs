@@ -19,7 +19,7 @@
 use clap::{Parser, Subcommand};
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{exit_on_error, Config, Record, Registry},
-    server::init_server,
+    server::{init_dummy_server, init_server},
     CeremonyError,
 };
 use manta_util::http::tide;
@@ -28,7 +28,10 @@ use manta_util::http::tide;
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Transforms Phase 1 Parameters into Phase 2 Parameters.
-    Prepare,
+    Prepare {
+        registry_path: String,
+        recovery_dir_path: String,
+    },
 
     /// Creates a new server.
     Create {
@@ -64,7 +67,12 @@ impl Arguments {
                 init_parameters_path,
                 recovery_dir_path,
                 server_url
-            } => init_server::<Registry, Config, Record, 2>(registry_path, recovery_dir_path),
+            // } => init_server::<Registry, Config, Record, 2>(registry_path, recovery_dir_path),
+        } => init_dummy_server::<2>(registry_path, recovery_dir_path),
+            Command::Prepare {
+                registry_path,
+                recovery_dir_path
+            } => init_dummy_server::<2>(registry_path, recovery_dir_path),
             _ => {
                 panic!()
             }
@@ -92,3 +100,4 @@ fn main() {
 
 // run with
 // cargo run --all-features --bin groth16_phase2_server create manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data manta-trusted-setup/data server_url
+// cargo run --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data

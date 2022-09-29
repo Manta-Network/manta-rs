@@ -45,7 +45,13 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+use std::{fs::File, io::Read};
 use tokio::task;
+use crate::groth16::ceremony::config::ppot::{
+    Config, Record as CeremonyRecord, Registry as CeremonyRegistry,
+};
+use manta_crypto::arkworks::serialize::CanonicalDeserialize;
+use manta_util::Array;
 
 #[cfg(feature = "csv")]
 use crate::ceremony::registry::csv::{load, Record};
@@ -156,7 +162,7 @@ where
             if self.update_registry().await.is_err() {
                 warn!("Registry couldn't be updated.");
             } else {
-                info!("Registry successfully updated.")
+                // info!("Registry successfully updated.")
             }
         });
         Ok((metadata, nonce))
@@ -292,23 +298,77 @@ where
     T: Record<C::Identifier, C::Participant>,
     T::Error: Debug,
 {
-    println!("About to load registry");
     let registry = load::<C::Identifier, C::Participant, T, R, _>(registry_path.clone()).unwrap();
-    println!("I already loaded registry");
+    println!("Loaded registry");
 
-    println!("About to load states");
-    let mpc_state0: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_mint.data");
-    let mpc_state1: MpcState<C> =
-        load_from_file(&"manta-trusted-setup/data/prepared_private_transfer.data");
-    let mpc_state2: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_reclaim.data");
-    println!("I just loaded states");
+    // let mpc_state0: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_mint.data");
+    // let mpc_state1: MpcState<C> =
+    //     load_from_file(&"manta-trusted-setup/data/prepared_private_transfer.data");
+    // let mpc_state2: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_reclaim.data");
 
-    let state = vec![mpc_state0.state, mpc_state1.state, mpc_state2.state];
-    let challenge = vec![
-        mpc_state0.challenge,
-        mpc_state1.challenge,
-        mpc_state2.challenge,
-    ];
+    // let state = vec![mpc_state0.state, mpc_state1.state, mpc_state2.state];
+    // let challenge = vec![
+    //     mpc_state0.challenge,
+    //     mpc_state1.challenge,
+    //     mpc_state2.challenge,
+    // ];
+
+    // let ceremony_size = CeremonySize::from(vec![
+    //     StateSize::from_proving_key(&state[0].0),
+    //     StateSize::from_proving_key(&state[1].0),
+    //     StateSize::from_proving_key(&state[2].0),
+    // ]);
+
+    // let metadata = Metadata {
+    //     ceremony_size,
+    //     contribution_time_limit: Duration::new(600, 0),
+    // };
+
+    // Server::new(
+    //     BoxArray::from_vec(state),
+    //     BoxArray::from_vec(challenge),
+    //     registry,
+    //     recovery_dir_path.into(),
+    //     metadata,
+    //     registry_path.into(),
+    // )
+    todo!()
+}
+
+/// Initiates a server for 3 dummy circuits. C = Config.  TODO: Take in array of paths to state files instead
+#[cfg(feature = "csv")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
+#[inline]
+pub fn init_dummy_server<const LEVEL_COUNT: usize>(
+    registry_path: String,
+    recovery_dir_path: String,
+) -> Server<Config, CeremonyRegistry, LEVEL_COUNT, 3> {
+    let registry = load::<
+        <Config as Ceremony>::Identifier,
+        <Config as Ceremony>::Participant,
+        CeremonyRecord,
+        CeremonyRegistry,
+        _,
+    >(registry_path.clone())
+    .unwrap();
+
+    println!("Loaded registry");
+
+    let mut file = File::open("manta-trusted-setup/data/dummy_challenge")
+        .expect("Opening file should succeed.");
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)
+        .expect("Reading data should succeed");
+    let challenge = Array::<u8, 64>::from_unchecked(buf);
+
+    println!("Loaded challenges");
+    let file =
+        File::open("manta-trusted-setup/data/dummy_state").expect("Opening file should succeed.");
+    let state: <Config as StateType>::State = CanonicalDeserialize::deserialize(&file).unwrap();
+    println!("Loaded states");
+
+    let state = vec![state.clone(), state.clone(), state];
+    let challenge = vec![challenge, challenge, challenge];
 
     let ceremony_size = CeremonySize::from(vec![
         StateSize::from_proving_key(&state[0].0),
@@ -329,34 +389,4 @@ where
         metadata,
         registry_path.into(),
     )
-}
-
-/// Loads `data` from a disk file at `path`.
-#[inline]
-pub fn load_from_file<T, P>(path: P) -> T
-where
-    P: AsRef<Path> + Debug,
-    T: DeserializeOwned,
-{
-    use std::fs::File;
-    let mut file = File::open(path).expect("Opening file should succeed.");
-    serde_json::from_reader(&mut file).expect("Reading and deserializing data should succeed.")
-}
-
-/// Old file format held MPCState in this form
-#[derive(Deserialize, Serialize)]
-#[serde(
-    bound(
-        serialize = "<C as ChallengeType>::Challenge: Serialize",
-        deserialize = "<C as ChallengeType>::Challenge: Deserialize<'de>"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-struct MpcState<C>
-where
-    C: Ceremony,
-{
-    state: <C as StateType>::State,
-    challenge: <C as ChallengeType>::Challenge,
 }

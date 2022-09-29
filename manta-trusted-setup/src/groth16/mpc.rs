@@ -35,7 +35,7 @@ use manta_crypto::{
         pairing::{Pairing, PairingEngineExt},
         ratio::{HashToGroup, RatioProof},
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
-        serialize::SerializationError,
+        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
     },
     rand::{CryptoRng, RngCore},
 };
@@ -54,7 +54,7 @@ use {
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(derivative::Derivative)]
+#[derive(derivative::Derivative, CanonicalDeserialize, CanonicalSerialize)]
 #[derivative(Clone(bound = ""))]
 pub struct State<P>(
     #[cfg_attr(
