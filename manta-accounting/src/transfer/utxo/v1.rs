@@ -1239,6 +1239,8 @@ where
 }
 
 /// Incoming Note Plaintext
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = "UtxoCommitmentRandomness<C, COM>: Clone, Asset<C, COM>: Clone"))]
 pub struct IncomingPlaintext<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
@@ -2037,7 +2039,10 @@ where
 
 /// Nullifier
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "NullifierCommitment<C, COM>: Debug, OutgoingNote<C, COM>: Debug"))]
+#[derivative(
+    Clone(bound = "NullifierCommitment<C, COM>: Clone, OutgoingNote<C, COM>: Clone"),
+    Debug(bound = "NullifierCommitment<C, COM>: Debug, OutgoingNote<C, COM>: Debug")
+)]
 pub struct Nullifier<C, COM = ()>
 where
     C: BaseConfiguration<COM>,
