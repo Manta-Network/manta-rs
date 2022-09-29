@@ -71,7 +71,28 @@ pub mod to_private {
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        ToPrivate::from_address(parameters, rng.gen(), rng.gen(), Default::default(), rng)
+        prove_full(
+            proving_context,
+            parameters,
+            utxo_accumulator_model,
+            rng.gen(),
+            rng,
+        )
+    }
+
+    /// Generates a proof for a [`ToPrivate`] transaction with custom `asset` as input.
+    #[inline]
+    pub fn prove_full<R>(
+        proving_context: &ProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        asset: Asset,
+        rng: &mut R,
+    ) -> TransferPost
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        ToPrivate::from_address(parameters, rng.gen(), asset, Default::default(), rng)
             .into_post(
                 FullParametersRef::new(parameters, utxo_accumulator_model),
                 proving_context,
