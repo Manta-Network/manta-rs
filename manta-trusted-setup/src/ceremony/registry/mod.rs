@@ -16,6 +16,8 @@
 
 //! Trusted Setup Ceremony Registry
 
+use self::csv::Record;
+
 #[cfg(feature = "csv")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
 pub mod csv;
@@ -43,4 +45,16 @@ pub trait Registry<I, P> {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+}
+
+/// Registry Configuration
+pub trait Configuration {
+    ///
+    type Identifier;
+    ///
+    type Participant;
+    ///
+    type Record: Record<Self::Identifier, Self::Participant>;
+    ///
+    type Registry: Registry<Self::Identifier, Self::Participant>;
 }
