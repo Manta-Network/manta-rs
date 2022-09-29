@@ -145,8 +145,7 @@ where
     where
         C::Challenge: Clone,
     {
-        let registry = &mut *self.registry.lock();
-        let priority = preprocess_request(registry, &request)?;
+        let priority = preprocess_request(&mut *self.registry.lock(), &request)?;
         let position = self
             .lock_queue
             .lock()
