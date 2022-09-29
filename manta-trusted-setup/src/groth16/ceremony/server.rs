@@ -24,7 +24,6 @@ use crate::{
     },
     groth16::{
         ceremony::{
-            coordinator::Coordinator,
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, Metadata, Participant as _, UnexpectedError,
         },
@@ -32,7 +31,6 @@ use crate::{
     },
 };
 use alloc::sync::Arc;
-use core::ops::Deref;
 use manta_util::{
     serde::{de::DeserializeOwned, Serialize},
     BoxArray,
@@ -43,14 +41,27 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use super::coordinator::{preprocess_request, LockQueue, StateChallengeProof};
+
 /// Server
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
 pub struct Server<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
 where
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
 {
-    /// Coordinator
-    coordinator: Arc<Mutex<Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>>>,
+    /// Lock and Queue
+    lock_queue: Arc<Mutex<LockQueue<C, LEVEL_COUNT>>>,
+
+    /// Participant Registry
+    registry: Arc<Mutex<R>>,
+
+    /// State, Challenge and Latest Proof
+    sclp: Arc<Mutex<StateChallengeProof<C, CIRCUIT_COUNT>>>,
+
+    /// Ceremony Metadata
+    metadata: Metadata,
 
     /// Recovery directory path
     recovery_directory: PathBuf,
@@ -72,11 +83,17 @@ where
         recovery_directory: PathBuf,
         metadata: Metadata,
     ) -> Self {
+        assert!(
+            metadata.ceremony_size.matches(state.as_slice()),
+            "Mismatch of metadata `{:?}` and state.",
+            metadata,
+        );
         Self {
-            coordinator: Arc::new(Mutex::new(Coordinator::new(
-                registry, state, challenge, metadata,
-            ))),
-            recovery_directory,
+            lock_queue: Arc::new(Mutex::new(Default::default())),
+            registry: Arc::new(Mutex::new(registry)),
+            sclp: Arc::new(Mutex::new(StateChallengeProof::new(state, challenge))),
+            metadata: metadata,
+            recovery_directory: recovery_directory,
         }
     }
 
@@ -85,15 +102,18 @@ where
     pub fn recover<P>(path: P, recovery_directory: PathBuf) -> Result<Self, CeremonyError<C>>
     where
         P: AsRef<Path>,
-        Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: DeserializeOwned,
+        Self: DeserializeOwned,
     {
-        Ok(Self {
-            coordinator: Arc::new(Mutex::new(
-                deserialize_from_file(path)
-                    .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?,
-            )),
-            recovery_directory,
-        })
+        let mut new_server: Self = deserialize_from_file(path)
+            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        new_server.recovery_directory = recovery_directory;
+        Ok(new_server)
+    }
+
+    /// Returns the metadata for this ceremony.
+    #[inline]
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
     }
 
     /// Gets the server state size and the current nonce of the participant.
@@ -105,13 +125,10 @@ where
     where
         C::Nonce: Clone,
     {
-        let mut coordinator = self.coordinator.lock();
         Ok((
-            coordinator.metadata().clone(),
-            coordinator
-                .registry()
+            self.metadata().clone(),
+            self.registry
                 .lock()
-                .expect("Returning the registry is not supposed to fail.")
                 .get(&request)
                 .ok_or(CeremonyError::NotRegistered)?
                 .nonce()
@@ -128,13 +145,15 @@ where
     where
         C::Challenge: Clone,
     {
-        let mut coordinator = self.coordinator.lock();
-        let priority = coordinator.preprocess_request(&request)?;
-        let position = coordinator
+        let registry = &mut *self.registry.lock();
+        let priority = preprocess_request(registry, &request)?;
+        let position = self
+            .lock_queue
+            .lock()
             .queue_mut()
             .push_back_if_missing(priority.into(), request.into_identifier());
         if position == 0 {
-            Ok(QueryResponse::State(coordinator.round_state()))
+            Ok(QueryResponse::State(self.sclp.lock().round_state()))
         } else {
             Ok(QueryResponse::QueuePosition(position as u64))
         }
@@ -148,28 +167,33 @@ where
         request: SignedMessage<C, C::Identifier, ContributeRequest<C>>,
     ) -> Result<ContributeResponse<C>, CeremonyError<C>>
     where
-        Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: Serialize,
+        Self: Serialize,
         C::Challenge: Clone,
     {
-        let mut coordinator = self.coordinator.lock();
-        coordinator.preprocess_request(&request)?;
+        let registry = &mut *self.registry.lock();
+        preprocess_request(registry, &request)?;
         let (identifier, message) = request.into_inner();
-        coordinator.update(
-            &identifier,
+        self.lock_queue
+            .lock()
+            .update(&identifier, registry, self.metadata())?;
+        let mut sclp = self.sclp.lock();
+        sclp.update(
             BoxArray::from_vec(message.state),
             BoxArray::from_vec(message.proof),
         )?;
+        sclp.increment_round();
+        let round = sclp.round();
+        drop(sclp);
         serialize_into_file(
             OpenOptions::new().write(true).create_new(true),
-            &Path::new(&self.recovery_directory)
-                .join(format!("transcript{}.data", coordinator.round())),
-            &coordinator.deref(),
+            &Path::new(&self.recovery_directory).join(format!("transcript{}.data", round)),
+            &self.clone(),
         )
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        println!("{} participants have contributed.", coordinator.round());
+        println!("{} participants have contributed.", round);
         Ok(ContributeResponse {
-            index: coordinator.round(),
-            challenge: coordinator.challenge().to_vec(),
+            index: round,
+            challenge: self.sclp.lock().challenge().to_vec(),
         })
     }
 }
