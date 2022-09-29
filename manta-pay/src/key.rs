@@ -29,7 +29,7 @@ use core::marker::PhantomData;
 use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
-use manta_crypto::rand::{CryptoRng, RngCore, Sample, OsRng};
+use manta_crypto::rand::{CryptoRng, OsRng, RngCore, Sample};
 use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
@@ -153,8 +153,8 @@ where
 }
 
 impl<C> KeySecret<C>
-    where
-        C: CoinType,
+where
+    C: CoinType,
 {
     /// Builds a [`KeySecret`] from raw `seed` bytes and `mnemonic`.
     #[inline]
@@ -189,7 +189,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        Self::new(Mnemonic::sample(& mut OsRng),"")
+        Self::new(Mnemonic::sample(&mut OsRng), "")
     }
 }
 
