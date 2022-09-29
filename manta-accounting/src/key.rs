@@ -232,7 +232,7 @@ where
         }
     }
 
-    /// Returns `base`
+    /// Returns the base [`HierarchicalKeyDerivationScheme`] for `self`.
     #[inline]
     pub fn get_base(&self) -> &H {
         &self.base
@@ -825,7 +825,7 @@ where
         Self { keys, accounts }
     }
 
-    /// Get keys
+    /// Returns the underlying [`HierarchicalKeyDerivationScheme`] of `self`.
     #[inline]
     pub fn keys(&self) -> &H {
         &self.keys

@@ -153,18 +153,12 @@ where
 }
 
 impl<C> KeySecret<C>
-where
-    C: CoinType,
+    where
+        C: CoinType,
 {
+    /// Builds a [`KeySecret`] from raw `seed` bytes and `mnemonic`.
     #[inline]
-    /// Gets [`Mnemonic`]
-    pub fn expose_mnemonic(&self) -> &Mnemonic {
-        &self.mnemonic
-    }
-
-    /// Builds a [`KeySecret`] from raw bytes.
-    #[inline]
-    fn build(seed: [u8; Seed::SIZE], mnemonic: Mnemonic) -> Self {
+    fn new_unchecked(seed: [u8; Seed::SIZE], mnemonic: Mnemonic) -> Self {
         Self {
             seed: seed.into(),
             mnemonic,
@@ -172,17 +166,17 @@ where
         }
     }
 
-    /// Builds a [`KeySecret`] from a `seed`.
-    #[inline]
-    fn from_seed(seed: Seed, mnemonic: Mnemonic) -> Self {
-        Self::build(*seed.as_bytes(), mnemonic)
-    }
-
     /// Converts a `mnemonic` phrase into a [`KeySecret`], locking it with `password`.
     #[inline]
     #[must_use]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
-        Self::from_seed(mnemonic.to_seed(password), mnemonic)
+        Self::new_unchecked(*mnemonic.to_seed(password).as_bytes(), mnemonic)
+    }
+
+    /// Exposes a shared reference to the [`Mnemonic`] for `self`
+    #[inline]
+    pub fn expose_mnemonic(&self) -> &Mnemonic {
+        &self.mnemonic
     }
 }
 
@@ -195,9 +189,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        let sample_mnemonic = Mnemonic::sample(&mut OsRng);
-        let seed = sample_mnemonic.to_seed("");
-        Self::build(*seed.as_bytes(), sample_mnemonic)
+        Self::new(Mnemonic::sample(& mut OsRng),"")
     }
 }
 

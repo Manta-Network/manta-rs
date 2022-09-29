@@ -635,7 +635,7 @@ where
         )
     }
 
-    /// Gets [`AccountTable`]
+    /// Returns the [`AccountTable`] for `self.`
     #[inline]
     pub fn accounts(&self) -> &AccountTable<C> {
         &self.accounts
