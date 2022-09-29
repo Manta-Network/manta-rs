@@ -33,6 +33,7 @@ pub enum Command {
     /// Creates a new server.
     Create {
         registry_path: String,
+        init_parameters_path: String,
         recovery_dir_path: String,
     },
 
@@ -56,8 +57,12 @@ impl Arguments {
     #[inline]
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
         // let server = match self.command {
+        //      Command::Prepare {
+        //
+        //        }
         //     Command::Create {
         //         registry_path,
+        //          init_parameters_path,
         //         recovery_dir_path,
         //     } => init_server::<Config, Groth16BLS12381, _, 2>(registry_path, recovery_dir_path),
         //     Command::Recover {

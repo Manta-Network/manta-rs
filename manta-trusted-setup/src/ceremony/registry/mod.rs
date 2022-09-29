@@ -34,4 +34,13 @@ pub trait Registry<I, P> {
 
     /// Returns a mutable reference to the participant with the given `id` if they are registered.
     fn get_mut(&mut self, id: &I) -> Option<&mut P>;
+
+    /// Returns the length of `self`.
+    fn len(&self) -> usize;
+
+    /// Returns true if self.len() == 0.
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
