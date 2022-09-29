@@ -192,7 +192,7 @@ where
 
     /// Performs the ceremony contribution over `round`, sending the result to the ceremony server.
     #[inline]
-    async fn contribute(
+    async fn update(
         &mut self,
         hasher: &C::Hasher,
         mut round: Round<C>,
@@ -218,7 +218,7 @@ where
             proof,
         })?;
         self.client
-            .post("contribute", &signed_message)
+            .post("update", &signed_message)
             .await
             .map_err(into_ceremony_error)
     }
@@ -245,7 +245,7 @@ where
             Err(CeremonyError::Timeout) => return Ok(Update::Continue(Continue::Timeout)),
             Err(err) => return Err(err),
         };
-        match self.contribute(&C::Hasher::default(), state).await {
+        match self.update(&C::Hasher::default(), state).await {
             Ok(response) => Ok(Update::Break(response)),
             Err(CeremonyError::Timeout) | Err(CeremonyError::NotYourTurn) => {
                 Ok(Update::Continue(Continue::Timeout))

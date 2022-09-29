@@ -19,14 +19,13 @@
 use crate::{
     ceremony::{
         participant,
-        registry::{csv, Registry},
+        registry::csv,
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
     groth16::{
         ceremony::{
             client::{self, Continue},
             message::ContributeResponse,
-            server::Server,
             Ceremony, CeremonyError,
         },
         kzg::{Contribution, Size},
@@ -560,7 +559,7 @@ impl Ceremony for Config {
     type Priority = Priority;
     type Participant = Participant;
     type SerializationError = SerializationError;
-    type ContributionHash = manta_util::Array<u8, 16>;
+    type ContributionHash = [u8; 16];
 
     #[inline]
     fn check_state(state: &Self::State) -> Result<(), Self::SerializationError> {
@@ -570,17 +569,11 @@ impl Ceremony for Config {
     #[inline]
     fn contribution_hash(response: &ContributeResponse<Self>) -> Self::ContributionHash {
         let mut hasher = blake2::Blake2b::default();
-        response
-            .index
-            .serialize_uncompressed(&mut hasher)
-            .expect("Consuming the contribution number failed.");
+        hasher.update(response.index.to_le_bytes());
         for challenge in &response.challenge {
-            challenge
-                .0
-                .serialize_uncompressed(&mut hasher)
-                .expect("Consuming the challenge number failed.");
+            hasher.update(challenge.0);
         }
-        into_array_unchecked(hasher.finalize()).into()
+        into_array_unchecked(hasher.finalize())
     }
 }
 

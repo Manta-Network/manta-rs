@@ -47,6 +47,7 @@ rayon = ["manta-util/rayon"]
 
 # Serde Serialization
 serde = [
+    "hex?/serde",
     "manta-crypto/serde",
     "manta-util/serde",
     "manta-util/serde-alloc",
@@ -72,6 +73,7 @@ console = { version = "0.15.1", default-features = false }
 csv = { version = "1.1.6", optional = true, default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 dialoguer = { version = "0.10.2", default-features = false }
+hex = { version = "0.4.3", optional = true, default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom", "rand_chacha", "dalek"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["reqwest"] }
 parking_lot = { version = "0.12.1", default-features = false }

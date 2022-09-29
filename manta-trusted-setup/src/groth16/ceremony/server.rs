@@ -89,11 +89,11 @@ where
             metadata,
         );
         Self {
-            lock_queue: Arc::new(Mutex::new(Default::default())),
+            lock_queue: Default::default(),
             registry: Arc::new(Mutex::new(registry)),
             sclp: Arc::new(Mutex::new(StateChallengeProof::new(state, challenge))),
-            metadata: metadata,
-            recovery_directory: recovery_directory,
+            metadata,
+            recovery_directory,
         }
     }
 

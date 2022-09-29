@@ -69,17 +69,18 @@ pub struct State<P>(
 where
     P: Pairing + ?Sized;
 
-// TODO: A macro should impl this for SWModel and TEModel
-impl<P, R1, R2> State<P>
+impl<P> State<P>
 where
-    P: Pairing<G1 = GroupAffine<R1>, G2 = GroupAffine<R2>> + ?Sized,
-    R1: SWModelParameters,
-    R2: SWModelParameters,
+    P: Pairing,
 {
-    /// We deserialize a [`State`] unchecked by default, so a ceremony
-    /// coordinator needs to perform the deserialization checks manually.
+    /// Checks that `self` is a valid state before running the ceremony.
     #[inline]
-    pub fn check(&self) -> Result<(), SerializationError> {
+    pub fn check<R1, R2>(&self) -> Result<(), SerializationError>
+    where
+        P: Pairing<G1 = GroupAffine<R1>, G2 = GroupAffine<R2>>,
+        R1: SWModelParameters,
+        R2: SWModelParameters,
+    {
         once(&self.0.vk.alpha_g1)
             .chain(self.0.vk.gamma_abc_g1.iter())
             .chain(once(&self.0.beta_g1))
@@ -89,7 +90,6 @@ where
             .chain(self.0.h_query.iter())
             .chain(self.0.l_query.iter())
             .try_for_each(curve_point_checks)?;
-
         once(&self.0.vk.beta_g2)
             .chain(once(&self.0.vk.gamma_g2))
             .chain(once(&self.0.vk.delta_g2))
@@ -98,6 +98,8 @@ where
     }
 }
 
+/// Checks that `p` is a valid point on the elliptic curve.
+#[inline]
 fn curve_point_checks<P>(p: &GroupAffine<P>) -> Result<(), SerializationError>
 where
     P: SWModelParameters,

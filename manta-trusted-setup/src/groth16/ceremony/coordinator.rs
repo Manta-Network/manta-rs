@@ -195,8 +195,8 @@ where
         challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
     ) -> Self {
         Self {
-            state: state,
-            challenge: challenge,
+            state,
+            challenge,
             latest_proof: None,
             round: 0,
         }
