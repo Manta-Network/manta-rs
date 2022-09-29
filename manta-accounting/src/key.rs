@@ -234,7 +234,7 @@ where
 
     /// Returns the base [`HierarchicalKeyDerivationScheme`] for `self`.
     #[inline]
-    pub fn get_base(&self) -> &H {
+    pub fn base(&self) -> &H {
         &self.base
     }
 }
