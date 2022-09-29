@@ -19,7 +19,7 @@
 use crate::{
     ceremony::{
         participant,
-        registry::csv,
+        registry::{self, csv},
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
     groth16::{
@@ -52,9 +52,11 @@ use manta_crypto::{
     signature::{self, VerifyingKeyType},
 };
 use manta_util::{
+    Array,
     into_array_unchecked,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
+use std::collections::HashMap;
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
@@ -230,6 +232,9 @@ impl csv::Record<VerifyingKey, Participant> for Record {
                 .try_into()
                 .map_err(|_| "Cannot decode to array.".to_string())?,
         );
+        // related to stupid PublicKey as Array hack
+        let verifying_key = Array::from_unchecked(*verifying_key.as_bytes());
+
         let signature: ed25519::Signature = ed25519::signature_from_bytes(
             bs58::decode(self.signature)
                 .into_vec()
@@ -252,19 +257,31 @@ impl csv::Record<VerifyingKey, Participant> for Record {
             Participant::new(
                 verifying_key,
                 self.twitter,
-                match self
-                    .priority
-                    .parse::<bool>()
-                    .map_err(|_| "Cannot parse priority.".to_string())?
-                {
-                    true => Priority::High,
-                    false => Priority::Normal,
-                },
+                // TODO: Fix this, cannot parse priorities right now
+                // match self
+                //     .priority
+                //     .parse::<bool>()
+                //     .map_err(|_| "Cannot parse priority.".to_string())?
+                // {
+                //     true => Priority::High,
+                //     false => Priority::Normal,
+                // },
+                Priority::High,
                 OsRng.gen::<_, u16>() as u64,
                 false,
             ),
         ))
     }
+}
+
+/// The registry used in this ceremony
+pub type Registry = HashMap<VerifyingKey, Participant>;
+
+impl registry::Configuration for Registry {
+    type Identifier = VerifyingKey;
+    type Participant = Participant;
+    type Record = Record;
+    type Registry = Self;
 }
 
 /// Generates an ed25519 keypair with `bytes` as seed.

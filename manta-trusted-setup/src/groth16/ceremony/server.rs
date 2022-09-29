@@ -26,22 +26,28 @@ use crate::{
     groth16::{
         ceremony::{
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, Metadata, UnexpectedError,
+            Ceremony, CeremonyError, CeremonySize, Metadata, Participant as _, UnexpectedError,
         },
-        mpc::State,
+        mpc::{State, StateSize},
     },
+    mpc::{ChallengeType, StateType},
 };
 use alloc::sync::Arc;
+use core::{fmt::Debug, ops::Deref};
 use manta_util::{
-    serde::{de::DeserializeOwned, Serialize},
+    serde::{de::DeserializeOwned, Deserialize, Serialize},
     BoxArray,
 };
 use parking_lot::Mutex;
 use std::{
     fs::OpenOptions,
     path::{Path, PathBuf},
+    time::Duration,
 };
 use tokio::task;
+
+#[cfg(feature = "csv")]
+use crate::ceremony::registry::csv::{load, Record};
 
 use super::coordinator::{preprocess_request, LockQueue, StateChallengeProof};
 
@@ -261,4 +267,85 @@ where
             challenge: self.sclp.lock().challenge().to_vec(),
         })
     }
+}
+
+/// Initiates a server for 3 circuits. TODO: Take in array of paths to state files instead
+#[cfg(feature = "csv")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
+#[inline]
+pub fn init_server<R, C, T, const LEVEL_COUNT: usize>(
+    registry_path: String,
+    recovery_dir_path: String,
+) -> Server<C, R, LEVEL_COUNT, 3>
+where
+    C: Ceremony,
+    C::Challenge: DeserializeOwned,
+    R: Registry<C::Identifier, C::Participant>,
+    R: registry::Configuration<Identifier = C::Identifier, Participant = C::Participant, Registry = R>,
+    T: Record<C::Identifier, C::Participant>,
+    T::Error: Debug,
+{
+    println!("About to load registry");
+    let registry = load::<C::Identifier, C::Participant, T, R, _>(registry_path.clone()).unwrap();
+    println!("I already loaded registry");
+
+    println!("About to load states");
+    let mpc_state0: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_mint.data");
+    let mpc_state1: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_private_transfer.data");
+    let mpc_state2: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_reclaim.data");
+    println!("I just loaded states");
+
+    let state = vec![mpc_state0.state, mpc_state1.state, mpc_state2.state];
+    let challenge = vec![mpc_state0.challenge, mpc_state1.challenge, mpc_state2.challenge];
+
+
+    let ceremony_size = CeremonySize::from(vec![
+        StateSize::from_proving_key(&state[0].0),
+        StateSize::from_proving_key(&state[1].0),
+        StateSize::from_proving_key(&state[2].0),
+    ]);
+
+    let metadata = Metadata {
+        ceremony_size,
+        contribution_time_limit: Duration::new(600, 0),
+    };
+
+    Server::new(
+        BoxArray::from_vec(state),
+        BoxArray::from_vec(challenge),
+        registry,
+        recovery_dir_path.into(),
+        metadata,
+        registry_path.into()
+    )
+}
+
+/// Loads `data` from a disk file at `path`.
+#[inline]
+pub fn load_from_file<T, P>(path: P) -> T
+where
+    P: AsRef<Path> + Debug,
+    T: DeserializeOwned,
+{
+    use std::fs::File;
+    let mut file = File::open(path).expect("Opening file should succeed.");
+    serde_json::from_reader(&mut file).expect("Reading and deserializing data should succeed.")
+}
+
+/// Old file format held MPCState in this form
+#[derive(Deserialize, Serialize)]
+#[serde(
+    bound(
+        serialize = "<C as ChallengeType>::Challenge: Serialize",
+        deserialize = "<C as ChallengeType>::Challenge: Deserialize<'de>"
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+struct MpcState<C>
+where
+    C: Ceremony,
+{
+    state: <C as StateType>::State,
+    challenge: <C as ChallengeType>::Challenge,
 }

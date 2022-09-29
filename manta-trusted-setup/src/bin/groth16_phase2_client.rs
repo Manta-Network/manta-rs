@@ -24,6 +24,7 @@ use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{client_contribute, exit_on_error, get_client_keys, register, Config},
     CeremonyError,
 };
+use manta_util::Array;
 
 /// Welcome Message
 pub const TITLE: &str = r"
@@ -85,6 +86,8 @@ impl Arguments {
                     .build()
                 {
                     Ok(runtime) => {
+                        // stupid hack
+                        let pk = Array::from_unchecked(*pk.as_bytes());
                         runtime.block_on(async { client_contribute::<Config>(sk, pk).await })
                     }
                     Err(e) => panic!("I/O Error while setting up the tokio Runtime: {:?}", e),

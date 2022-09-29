@@ -30,7 +30,7 @@ required-features = ["bincode", "clap", "csv", "ppot", "tokio"]
 
 [[bin]]
 name = "groth16_phase2_server"
-required-features = ["bincode", "clap", "csv", "ppot", "tokio"]
+required-features = ["bincode", "clap", "csv", "manta-util/tide", "ppot", "serde_json", "tokio"]
 
 [features]
 # Bincode for Message Signing
@@ -77,6 +77,7 @@ hex = { version = "0.4.3", optional = true, default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom", "rand_chacha", "dalek"] }
 manta-util = { path = "../manta-util", default-features = false, features = ["reqwest"] }
 parking_lot = { version = "0.12.1", default-features = false }
+serde_json = { version = "1.0", optional = true, default-features = false, features = ["alloc"] }
 tiny-bip39 = { version = "1.0.0", default-features = false } 
 tokio = { version = "1.21.1", optional = true, default-features = false, features = ["rt-multi-thread"] }
 

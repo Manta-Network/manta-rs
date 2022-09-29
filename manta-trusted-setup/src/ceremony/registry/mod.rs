@@ -18,6 +18,9 @@
 
 use self::csv::Record;
 
+#[cfg(feature = "std")]
+use std::{collections::HashMap, hash::Hash};
+
 #[cfg(feature = "csv")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
 pub mod csv;
@@ -57,4 +60,36 @@ pub trait Configuration {
     type Record: Record<Self::Identifier, Self::Participant>;
     ///
     type Registry: Registry<Self::Identifier, Self::Participant>;
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+impl<I, P> Registry<I, P> for HashMap<I, P>
+where
+    I: Eq + Hash,
+{
+    #[inline]
+    fn new() -> Self {
+        Self::new()
+    }
+
+    #[inline]
+    fn insert(&mut self, key: I, value: P) -> bool {
+        HashMap::insert(self, key, value).is_none()
+    }
+
+    #[inline]
+    fn get(&self, id: &I) -> Option<&P> {
+        self.get(id)
+    }
+
+    #[inline]
+    fn get_mut(&mut self, id: &I) -> Option<&mut P> {
+        self.get_mut(id)
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        Self::len(&self)
+    }
 }

@@ -18,11 +18,11 @@
 
 use clap::{Parser, Subcommand};
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::{exit_on_error, Config},
-    server::Server,
+    config::ppot::{exit_on_error, Config, Record, Registry},
+    server::{init_server},
     CeremonyError,
 };
-// TODO: use manta_util::http::tide;
+use manta_util::http::tide;
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -58,49 +58,37 @@ impl Arguments {
     /// Runs a server.
     #[inline]
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
-        /*
         let server = match self.command {
-            Command::Prepare => todo!(),
             Command::Create {
                 registry_path,
+                init_parameters_path,
                 recovery_dir_path,
-            } => todo!(),
-            Command::Recover {
-                recovery_path,
-                recovery_dir_path,
-            } => todo!(),
+                server_url
+            } => init_server::<Registry, Config, Record, 2>(registry_path, recovery_dir_path),
+            _ => {
+                panic!()
+            }
+            // Command::Recover {
+            //     recovery_path,
+            //     recovery_dir_path,
+            // } => recover(recovery_path, recovery_dir_path),
         };
-        */
-
-        println!("Ceremony is starting up.");
-
-        // let server = match self.command {
-        //      Command::Prepare {
-        //
-        //        }
-        //     Command::Create {
-        //         registry_path,
-        //          init_parameters_path,
-        //         recovery_dir_path,
-        //     } => init_server::<Config, Groth16BLS12381, _, 2>(registry_path, recovery_dir_path),
-        //     Command::Recover {
-        //         recovery_path,
-        //         recovery_dir_path,
-        //     } => recover(recovery_path, recovery_dir_path),
-        // };
-        /*
+        
+        println!("Network starts to run!");
         let mut api = tide::Server::with_state(server);
-        api.at("/start").post(|r| S::execute(r, Server::start));
-        api.at("/query").post(|r| S::execute(r, Server::query));
-        api.at("/update").post(|r| S::execute(r, Server::update));
-        api.listen(server_url)
-            .await
-            .expect("Listener failed to start up.");
-        */
-        todo!()
+        // api.at("/start").post(|r| S::execute(r, Server::start));
+        // api.at("/query").post(|r| S::execute(r, Server::query));
+        // api.at("/update").post(|r| S::execute(r, Server::update));
+        // api.listen("127.0.0.1:8080")
+        //     .await
+        //     .expect("Should create a listener."); // TODO: use TLS
+        Ok(())
     }
 }
 
 fn main() {
     exit_on_error(Arguments::parse().run());
 }
+
+// run with 
+// cargo run --all-features --bin groth16_phase2_server create manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data manta-trusted-setup/data server_url
