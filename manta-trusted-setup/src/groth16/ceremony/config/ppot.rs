@@ -410,6 +410,7 @@ where
     C::Identifier: Serialize,
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
+    C::ContributionHash: AsRef<[u8]>,
 {
     let term = Term::stdout();
     let response = client::contribute(
@@ -440,7 +441,7 @@ where
     .await?;
     println!(
         "Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
-        response.index, C::contribution_hash(&response)
+        response.index, hex::encode(C::contribution_hash(&response))
     );
     Ok(())
 }
