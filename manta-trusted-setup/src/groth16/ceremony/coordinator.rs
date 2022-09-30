@@ -245,6 +245,18 @@ where
         &self.challenge
     }
 
+    /// Returns the state.
+    #[inline]
+    pub fn state(&self) -> &BoxArray<State<C>, CIRCUIT_COUNT> {
+        &self.state
+    }
+
+    /// Returns the latest proof.
+    #[inline]
+    pub fn latest_proof(&self) -> &Option<BoxArray<Proof<C>, CIRCUIT_COUNT>> {
+        &self.latest_proof
+    }
+
     /// Updates the MPC state and challenge using client's contribution. If the contribution is
     /// valid, the participant will be removed from the waiting queue, and cannot participate in
     /// this ceremony again.

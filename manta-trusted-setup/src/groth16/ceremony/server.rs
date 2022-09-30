@@ -136,34 +136,26 @@ where
     {
         let folder_path = path.as_ref().display();
         let round_number: u64 =
-            deserialize_from_file(format!("{}{}", folder_path, "/round_number"))
+            deserialize_from_file(format!("{}{}", folder_path, "/round_number.data"))
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         let state: BoxArray<State<C>, CIRCUIT_COUNT> = deserialize_from_file(format!(
-            "{}{}{}",
-            recovery_directory.display(),
-            "/state/",
-            round_number
+            "{}{}{}{}",
+            folder_path, "/state_", round_number, ".data"
         ))
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         let challenge: BoxArray<C::Challenge, CIRCUIT_COUNT> = deserialize_from_file(format!(
-            "{}{}{}",
-            recovery_directory.display(),
-            "/challenge/",
-            round_number
+            "{}{}{}{}",
+            folder_path, "/challenge_", round_number, ".data"
         ))
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        let latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>> =
-            deserialize_from_file(format!(
-                "{}{}{}",
-                recovery_directory.display(),
-                "/proof/",
-                round_number
-            ))
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        let latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>> = deserialize_from_file(
+            format!("{}{}{}{}", folder_path, "/proof_", round_number, ".data"),
+        )
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         let registry: R::Registry = deserialize_from_file(&registry_path)
             .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         let metadata: Metadata =
-            deserialize_from_file(format!("{}{}", folder_path, "/metadata"))
+            deserialize_from_file(format!("{}{}", folder_path, "/metadata.data"))
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
 
         Ok(Self {
@@ -285,23 +277,58 @@ where
     /// Saves `self` into `self.recovery_directory`.
     pub async fn save_server(&self, round: u64) -> Result<(), CeremonyError<C>>
     where
-        Self: Serialize,
-        C::Challenge: Clone + Send,
+        C::Challenge: Clone + Send + Serialize,
         C::Nonce: Send,
-        R::Registry: Send,
+        R::Registry: Send + Serialize,
         C::Identifier: Send,
         C: 'static,
         R: 'static,
     {
         let _ = info!("Saving server to recovery directory.");
-        let server = self.clone();
-        let _ = task::spawn_blocking(move || {
+        let registry = self.registry.clone();
+        let registry_path = self.registry_path.clone();
+        task::spawn_blocking(move || {
+            let registry = registry.lock();
             serialize_into_file(
                 OpenOptions::new().write(true).create_new(true),
-                &Path::new(&server.recovery_directory).join(format!("transcript{}.data", round)),
-                &server,
+                &Path::new(&registry_path),
+                &*registry,
             )
             .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
+        })
+        .await
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
+        let sclp = self.sclp.clone();
+        let recovery_directory = self.recovery_directory.clone();
+        let _ = task::spawn_blocking(move || -> Result<(), CeremonyError<C>> {
+            let sclp_lock = sclp.lock();
+            let round = sclp_lock.round();
+            serialize_into_file(
+                OpenOptions::new().write(true).create_new(true),
+                &Path::new(&recovery_directory).join("/round_number.data"),
+                &round,
+            )
+            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))?;
+            serialize_into_file(
+                OpenOptions::new().write(true).create_new(true),
+                &Path::new(&recovery_directory).join(format!("{}{}{}", "/state_", &round, ".data")),
+                &sclp_lock.state(),
+            )
+            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))?;
+            serialize_into_file(
+                OpenOptions::new().write(true).create_new(true),
+                &Path::new(&recovery_directory)
+                    .join(format!("{}{}{}", "/challenge_", &round, ".data")),
+                &sclp_lock.challenge(),
+            )
+            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))?;
+            serialize_into_file(
+                OpenOptions::new().write(true).create_new(true),
+                &Path::new(&recovery_directory).join(format!("{}{}{}", "/proof_", &round, ".data")),
+                &sclp_lock.latest_proof(),
+            )
+            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))?;
+            Ok(())
         })
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
@@ -317,13 +344,12 @@ where
         request: SignedMessage<C, C::Identifier, ContributeRequest<C>>,
     ) -> Result<ContributeResponse<C>, CeremonyError<C>>
     where
-        Self: Serialize,
         C: 'static,
-        C::Challenge: Clone + Debug + Send,
+        C::Challenge: Clone + Debug + Send + Serialize,
         C::Identifier: Send,
         C::Nonce: Send,
         StateChallengeProof<C, CIRCUIT_COUNT>: Send,
-        R::Registry: Send,
+        R::Registry: Send + Serialize,
         R: 'static,
     {
         let _ = info!("[REQUEST] processing `update`");
