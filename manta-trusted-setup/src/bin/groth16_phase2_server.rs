@@ -30,6 +30,7 @@ pub enum Command {
     /// Transforms Phase 1 Parameters into Phase 2 Parameters.
     Prepare {
         registry_path: String,
+        init_parameters_path: String,
         recovery_dir_path: String,
     },
 
@@ -67,12 +68,12 @@ impl Arguments {
                 init_parameters_path,
                 recovery_dir_path,
                 server_url
-            // } => init_server::<Registry, Config, Record, 2>(registry_path, recovery_dir_path),
-        } => init_dummy_server::<2>(registry_path, recovery_dir_path),
+        } => init_server::<Registry, Config, Record, 2>(registry_path, init_parameters_path, recovery_dir_path),
             Command::Prepare {
                 registry_path,
+                init_parameters_path,
                 recovery_dir_path
-            } => init_dummy_server::<2>(registry_path, recovery_dir_path),
+            } => init_dummy_server::<2>(registry_path, init_parameters_path, recovery_dir_path),
             _ => {
                 panic!()
             }
@@ -87,10 +88,14 @@ impl Arguments {
         api.at("/start").post(|r| execute(r, Server::start));
         // api.at("/query").post(|r| S::execute(r, Server::query));
         // api.at("/update").post(|r| S::execute(r, Server::update));
-        // api.listen("127.0.0.1:8080").await?;
-        api.listen("127.0.0.1:8080")
-            .await
-            .expect("Should create a listener."); // TODO: use TLS
+
+        // let mut listener = tide::listener::ConcurrentListener::new();
+        // listener.add("127.0.0.1:8080");
+        // api.listen(listener).await.expect("Should create a listener");
+
+        // api.listen("127.0.0.1:8080")
+        //     .await
+        //     .expect("Should create a listener."); // TODO: use TLS
         Ok(())
     }
 }
@@ -98,7 +103,10 @@ impl Arguments {
 #[async_std::main]
 async fn main() {
     // exit_on_error(Arguments::parse().run());
-    Arguments::parse().run().await;
+    Arguments::parse()
+        .run()
+        .await
+        .expect("Server error occurred");
 }
 
 // run with

@@ -98,6 +98,16 @@ where
     }
 }
 
+impl<P> From<ProvingKey<P::Pairing>> for State<P>
+where
+    P: Pairing,
+    P::Pairing: PairingEngine,
+{
+    fn from(pk: ProvingKey<P::Pairing>) -> Self {
+        Self(pk)
+    }
+}
+
 /// Checks that `p` is a valid point on the elliptic curve.
 #[inline]
 fn curve_point_checks<P>(p: &GroupAffine<P>) -> Result<(), SerializationError>

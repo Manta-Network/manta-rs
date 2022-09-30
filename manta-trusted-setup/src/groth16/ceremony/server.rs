@@ -281,11 +281,12 @@ where
 #[inline]
 pub fn init_server<R, C, T, const LEVEL_COUNT: usize>(
     registry_path: String,
+    init_parameters_path: String,
     recovery_dir_path: String,
 ) -> Server<C, R, LEVEL_COUNT, 3>
 where
     C: Ceremony,
-    C::Challenge: DeserializeOwned,
+    C::Challenge: DeserializeOwned + From<Array<u8, 64>>,
     R: Registry<C::Identifier, C::Participant>,
     R: registry::Configuration<
         Identifier = C::Identifier,
@@ -298,38 +299,54 @@ where
     let registry = load::<C::Identifier, C::Participant, T, R, _>(registry_path.clone()).unwrap();
     println!("Loaded registry");
 
-    // let mpc_state0: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_mint.data");
-    // let mpc_state1: MpcState<C> =
-    //     load_from_file(&"manta-trusted-setup/data/prepared_private_transfer.data");
-    // let mpc_state2: MpcState<C> = load_from_file(&"manta-trusted-setup/data/prepared_reclaim.data");
+    // Vector of [`ProvingKey`]
+    let mut state = Vec::new();
+    let mut state_size = Vec::new();
+    let mut challenge = Vec::new();
 
-    // let state = vec![mpc_state0.state, mpc_state1.state, mpc_state2.state];
-    // let challenge = vec![
-    //     mpc_state0.challenge,
-    //     mpc_state1.challenge,
-    //     mpc_state2.challenge,
-    // ];
+    // Ceremony-specific list of state, challenge file names
+    // TODO: This ought to load however many are present and follow this naming convention
+    let state_files = vec!["/dummy_state1", "/dummy_state2", "/dummy_state3"];
+    let challenge_files = vec![
+        "/dummy_challenge1",
+        "/dummy_challenge2",
+        "/dummy_challenge3",
+    ];
+    assert_eq!(state_files.len(), challenge_files.len());
 
-    // let ceremony_size = CeremonySize::from(vec![
-    //     StateSize::from_proving_key(&state[0].0),
-    //     StateSize::from_proving_key(&state[1].0),
-    //     StateSize::from_proving_key(&state[2].0),
-    // ]);
+    for file in state_files.iter() {
+        let file = File::open(format!("{}{}", init_parameters_path, file))
+            .expect("Opening file should succeed.");
+        let temp: <C as StateType>::State = CanonicalDeserialize::deserialize(&file).unwrap();
+        state_size.push(StateSize::from_proving_key(&temp.0));
+        state.push(temp);
+    }
+    println!("Loaded states");
 
-    // let metadata = Metadata {
-    //     ceremony_size,
-    //     contribution_time_limit: Duration::new(600, 0),
-    // };
+    for file in challenge_files.iter() {
+        let mut file = File::open(format!("{}{}", init_parameters_path, file))
+            .expect("Opening file should succeed.");
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)
+            .expect("Reading challenge file should succeed");
+        let temp = Array::<u8, 64>::from_unchecked(buf);
+        challenge.push(temp.into());
+    }
+    println!("Loaded challenges");
 
-    // Server::new(
-    //     BoxArray::from_vec(state),
-    //     BoxArray::from_vec(challenge),
-    //     registry,
-    //     recovery_dir_path.into(),
-    //     metadata,
-    //     registry_path.into(),
-    // )
-    todo!()
+    let metadata = Metadata {
+        ceremony_size: CeremonySize::from(state_size),
+        contribution_time_limit: Duration::new(600, 0),
+    };
+
+    Server::new(
+        BoxArray::from_vec(state),
+        BoxArray::from_vec(challenge),
+        registry,
+        recovery_dir_path.into(),
+        metadata,
+        registry_path.into(),
+    )
 }
 
 /// Initiates a server for 3 dummy circuits. C = Config.  TODO: Take in array of paths to state files instead
@@ -338,6 +355,7 @@ where
 #[inline]
 pub fn init_dummy_server<const LEVEL_COUNT: usize>(
     registry_path: String,
+    init_parameters_path: String,
     recovery_dir_path: String,
 ) -> Server<Config, CeremonyRegistry, LEVEL_COUNT, 3> {
     let registry = load::<
@@ -351,7 +369,7 @@ pub fn init_dummy_server<const LEVEL_COUNT: usize>(
 
     println!("Loaded registry");
 
-    let mut file = File::open("manta-trusted-setup/data/dummy_challenge")
+    let mut file = File::open(format!("{}{}", init_parameters_path, "/dummy_challenge"))
         .expect("Opening file should succeed.");
     let mut buf = Vec::new();
     file.read_to_end(&mut buf)
@@ -359,8 +377,8 @@ pub fn init_dummy_server<const LEVEL_COUNT: usize>(
     let challenge = Array::<u8, 64>::from_unchecked(buf);
 
     println!("Loaded challenges");
-    let file =
-        File::open("manta-trusted-setup/data/dummy_state").expect("Opening file should succeed.");
+    let file = File::open(format!("{}{}", init_parameters_path, "/dummy_state"))
+        .expect("Opening file should succeed.");
     let state: <Config as StateType>::State = CanonicalDeserialize::deserialize(&file).unwrap();
     println!("Loaded states");
 
