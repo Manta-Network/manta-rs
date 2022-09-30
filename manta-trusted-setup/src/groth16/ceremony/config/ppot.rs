@@ -40,6 +40,7 @@ use colored::Colorize;
 use console::{style, Term};
 use core::fmt::{self, Debug};
 use dialoguer::{theme::ColorfulTheme, Input};
+use hex;
 use manta_crypto::{
     arkworks::{
         bn254,
