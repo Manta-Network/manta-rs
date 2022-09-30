@@ -193,18 +193,29 @@ impl<C, const CIRCUIT_COUNT: usize> StateChallengeProof<C, CIRCUIT_COUNT>
 where
     C: Ceremony,
 {
+    /// Builds a new [`StateChallengeProof`] from `state`, `challenge`, `latest_proof` and `round`
+    #[inline]
+    pub fn new_unchecked(
+        state: BoxArray<State<C>, CIRCUIT_COUNT>,
+        challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
+        latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>>,
+        round: u64,
+    ) -> Self {
+        Self {
+            state,
+            challenge,
+            latest_proof,
+            round,
+        }
+    }
+
     /// Builds a new [`StateChallengeProof`] from `state` and `challenge`.
     #[inline]
     pub fn new(
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
     ) -> Self {
-        Self {
-            state,
-            challenge,
-            latest_proof: None,
-            round: 0,
-        }
+        Self::new_unchecked(state, challenge, None, 0)
     }
 
     /// Returns the current round number.

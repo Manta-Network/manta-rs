@@ -32,7 +32,7 @@ use crate::{
             Ceremony, CeremonyError, CeremonySize, Configuration, Metadata, UnexpectedError,
         },
         kzg,
-        mpc::{self, State, StateSize},
+        mpc::{self, Proof, State},
         ppot::serialization::{read_subaccumulator, Compressed},
     },
     mpc::{ChallengeType, StateType},
@@ -83,10 +83,10 @@ where
     /// Ceremony Metadata
     metadata: Metadata,
 
-    /// Recovery directory path
+    /// Recovery Directory Path
     recovery_directory: PathBuf,
 
-    /// Registry path
+    /// Registry Path
     registry_path: PathBuf,
 }
 
@@ -122,17 +122,63 @@ where
         }
     }
 
-    /// Recovers from a disk file at `path` and use `recovery_directory` as the backup directory.
+    /// Recovers from a disk file at `path` and uses `recovery_directory` as the backup directory.
     #[inline]
-    pub fn recover<P>(path: P, recovery_directory: PathBuf) -> Result<Self, CeremonyError<C>>
+    pub fn recover<P>(
+        path: P,
+        recovery_directory: PathBuf,
+        registry_path: PathBuf,
+    ) -> Result<Self, CeremonyError<C>>
     where
         P: AsRef<Path>,
-        Self: DeserializeOwned,
+        C::Challenge: DeserializeOwned,
+        R::Registry: DeserializeOwned,
     {
-        let mut new_server: Self = deserialize_from_file(path)
+        let folder_path = path.as_ref().display();
+        let round_number: u64 =
+            deserialize_from_file(format!("{}{}", folder_path, "/round_number"))
+                .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        let state: BoxArray<State<C>, CIRCUIT_COUNT> = deserialize_from_file(format!(
+            "{}{}{}",
+            recovery_directory.display(),
+            "/state/",
+            round_number
+        ))
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        let challenge: BoxArray<C::Challenge, CIRCUIT_COUNT> = deserialize_from_file(format!(
+            "{}{}{}",
+            recovery_directory.display(),
+            "/challenge/",
+            round_number
+        ))
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        let latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>> =
+            deserialize_from_file(format!(
+                "{}{}{}",
+                recovery_directory.display(),
+                "/proof/",
+                round_number
+            ))
             .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        new_server.recovery_directory = recovery_directory;
-        Ok(new_server)
+        let registry: R::Registry = deserialize_from_file(&registry_path)
+            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        let metadata: Metadata =
+            deserialize_from_file(format!("{}{}", folder_path, "/metadata"))
+                .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+
+        Ok(Self {
+            lock_queue: Default::default(),
+            registry: Arc::new(Mutex::new(registry)),
+            sclp: Arc::new(Mutex::new(StateChallengeProof::new_unchecked(
+                state,
+                challenge,
+                latest_proof,
+                round_number,
+            ))),
+            metadata,
+            recovery_directory,
+            registry_path,
+        })
     }
 
     /// Returns the metadata for this ceremony.
@@ -386,6 +432,8 @@ where
     T: Record<C::Identifier, C::Participant>,
     T::Error: Debug,
 {
+    use crate::groth16::mpc::StateSize;
+
     let registry = load::<C::Identifier, C::Participant, T, R, _>(registry_path.clone()).unwrap();
     println!("Loaded registry");
 
@@ -448,6 +496,8 @@ pub fn init_dummy_server<const LEVEL_COUNT: usize>(
     init_parameters_path: String,
     recovery_dir_path: String,
 ) -> Server<Config, CeremonyRegistry, LEVEL_COUNT, 3> {
+    use crate::groth16::mpc::StateSize;
+
     let registry = load::<
         <Config as Ceremony>::Identifier,
         <Config as Ceremony>::Participant,
