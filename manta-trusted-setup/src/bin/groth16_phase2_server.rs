@@ -60,7 +60,7 @@ pub struct Arguments {
 impl Arguments {
     /// Runs a server.
     #[inline]
-    pub fn run(self) -> Result<(), CeremonyError<Config>> {
+    pub async fn run(self) -> Result<(), CeremonyError<Config>> {
         let server = match self.command {
             Command::Create {
                 registry_path,
@@ -87,15 +87,18 @@ impl Arguments {
         api.at("/start").post(|r| execute(r, Server::start));
         // api.at("/query").post(|r| S::execute(r, Server::query));
         // api.at("/update").post(|r| S::execute(r, Server::update));
-        // api.listen("127.0.0.1:8080")
-        //     .await
-        //     .expect("Should create a listener."); // TODO: use TLS
+        // api.listen("127.0.0.1:8080").await?;
+        api.listen("127.0.0.1:8080")
+            .await
+            .expect("Should create a listener."); // TODO: use TLS
         Ok(())
     }
 }
 
-fn main() {
-    exit_on_error(Arguments::parse().run());
+#[async_std::main]
+async fn main() {
+    // exit_on_error(Arguments::parse().run());
+    Arguments::parse().run().await;
 }
 
 // run with
