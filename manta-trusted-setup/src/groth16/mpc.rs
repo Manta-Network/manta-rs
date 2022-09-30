@@ -55,7 +55,7 @@ use {
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative, CanonicalDeserialize, CanonicalSerialize)]
-#[derivative(Clone(bound = ""))]
+#[derivative(Clone(bound = ""), Debug(bound = ""))]
 pub struct State<P>(
     #[cfg_attr(
         feature = "serde",
@@ -351,7 +351,7 @@ where
 
 /// Initialize [`State`] using the KZG accumulator `powers` and the given `constraint_system`.
 #[inline]
-pub fn initialize<C, S>(powers: Accumulator<C>, constraint_system: S) -> Result<State<C>, Error>
+pub fn initialize<C, S>(powers: &Accumulator<C>, constraint_system: S) -> Result<State<C>, Error>
 where
     C: kzg::Configuration,
     S: ConstraintSynthesizer<C::Scalar>,

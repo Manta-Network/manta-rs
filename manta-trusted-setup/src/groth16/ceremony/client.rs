@@ -46,6 +46,7 @@ where
     if err.is_timeout() {
         CeremonyError::Timeout
     } else {
+        println!("{}", err);
         CeremonyError::Network
     }
 }
