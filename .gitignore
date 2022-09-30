@@ -1,2 +1,7 @@
 /target
 Cargo.lock
+manta-trusted-setup/data/dummy_register.csv
+manta-trusted-setup/data/prepared_private_transfer.data
+manta-trusted-setup/data/prepared_mint.data
+manta-trusted-setup/data/prepared_reclaim.data
+manta-trusted-setup/data/transcript1.data

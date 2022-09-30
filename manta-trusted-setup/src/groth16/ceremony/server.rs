@@ -388,13 +388,14 @@ where
 
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
 /// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
-fn prepare<C, S>(phase_one_param_path: String, circuits: Vec<S>, names: Vec<String>)
+fn prepare<C, S, P>(phase_one_param_path: String, recovery_path: P, circuits: Vec<S>, names: Vec<String>)
 where
     C: Ceremony + Configuration + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
     C: mpc::ProvingKeyHasher<C, Output = Array<u8, 64>>,
     C: ChallengeType<Challenge = Array<u8, 64>>,
     C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
     S: ConstraintSynthesizer<C::Scalar> + Clone,
+    P: AsRef<Path>,
 {
     use memmap::MmapOptions;
 
@@ -411,6 +412,8 @@ where
     };
     let powers = read_subaccumulator(&reader, Compressed::No)
         .expect("Cannot read Phase 1 accumulator from file");
+
+    let folder_path = recovery_path.as_ref().display();
     for (circuit, name) in circuits.iter().zip(names.iter()) {
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             coordinator::initialize(&powers, circuit.clone());
@@ -418,7 +421,7 @@ where
         let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(format!("{}/{}_state_0", phase_one_param_path.clone(), name)) // TODO : This name should match recovery conventions
+            .open(format!("{}/{}_state_0", folder_path, name)) // TODO : This name should match recovery conventions
             .expect("Unable to open file");
         CanonicalSerialize::serialize(&state, &mut file)
             .expect("Writing state to disk should succeed");
@@ -427,7 +430,7 @@ where
             .truncate(true)
             .open(format!(
                 "{}/{}_challenge_0",
-                phase_one_param_path.clone(),
+                folder_path,
                 name
             )) // TODO : This name should match recovery conventions
             .expect("Unable to open file");
@@ -435,6 +438,14 @@ where
             .expect("Writing challenge to disk should succeed");
         file.flush().expect("Flushing file should succeed.");
     }
+    let round = 0u64;
+    let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(format!("{}/round_number", folder_path)) // TODO : This name should match recovery conventions
+            .expect("Unable to open file");
+            CanonicalSerialize::serialize(&round, &mut file)
+            .expect("Writing round number to disk should succeed");
 }
 
 /// Initiates a server for 3 circuits. TODO: Take in array of paths to state files instead
