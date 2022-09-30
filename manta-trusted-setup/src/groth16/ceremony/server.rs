@@ -43,7 +43,7 @@ use manta_crypto::arkworks::{
     bn254::{G1Affine, G2Affine},
     pairing::Pairing,
     relations::r1cs::ConstraintSynthesizer,
-    serialize::CanonicalDeserialize,
+    serialize::{CanonicalDeserialize, CanonicalSerialize},
 };
 use manta_util::{
     serde::{de::DeserializeOwned, Deserialize, Serialize},
@@ -52,7 +52,7 @@ use manta_util::{
 use parking_lot::Mutex;
 use std::{
     fs::{File, OpenOptions},
-    io::Read,
+    io::{Read, Write},
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -387,11 +387,12 @@ where
 }
 
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
-/// to file.
+/// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
 fn prepare<C, S>(phase_one_param_path: String, circuits: Vec<S>, names: Vec<String>)
 where
     C: Ceremony + Configuration + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
-    <C as mpc::ProvingKeyHasher<C>>::Output: Into<<C as ChallengeType>::Challenge>, // TODO Is this weird?
+    C: mpc::ProvingKeyHasher<C, Output = Array<u8, 64>>,
+    C: ChallengeType<Challenge = Array<u8, 64>>,
     C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
     S: ConstraintSynthesizer<C::Scalar> + Clone,
 {
@@ -399,9 +400,9 @@ where
 
     assert_eq!(circuits.len(), names.len());
 
-    let file = std::fs::OpenOptions::new()
+    let file = OpenOptions::new()
         .read(true)
-        .open(phase_one_param_path)
+        .open(phase_one_param_path.clone())
         .expect("Unable to open phase 1 parameter file in this directory");
     let reader = unsafe {
         MmapOptions::new()
@@ -413,6 +414,26 @@ where
     for (circuit, name) in circuits.iter().zip(names.iter()) {
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             coordinator::initialize(&powers, circuit.clone());
+        // TODO Write to files
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(format!("{}/{}_state_0", phase_one_param_path.clone(), name)) // TODO : This name should match recovery conventions
+            .expect("Unable to open file");
+        CanonicalSerialize::serialize(&state, &mut file)
+            .expect("Writing state to disk should succeed");
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(format!(
+                "{}/{}_challenge_0",
+                phase_one_param_path.clone(),
+                name
+            )) // TODO : This name should match recovery conventions
+            .expect("Unable to open file");
+        file.write_all(challenge.as_ref())
+            .expect("Writing challenge to disk should succeed");
+        file.flush().expect("Flushing file should succeed.");
     }
 }
 
