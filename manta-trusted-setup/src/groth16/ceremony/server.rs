@@ -140,13 +140,17 @@ where
         request: C::Identifier,
     ) -> Result<(Metadata, C::Nonce), CeremonyError<C>>
     where
-        C::Nonce: Clone + Send,
+        C::Nonce: Clone + Debug + Send,
         R::Registry: Send,
         C::Challenge: Send,
-        C::Identifier: Send,
+        C::Identifier: Debug + Send,
         C: 'static,
         R: 'static,
     {
+        let _ = info!(
+            "[REQUEST] processing `start`, from participant with identifier:  {:?}.",
+            request
+        );
         let nonce = self
             .registry
             .lock()
@@ -157,11 +161,13 @@ where
         let metadata = self.metadata().clone();
         task::spawn(async move {
             if self.update_registry().await.is_err() {
-                warn!("Registry couldn't be updated.");
-            } else {
-                // info!("Registry successfully updated.")
+                let _ = warn!("Unable to update registry.");
             }
         });
+        let _ = info!(
+            "[RESPONSE] responding to `start` with: {:?}.",
+            (&metadata, &nonce)
+        );
         Ok((metadata, nonce))
     }
 
@@ -172,8 +178,10 @@ where
         request: SignedMessage<C, C::Identifier, QueryRequest>,
     ) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
-        C::Challenge: Clone,
+        C::Challenge: Clone + Debug,
+        State<C>: Debug,
     {
+        let _ = info!("[REQUEST] processing `query`");
         let priority = preprocess_request(&mut *self.registry.lock(), &request)?;
         let position = self
             .lock_queue
@@ -181,8 +189,17 @@ where
             .queue_mut()
             .push_back_if_missing(priority.into(), request.into_identifier());
         if position == 0 {
-            Ok(QueryResponse::State(self.sclp.lock().round_state()))
+            let state = self.sclp.lock().round_state();
+            let _ = info!(
+                "[RESPONSE] responding to `query` with round state: {:?}.",
+                &state
+            );
+            Ok(QueryResponse::State(state))
         } else {
+            let _ = info!(
+                "[RESPONSE] responding to `query` with queue position: {:?}.",
+                &position
+            );
             Ok(QueryResponse::QueuePosition(position as u64))
         }
     }
@@ -198,14 +215,17 @@ where
         C: 'static,
         R: 'static,
     {
+        let _ = info!("Updating participant registry.");
         let registry_path = self.registry_path.clone();
         let registry = self.registry.clone();
-        task::spawn_blocking(move || {
+        let _ = task::spawn_blocking(move || {
             load_append_entries::<_, _, R::Record, _, _>(&registry_path, &mut *registry.lock())
-                .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))
+                .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
         })
         .await
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
+        let _ = info!("Registry successfully updated.");
+        Ok(())
     }
 
     /// Saves `self` into `self.recovery_directory`.
@@ -219,17 +239,20 @@ where
         C: 'static,
         R: 'static,
     {
+        let _ = info!("Saving server to recovery directory.");
         let server = self.clone();
-        task::spawn_blocking(move || {
+        let _ = task::spawn_blocking(move || {
             serialize_into_file(
                 OpenOptions::new().write(true).create_new(true),
                 &Path::new(&server.recovery_directory).join(format!("transcript{}.data", round)),
                 &server,
             )
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))
+            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
         })
         .await
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
+        let _ = info!("Server successfully saved.");
+        Ok(())
     }
 
     /// Processes a request to update the MPC state and removes the participant if the state was
@@ -242,15 +265,18 @@ where
     where
         Self: Serialize,
         C: 'static,
-        C::Challenge: Clone + Send,
+        C::Challenge: Clone + Debug + Send,
         C::Identifier: Send,
         C::Nonce: Send,
         StateChallengeProof<C, CIRCUIT_COUNT>: Send,
         R::Registry: Send,
         R: 'static,
     {
+        let _ = info!("[REQUEST] processing `contribute`");
+        let _ = info!("Preprocessing `contribute` request: checking signature and nonce");
         let mut registry = self.registry.lock();
         preprocess_request(&mut *registry, &request)?;
+        let _ = info!("Preprocessing successful with priority");
         let (identifier, message) = request.into_inner();
         self.lock_queue
             .lock()
@@ -268,9 +294,14 @@ where
         self.save_server(round).await?;
         println!("{} participants have contributed.", round);
         self.update_registry().await?;
+        let challenge = self.sclp.lock().challenge().to_vec();
+        let _ = info!(
+            "[RESPONSE] responding to `contribute` with: {:?}",
+            (round, &challenge)
+        );
         Ok(ContributeResponse {
             index: round,
-            challenge: self.sclp.lock().challenge().to_vec(),
+            challenge,
         })
     }
 }
