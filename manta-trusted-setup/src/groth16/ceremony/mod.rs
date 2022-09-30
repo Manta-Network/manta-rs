@@ -39,12 +39,8 @@ use manta_util::{
 
 pub mod client;
 pub mod config;
-pub mod message;
-
-// Note: I added this because some stuff in log wouldn't compile
-#[cfg(all(feature = "std", feature = "tokio"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "std", feature = "tokio"))))]
 pub mod log;
+pub mod message;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
