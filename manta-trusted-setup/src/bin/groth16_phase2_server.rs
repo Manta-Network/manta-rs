@@ -24,6 +24,9 @@ use manta_trusted_setup::groth16::ceremony::{
 };
 use manta_util::http::tide::{self, execute};
 
+/// Circuit names
+const CIRCUIT_NAMES: [&str; 3] = [r"Mint", r"Transfer", r"Reclaim"];
+
 /// Command
 #[derive(Debug, Subcommand)]
 pub enum Command {
@@ -73,7 +76,9 @@ impl Arguments {
                 registry_path,
                 init_parameters_path,
                 recovery_dir_path
-            } => init_dummy_server::<2>(registry_path, init_parameters_path, recovery_dir_path),
+            } => {
+                init_dummy_server::<2>(registry_path, init_parameters_path, recovery_dir_path)
+            },
             _ => {
                 panic!()
             }
@@ -86,16 +91,12 @@ impl Arguments {
         println!("Network is running!");
         let mut api = tide::Server::with_state(server);
         api.at("/start").post(|r| execute(r, Server::start));
-        // api.at("/query").post(|r| S::execute(r, Server::query));
-        // api.at("/update").post(|r| S::execute(r, Server::update));
+        api.at("/query").post(|r| execute(r, Server::query));
+        // api.at("/update").post(|r| execute(r, Server::update));
 
-        // let mut listener = tide::listener::ConcurrentListener::new();
-        // listener.add("127.0.0.1:8080");
-        // api.listen(listener).await.expect("Should create a listener");
-
-        // api.listen("127.0.0.1:8080")
-        //     .await
-        //     .expect("Should create a listener."); // TODO: use TLS
+        api.listen("127.0.0.1:8080")
+            .await
+            .expect("Should create a listener."); // TODO: use TLS
         Ok(())
     }
 }
@@ -110,5 +111,5 @@ async fn main() {
 }
 
 // run with
-// cargo run --all-features --bin groth16_phase2_server create manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data manta-trusted-setup/data server_url
+// cargo run --release --all-features --bin groth16_phase2_server create manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data manta-trusted-setup/data server_url
 // cargo run --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data

@@ -1,10 +1,10 @@
-use manta_pay::{
-    config::{FullParameters, Mint},
-    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
-};
+// use manta_pay::{
+//     // config::{FullParameters, Mint},
+//     // parameters::{load_transfer_parameters, load_utxo_accumulator_model},
+// };
 use manta_trusted_setup::groth16::{
     kzg,
-    mpc::{initialize, State},
+    // mpc::{initialize, State},
     ppot::{
         kzg::PerpetualPowersOfTauCeremony,
         serialization::{read_subaccumulator, Compressed, PpotSerializer},
@@ -37,8 +37,8 @@ fn main() {
         read_subaccumulator(&challenge_reader, Compressed::No).unwrap();
     println!("Phase 1 accumulator read successfully");
 
-    let transfer_parameters = load_transfer_parameters();
-    let utxo_parameters = load_utxo_accumulator_model();
+    // let transfer_parameters = load_transfer_parameters();
+    // let utxo_parameters = load_utxo_accumulator_model();
 
     println!("Preparing Mint circuit ProverKey");
     // TODO: The CS Mint::unknown... is over Bls12-381, not Bn254

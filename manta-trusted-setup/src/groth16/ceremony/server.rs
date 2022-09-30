@@ -26,17 +26,25 @@ use crate::{
     groth16::{
         ceremony::{
             config::ppot::{Config, Record as CeremonyRecord, Registry as CeremonyRegistry},
+            coordinator,
             log::{info, warn},
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, CeremonySize, Metadata, UnexpectedError,
+            Ceremony, CeremonyError, CeremonySize, Configuration, Metadata, UnexpectedError,
         },
-        mpc::{State, StateSize},
+        kzg,
+        mpc::{self, State, StateSize},
+        ppot::serialization::{read_subaccumulator, Compressed},
     },
     mpc::{ChallengeType, StateType},
 };
 use alloc::sync::Arc;
 use core::fmt::Debug;
-use manta_crypto::arkworks::serialize::CanonicalDeserialize;
+use manta_crypto::arkworks::{
+    bn254::{G1Affine, G2Affine},
+    pairing::Pairing,
+    relations::r1cs::ConstraintSynthesizer,
+    serialize::CanonicalDeserialize,
+};
 use manta_util::{
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     Array, BoxArray,
@@ -258,7 +266,7 @@ where
     /// Processes a request to update the MPC state and removes the participant if the state was
     /// updated successfully. If the update succeeds, the current coordinator is saved to disk.
     #[inline]
-    pub async fn contribute(
+    pub async fn update(
         self,
         request: SignedMessage<C, C::Identifier, ContributeRequest<C>>,
     ) -> Result<ContributeResponse<C>, CeremonyError<C>>
@@ -272,8 +280,8 @@ where
         R::Registry: Send,
         R: 'static,
     {
-        let _ = info!("[REQUEST] processing `contribute`");
-        let _ = info!("Preprocessing `contribute` request: checking signature and nonce");
+        let _ = info!("[REQUEST] processing `update`");
+        let _ = info!("Preprocessing `update` request: checking signature and nonce");
         let mut registry = self.registry.lock();
         preprocess_request(&mut *registry, &request)?;
         let _ = info!("Preprocessing successful with priority");
@@ -296,13 +304,43 @@ where
         self.update_registry().await?;
         let challenge = self.sclp.lock().challenge().to_vec();
         let _ = info!(
-            "[RESPONSE] responding to `contribute` with: {:?}",
+            "[RESPONSE] responding to `update` with: {:?}",
             (round, &challenge)
         );
         Ok(ContributeResponse {
             index: round,
             challenge,
         })
+    }
+}
+
+/// Prepare by initalizing each circuit's prover key, challenge hash and saving
+/// to file.
+fn prepare<C, S>(phase_one_param_path: String, circuits: Vec<S>, names: Vec<String>)
+where
+    C: Ceremony + Configuration + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
+    <C as mpc::ProvingKeyHasher<C>>::Output: Into<<C as ChallengeType>::Challenge>, // TODO Is this weird?
+    C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
+    S: ConstraintSynthesizer<C::Scalar> + Clone,
+{
+    use memmap::MmapOptions;
+
+    assert_eq!(circuits.len(), names.len());
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .open(phase_one_param_path)
+        .expect("Unable to open phase 1 parameter file in this directory");
+    let reader = unsafe {
+        MmapOptions::new()
+            .map(&file)
+            .expect("unable to create memory map for input")
+    };
+    let powers = read_subaccumulator(&reader, Compressed::No)
+        .expect("Cannot read Phase 1 accumulator from file");
+    for (circuit, name) in circuits.iter().zip(names.iter()) {
+        let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
+            coordinator::initialize(&powers, circuit.clone());
     }
 }
 
@@ -346,9 +384,9 @@ where
     assert_eq!(state_files.len(), challenge_files.len());
 
     for file in state_files.iter() {
-        let file = File::open(format!("{}{}", init_parameters_path, file))
+        let mut file = File::open(format!("{}{}", init_parameters_path, file))
             .expect("Opening file should succeed.");
-        let temp: <C as StateType>::State = CanonicalDeserialize::deserialize(&file).unwrap();
+        let temp: <C as StateType>::State = CanonicalDeserialize::deserialize(&mut file).unwrap();
         state_size.push(StateSize::from_proving_key(&temp.0));
         state.push(temp);
     }

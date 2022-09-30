@@ -24,10 +24,15 @@ use crate::{
     },
     groth16::{
         ceremony::{Ceremony, CeremonyError, Metadata, Queue, Round, UnexpectedError},
-        mpc::{verify_transform, Proof, State},
+        kzg,
+        kzg::{Accumulator, Configuration},
+        mpc,
+        mpc::{verify_transform, Proof, ProvingKeyHasher, State},
     },
+    mpc::ChallengeType,
 };
 use core::{fmt::Debug, mem};
+use manta_crypto::arkworks::relations::r1cs::ConstraintSynthesizer;
 use manta_util::{time::lock::Timed, BoxArray};
 
 #[cfg(feature = "serde")]
@@ -306,4 +311,21 @@ where
     R: Registry<C::Identifier, C::Participant>,
 {
     registry.get_mut(id)
+}
+
+/// Given Phase 1 accumulator and circuit description,
+/// compute initial `State`, `Challenge`.
+pub fn initialize<C, S>(
+    powers: &Accumulator<C>,
+    cs: S,
+) -> (<C as ChallengeType>::Challenge, State<C>)
+where
+    C: Ceremony + Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
+    <C as ProvingKeyHasher<C>>::Output: Into<<C as ChallengeType>::Challenge>, // TODO Is this weird?
+    S: ConstraintSynthesizer<C::Scalar>,
+{
+    let state =
+        mpc::initialize(powers, cs).expect("Should form proving key from circuit description");
+    let challenge = <C as ProvingKeyHasher<C>>::hash(&state.0);
+    (challenge.into(), state)
 }
