@@ -25,6 +25,7 @@ use crate::{
     },
     groth16::{
         ceremony::{
+            config::ppot::{Config, Record as CeremonyRecord, Registry as CeremonyRegistry},
             log::{info, warn},
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, CeremonySize, Metadata, UnexpectedError,
@@ -35,23 +36,19 @@ use crate::{
 };
 use alloc::sync::Arc;
 use core::fmt::Debug;
+use manta_crypto::arkworks::serialize::CanonicalDeserialize;
 use manta_util::{
     serde::{de::DeserializeOwned, Deserialize, Serialize},
-    BoxArray,
+    Array, BoxArray,
 };
 use parking_lot::Mutex;
 use std::{
-    fs::OpenOptions,
+    fs::{File, OpenOptions},
+    io::Read,
     path::{Path, PathBuf},
     time::Duration,
 };
-use std::{fs::File, io::Read};
 use tokio::task;
-use crate::groth16::ceremony::config::ppot::{
-    Config, Record as CeremonyRecord, Registry as CeremonyRegistry,
-};
-use manta_crypto::arkworks::serialize::CanonicalDeserialize;
-use manta_util::Array;
 
 #[cfg(feature = "csv")]
 use crate::ceremony::registry::csv::{load, Record};

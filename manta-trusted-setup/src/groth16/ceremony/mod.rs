@@ -27,7 +27,10 @@ use crate::{
     },
     mpc,
 };
-use core::{fmt::Debug, time::Duration};
+use core::{
+    fmt::{Debug, Display},
+    time::Duration,
+};
 use manta_crypto::arkworks::pairing::Pairing;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
@@ -168,6 +171,23 @@ where
 
     /// Unexpected Server Error
     Unexpected(UnexpectedError),
+}
+
+impl<C> Display for CeremonyError<C>
+where
+    C: Ceremony,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Ceremony Error encountered: ") // TODO: How can I display the error?
+    }
+}
+
+#[cfg(feature = "std")]
+impl<C> std::error::Error for CeremonyError<C>
+where
+    C: Ceremony,
+    C::Nonce: Debug,
+{
 }
 
 /// Unexpected Error

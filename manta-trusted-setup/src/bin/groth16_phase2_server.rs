@@ -19,10 +19,10 @@
 use clap::{Parser, Subcommand};
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{exit_on_error, Config, Record, Registry},
-    server::{init_dummy_server, init_server},
+    server::{init_dummy_server, init_server, Server},
     CeremonyError,
 };
-use manta_util::http::tide;
+use manta_util::http::tide::{self, execute};
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -82,9 +82,9 @@ impl Arguments {
             // } => recover(recovery_path, recovery_dir_path),
         };
 
-        println!("Network starts to run!");
+        println!("Network is running!");
         let mut api = tide::Server::with_state(server);
-        // api.at("/start").post(|r| S::execute(r, Server::start));
+        api.at("/start").post(|r| execute(r, Server::start));
         // api.at("/query").post(|r| S::execute(r, Server::query));
         // api.at("/update").post(|r| S::execute(r, Server::update));
         // api.listen("127.0.0.1:8080")
