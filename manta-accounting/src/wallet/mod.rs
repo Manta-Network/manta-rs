@@ -48,6 +48,7 @@ use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+use crate::wallet::signer::NetworkType;
 
 pub mod balance;
 pub mod ledger;
@@ -329,6 +330,7 @@ where
         &mut self,
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
+        network: NetworkType
     ) -> Result<SignResponse<C>, Error<C, L, S>> {
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
@@ -336,6 +338,7 @@ where
             .sign(SignRequest {
                 transaction,
                 metadata,
+                network
             })
             .await
             .map_err(Error::SignerConnectionError)?

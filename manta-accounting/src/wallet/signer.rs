@@ -328,6 +328,9 @@ where
 
     /// Asset Metadata
     pub metadata: Option<AssetMetadata>,
+
+    /// Current Network
+    pub network: NetworkType
 }
 
 /// Signer Signing Response
@@ -1317,4 +1320,23 @@ where
     ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error> {
         Box::pin(async move { Ok(self.receiving_keys(request)) })
     }
+}
+
+/// Public enum to represent the different network types
+#[cfg_attr(
+feature = "serde",
+derive(Deserialize, Serialize),
+serde(crate = "manta_util::serde")
+)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum NetworkType {
+    /// Dolphin Testnet Network
+    Dolphin,
+
+    /// Calamari Kusama Relay Chain Network
+    Calamari,
+
+    /// Manta Polkadot Relay Chain Network
+    Manta
+
 }
