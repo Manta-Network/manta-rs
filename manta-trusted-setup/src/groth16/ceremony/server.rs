@@ -388,10 +388,14 @@ where
 
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
 /// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
-fn prepare<C, S, P>(phase_one_param_path: String, recovery_path: P, circuits: Vec<S>, names: Vec<String>)
-where
+pub fn prepare<C, S, P>(
+    phase_one_param_path: String,
+    recovery_path: P,
+    circuits: Vec<S>,
+    names: Vec<String>,
+) where
     C: Ceremony + Configuration + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
-    C: mpc::ProvingKeyHasher<C, Output = Array<u8, 64>>,
+    C: mpc::ProvingKeyHasher<C, Output = [u8; 64]>,
     C: ChallengeType<Challenge = Array<u8, 64>>,
     C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
     S: ConstraintSynthesizer<C::Scalar> + Clone,
@@ -428,11 +432,7 @@ where
         let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(format!(
-                "{}/{}_challenge_0",
-                folder_path,
-                name
-            )) // TODO : This name should match recovery conventions
+            .open(format!("{}/{}_challenge_0", folder_path, name)) // TODO : This name should match recovery conventions
             .expect("Unable to open file");
         file.write_all(challenge.as_ref())
             .expect("Writing challenge to disk should succeed");
@@ -440,12 +440,12 @@ where
     }
     let round = 0u64;
     let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(format!("{}/round_number", folder_path)) // TODO : This name should match recovery conventions
-            .expect("Unable to open file");
-            CanonicalSerialize::serialize(&round, &mut file)
-            .expect("Writing round number to disk should succeed");
+        .write(true)
+        .truncate(true)
+        .open(format!("{}/round_number", folder_path)) // TODO : This name should match recovery conventions
+        .expect("Unable to open file");
+    CanonicalSerialize::serialize(&round, &mut file)
+        .expect("Writing round number to disk should succeed");
 }
 
 /// Initiates a server for 3 circuits. TODO: Take in array of paths to state files instead

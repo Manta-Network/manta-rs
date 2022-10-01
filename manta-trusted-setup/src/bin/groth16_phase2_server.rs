@@ -17,9 +17,11 @@
 //! Trusted Setup Ceremony Server
 
 use clap::{Parser, Subcommand};
+use manta_crypto::arkworks::pairing::Pairing;
+use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{exit_on_error, Config, Record, Registry},
-    server::{init_dummy_server, init_server, Server},
+    server::{init_dummy_server, init_server, prepare, Server},
     CeremonyError,
 };
 use manta_util::http::tide::{self, execute};
@@ -33,16 +35,8 @@ pub enum Command {
     /// Transforms Phase 1 Parameters into Phase 2 Parameters.
     Prepare {
         registry_path: String,
-        init_parameters_path: String,
+        phase_one_param_path: String,
         recovery_dir_path: String,
-    },
-
-    /// Creates a new server.
-    Create {
-        registry_path: String,
-        init_parameters_path: String,
-        recovery_dir_path: String,
-        server_url: String,
     },
 
     /// Recovers a server from disk.
@@ -66,18 +60,23 @@ impl Arguments {
     #[inline]
     pub async fn run(self) -> Result<(), CeremonyError<Config>> {
         let server = match self.command {
-            Command::Create {
-                registry_path,
-                init_parameters_path,
-                recovery_dir_path,
-                server_url
-        } => init_server::<Registry, Config, Record, 2>(registry_path, init_parameters_path, recovery_dir_path),
             Command::Prepare {
                 registry_path,
-                init_parameters_path,
+                phase_one_param_path,
                 recovery_dir_path
             } => {
-                init_dummy_server::<2>(registry_path, init_parameters_path, recovery_dir_path)
+                let names: Vec<String> = CIRCUIT_NAMES.iter().map(|s| s.to_string()).collect();
+                let mut circuits = Vec::<R1CS<<Config as Pairing>::Scalar>>::new();
+                for _ in 0..names.len() {
+                    let mut cs = R1CS::for_contexts();
+                    dummy_circuit(&mut cs);
+                    circuits.push(cs);
+                }
+                // TODO: Add the right circuits to this directory, do dummy circuits for now
+                // TODO: Decide whether circuit names will be part of path
+                // Maybe should first check if there is prev. ceremony data in directory?
+                prepare::<Config, R1CS<<Config as Pairing>::Scalar>, _>(phase_one_param_path, recovery_dir_path.clone(), circuits, names);
+                init_dummy_server::<2>(registry_path, recovery_dir_path.clone(), recovery_dir_path) //todo those paths 
             },
             _ => {
                 panic!()
@@ -110,6 +109,22 @@ async fn main() {
         .expect("Server error occurred");
 }
 
+use manta_crypto::arkworks::bn254::Fr;
+use manta_crypto::arkworks::ff::{field_new};
+use manta_pay::crypto::constraint::arkworks::{Fp, FpVar};
+use manta_crypto::eclair::alloc::{Allocate, mode::{Secret, Public}};
+use manta_crypto::arkworks::r1cs_std::eq::EqGadget;
+
+/// Generates a dummy R1CS circuit.
+#[inline]
+pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
+    let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
+    let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
+    let c = &a * &b;
+    let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(cs);
+    c.enforce_equal(&d)
+        .expect("enforce_equal is not allowed to fail");
+}
+
 // run with
-// cargo run --release --all-features --bin groth16_phase2_server create manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data manta-trusted-setup/data server_url
-// cargo run --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/dummy_register.csv manta-trusted-setup/data
+// cargo run --release --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/dummy_register.csv /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data
