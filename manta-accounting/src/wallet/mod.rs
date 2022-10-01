@@ -369,13 +369,14 @@ where
         &mut self,
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
+        network: NetworkType
     ) -> Result<L::Response, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>
             + ledger::Write<Vec<TransferPost<C>>>,
     {
         self.sync().await?;
-        let SignResponse { posts } = self.sign(transaction, metadata).await?;
+        let SignResponse { posts } = self.sign(transaction, metadata, network).await?;
         self.ledger
             .write(posts)
             .await
