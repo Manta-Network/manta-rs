@@ -364,7 +364,7 @@ where
         F: FnOnce(&ReceivingKey<C>) -> String,
     {
         match self {
-            Self::Mint(Asset { value, .. }) => format!("Deposit {}", metadata.display(*value)),
+            Self::Mint(Asset { value, .. }) => format!("Deposit {} on {} network", metadata.display(*value), network.display()),
             Self::PrivateTransfer(Asset { value, .. }, receiving_key) => {
                 format!("Send {} to {} on {} network", metadata.display(*value), f(receiving_key), network.display())
             }
