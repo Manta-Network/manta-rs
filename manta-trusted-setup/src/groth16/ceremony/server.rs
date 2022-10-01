@@ -416,9 +416,10 @@ where
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             coordinator::initialize(&powers, circuit);
 
-            let mut file = OpenOptions::new()
+        let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
+            .create(true)
             .open(format!("{}/{}_state_0", folder_path, name)) // TODO : This name should match recovery conventions
             .expect("Unable to open file");
         CanonicalSerialize::serialize(&state, &mut file)
@@ -426,6 +427,7 @@ where
         let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
+            .create(true)
             .open(format!("{}/{}_challenge_0", folder_path, name)) // TODO : This name should match recovery conventions
             .expect("Unable to open file");
         file.write_all(challenge.as_ref())
@@ -436,6 +438,7 @@ where
     let mut file = OpenOptions::new()
         .write(true)
         .truncate(true)
+        .create(true)
         .open(format!("{}/round_number", folder_path)) // TODO : This name should match recovery conventions
         .expect("Unable to open file");
     CanonicalSerialize::serialize(&round, &mut file)

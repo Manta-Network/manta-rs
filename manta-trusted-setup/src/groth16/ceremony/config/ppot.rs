@@ -479,7 +479,11 @@ impl ProvingKeyHasher<Self> for Config {
     type Output = [u8; 64];
 
     fn hash(proving_key: &ark_groth16::ProvingKey<<Self as Pairing>::Pairing>) -> Self::Output {
-        todo!()
+        let mut hasher = BlakeHasher::default();
+        proving_key
+            .serialize(&mut hasher)
+            .expect("Hasher is not allowed to fail");
+        into_array_unchecked(hasher.0.finalize())
     }
 }
 

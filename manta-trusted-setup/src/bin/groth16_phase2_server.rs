@@ -18,7 +18,7 @@
 
 use clap::{Parser, Subcommand};
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::{Config},
+    config::ppot::Config,
     server::{init_dummy_server, prepare, Server},
     CeremonyError,
 };
@@ -59,14 +59,6 @@ impl Arguments {
                 phase_one_param_path,
                 recovery_dir_path
             } => {
-                // let names: Vec<String> = CIRCUIT_NAMES.iter().map(|s| s.to_string()).collect();
-                // let mut circuits = Vec::<R1CS<<Config as Pairing>::Scalar>>::new();
-                // for _ in 0..names.len() {
-                //     let mut cs = R1CS::for_contexts();
-                //     dummy_circuit(&mut cs);
-                //     circuits.push(cs);
-                // }
-                
                 prepare::<Config, _>(phase_one_param_path, recovery_dir_path.clone());
                 init_dummy_server::<2>(registry_path, recovery_dir_path.clone(), recovery_dir_path) //todo those paths 
             },
