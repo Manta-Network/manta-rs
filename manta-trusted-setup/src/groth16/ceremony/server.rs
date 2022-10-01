@@ -388,12 +388,8 @@ where
 
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
 /// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
-pub fn prepare<C, S, P>(
-    phase_one_param_path: String,
-    recovery_path: P,
-    circuits: Vec<S>,
-    names: Vec<String>,
-) where
+pub fn prepare<C, S, P>(phase_one_param_path: String, recovery_path: P)
+where
     C: Ceremony + Configuration + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
     C: mpc::ProvingKeyHasher<C, Output = [u8; 64]>,
     C: ChallengeType<Challenge = Array<u8, 64>>,
@@ -402,8 +398,6 @@ pub fn prepare<C, S, P>(
     P: AsRef<Path>,
 {
     use memmap::MmapOptions;
-
-    assert_eq!(circuits.len(), names.len());
 
     let file = OpenOptions::new()
         .read(true)
@@ -418,7 +412,7 @@ pub fn prepare<C, S, P>(
         .expect("Cannot read Phase 1 accumulator from file");
 
     let folder_path = recovery_path.as_ref().display();
-    for (circuit, name) in circuits.iter().zip(names.iter()) {
+    for (circuit, name) in C::circuits().iter() {
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             coordinator::initialize(&powers, circuit.clone());
         // TODO Write to files

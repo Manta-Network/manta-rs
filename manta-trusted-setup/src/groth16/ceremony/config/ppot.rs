@@ -16,7 +16,6 @@
 
 //! Groth16 Trusted Setup Ceremony Perpetual Powers of Tau Configuration
 
-use crate::groth16::mpc::ProvingKeyHasher;
 use crate::{
     ceremony::{
         participant,
@@ -30,7 +29,7 @@ use crate::{
             Ceremony, CeremonyError,
         },
         kzg::{self, Accumulator, Contribution, Size},
-        mpc::{Configuration, Proof, State},
+        mpc::{Configuration, Proof, ProvingKeyHasher, State},
     },
     mpc::{ChallengeType, ContributionType, ProofType, StateType},
     util::{BlakeHasher, KZGBlakeHasher},
@@ -652,6 +651,39 @@ impl Ceremony for Config {
         }
         into_array_unchecked(hasher.finalize())
     }
+
+    #[inline]
+    fn circuits() -> Vec<(R1CS<Self::Scalar>, String)> {
+        let mut circuits = Vec::new();
+        //
+        // Placeholder:
+        for i in 0..3 {
+            let mut cs = R1CS::for_contexts();
+            dummy_circuit(&mut cs);
+            circuits.push((cs, format!("{}_{}", "dummy", i)));
+        }
+        circuits
+    }
+}
+
+use manta_crypto::{
+    arkworks::{bn254::Fr, ff::field_new, r1cs_std::eq::EqGadget},
+    eclair::alloc::{
+        mode::{Public, Secret},
+        Allocate,
+    },
+};
+use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
+
+/// Generates a dummy R1CS circuit.
+#[inline]
+pub fn dummy_circuit(cs: &mut R1CS<<Config as Pairing>::Scalar>) {
+    let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
+    let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
+    let c = &a * &b;
+    let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(cs);
+    c.enforce_equal(&d)
+        .expect("enforce_equal is not allowed to fail");
 }
 
 /// Panics whenever `result` is an `Err`-variant and formats the error.

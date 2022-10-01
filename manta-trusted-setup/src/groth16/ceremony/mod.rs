@@ -31,7 +31,7 @@ use core::{
     fmt::{Debug, Display},
     time::Duration,
 };
-use manta_crypto::arkworks::pairing::Pairing;
+use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
@@ -80,6 +80,9 @@ pub trait Ceremony: Configuration + SignatureScheme {
 
     /// Hashes the contribution response.
     fn contribution_hash(response: &ContributeResponse<Self>) -> Self::ContributionHash;
+
+    /// Returns representations of the circuits used in this ceremony, each named.
+    fn circuits() -> Vec<(R1CS<Self::Scalar>, String)>;
 }
 
 /// Parallel Round Alias

@@ -41,7 +41,6 @@ pub enum Command {
 
     /// Recovers a server from disk.
     Recover {
-        recovery_path: String,
         recovery_dir_path: String,
         server_url: String,
     },
@@ -65,17 +64,15 @@ impl Arguments {
                 phase_one_param_path,
                 recovery_dir_path
             } => {
-                let names: Vec<String> = CIRCUIT_NAMES.iter().map(|s| s.to_string()).collect();
-                let mut circuits = Vec::<R1CS<<Config as Pairing>::Scalar>>::new();
-                for _ in 0..names.len() {
-                    let mut cs = R1CS::for_contexts();
-                    dummy_circuit(&mut cs);
-                    circuits.push(cs);
-                }
-                // TODO: Add the right circuits to this directory, do dummy circuits for now
-                // TODO: Decide whether circuit names will be part of path
-                // Maybe should first check if there is prev. ceremony data in directory?
-                prepare::<Config, R1CS<<Config as Pairing>::Scalar>, _>(phase_one_param_path, recovery_dir_path.clone(), circuits, names);
+                // let names: Vec<String> = CIRCUIT_NAMES.iter().map(|s| s.to_string()).collect();
+                // let mut circuits = Vec::<R1CS<<Config as Pairing>::Scalar>>::new();
+                // for _ in 0..names.len() {
+                //     let mut cs = R1CS::for_contexts();
+                //     dummy_circuit(&mut cs);
+                //     circuits.push(cs);
+                // }
+                
+                prepare::<Config, R1CS<<Config as Pairing>::Scalar>, _>(phase_one_param_path, recovery_dir_path.clone());
                 init_dummy_server::<2>(registry_path, recovery_dir_path.clone(), recovery_dir_path) //todo those paths 
             },
             _ => {
@@ -109,11 +106,14 @@ async fn main() {
         .expect("Server error occurred");
 }
 
-use manta_crypto::arkworks::bn254::Fr;
-use manta_crypto::arkworks::ff::{field_new};
+use manta_crypto::{
+    arkworks::{bn254::Fr, ff::field_new, r1cs_std::eq::EqGadget},
+    eclair::alloc::{
+        mode::{Public, Secret},
+        Allocate,
+    },
+};
 use manta_pay::crypto::constraint::arkworks::{Fp, FpVar};
-use manta_crypto::eclair::alloc::{Allocate, mode::{Secret, Public}};
-use manta_crypto::arkworks::r1cs_std::eq::EqGadget;
 
 /// Generates a dummy R1CS circuit.
 #[inline]
