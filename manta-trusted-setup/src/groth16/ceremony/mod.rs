@@ -32,6 +32,7 @@ use core::{
     time::Duration,
 };
 use manta_pay::crypto::constraint::arkworks::R1CS;
+use manta_crypto::arkworks::pairing::Pairing;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
