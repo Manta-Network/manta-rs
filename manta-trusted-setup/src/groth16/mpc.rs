@@ -127,7 +127,7 @@ where
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(derivative::Derivative)]
+#[derive(derivative::Derivative, CanonicalDeserialize, CanonicalSerialize)]
 #[derivative(Clone(bound = ""))]
 pub struct Proof<P>(
     #[cfg_attr(

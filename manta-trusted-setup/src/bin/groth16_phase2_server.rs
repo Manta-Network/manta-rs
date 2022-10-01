@@ -18,11 +18,21 @@
 
 use clap::{Parser, Subcommand};
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::Config,
-    server::{init_dummy_server, prepare, Server},
+    config::ppot::{Config, Participant, Record},
+    server::{prepare, Server},
     CeremonyError,
 };
-use manta_util::http::tide::{self, execute};
+use manta_util::{
+    http::tide::{self, execute},
+    Array,
+};
+use std::collections::HashMap;
+
+/// Registry type
+type Registry = HashMap<Array<u8, 32>, Participant>;
+
+/// Current server configuration
+type S = Server<Config, Registry, 2, 3>;
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -57,18 +67,21 @@ impl Arguments {
             Command::Prepare {
                 registry_path,
                 phase_one_param_path,
-                recovery_dir_path
+                recovery_dir_path,
             } => {
-                prepare::<Config, _>(phase_one_param_path, recovery_dir_path.clone());
-                init_dummy_server::<2>(registry_path, recovery_dir_path.clone(), recovery_dir_path) //todo those paths 
-            },
-            _ => {
-                panic!()
+                prepare::<Config, _, Registry, Record>(
+                    phase_one_param_path,
+                    recovery_dir_path.clone(),
+                    registry_path,
+                );
+                let server_url = "127.0.0.1:8080";
+                S::recover(recovery_dir_path, server_url.into())
+                    .expect("Unable to recover from file")
             }
-            // Command::Recover {
-            //     recovery_path,
-            //     recovery_dir_path,
-            // } => recover(recovery_path, recovery_dir_path),
+            Command::Recover {
+                recovery_dir_path,
+                server_url,
+            } => S::recover(recovery_dir_path, server_url).expect("Unable to recover from file"),
         };
 
         println!("Network is running!");
@@ -95,3 +108,4 @@ async fn main() {
 
 // run with
 // cargo run --release --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/dummy_register.csv /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data
+// cargo run --release --all-features --bin groth16_phase2_server recover manta-trusted-setup/data manta-trusted-setup/data

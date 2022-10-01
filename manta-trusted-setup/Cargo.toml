@@ -32,10 +32,6 @@ required-features = ["bincode", "clap", "csv", "ppot", "tokio"]
 name = "groth16_phase2_server"
 required-features = ["async-std", "bincode", "clap", "csv", "manta-util/tide", "ppot", "serde_json", "tokio"]
 
-[[bin]]
-name = "prepare_phase2"
-required-features = ["memmap", "ppot", "std"]
-
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]

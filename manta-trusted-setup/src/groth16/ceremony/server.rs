@@ -21,41 +21,37 @@ use crate::{
         participant::Participant,
         registry::{self, csv::load_append_entries, Registry},
         signature::SignedMessage,
-        util::{deserialize_from_file, serialize_into_file},
+        util::{
+            canonical_deserialize_from_file, canonical_serialize_into_file, deserialize_from_file,
+            serialize_into_file,
+        },
     },
     groth16::{
         ceremony::{
-            config::ppot::{Config, Record as CeremonyRecord, Registry as CeremonyRegistry},
             coordinator,
             log::{info, warn},
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, CeremonySize, Configuration, Metadata, UnexpectedError,
         },
         kzg,
-        mpc::{self, Proof, State},
+        mpc::{self, Proof, State, StateSize},
         ppot::serialization::{read_subaccumulator, Compressed},
     },
-    mpc::{ChallengeType, StateType},
+    mpc::ChallengeType,
 };
 use alloc::sync::Arc;
 use core::fmt::Debug;
 use manta_crypto::arkworks::{
     bn254::{G1Affine, G2Affine},
     pairing::Pairing,
-    relations::r1cs::ConstraintSynthesizer,
-    serialize::{CanonicalDeserialize, CanonicalSerialize},
 };
 use manta_util::{
-    serde::{de::DeserializeOwned, Deserialize, Serialize},
+    into_array_unchecked,
+    serde::{de::DeserializeOwned, Serialize},
     Array, BoxArray,
 };
 use parking_lot::Mutex;
-use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{fs::OpenOptions, path::Path, time::Duration};
 use tokio::task;
 
 #[cfg(feature = "csv")]
@@ -84,10 +80,10 @@ where
     metadata: Metadata,
 
     /// Recovery Directory Path
-    recovery_directory: PathBuf,
+    recovery_directory: String,
 
     /// Registry Path
-    registry_path: PathBuf,
+    registry_path: String,
 }
 
 impl<C, R, const LEVEL_COUNT: usize, const CIRCUIT_COUNT: usize>
@@ -103,9 +99,9 @@ where
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
         registry: R::Registry,
-        recovery_directory: PathBuf,
+        recovery_directory: String,
         metadata: Metadata,
-        registry_path: PathBuf,
+        registry_path: String,
     ) -> Self {
         assert!(
             metadata.ceremony_size.matches(state.as_slice()),
@@ -124,11 +120,7 @@ where
 
     /// Recovers from a disk file at `path` and uses `recovery_directory` as the backup directory.
     #[inline]
-    pub fn recover<P>(
-        path: P,
-        recovery_directory: PathBuf,
-        registry_path: PathBuf,
-    ) -> Result<Self, CeremonyError<C>>
+    pub fn recover<P>(path: P, recovery_directory: String) -> Result<Self, CeremonyError<C>>
     where
         P: AsRef<Path>,
         C::Challenge: DeserializeOwned,
@@ -136,40 +128,74 @@ where
     {
         let folder_path = path.as_ref().display();
         let round_number: u64 =
-            deserialize_from_file(format!("{}{}", folder_path, "/round_number.data"))
+            canonical_deserialize_from_file(format!("{}{}", folder_path, "/round_number"))
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        let state: BoxArray<State<C>, CIRCUIT_COUNT> = deserialize_from_file(format!(
-            "{}{}{}{}",
-            folder_path, "/state_", round_number, ".data"
-        ))
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        let challenge: BoxArray<C::Challenge, CIRCUIT_COUNT> = deserialize_from_file(format!(
-            "{}{}{}{}",
-            folder_path, "/challenge_", round_number, ".data"
-        ))
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        let latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>> = deserialize_from_file(
-            format!("{}{}{}{}", folder_path, "/proof_", round_number, ".data"),
-        )
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        let registry: R::Registry = deserialize_from_file(&registry_path)
+        println!("Recovering a ceremony at round {:?}", round_number);
+
+        let names: Vec<String> = C::circuits().into_iter().map(|p| p.1).collect(); // TODO: This wastefully generates the circuit descriptions, perhaps break into `circuits()` and `circuit_names()` in Ceremony trait
+        let mut states = Vec::<State<C>>::new();
+        let mut challenges = Vec::<C::Challenge>::new();
+        let mut proofs = Vec::<Proof<C>>::new();
+
+        for name in names.into_iter() {
+            let state: State<C> = canonical_deserialize_from_file(filename_format(
+                folder_path.to_string(),
+                name.clone(),
+                "state".to_string(),
+                round_number,
+            ))
             .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        let metadata: Metadata =
-            deserialize_from_file(format!("{}{}", folder_path, "/metadata.data"))
+            states.push(state);
+
+            let challenge: C::Challenge = deserialize_from_file(filename_format(
+                folder_path.to_string(),
+                name.clone(),
+                "challenge".to_string(),
+                round_number,
+            ))
+            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+            challenges.push(challenge);
+
+            if round_number > 0 {
+                let latest_proof: Proof<C> = canonical_deserialize_from_file(filename_format(
+                    folder_path.to_string(),
+                    name,
+                    "proof".to_string(),
+                    round_number,
+                ))
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+                proofs.push(latest_proof);
+            }
+        }
+
+        let latest_proof = match round_number {
+            0 => None,
+            _ => Some(BoxArray::from(into_array_unchecked(proofs))),
+        };
+
+        let registry: R::Registry = deserialize_from_file(filename_format(
+            folder_path.to_string(),
+            "".to_string(),
+            "registry".to_string(),
+            round_number,
+        ))
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+
+        // To avoid cloning states below, compute metadata now.
+        let metadata: Metadata = compute_metadata(Duration::new(600, 0), &states);
 
         Ok(Self {
             lock_queue: Default::default(),
             registry: Arc::new(Mutex::new(registry)),
             sclp: Arc::new(Mutex::new(StateChallengeProof::new_unchecked(
-                state,
-                challenge,
+                BoxArray::from(into_array_unchecked(states)),
+                BoxArray::from(into_array_unchecked(challenges)),
                 latest_proof,
                 round_number,
             ))),
             metadata,
-            recovery_directory,
-            registry_path,
+            recovery_directory: recovery_directory.clone(),
+            registry_path: recovery_directory, // TODO: Do we need a separate registry path?
         })
     }
 
@@ -286,12 +312,17 @@ where
     {
         let _ = info!("Saving server to recovery directory.");
         let registry = self.registry.clone();
-        let registry_path = self.registry_path.clone();
-        task::spawn_blocking(move || {
+        let recovery_directory = self.recovery_directory.clone();
+        let _ = task::spawn_blocking(move || {
             let registry = registry.lock();
             serialize_into_file(
                 OpenOptions::new().write(true).create_new(true),
-                &Path::new(&registry_path),
+                &filename_format(
+                    recovery_directory.clone(),
+                    "".to_string(),
+                    "state".to_string(),
+                    round,
+                ),
                 &*registry,
             )
             .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
@@ -301,33 +332,68 @@ where
         let sclp = self.sclp.clone();
         let recovery_directory = self.recovery_directory.clone();
         let _ = task::spawn_blocking(move || -> Result<(), CeremonyError<C>> {
-            let sclp_lock = sclp.lock();
-            let round = sclp_lock.round();
-            serialize_into_file(
-                OpenOptions::new().write(true).create_new(true),
-                &Path::new(&recovery_directory).join("/round_number.data"),
+            let sclp = sclp.lock();
+            assert_eq!(round, sclp.round());
+            for ((state, challenge), name) in sclp
+                .state()
+                .iter()
+                .zip(sclp.challenge().iter())
+                .zip(C::circuits().into_iter().map(|p| p.1))
+            {
+                canonical_serialize_into_file(
+                    OpenOptions::new().write(true).truncate(true).create(true),
+                    &filename_format(
+                        recovery_directory.clone(),
+                        name.clone(),
+                        "state".to_string(),
+                        round,
+                    ),
+                    state,
+                )
+                .expect("Writing state to disk should succeed.");
+
+                serialize_into_file(
+                    OpenOptions::new().write(true).truncate(true).create(true),
+                    &filename_format(
+                        recovery_directory.clone(),
+                        name.clone(),
+                        "challenge".to_string(),
+                        round,
+                    ),
+                    &challenge,
+                )
+                .expect("Writing challenge to disk should succeed.");
+            }
+
+            if round > 0 {
+                for (proof, name) in sclp
+                    .latest_proof()
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .zip(C::circuits().into_iter().map(|p| p.1))
+                {
+                    canonical_serialize_into_file(
+                        OpenOptions::new().write(true).truncate(true).create(true),
+                        &filename_format(
+                            recovery_directory.clone(),
+                            name.clone(),
+                            "proof".to_string(),
+                            round,
+                        ),
+                        proof,
+                    )
+                    .expect("Writing proof to disk should succeed.");
+                }
+            }
+
+            canonical_serialize_into_file(
+                OpenOptions::new().write(true).truncate(true).create(true),
+                &format!("{}/round_number", recovery_directory),
                 &round,
             )
-            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))?;
-            serialize_into_file(
-                OpenOptions::new().write(true).create_new(true),
-                &Path::new(&recovery_directory).join(format!("{}{}{}", "/state_", &round, ".data")),
-                &sclp_lock.state(),
-            )
-            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))?;
-            serialize_into_file(
-                OpenOptions::new().write(true).create_new(true),
-                &Path::new(&recovery_directory)
-                    .join(format!("{}{}{}", "/challenge_", &round, ".data")),
-                &sclp_lock.challenge(),
-            )
-            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))?;
-            serialize_into_file(
-                OpenOptions::new().write(true).create_new(true),
-                &Path::new(&recovery_directory).join(format!("{}{}{}", "/proof_", &round, ".data")),
-                &sclp_lock.latest_proof(),
-            )
-            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))?;
+            .expect("Must serialize round number to file");
+
             Ok(())
         })
         .await
@@ -386,15 +452,52 @@ where
     }
 }
 
+/// Produces [`Metadata`] from a slice of [`State`]s and specified contribution time limit.
+pub fn compute_metadata<C>(contribution_time_limit: Duration, states: &[State<C>]) -> Metadata
+where
+    C: Ceremony,
+{
+    Metadata {
+        ceremony_size: CeremonySize::from(
+            states
+                .iter()
+                .map(|s| StateSize::from_proving_key(&s.0))
+                .collect::<Vec<_>>(),
+        ),
+        contribution_time_limit,
+    }
+}
+
+/// Filename formatting for saving/recovering server. The `kind` may be
+/// `state`, `challenge`, `proof`, `registry`. For `registry` the `name`
+/// should be "".
+pub fn filename_format(
+    folder_path: String,
+    name: String,
+    kind: String,
+    round_number: u64,
+) -> String {
+    format!("{}/{}_{}_{}", folder_path, name, kind, round_number)
+}
+
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
 /// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
-pub fn prepare<C, P>(phase_one_param_path: String, recovery_path: P)
+/// Also saves registry to file.
+pub fn prepare<C, P, R, T>(phase_one_param_path: String, recovery_path: P, registry_path: P)
 where
     C: Ceremony + Configuration + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
     C: mpc::ProvingKeyHasher<C, Output = [u8; 64]>,
     C: ChallengeType<Challenge = Array<u8, 64>>,
     C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
     P: AsRef<Path>,
+    R: Registry<C::Identifier, C::Participant> + Serialize,
+    R: registry::Configuration<
+        Identifier = C::Identifier,
+        Participant = C::Participant,
+        Registry = R,
+    >,
+    T: Record<C::Identifier, C::Participant>,
+    T::Error: Debug,
 {
     use memmap::MmapOptions;
 
@@ -411,171 +514,53 @@ where
         .expect("Cannot read Phase 1 accumulator from file");
 
     let folder_path = recovery_path.as_ref().display();
+    let round_number = 0u64;
     for (circuit, name) in C::circuits().into_iter() {
         println!("Creating proving key for {}", name);
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             coordinator::initialize(&powers, circuit);
 
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(format!("{}/{}_state_0", folder_path, name)) // TODO : This name should match recovery conventions
-            .expect("Unable to open file");
-        CanonicalSerialize::serialize(&state, &mut file)
-            .expect("Writing state to disk should succeed");
-        let mut file = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(format!("{}/{}_challenge_0", folder_path, name)) // TODO : This name should match recovery conventions
-            .expect("Unable to open file");
-        file.write_all(challenge.as_ref())
-            .expect("Writing challenge to disk should succeed");
-        file.flush().expect("Flushing file should succeed.");
+        canonical_serialize_into_file(
+            OpenOptions::new().write(true).truncate(true).create(true),
+            &filename_format(
+                folder_path.to_string(),
+                name.clone(),
+                "state".to_string(),
+                round_number,
+            ),
+            &state,
+        )
+        .expect("Writing state to disk should succeed.");
+
+        serialize_into_file(
+            OpenOptions::new().write(true).truncate(true).create(true),
+            &filename_format(
+                folder_path.to_string(),
+                name,
+                "challenge".to_string(),
+                round_number,
+            ),
+            &challenge,
+        )
+        .expect("Writing challenge to disk should succeed.");
     }
-    let round = 0u64;
-    let mut file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open(format!("{}/round_number", folder_path)) // TODO : This name should match recovery conventions
-        .expect("Unable to open file");
-    CanonicalSerialize::serialize(&round, &mut file)
-        .expect("Writing round number to disk should succeed");
-}
-
-/// Initiates a server for 3 circuits. TODO: Take in array of paths to state files instead
-#[cfg(feature = "csv")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
-#[inline]
-pub fn init_server<R, C, T, const LEVEL_COUNT: usize>(
-    registry_path: String,
-    init_parameters_path: String,
-    recovery_dir_path: String,
-) -> Server<C, R, LEVEL_COUNT, 3>
-where
-    C: Ceremony,
-    C::Challenge: DeserializeOwned + From<Array<u8, 64>>,
-    R: Registry<C::Identifier, C::Participant>,
-    R: registry::Configuration<
-        Identifier = C::Identifier,
-        Participant = C::Participant,
-        Registry = R,
-    >,
-    T: Record<C::Identifier, C::Participant>,
-    T::Error: Debug,
-{
-    use crate::groth16::mpc::StateSize;
-
-    let registry = load::<C::Identifier, C::Participant, T, R, _>(registry_path.clone()).unwrap();
-    println!("Loaded registry");
-
-    // Vector of [`ProvingKey`]
-    let mut state = Vec::new();
-    let mut state_size = Vec::new();
-    let mut challenge = Vec::new();
-
-    // Ceremony-specific list of state, challenge file names
-    // TODO: This ought to load however many are present and follow this naming convention
-    let state_files = vec!["/dummy_state1", "/dummy_state2", "/dummy_state3"];
-    let challenge_files = vec![
-        "/dummy_challenge1",
-        "/dummy_challenge2",
-        "/dummy_challenge3",
-    ];
-    assert_eq!(state_files.len(), challenge_files.len());
-
-    for file in state_files.iter() {
-        let mut file = File::open(format!("{}{}", init_parameters_path, file))
-            .expect("Opening file should succeed.");
-        let temp: <C as StateType>::State = CanonicalDeserialize::deserialize(&mut file).unwrap();
-        state_size.push(StateSize::from_proving_key(&temp.0));
-        state.push(temp);
-    }
-    println!("Loaded states");
-
-    for file in challenge_files.iter() {
-        let mut file = File::open(format!("{}{}", init_parameters_path, file))
-            .expect("Opening file should succeed.");
-        let mut buf = Vec::new();
-        file.read_to_end(&mut buf)
-            .expect("Reading challenge file should succeed");
-        let temp = Array::<u8, 64>::from_unchecked(buf);
-        challenge.push(temp.into());
-    }
-    println!("Loaded challenges");
-
-    let metadata = Metadata {
-        ceremony_size: CeremonySize::from(state_size),
-        contribution_time_limit: Duration::new(600, 0),
-    };
-
-    Server::new(
-        BoxArray::from_vec(state),
-        BoxArray::from_vec(challenge),
-        registry,
-        recovery_dir_path.into(),
-        metadata,
-        registry_path.into(),
+    canonical_serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &format!("{}/round_number", folder_path),
+        &round_number,
     )
-}
+    .expect("Must serialize round number to file");
 
-/// Initiates a server for 3 dummy circuits. C = Config.  TODO: Take in array of paths to state files instead
-#[cfg(feature = "csv")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
-#[inline]
-pub fn init_dummy_server<const LEVEL_COUNT: usize>(
-    registry_path: String,
-    init_parameters_path: String,
-    recovery_dir_path: String,
-) -> Server<Config, CeremonyRegistry, LEVEL_COUNT, 3> {
-    use crate::groth16::mpc::StateSize;
-
-    let registry = load::<
-        <Config as Ceremony>::Identifier,
-        <Config as Ceremony>::Participant,
-        CeremonyRecord,
-        CeremonyRegistry,
-        _,
-    >(registry_path.clone())
-    .unwrap();
-
-    println!("Loaded registry");
-
-    let mut file = File::open(format!("{}{}", init_parameters_path, "/dummy_challenge"))
-        .expect("Opening file should succeed.");
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)
-        .expect("Reading data should succeed");
-    let challenge = Array::<u8, 64>::from_unchecked(buf);
-
-    println!("Loaded challenges");
-    let file = File::open(format!("{}{}", init_parameters_path, "/dummy_state"))
-        .expect("Opening file should succeed.");
-    let state: <Config as StateType>::State = CanonicalDeserialize::deserialize(&file).unwrap();
-    println!("Loaded states");
-
-    let state = vec![state.clone(), state.clone(), state];
-    let challenge = vec![challenge, challenge, challenge];
-
-    let ceremony_size = CeremonySize::from(vec![
-        StateSize::from_proving_key(&state[0].0),
-        StateSize::from_proving_key(&state[1].0),
-        StateSize::from_proving_key(&state[2].0),
-    ]);
-
-    let metadata = Metadata {
-        ceremony_size,
-        contribution_time_limit: Duration::new(600, 0),
-    };
-
-    Server::new(
-        BoxArray::from_vec(state),
-        BoxArray::from_vec(challenge),
-        registry,
-        recovery_dir_path.into(),
-        metadata,
-        registry_path.into(),
+    let registry = load::<C::Identifier, C::Participant, T, R, _>(registry_path).unwrap();
+    serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &filename_format(
+            folder_path.to_string(),
+            "".to_string(),
+            "registry".to_string(),
+            round_number,
+        ),
+        &registry,
     )
+    .expect("Writing registry to disk should succeed.");
 }
