@@ -1340,3 +1340,15 @@ pub enum NetworkType {
     Manta
 
 }
+
+impl NetworkType {
+    /// Returns a string formatting of `network` interpreted using `self`.
+    #[inline]
+    pub fn display(&self) -> String {
+        match self {
+            NetworkType::Dolphin => {"Dolphin".to_string()},
+            NetworkType::Calamari => {"Calamari".to_string()},
+            NetworkType::Manta => {"Manta".to_string()},
+        }
+    }
+}
