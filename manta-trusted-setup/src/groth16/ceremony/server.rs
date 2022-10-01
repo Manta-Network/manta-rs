@@ -388,20 +388,19 @@ where
 
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
 /// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
-pub fn prepare<C, S, P>(phase_one_param_path: String, recovery_path: P)
+pub fn prepare<C, P>(phase_one_param_path: String, recovery_path: P)
 where
     C: Ceremony + Configuration + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
     C: mpc::ProvingKeyHasher<C, Output = [u8; 64]>,
     C: ChallengeType<Challenge = Array<u8, 64>>,
     C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
-    S: ConstraintSynthesizer<C::Scalar> + Clone,
     P: AsRef<Path>,
 {
     use memmap::MmapOptions;
 
     let file = OpenOptions::new()
         .read(true)
-        .open(phase_one_param_path.clone())
+        .open(phase_one_param_path)
         .expect("Unable to open phase 1 parameter file in this directory");
     let reader = unsafe {
         MmapOptions::new()
@@ -412,11 +411,12 @@ where
         .expect("Cannot read Phase 1 accumulator from file");
 
     let folder_path = recovery_path.as_ref().display();
-    for (circuit, name) in C::circuits().iter() {
+    for (circuit, name) in C::circuits().into_iter() {
+        println!("Creating proving key for {}", name);
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
-            coordinator::initialize(&powers, circuit.clone());
-        // TODO Write to files
-        let mut file = OpenOptions::new()
+            coordinator::initialize(&powers, circuit);
+
+            let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
             .open(format!("{}/{}_state_0", folder_path, name)) // TODO : This name should match recovery conventions

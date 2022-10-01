@@ -17,17 +17,12 @@
 //! Trusted Setup Ceremony Server
 
 use clap::{Parser, Subcommand};
-use manta_crypto::arkworks::pairing::Pairing;
-use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::{exit_on_error, Config, Record, Registry},
-    server::{init_dummy_server, init_server, prepare, Server},
+    config::ppot::{Config},
+    server::{init_dummy_server, prepare, Server},
     CeremonyError,
 };
 use manta_util::http::tide::{self, execute};
-
-/// Circuit names
-const CIRCUIT_NAMES: [&str; 3] = [r"Mint", r"Transfer", r"Reclaim"];
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -72,7 +67,7 @@ impl Arguments {
                 //     circuits.push(cs);
                 // }
                 
-                prepare::<Config, R1CS<<Config as Pairing>::Scalar>, _>(phase_one_param_path, recovery_dir_path.clone());
+                prepare::<Config, _>(phase_one_param_path, recovery_dir_path.clone());
                 init_dummy_server::<2>(registry_path, recovery_dir_path.clone(), recovery_dir_path) //todo those paths 
             },
             _ => {
@@ -104,26 +99,6 @@ async fn main() {
         .run()
         .await
         .expect("Server error occurred");
-}
-
-use manta_crypto::{
-    arkworks::{bn254::Fr, ff::field_new, r1cs_std::eq::EqGadget},
-    eclair::alloc::{
-        mode::{Public, Secret},
-        Allocate,
-    },
-};
-use manta_pay::crypto::constraint::arkworks::{Fp, FpVar};
-
-/// Generates a dummy R1CS circuit.
-#[inline]
-pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
-    let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
-    let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
-    let c = &a * &b;
-    let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(cs);
-    c.enforce_equal(&d)
-        .expect("enforce_equal is not allowed to fail");
 }
 
 // run with
