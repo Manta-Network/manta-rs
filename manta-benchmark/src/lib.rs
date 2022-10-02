@@ -20,8 +20,7 @@
 #![forbid(rustdoc::broken_intra_doc_links)]
 #![forbid(missing_docs)]
 
-use manta_accounting::transfer::test::assert_valid_proof;
-use manta_crypto::rand::{OsRng, Rand};
+use manta_accounting::{transfer::test::assert_valid_proof};
 use manta_pay::{
     config::{
         MultiProvingContext, MultiVerifyingContext, Parameters, TransferPost, UtxoAccumulatorModel,
@@ -29,7 +28,9 @@ use manta_pay::{
     parameters,
     test::payment,
 };
-use wasm_bindgen::prelude::wasm_bindgen;
+use rand::{rngs::StdRng, SeedableRng};
+use manta_crypto::rand::Rand;
+use wasm_bindgen::prelude::*;
 
 pub mod ecc;
 
@@ -70,9 +71,24 @@ impl Default for Context {
 pub struct Proof(TransferPost);
 
 /// Proves a mint [`Proof`] given the [`Context`].
+// #[wasm_bindgen]
+// pub fn prove_mint(context: &Context) -> Proof {
+//     let mut rng = OsRng;
+//     Proof(payment::prove_mint(
+//         &context.proving_context.mint,
+//         &context.parameters,
+//         &context.utxo_accumulator_model,
+//         rng.gen(),
+//         &mut rng,
+//     ))
+// }
+
+/// Proves a mint [`Proof`] given the [`Context`] using provided seed [`&[u8]`].
 #[wasm_bindgen]
-pub fn prove_mint(context: &Context) -> Proof {
-    let mut rng = OsRng;
+pub fn prove_mint_with_rng(context: &Context, rng_seed: &[u8]) -> Proof {
+    console_error_panic_hook::set_once();
+    let rng_seed: [u8; 32] = rng_seed.try_into().unwrap();
+    let mut rng = &mut StdRng::from_seed(rng_seed);
     Proof(payment::prove_mint(
         &context.proving_context.mint,
         &context.parameters,
@@ -83,9 +99,23 @@ pub fn prove_mint(context: &Context) -> Proof {
 }
 
 /// Proves a private transfer [`Proof`] given the [`Context`].
+// #[wasm_bindgen]
+// pub fn prove_private_transfer(context: &Context) -> Proof {
+//     let mut rng = OsRng;
+//     Proof(payment::prove_private_transfer(
+//         &context.proving_context,
+//         &context.parameters,
+//         &context.utxo_accumulator_model,
+//         &mut rng,
+//     ))
+// }
+
+/// Proves a private transfer [`Proof`] given the [`Context`] using provided seed [`&[u8]`].
 #[wasm_bindgen]
-pub fn prove_private_transfer(context: &Context) -> Proof {
-    let mut rng = OsRng;
+pub fn prove_private_transfer_with_rng(context: &Context, rng_seed: &[u8]) -> Proof {
+    console_error_panic_hook::set_once();
+    let rng_seed: [u8; 32] = rng_seed.try_into().unwrap();
+    let mut rng = &mut StdRng::from_seed(rng_seed);
     Proof(payment::prove_private_transfer(
         &context.proving_context,
         &context.parameters,
@@ -95,9 +125,23 @@ pub fn prove_private_transfer(context: &Context) -> Proof {
 }
 
 /// Proves a reclaim [`Proof`] given the [`Context`].
+// #[wasm_bindgen]
+// pub fn prove_reclaim(context: &Context) -> Proof {
+//     let mut rng = OsRng;
+//     Proof(payment::prove_reclaim(
+//         &context.proving_context,
+//         &context.parameters,
+//         &context.utxo_accumulator_model,
+//         &mut rng,
+//     ))
+// }
+
+/// Proves a reclaim [`Proof`] given the [`Context`] using provided seed [`&[u8]`].
 #[wasm_bindgen]
-pub fn prove_reclaim(context: &Context) -> Proof {
-    let mut rng = OsRng;
+pub fn prove_reclaim_with_rng(context: &Context, rng_seed: &[u8]) -> Proof {
+    console_error_panic_hook::set_once();
+    let rng_seed: [u8; 32] = rng_seed.try_into().unwrap();
+    let mut rng = &mut StdRng::from_seed(rng_seed);
     Proof(payment::prove_reclaim(
         &context.proving_context,
         &context.parameters,

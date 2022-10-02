@@ -1,3 +1,5 @@
+#!/bin/sh
+
 wasm-pack build --release
 cd ./www
 npm install
