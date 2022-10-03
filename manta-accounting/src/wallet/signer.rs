@@ -1346,9 +1346,9 @@ impl NetworkType {
     #[inline]
     pub fn display(&self) -> String {
         match self {
-            NetworkType::Dolphin => {"Dolphin".to_string()},
-            NetworkType::Calamari => {"Calamari".to_string()},
-            NetworkType::Manta => {"Manta".to_string()},
+            NetworkType::Dolphin => {String::from("Dolphin")},
+            NetworkType::Calamari => {String::from("Calamari")},
+            NetworkType::Manta => {String::from("Manta")},
         }
     }
 }
