@@ -16,6 +16,29 @@
 
 //! Utility Macros
 
+/// Asserts that all the elements in `$tail` have the same length as `$head`.
+#[macro_export]
+macro_rules! assert_all_eq_len {
+    ([$head:expr, $($tail:expr),+ $(,)?]) => {{
+        $(
+            assert_eq!(
+                $head.len(),
+                $tail.len(),
+            );
+        )+
+    }};
+    ([$head:expr, $($tail:expr),+], $($arg:tt)+) => {{
+        let __format = core::format_args!($($arg)+);
+        $(
+            assert_eq!(
+                $head.len(),
+                $tail.len(),
+                "{}", __format,
+            );
+        )+
+    }};
+}
+
 /// Implements [`From`]`<$from>` for an enum `$to`, choosing the `$kind` variant.
 #[macro_export]
 macro_rules! from_variant {

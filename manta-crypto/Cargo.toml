@@ -46,9 +46,10 @@ groth16 = ["ark-groth16", "ark-snark", "arkworks"]
 
 # Serde Serialization
 serde = [
+    "ed25519-dalek?/serde",
     "manta-util/serde-alloc",
     "manta-util/serde-array",
-    "rand_chacha?/serde1"
+    "rand_chacha?/serde1",
 ]
 
 # Standard Library
