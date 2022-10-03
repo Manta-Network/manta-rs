@@ -35,7 +35,7 @@ use manta_crypto::{
         pairing::{Pairing, PairingEngineExt},
         ratio::{HashToGroup, RatioProof},
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
-        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
+        serialize::SerializationError,
     },
     rand::{CryptoRng, RngCore},
 };
@@ -54,14 +54,14 @@ use {
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(derivative::Derivative, CanonicalDeserialize, CanonicalSerialize)]
+#[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""), Debug(bound = ""))]
 pub struct State<P>(
     #[cfg_attr(
         feature = "serde",
         serde(
             serialize_with = "canonical_serialize::<ProvingKey<P::Pairing>, _>",
-            deserialize_with = "canonical_deserialize_unchecked::<'de, _, ProvingKey<P::Pairing>>"
+            deserialize_with = "canonical_deserialize::<'de, _, ProvingKey<P::Pairing>>"
         )
     )]
     pub ProvingKey<P::Pairing>,
@@ -127,7 +127,7 @@ where
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(derivative::Derivative, CanonicalDeserialize, CanonicalSerialize)]
+#[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
 pub struct Proof<P>(
     #[cfg_attr(

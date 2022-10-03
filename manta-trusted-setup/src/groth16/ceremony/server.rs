@@ -138,7 +138,7 @@ where
         let mut proofs = Vec::<Proof<C>>::new();
 
         for name in names.into_iter() {
-            let state: State<C> = canonical_deserialize_from_file(filename_format(
+            let state: State<C> = deserialize_from_file(filename_format(
                 folder_path.to_string(),
                 name.clone(),
                 "state".to_string(),
@@ -157,7 +157,7 @@ where
             challenges.push(challenge);
 
             if round_number > 0 {
-                let latest_proof: Proof<C> = canonical_deserialize_from_file(filename_format(
+                let latest_proof: Proof<C> = deserialize_from_file(filename_format(
                     folder_path.to_string(),
                     name,
                     "proof".to_string(),
@@ -278,7 +278,7 @@ where
 
     /// Updates the registry.
     #[inline]
-    pub async fn update_registry(&self) -> Result<(), CeremonyError<C>>
+    pub async fn update_registry(&self) -> Result<bool, CeremonyError<C>>
     where
         C::Nonce: Send,
         R::Registry: Send,
@@ -297,11 +297,11 @@ where
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
         let _ = info!("Registry successfully updated.");
-        Ok(())
+        Ok(true)
     }
 
     /// Saves `self` into `self.recovery_directory`.
-    pub async fn save_server(&self, round: u64) -> Result<(), CeremonyError<C>>
+    pub async fn save_server(&self, round: u64) -> Result<bool, CeremonyError<C>>
     where
         C::Challenge: Clone + Send + Serialize,
         C::Nonce: Send,
@@ -340,7 +340,7 @@ where
                 .zip(sclp.challenge().iter())
                 .zip(C::circuits().into_iter().map(|p| p.1))
             {
-                canonical_serialize_into_file(
+                serialize_into_file(
                     OpenOptions::new().write(true).truncate(true).create(true),
                     &filename_format(
                         recovery_directory.clone(),
@@ -373,7 +373,7 @@ where
                     .iter()
                     .zip(C::circuits().into_iter().map(|p| p.1))
                 {
-                    canonical_serialize_into_file(
+                    serialize_into_file(
                         OpenOptions::new().write(true).truncate(true).create(true),
                         &filename_format(
                             recovery_directory.clone(),
@@ -399,7 +399,7 @@ where
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
         let _ = info!("Server successfully saved.");
-        Ok(())
+        Ok(true)
     }
 
     /// Processes a request to update the MPC state and removes the participant if the state was
@@ -437,9 +437,9 @@ where
         })
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
-        self.save_server(round).await?;
+        let _ = self.save_server(round).await?;
         println!("{} participants have contributed.", round);
-        self.update_registry().await?;
+        let _ = self.update_registry().await?;
         let challenge = self.sclp.lock().challenge().to_vec();
         let _ = info!(
             "[RESPONSE] responding to `update` with: {:?}",
@@ -520,7 +520,7 @@ where
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             coordinator::initialize(&powers, circuit);
 
-        canonical_serialize_into_file(
+        serialize_into_file(
             OpenOptions::new().write(true).truncate(true).create(true),
             &filename_format(
                 folder_path.to_string(),

@@ -121,9 +121,7 @@ where
         }
     }
 
-    /// Updates the MPC state and challenge using client's contribution. If the contribution is
-    /// valid, the participant will be removed from the waiting queue, and cannot participate in
-    /// this ceremony again.
+    /// TODO: Docs
     ///
     /// # Registration
     ///
