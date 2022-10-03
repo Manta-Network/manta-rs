@@ -14,32 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup Ceremony Coordinator
+//! Coordinator
 
 use crate::{
-    groth16::{
-        ceremony::{registry::Registry, Ceremony, Participant},
-        mpc::StateSize,
+    ceremony::{
+        participant::{Participant, Priority},
+        registry::Registry,
+        signature::{Nonce, SignedMessage},
     },
-    mpc::{Challenge, Proof, State},
+    groth16::{
+        ceremony::{Ceremony, CeremonyError, Metadata, Queue, Round, UnexpectedError},
+        mpc::{verify_transform, Proof, State},
+    },
 };
-use manta_util::{collections::vec_deque::MultiVecDeque, time::lock::Timed, Array, BoxArray};
+use core::mem;
+use manta_util::{time::lock::Timed, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-/// Proof Array Type
-pub type ProofArray<C, const N: usize> = BoxArray<Proof<C>, N>;
-
-/// State Array Type
-pub type StateArray<C, const N: usize> = BoxArray<State<C>, N>;
-
-/// Challenge Array Type
-pub type ChallengeArray<C, const N: usize> = BoxArray<Challenge<C>, N>;
-
-/// Participant Queue Type
-pub type Queue<C, const LEVEL_COUNT: usize> =
-    MultiVecDeque<<C as Ceremony>::Identifier, LEVEL_COUNT>;
 
 /// Ceremony Coordinator
 #[cfg_attr(
@@ -47,24 +39,16 @@ pub type Queue<C, const LEVEL_COUNT: usize> =
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = r"
-            R: Deserialize<'de>,
-            Queue<C, LEVEL_COUNT>: Deserialize<'de>,
-            C::Identifier: Deserialize<'de>,
-            State<C>: Deserialize<'de>,
-            Challenge<C>: Deserialize<'de>,
-            Proof<C>: Deserialize<'de>,
-            C::Participant: Deserialize<'de>,
-        ",
             serialize = r"
-            R: Serialize,
-            Queue<C, LEVEL_COUNT>: Serialize,
-            C::Identifier: Serialize,
-            State<C>: Serialize,
-            Challenge<C>: Serialize,
-            Proof<C>: Serialize,
-            C::Participant: Serialize,
-        "
+                R: Serialize,
+                C::Challenge: Serialize,
+                C::Participant: Serialize,
+            ",
+            deserialize = r"
+                R: Deserialize<'de>,
+                C::Challenge: Deserialize<'de>,
+                C::Participant: Deserialize<'de>,
+            "
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -76,33 +60,35 @@ where
     R: Registry<C::Identifier, C::Participant>,
 {
     /// Participant Registry
-    pub registry: R,
-
-    /// Participant Queue
-    pub queue: Queue<C, LEVEL_COUNT>,
-
-    /// Participant Lock
-    pub participant_lock: Timed<Option<C::Identifier>>,
+    registry: R,
 
     /// State
-    pub state: StateArray<C, CIRCUIT_COUNT>,
+    state: BoxArray<State<C>, CIRCUIT_COUNT>,
 
     /// Challenge
-    pub challenge: ChallengeArray<C, CIRCUIT_COUNT>,
+    challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
 
     /// Latest Contributor
     ///
     /// This participant was the last one to perform a successful contribution to the ceremony.
-    pub latest_contributor: Option<C::Participant>,
+    latest_contributor: Option<C::Participant>,
 
     /// Latest Proof
-    pub latest_proof: Option<ProofArray<C, CIRCUIT_COUNT>>,
+    latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>>,
 
-    /// State Sizes
-    pub size: Array<StateSize, CIRCUIT_COUNT>,
+    /// Ceremony Metadata
+    metadata: Metadata,
 
     /// Current Round Number
-    pub round: usize,
+    round: usize,
+
+    /// Participant Queue
+    #[cfg_attr(feature = "serde", serde(skip))]
+    queue: Queue<C, LEVEL_COUNT>,
+
+    /// Participant Lock
+    #[cfg_attr(feature = "serde", serde(skip))]
+    participant_lock: Timed<Option<C::Identifier>>,
 }
 
 impl<C, R, const CIRCUIT_COUNT: usize, const LEVEL_COUNT: usize>
@@ -111,10 +97,54 @@ where
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
 {
+    /// Builds a new [`Coordinator`].
+    #[inline]
+    pub fn new(
+        registry: R,
+        state: BoxArray<State<C>, CIRCUIT_COUNT>,
+        challenge: BoxArray<C::Challenge, CIRCUIT_COUNT>,
+        metadata: Metadata,
+    ) -> Self {
+        assert!(
+            metadata.ceremony_size.matches(state.as_slice()),
+            "Mismatch of metadata `{:?}` and state.",
+            metadata,
+        );
+        Self {
+            registry,
+            state,
+            challenge,
+            latest_contributor: None,
+            latest_proof: None,
+            metadata,
+            round: 0,
+            queue: Default::default(),
+            participant_lock: Default::default(),
+        }
+    }
+
     /// Returns the current round number.
     #[inline]
     pub fn round(&self) -> usize {
         self.round
+    }
+
+    /// Increments the round number.
+    #[inline]
+    pub fn increment_round(&mut self) {
+        self.round += 1;
+    }
+
+    /// Returns the metadata for this ceremony.
+    #[inline]
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
+    /// Returns the registry.
+    #[inline]
+    pub fn registry(&self) -> &R {
+        &self.registry
     }
 
     /// Returns a shared reference to the participant data for `id` from the registry.
@@ -129,16 +159,125 @@ where
         self.registry.get_mut(id)
     }
 
-    /// Returns the current position for a `participant` in the queue.
+    /// Returns a mutable reference to `queue`.
     #[inline]
-    pub fn position(&self, participant: &C::Participant) -> Option<usize> {
-        self.queue.position(participant.level(), participant.id())
+    pub fn queue_mut(&mut self) -> &mut Queue<C, LEVEL_COUNT> {
+        &mut self.queue
     }
 
-    /// Inserts `participant` into the queue.
+    /// Returns the current round state.
     #[inline]
-    pub fn insert_participant(&mut self, participant: &C::Participant) {
-        self.queue
-            .push_back_at(participant.level(), participant.id().clone());
+    pub fn round_state(&self) -> Round<C>
+    where
+        C::Challenge: Clone,
+    {
+        Round::new(self.state.to_vec().into(), self.challenge.to_vec().into())
+    }
+
+    /// Preprocesses a request by checking the nonce and verifying the signature.
+    #[inline]
+    pub fn preprocess_request<T>(
+        &mut self,
+        request: &SignedMessage<C, C::Identifier, T>,
+    ) -> Result<C::Priority, CeremonyError<C>>
+    where
+        T: Serialize,
+    {
+        let participant = self
+            .registry
+            .get_mut(request.identifier())
+            .ok_or(CeremonyError::NotRegistered)?;
+        if participant.has_contributed() {
+            return Err(CeremonyError::AlreadyContributed);
+        }
+        let participant_nonce = participant.nonce();
+        if !participant_nonce.is_valid() {
+            return Err(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed));
+        }
+        request
+            .verify(participant_nonce.clone(), participant.verifying_key())
+            .map_err(|_| CeremonyError::InvalidSignature {
+                expected_nonce: participant_nonce.clone(),
+            })?;
+        participant.increment_nonce();
+        Ok(participant.priority())
+    }
+
+    /// Checks the lock update errors for the [`Coordinator::update`] method.
+    #[inline]
+    pub fn check_lock_update_errors(
+        has_expired: bool,
+        lhs: &Option<C::Identifier>,
+        rhs: &C::Identifier,
+    ) -> Result<(), CeremonyError<C>> {
+        match lhs {
+            Some(lhs) if lhs == rhs && has_expired => Err(CeremonyError::Timeout),
+            Some(lhs) if lhs != rhs => Err(CeremonyError::NotYourTurn),
+            _ => Ok(()),
+        }
+    }
+
+    /// Updates the expired lock by reducing the priority of its participant and setting its
+    /// contained value to the new front of the queue. The previous participant in the lock is
+    /// returned.
+    #[inline]
+    pub fn update_expired_lock(&mut self) -> Option<C::Identifier> {
+        self.participant_lock.mutate(|p| {
+            if let Some(identifier) = p {
+                if let Some(participant) = self.registry.get_mut(identifier) {
+                    participant.reduce_priority();
+                }
+            }
+            mem::replace(p, self.queue.pop_front())
+        })
+    }
+
+    /// Checks the lock for `participant`.
+    #[inline]
+    pub fn check_lock(&mut self, participant: &C::Identifier) -> Result<(), CeremonyError<C>> {
+        if self
+            .participant_lock
+            .has_expired(self.metadata.contribution_time_limit)
+        {
+            Self::check_lock_update_errors(true, &self.update_expired_lock(), participant)
+        } else {
+            Self::check_lock_update_errors(false, self.participant_lock.get(), participant)
+        }
+    }
+
+    /// Updates the MPC state and challenge using client's contribution. If the contribution is
+    /// valid, the participant will be removed from the waiting queue, and cannot participate in
+    /// this ceremony again.
+    ///
+    /// # Registration
+    ///
+    /// This method requires that `participant` is already registered.
+    #[inline]
+    pub fn update(
+        &mut self,
+        participant: &C::Identifier,
+        state: BoxArray<State<C>, CIRCUIT_COUNT>,
+        proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
+    ) -> Result<(), CeremonyError<C>> {
+        self.check_lock(participant)?;
+        for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
+            let next_challenge = C::challenge(&self.challenge[i], &self.state[i], &state, &proof);
+            self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
+                .map_err(|_| CeremonyError::BadRequest)?
+                .1;
+            self.challenge[i] = next_challenge;
+        }
+        self.latest_proof = Some(proof);
+        self.participant_lock.set(self.queue.pop_front());
+        match self.participant_mut(participant) {
+            Some(participant) => participant.set_contributed(),
+            _ => {
+                return Err(CeremonyError::Unexpected(
+                    UnexpectedError::MissingRegisteredParticipant,
+                ));
+            }
+        };
+        self.increment_round();
+        Ok(())
     }
 }

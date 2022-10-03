@@ -1,3 +1,15 @@
+[workspace.package]
+version = "0.5.4"
+edition = "2021"
+authors = ["Manta Network <contact@manta.network>"]
+repository = "https://github.com/Manta-Network/manta-rs"
+homepage = "https://github.com/Manta-Network"
+documentation = "https://github.com/Manta-Network/manta-rs"
+license-file = "LICENSE"
+categories = [""]
+keywords = [""]
+publish = false
+
 [workspace]
 resolver = "2"
 members = ["manta-*"]
