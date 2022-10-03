@@ -182,7 +182,7 @@ where
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
 
         // To avoid cloning states below, compute metadata now.
-        let metadata: Metadata = compute_metadata(Duration::new(600, 0), &states);
+        let metadata: Metadata = compute_metadata(Duration::new(20, 0), &states); // changed lock time
 
         Ok(Self {
             lock_queue: Default::default(),
@@ -254,18 +254,19 @@ where
         State<C>: Debug,
     {
         let _ = info!("[REQUEST] processing `query`");
-        let priority = preprocess_request(&mut *self.registry.lock(), &request)?;
-        let position = self
-            .lock_queue
-            .lock()
-            .queue_mut()
-            .push_back_if_missing(priority.into(), request.into_identifier());
+        let priority = preprocess_request(
+            &mut *self.registry.lock(),
+            &mut *self.lock_queue.lock(),
+            self.metadata(),
+            &request,
+        )?;
+
+        let position =self.lock_queue.lock()
+                .queue_mut()
+                .push_back_if_missing(priority.into(), request.into_identifier());
         if position == 0 {
             let state = self.sclp.lock().round_state();
-            let _ = info!(
-                "[RESPONSE] responding to `query` with round state: {:?}.",
-                &state
-            );
+            let _ = info!("[RESPONSE] responding to `query` with round state.");
             Ok(QueryResponse::State(state))
         } else {
             let _ = info!(
@@ -300,7 +301,7 @@ where
         Ok(())
     }
 
-    /// Saves `self` into `self.recovery_directory`.
+    /// Saves `self` into `self.recovery_directory`. // TODO: Split across the sclp/registry locks
     pub async fn save_server(&self, round: u64) -> Result<(), CeremonyError<C>>
     where
         C::Challenge: Clone + Send + Serialize,
@@ -313,10 +314,10 @@ where
         let _ = info!("Saving server to recovery directory.");
         let registry = self.registry.clone();
         let recovery_directory = self.recovery_directory.clone();
-        let _ = task::spawn_blocking(move || {
+        task::spawn_blocking(move || {
             let registry = registry.lock();
             serialize_into_file(
-                OpenOptions::new().write(true).create_new(true),
+                OpenOptions::new().write(true).create(true),
                 &filename_format(
                     recovery_directory.clone(),
                     "".to_string(),
@@ -414,20 +415,22 @@ where
         C::Challenge: Clone + Debug + Send + Serialize,
         C::Identifier: Send,
         C::Nonce: Send,
+        C::Nonce: Debug,
         StateChallengeProof<C, CIRCUIT_COUNT>: Send,
         R::Registry: Send + Serialize,
         R: 'static,
     {
         let _ = info!("[REQUEST] processing `update`");
         let _ = info!("Preprocessing `update` request: checking signature and nonce, updating queue if applicable");
-        let message = {
+        let (identifier, message) = {
             let mut registry = self.registry.lock();
-            preprocess_request(&mut *registry, &request)?;
-            let (identifier, message) = request.into_inner();
-            self.lock_queue
-                .lock()
-                .update(&identifier, &mut *registry, self.metadata())?;
-            message
+            preprocess_request(
+                &mut *registry,
+                &mut *self.lock_queue.lock(),
+                self.metadata(),
+                &request,
+            )?;
+            request.into_inner()
         };
         let _ = info!("About to check contribution validity");
         let sclp = self.sclp.clone();
@@ -439,7 +442,23 @@ where
         })
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
+
+        // Lock should expire here no matter what
+        {
+            let mut registry = self.registry.lock();
+            match registry.get_mut(&identifier) {
+                Some(participant) => participant.set_contributed(),
+                _ => {
+                    return Err(CeremonyError::Unexpected(
+                        UnexpectedError::MissingRegisteredParticipant,
+                    ))
+                }
+            }
+            self.lock_queue.lock().update_expired_lock(&mut *registry);
+        }
+
         self.save_server(round).await?;
+        
         println!("{} participants have contributed.", round);
         self.update_registry().await?;
         let challenge = self.sclp.lock().challenge().to_vec();
@@ -447,6 +466,8 @@ where
             "[RESPONSE] responding to `update` with: {:?}",
             (round, &challenge)
         );
+        tokio::time::sleep(Duration::new(10, 0)).await;
+
         Ok(ContributeResponse {
             index: round,
             challenge,
@@ -523,7 +544,10 @@ where
             coordinator::initialize(&powers, circuit);
 
         serialize_into_file(
-            OpenOptions::new().write(true).truncate(true).create(true),
+            OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .create_new(true), // `prepare` should only be called once
             &filename_format(
                 folder_path.to_string(),
                 name.clone(),

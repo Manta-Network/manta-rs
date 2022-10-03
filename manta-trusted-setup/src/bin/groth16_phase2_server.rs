@@ -74,14 +74,15 @@ impl Arguments {
                     recovery_dir_path.clone(),
                     registry_path,
                 );
-                let server_url = "127.0.0.1:8080";
-                S::recover(recovery_dir_path, server_url.into())
+                // let server_url = "127.0.0.1:8080";
+                S::recover(recovery_dir_path.clone(), recovery_dir_path)
                     .expect("Unable to recover from file")
             }
             Command::Recover {
                 recovery_dir_path,
-                server_url,
-            } => S::recover(recovery_dir_path, server_url).expect("Unable to recover from file"),
+                server_url, // tODO: are we using this?
+            } => S::recover(recovery_dir_path.clone(), recovery_dir_path)
+                .expect("Unable to recover from file"),
         };
 
         println!("Network is running!");

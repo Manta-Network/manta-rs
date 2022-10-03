@@ -68,6 +68,11 @@ where
         &mut self.queue
     }
 
+    ///
+    pub fn participant_lock(&mut self) -> &Timed<Option<C::Identifier>> {
+        &mut self.participant_lock
+    }
+
     /// Checks the lock update errors for the [`Coordinator::update`] method.
     #[inline]
     pub fn check_lock_update_errors(
@@ -119,34 +124,6 @@ where
         } else {
             Self::check_lock_update_errors(false, self.participant_lock.get(), participant)
         }
-    }
-
-    /// TODO: Docs
-    ///
-    /// # Registration
-    ///
-    /// This method requires that `participant` is already registered.
-    #[inline]
-    pub fn update<R>(
-        &mut self,
-        participant: &C::Identifier,
-        registry: &mut R,
-        metadata: &Metadata,
-    ) -> Result<(), CeremonyError<C>>
-    where
-        R: Registry<C::Identifier, C::Participant>,
-    {
-        self.check_lock(participant, registry, metadata)?;
-        self.participant_lock.set(self.queue.pop_front());
-        match participant_mut::<C, R>(registry, participant) {
-            Some(participant) => participant.set_contributed(),
-            _ => {
-                return Err(CeremonyError::Unexpected(
-                    UnexpectedError::MissingRegisteredParticipant,
-                ));
-            }
-        };
-        Ok(())
     }
 }
 
@@ -283,8 +260,10 @@ where
 
 /// Preprocesses a request by checking the nonce and verifying the signature.
 #[inline]
-pub fn preprocess_request<C, R, T>(
+pub fn preprocess_request<C, R, T, const N: usize>(
     registry: &mut R,
+    lock_queue: &mut LockQueue<C, N>,
+    metadata: &Metadata,
     request: &SignedMessage<C, C::Identifier, T>,
 ) -> Result<C::Priority, CeremonyError<C>>
 where
@@ -292,6 +271,8 @@ where
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
 {
+    let _ = lock_queue.check_lock(request.identifier(), registry, metadata);
+
     let participant = registry
         .get_mut(request.identifier())
         .ok_or(CeremonyError::NotRegistered)?;
