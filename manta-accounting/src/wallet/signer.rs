@@ -58,7 +58,7 @@ use manta_util::{
     iter::{Finder, IteratorExt},
     persistence::Rollback,
 };
-
+use alloc::string::String;
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
