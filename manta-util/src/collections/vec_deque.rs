@@ -128,6 +128,12 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
         }
     }
 
+    /// Returns the number of elements before the [`VecDeque`] at the given `level`.
+    #[inline]
+    fn leading_element_count(&self, level: usize) -> usize {
+        self.0[0..level].iter().map(VecDeque::len).sum::<usize>()
+    }
+
     /// Finds the position of `item` assuming it was inserted at the given `level`.
     #[inline]
     pub fn position(&self, level: usize, item: &T) -> Option<usize>
@@ -144,10 +150,7 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
     where
         F: FnMut(&T, &T) -> bool,
     {
-        Some(
-            self.0[level].iter().position(|x| eq(x, item))?
-                + self.0[0..level].iter().map(VecDeque::len).sum::<usize>(),
-        )
+        Some(self.0[level].iter().position(|x| eq(x, item))? + self.leading_element_count(level))
     }
 
     /// Pushes `item` to the back of the deque at the given `level`.
@@ -156,7 +159,7 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
     ///
     /// This method is an alias for `self.at_level_mut(level).push_back(item)`.
     #[inline]
-    pub fn push_back_at(&mut self, level: usize, item: T) {
+    pub fn push_back(&mut self, level: usize, item: T) {
         self.0[level].push_back(item)
     }
 
@@ -164,6 +167,22 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
     #[inline]
     pub fn pop_front(&mut self) -> Option<T> {
         self.0.iter_mut().find_map(VecDeque::pop_front)
+    }
+
+    /// Pushes back `item` at `level` if `item` is missing. Returns the position
+    /// of `item` in both cases.
+    #[inline]
+    pub fn push_back_if_missing(&mut self, level: usize, item: T) -> usize
+    where
+        T: PartialEq,
+    {
+        match self.position(level, &item) {
+            Some(position) => position,
+            None => {
+                self.push_back(level, item);
+                self.leading_element_count(level) + self.0[level].len() - 1
+            }
+        }
     }
 }
 
