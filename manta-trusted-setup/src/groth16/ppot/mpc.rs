@@ -29,8 +29,11 @@ use blake2::Digest;
 use manta_crypto::arkworks::{pairing::Pairing, serialize::CanonicalSerialize};
 use manta_util::into_array_unchecked;
 
-impl<S, const POWERS: usize> Configuration for PerpetualPowersOfTauCeremony<S, POWERS> {
+impl<S, const POWERS: usize> ChallengeType for PerpetualPowersOfTauCeremony<S, POWERS> {
     type Challenge = [u8; 64];
+}
+
+impl<S, const POWERS: usize> Configuration for PerpetualPowersOfTauCeremony<S, POWERS> {
     type Hasher = BlakeHasher;
 
     #[inline]
@@ -42,31 +45,26 @@ impl<S, const POWERS: usize> Configuration for PerpetualPowersOfTauCeremony<S, P
     ) -> Self::Challenge {
         let mut hasher = Self::Hasher::default();
         hasher.0.update(challenge);
-        prev.serialize(&mut hasher)
+        prev.0
+            .serialize(&mut hasher)
             .expect("Consuming the previous state failed.");
-        next.serialize(&mut hasher)
+        next.0
+            .serialize(&mut hasher)
             .expect("Consuming the current state failed.");
         proof
+            .0
             .serialize(&mut hasher)
             .expect("Consuming proof failed");
         into_array_unchecked(hasher.0.finalize())
     }
 }
 
-impl<S, const POWERS: usize> StateType for PerpetualPowersOfTauCeremony<S, POWERS> {
-    type State = State<Self>;
-}
-
-impl<S, const POWERS: usize> ChallengeType for PerpetualPowersOfTauCeremony<S, POWERS> {
-    type Challenge = [u8; 64];
+impl<S, const POWERS: usize> ContributionType for PerpetualPowersOfTauCeremony<S, POWERS> {
+    type Contribution = <Self as Pairing>::Scalar;
 }
 
 impl<S, const POWERS: usize> ProofType for PerpetualPowersOfTauCeremony<S, POWERS> {
     type Proof = Proof<Self>;
-}
-
-impl<S, const POWERS: usize> ContributionType for PerpetualPowersOfTauCeremony<S, POWERS> {
-    type Contribution = <Self as Pairing>::Scalar;
 }
 
 impl<S, const POWERS: usize> ProvingKeyHasher<Self> for PerpetualPowersOfTauCeremony<S, POWERS> {
@@ -80,4 +78,8 @@ impl<S, const POWERS: usize> ProvingKeyHasher<Self> for PerpetualPowersOfTauCere
             .expect("Hasher is not allowed to fail");
         into_array_unchecked(hasher.0.finalize())
     }
+}
+
+impl<S, const POWERS: usize> StateType for PerpetualPowersOfTauCeremony<S, POWERS> {
+    type State = State<Self>;
 }
