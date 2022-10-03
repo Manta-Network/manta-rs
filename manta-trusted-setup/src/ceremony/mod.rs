@@ -14,18 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth16 Trusted Setup
+//! Trusted Setup Ceremonies
 
-pub mod kzg;
-pub mod mpc;
+pub mod participant;
+pub mod registry;
+pub mod signature;
 
-#[cfg(all(feature = "bincode", feature = "serde"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "serde"))))]
-pub mod ceremony;
-
-#[cfg(feature = "ppot")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "ppot")))]
-pub mod ppot;
-
-#[cfg(test)]
-pub mod test;
+#[cfg(all(feature = "bincode", feature = "std"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "bincode", feature = "std"))))]
+pub mod util;
