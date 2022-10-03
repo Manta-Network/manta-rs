@@ -16,10 +16,14 @@
 
 //! Elliptic Curve Cryptography Utilities
 
-use ark_ec::{AffineCurve, ProjectiveCurve};
-use ark_ff::UniformRand;
 use core::ops::AddAssign;
-use manta_crypto::rand::RngCore;
+use manta_crypto::{
+    arkworks::{
+        ec::{AffineCurve, ProjectiveCurve},
+        ff::UniformRand,
+    },
+    rand::RngCore,
+};
 
 /// Samples an affine point.
 #[inline]
