@@ -278,7 +278,7 @@ where
 
     /// Updates the registry.
     #[inline]
-    pub async fn update_registry(&self) -> Result<bool, CeremonyError<C>>
+    pub async fn update_registry(&self) -> Result<(), CeremonyError<C>>
     where
         C::Nonce: Send,
         R::Registry: Send,
@@ -297,11 +297,11 @@ where
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
         let _ = info!("Registry successfully updated.");
-        Ok(true)
+        Ok(())
     }
 
     /// Saves `self` into `self.recovery_directory`.
-    pub async fn save_server(&self, round: u64) -> Result<bool, CeremonyError<C>>
+    pub async fn save_server(&self, round: u64) -> Result<(), CeremonyError<C>>
     where
         C::Challenge: Clone + Send + Serialize,
         C::Nonce: Send,
@@ -320,7 +320,7 @@ where
                 &filename_format(
                     recovery_directory.clone(),
                     "".to_string(),
-                    "state".to_string(),
+                    "registry".to_string(),
                     round,
                 ),
                 &*registry,
@@ -399,7 +399,7 @@ where
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
         let _ = info!("Server successfully saved.");
-        Ok(true)
+        Ok(())
     }
 
     /// Processes a request to update the MPC state and removes the participant if the state was
@@ -419,15 +419,17 @@ where
         R: 'static,
     {
         let _ = info!("[REQUEST] processing `update`");
-        let _ = info!("Preprocessing `update` request: checking signature and nonce");
-        let mut registry = self.registry.lock();
-        preprocess_request(&mut *registry, &request)?;
-        let _ = info!("Preprocessing successful with priority");
-        let (identifier, message) = request.into_inner();
-        self.lock_queue
-            .lock()
-            .update(&identifier, &mut *registry, self.metadata())?;
-        drop(registry);
+        let _ = info!("Preprocessing `update` request: checking signature and nonce, updating queue if applicable");
+        let message = {
+            let mut registry = self.registry.lock();
+            preprocess_request(&mut *registry, &request)?;
+            let (identifier, message) = request.into_inner();
+            self.lock_queue
+                .lock()
+                .update(&identifier, &mut *registry, self.metadata())?;
+            message
+        };
+        let _ = info!("About to check contribution validity");
         let sclp = self.sclp.clone();
         let round = task::spawn_blocking(move || {
             sclp.lock().update(
@@ -437,9 +439,9 @@ where
         })
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
-        let _ = self.save_server(round).await?;
+        self.save_server(round).await?;
         println!("{} participants have contributed.", round);
-        let _ = self.update_registry().await?;
+        self.update_registry().await?;
         let challenge = self.sclp.lock().challenge().to_vec();
         let _ = info!(
             "[RESPONSE] responding to `update` with: {:?}",
@@ -544,7 +546,7 @@ where
         )
         .expect("Writing challenge to disk should succeed.");
     }
-    canonical_serialize_into_file(
+    serialize_into_file(
         OpenOptions::new().write(true).truncate(true).create(true),
         &format!("{}/round_number", folder_path),
         &round_number,

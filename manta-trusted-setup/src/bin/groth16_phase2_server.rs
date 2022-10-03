@@ -88,7 +88,7 @@ impl Arguments {
         let mut api = tide::Server::with_state(server);
         api.at("/start").post(|r| execute(r, Server::start));
         api.at("/query").post(|r| execute(r, Server::query));
-        // api.at("/update").post(|r| execute(r, Server::update));
+        api.at("/update").post(|r| execute(r, Server::update));
 
         api.listen("127.0.0.1:8080")
             .await
