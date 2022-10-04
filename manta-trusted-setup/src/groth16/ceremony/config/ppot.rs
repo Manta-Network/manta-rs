@@ -418,7 +418,7 @@ where
         signing_key,
         identifier,
         // "http://localhost:8080",
-        "https://discord.com/channels/794744506536034324/972183441007341668/1026929495304847380",
+        "https://ceremony.manta.network",
         |metadata, state| match state {
             Continue::Timeout => {
                 let _ = term.clear_last_lines(1);
