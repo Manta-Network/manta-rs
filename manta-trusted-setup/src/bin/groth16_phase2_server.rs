@@ -80,7 +80,7 @@ impl Arguments {
             }
             Command::Recover {
                 recovery_dir_path,
-                server_url, // tODO: are we using this?
+                server_url: _, // tODO: are we using this?
             } => S::recover(recovery_dir_path.clone(), recovery_dir_path)
                 .expect("Unable to recover from file"),
         };

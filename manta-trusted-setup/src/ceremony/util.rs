@@ -16,9 +16,6 @@
 
 //! Trusted Setup Ceremony Utilities
 
-use manta_crypto::arkworks::serialize::{
-    CanonicalDeserialize, CanonicalSerialize, SerializationError,
-};
 use manta_util::serde::{de::DeserializeOwned, Serialize};
 use std::{
     fs::{File, OpenOptions},
@@ -47,28 +44,4 @@ where
     T: DeserializeOwned,
 {
     bincode::deserialize_from(File::open(path)?)
-}
-
-/// Serializes `data` to a file at `path` with the given `open_options`.
-#[inline]
-pub fn canonical_serialize_into_file<T, P>(
-    open_options: &mut OpenOptions,
-    path: &P,
-    data: &T,
-) -> Result<(), SerializationError>
-where
-    P: AsRef<Path>,
-    T: CanonicalSerialize,
-{
-    CanonicalSerialize::serialize(data, open_options.open(path)?)
-}
-
-/// Deserializes an element of type `T` from the file at `path`.
-#[inline]
-pub fn canonical_deserialize_from_file<T, P>(path: P) -> Result<T, SerializationError>
-where
-    P: AsRef<Path>,
-    T: CanonicalDeserialize,
-{
-    CanonicalDeserialize::deserialize(File::open(path)?)
 }

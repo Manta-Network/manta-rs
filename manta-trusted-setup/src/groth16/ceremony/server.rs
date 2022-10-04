@@ -21,10 +21,7 @@ use crate::{
         participant::Participant,
         registry::{self, csv::load_append_entries, Registry},
         signature::SignedMessage,
-        util::{
-            canonical_deserialize_from_file, canonical_serialize_into_file, deserialize_from_file,
-            serialize_into_file,
-        },
+        util::{deserialize_from_file, serialize_into_file},
     },
     groth16::{
         ceremony::{
@@ -128,7 +125,7 @@ where
     {
         let folder_path = path.as_ref().display();
         let round_number: u64 =
-            canonical_deserialize_from_file(format!("{}{}", folder_path, "/round_number"))
+            deserialize_from_file(format!("{}{}", folder_path, "/round_number"))
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         println!("Recovering a ceremony at round {:?}", round_number);
 
@@ -261,9 +258,11 @@ where
             &request,
         )?;
 
-        let position =self.lock_queue.lock()
-                .queue_mut()
-                .push_back_if_missing(priority.into(), request.into_identifier());
+        let position = self
+            .lock_queue
+            .lock()
+            .queue_mut()
+            .push_back_if_missing(priority.into(), request.into_identifier());
         if position == 0 {
             let state = self.sclp.lock().round_state();
             let _ = info!("[RESPONSE] responding to `query` with round state.");
@@ -329,7 +328,7 @@ where
             .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
         })
         .await
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
         let sclp = self.sclp.clone();
         let recovery_directory = self.recovery_directory.clone();
         let _ = task::spawn_blocking(move || -> Result<(), CeremonyError<C>> {
@@ -388,7 +387,7 @@ where
                 }
             }
 
-            canonical_serialize_into_file(
+            serialize_into_file(
                 OpenOptions::new().write(true).truncate(true).create(true),
                 &format!("{}/round_number", recovery_directory),
                 &round,
@@ -458,7 +457,7 @@ where
         }
 
         self.save_server(round).await?;
-        
+
         println!("{} participants have contributed.", round);
         self.update_registry().await?;
         let challenge = self.sclp.lock().challenge().to_vec();
