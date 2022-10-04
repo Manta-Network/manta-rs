@@ -25,7 +25,7 @@ use crate::{
     },
     groth16::{
         ceremony::{
-            coordinator::{self, preprocess_request, LockQueue, StateChallengeProof},
+            coordinator::{self, preprocess_request, LockQueue, StateChallengeProof, save_registry},
             log::{info, warn},
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, CeremonySize, Configuration, Metadata, UnexpectedError,
@@ -462,21 +462,23 @@ where
         };
         let _ = info!("About to check contribution validity");
         let sclp = self.sclp.clone();
+        let recovery_directory = self.recovery_directory.clone();
         let round = task::spawn_blocking(move || {
             sclp.lock().update(
                 BoxArray::from_vec(message.state),
                 BoxArray::from_vec(message.proof),
+                recovery_directory,
             )
         })
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
-        // let sclp = self.sclp.clone();
-        // task::spawn_blocking(move || sclp.lock().save(self.recovery_directory, round))
-        //     .await
-        //     .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
+
         // Lock should expire here no matter what
-        {
-            let mut registry = self.registry.lock();
+        let registry = self.registry.clone();
+        let lock_queue = self.lock_queue.clone();
+        let recovery_directory = self.recovery_directory.clone();
+        task::spawn_blocking(move || -> Result<(), CeremonyError<C>> {
+            let mut registry = registry.lock();
             match registry.get_mut(&identifier) {
                 Some(participant) => participant.set_contributed(),
                 _ => {
@@ -485,10 +487,12 @@ where
                     ))
                 }
             }
-            self.lock_queue.lock().update_expired_lock(&mut *registry);
+            lock_queue.lock().update_expired_lock(&mut *registry);
+            save_registry::<R::Registry, C>( &registry, recovery_directory, round);
+            Ok(())
         }
-
-        self.save_server(round).await?;
+        ).await.map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
+        
         println!("{} participants have contributed.", round);
         self.update_registry().await?;
         let challenge = self.sclp.lock().challenge().to_vec();

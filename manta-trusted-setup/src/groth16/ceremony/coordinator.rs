@@ -249,7 +249,7 @@ where
 
     /// Updates the MPC state and challenge using client's contribution. If the contribution is
     /// valid, the participant will be removed from the waiting queue, and cannot participate in
-    /// this ceremony again.
+    /// this ceremony again. Then it saves State, Challenge, Proof and round number into data files.
     ///
     /// # Registration
     ///
@@ -259,7 +259,11 @@ where
         &mut self,
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
-    ) -> Result<u64, CeremonyError<C>> {
+        recovery_directory: String,
+    ) -> Result<u64, CeremonyError<C>> 
+    where
+    C::Challenge: Serialize,
+    {
         for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
             let next_challenge = C::challenge(&self.challenge[i], &self.state[i], &state, &proof);
             self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
@@ -269,12 +273,14 @@ where
         }
         self.latest_proof = Some(proof);
         self.increment_round();
-        Ok(self.round())
+        let round = self.round;
+        self.save(recovery_directory, round);
+        Ok(round)
     }
 
     /// Saves State, Challenge and Proof
     #[inline]
-    pub fn save(&self, recovery_directory: String, round: u64)
+    fn save(&self, recovery_directory: String, round: u64)
     where
         C::Challenge: Serialize,
     {
