@@ -177,7 +177,7 @@ where
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
 
         // To avoid cloning states below, compute metadata now.
-        let metadata: Metadata = compute_metadata(Duration::new(20, 0), &states); // changed lock time
+        let metadata: Metadata = compute_metadata(Duration::new(5, 0), &states); // changed lock time
 
         Ok(Self {
             lock_queue: Default::default(),
@@ -261,6 +261,8 @@ where
     ) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
         C::Challenge: Clone,
+        C::Identifier: Debug, // remove
+        C::Nonce: Debug, // remove
     {
         let priority = preprocess_request(
             &mut *self.registry.lock(),
@@ -288,13 +290,17 @@ where
     ) -> Result<Result<QueryResponse<C>, CeremonyError<C>>, Error>
     where
         C::Challenge: Clone + Debug,
+        C::Identifier: Debug, // remove
+        C::Nonce: Debug, // remove
         SignedMessage<C, C::Identifier, QueryRequest>: Debug,
         QueryResponse<C>: Debug,
         CeremonyError<C>: Debug,
     {
         info!("[REQUEST] processing `query`: {:?}", request)?;
         let response = self.query(request).await;
-        info!("[RESPONSE] responding to `query` with: {:?}.", response)?;
+        // info!("[RESPONSE] responding to `query` with: {:?}.", response)?;
+        info!("[RESPONSE] responding to `query` with: the state")?;
+
         Ok(response)
     }
 
@@ -435,6 +441,7 @@ where
         C: 'static,
         C::Challenge: Clone + Debug + Send + Serialize,
         C::Identifier: Send,
+        C::Identifier: Debug, // remove
         C::Nonce: Send,
         C::Nonce: Debug,
         StateChallengeProof<C, CIRCUIT_COUNT>: Send,
@@ -445,6 +452,7 @@ where
         let _ = info!("Preprocessing `update` request: checking signature and nonce, updating queue if applicable");
         let (identifier, message) = {
             let mut registry = self.registry.lock();
+            println!("You should see preprocess request's message next");
             preprocess_request(
                 &mut *registry,
                 &mut *self.lock_queue.lock(),
@@ -506,6 +514,7 @@ where
         C: 'static,
         C::Challenge: Clone + Debug + Send + Serialize,
         C::Identifier: Send,
+        C::Identifier: Debug, //remove
         C::Nonce: Send,
         C::Nonce: Debug,
         StateChallengeProof<C, CIRCUIT_COUNT>: Send,

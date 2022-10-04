@@ -223,6 +223,12 @@ where
             state: round.state.into(),
             proof,
         })?;
+
+        // This is for testing whether timeout errors work
+        println!("Sleeping because I'm lazy.");
+        tokio::time::sleep(Duration::new(7,0)).await; // This client will respond too slowly
+        println!("Now sending my update request");
+
         self.client
             .post::<_, Result<ContributeResponse<C>, CeremonyError<C>>>("update", &signed_message)
             .await

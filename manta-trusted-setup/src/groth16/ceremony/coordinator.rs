@@ -61,6 +61,7 @@ where
 impl<C, const LEVEL_COUNT: usize> LockQueue<C, LEVEL_COUNT>
 where
     C: Ceremony,
+    C::Identifier: Debug, // remove
 {
     /// Returns a mutable reference to `queue`.
     #[inline]
@@ -80,6 +81,7 @@ where
         lhs: &Option<C::Identifier>,
         rhs: &C::Identifier,
     ) -> Result<(), CeremonyError<C>> {
+        println!("I received lhs: {:?} and rhs: {:?}", lhs, rhs);
         match lhs {
             Some(lhs) if lhs == rhs && has_expired => Err(CeremonyError::Timeout),
             Some(lhs) if lhs != rhs => Err(CeremonyError::NotYourTurn),
@@ -115,12 +117,20 @@ where
     ) -> Result<(), CeremonyError<C>>
     where
         R: Registry<C::Identifier, C::Participant>,
+        C::Identifier: Debug, // remove
+        C::Nonce: Debug, // remove
     {
+        println!("Before checking if the lock expired it contained: {:?}", self.participant_lock);
         if self
             .participant_lock
             .has_expired(metadata.contribution_time_limit)
         {
-            Self::check_lock_update_errors(true, &self.update_expired_lock(registry), participant)
+            println!("The lock was expired when checking for participant {:?}", participant);
+            // Self::check_lock_update_errors(true, &self.update_expired_lock(registry), participant) // Previously this was changing out the lock too soon
+            let result = Self::check_lock_update_errors(true, self.participant_lock.get(), participant);
+            self.update_expired_lock(registry);
+            println!("The result of the lock check ought to have been an error. It was: {:?}", result);
+            result
         } else {
             Self::check_lock_update_errors(false, self.participant_lock.get(), participant)
         }
@@ -270,8 +280,12 @@ where
     T: Serialize,
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
+    C::Identifier: Debug, // remove
+    C::Nonce: Debug, // remove
 {
-    let _ = lock_queue.check_lock(request.identifier(), registry, metadata);
+    println!("This is preprocess request's message");
+    lock_queue.check_lock(request.identifier(), registry, metadata)?;
+    println!("You should NOT see this message if participant timed out!");
 
     let participant = registry
         .get_mut(request.identifier())
