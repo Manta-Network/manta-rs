@@ -179,6 +179,7 @@ where
         // To avoid cloning states below, compute metadata now.
         let metadata: Metadata = compute_metadata(Duration::new(15, 0), &states); // changed lock time
 
+        let registry_path = format!("{}/registry.csv", recovery_directory);
         Ok(Self {
             lock_queue: Default::default(),
             registry: Arc::new(Mutex::new(registry)),
@@ -189,8 +190,8 @@ where
                 round_number,
             ))),
             metadata,
-            recovery_directory: recovery_directory.clone(),
-            registry_path: recovery_directory, // TODO: Do we need a separate registry path?
+            recovery_directory,
+            registry_path
         })
     }
 
