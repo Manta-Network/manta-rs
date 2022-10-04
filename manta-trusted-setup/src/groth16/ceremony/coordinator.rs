@@ -21,9 +21,13 @@ use crate::{
         participant::{self, Participant, Priority},
         registry::Registry,
         signature::{Nonce, SignedMessage},
+        util::serialize_into_file,
     },
     groth16::{
-        ceremony::{Ceremony, CeremonyError, Metadata, Queue, Round, UnexpectedError},
+        ceremony::{
+            server::filename_format, Ceremony, CeremonyError, Metadata, Queue, Round,
+            UnexpectedError,
+        },
         kzg,
         kzg::{Accumulator, Configuration},
         mpc,
@@ -34,6 +38,7 @@ use crate::{
 use core::{fmt::Debug, mem};
 use manta_crypto::arkworks::relations::r1cs::ConstraintSynthesizer;
 use manta_util::{time::lock::Timed, BoxArray};
+use std::fs::OpenOptions;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -266,6 +271,74 @@ where
         self.increment_round();
         Ok(self.round())
     }
+
+    /// Saves State, Challenge and Proof
+    #[inline]
+    pub fn save(&self, recovery_directory: String, round: u64)
+    where
+        C::Challenge: Serialize,
+    {
+        assert_eq!(round, self.round());
+        for ((state, challenge), name) in self
+            .state()
+            .iter()
+            .zip(self.challenge().iter())
+            .zip(C::circuits().into_iter().map(|p| p.1))
+        {
+            serialize_into_file(
+                OpenOptions::new().write(true).truncate(true).create(true),
+                &filename_format(
+                    recovery_directory.clone(),
+                    name.clone(),
+                    "state".to_string(),
+                    round,
+                ),
+                state,
+            )
+            .expect("Writing state to disk should succeed.");
+
+            serialize_into_file(
+                OpenOptions::new().write(true).truncate(true).create(true),
+                &filename_format(
+                    recovery_directory.clone(),
+                    name.clone(),
+                    "challenge".to_string(),
+                    round,
+                ),
+                &challenge,
+            )
+            .expect("Writing challenge to disk should succeed.");
+        }
+
+        if round > 0 {
+            for (proof, name) in self
+                .latest_proof()
+                .as_ref()
+                .unwrap()
+                .iter()
+                .zip(C::circuits().into_iter().map(|p| p.1))
+            {
+                serialize_into_file(
+                    OpenOptions::new().write(true).truncate(true).create(true),
+                    &filename_format(
+                        recovery_directory.clone(),
+                        name.clone(),
+                        "proof".to_string(),
+                        round,
+                    ),
+                    proof,
+                )
+                .expect("Writing proof to disk should succeed.");
+            }
+        }
+
+        serialize_into_file(
+            OpenOptions::new().write(true).truncate(true).create(true),
+            &format!("{}/round_number", recovery_directory),
+            &round,
+        )
+        .expect("Must serialize round number to file");
+    }
 }
 
 /// Preprocesses a request by checking the nonce and verifying the signature.
@@ -336,4 +409,24 @@ where
         mpc::initialize(powers, cs).expect("Should form proving key from circuit description");
     let challenge = <C as ProvingKeyHasher<C>>::hash(&state.0);
     (challenge.into(), state)
+}
+
+/// Saves registry
+#[inline]
+pub fn save_registry<R, C>(registry: &R, recovery_directory: String, round: u64)
+where
+    R: Registry<C::Identifier, C::Participant> + Serialize,
+    C: Ceremony,
+{
+    serialize_into_file(
+        OpenOptions::new().write(true).create(true),
+        &filename_format(
+            recovery_directory,
+            "".to_string(),
+            "registry".to_string(),
+            round,
+        ),
+        registry,
+    )
+    .expect("Writing registry to disk should succeed.")
 }

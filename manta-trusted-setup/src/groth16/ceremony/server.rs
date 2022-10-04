@@ -278,7 +278,7 @@ where
             .queue_mut()
             .push_back_if_missing(priority.into(), identifier);
 
-        Ok(QueryResponse::QueuePosition((position + 1) as u64))
+        Ok(QueryResponse::QueuePosition(position as u64))
     }
 
     ///
@@ -295,10 +295,10 @@ where
         QueryResponse<C>: Debug,
         CeremonyError<C>: Debug,
     {
-        info!("[REQUEST] processing `query`: {:?}", request)?;
+        //info!("[REQUEST] processing `query`: {:?}", request)?;
         let response = self.query(request).await;
         // info!("[RESPONSE] responding to `query` with: {:?}.", response)?;
-        info!("[RESPONSE] responding to `query` with: the state")?;
+        //info!("[RESPONSE] responding to `query` with: the state")?;
 
         Ok(response)
     }
@@ -469,7 +469,10 @@ where
         })
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
-
+        // let sclp = self.sclp.clone();
+        // task::spawn_blocking(move || sclp.lock().save(self.recovery_directory, round))
+        //     .await
+        //     .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
         // Lock should expire here no matter what
         {
             let mut registry = self.registry.lock();
