@@ -1353,7 +1353,7 @@ pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
     OutgoingEncryptionSchemeConverter<COM>,
 >;
 
-///
+/// Schnorr Hash Function
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SchnorrHashFunction;
 

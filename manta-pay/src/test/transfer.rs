@@ -106,6 +106,68 @@ fn to_public() {
     );
 }
 
+/// Checks that a random [`PrivateTransfer`] produces a valid transaction signature.
+#[test]
+fn private_transfer_check_signature() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = PrivateTransfer::generate_context(
+        &(),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let spending_key = rng.gen();
+    let post = PrivateTransfer::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        Some(&spending_key),
+        &mut rng,
+    )
+    .expect("Random Private Transfer should have produced a proof.")
+    .expect("");
+    post.assert_valid_proof(&verifying_context);
+    manta_accounting::transfer::utxo::auth::test::signature_correctness(
+        &parameters,
+        &spending_key,
+        &post.body,
+        &mut rng,
+    );
+}
+
+/// Checks that a random [`ToPublic`] produces a valid transaction signature.
+#[test]
+fn to_public_check_signature() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = ToPublic::generate_context(
+        &(),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let spending_key = rng.gen();
+    let post = ToPublic::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        Some(&spending_key),
+        &mut rng,
+    )
+    .expect("Random To-Public should have produced a proof.")
+    .expect("");
+    post.assert_valid_proof(&verifying_context);
+    manta_accounting::transfer::utxo::auth::test::signature_correctness(
+        &parameters,
+        &spending_key,
+        &post.body,
+        &mut rng,
+    );
+}
+
 /// Tests that `generate_proof_input` from [`Transfer`] and [`TransferPost`] gives the same
 /// [`ProofInput`] for [`ToPrivate`].
 #[test]
@@ -199,26 +261,26 @@ fn validity_check_with_fuzzing<C, R, A, M>(
     );
 }
 
-/// Tests a [`ToPublic`] proof is valid verified against the right public input and invalid
+/// Tests a [`ToPrivate`] proof is valid verified against the right public input and invalid
 /// when the public input has been fuzzed or randomly generated.
 #[test]
-fn mint_proof_validity() {
+fn to_private_proof_validity() {
     let mut rng = OsRng;
     let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let (proving_context, verifying_context) = ToPublic::generate_context(
+    let (proving_context, verifying_context) = ToPrivate::generate_context(
         &(),
         FullParameters::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
-    let post = ToPublic::sample_post(
+    let post = ToPrivate::sample_post(
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
         &mut rng,
     )
-    .expect("Random ToPublic should have produced a proof.");
+    .expect("Random ToPrivate should have produced a proof.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
 
@@ -245,26 +307,26 @@ fn private_transfer_proof_validity() {
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
 
-/// Tests a [`Reclaim`] proof is valid verified against the right public input and invalid
+/// Tests a [`ToPublic`] proof is valid verified against the right public input and invalid
 /// when the public input has been fuzzed or randomly generated.
 #[test]
-fn reclaim_proof_validity() {
+fn to_public_proof_validity() {
     let mut rng = OsRng;
     let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
-    let (proving_context, verifying_context) = Reclaim::generate_context(
+    let (proving_context, verifying_context) = ToPublic::generate_context(
         &(),
         FullParameters::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
-    let post = Reclaim::sample_post(
+    let post = ToPublic::sample_post(
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
         &mut rng,
     )
-    .expect("Random Reclaim should have produced a proof.");
+    .expect("Random ToPublic should have produced a proof.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
 */

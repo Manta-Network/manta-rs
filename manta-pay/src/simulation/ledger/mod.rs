@@ -21,8 +21,8 @@
 
 use crate::{
     config::{
-        Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
-        TransferPost, Utxo, UtxoAccumulatorModel, VoidNumber,
+        Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, Nullifier,
+        ProofSystem, TransferPost, Utxo, UtxoAccumulatorModel,
     },
     signer::Checkpoint,
 };
@@ -104,8 +104,8 @@ pub struct AccountId(pub u64);
 /// Ledger
 #[derive(Debug)]
 pub struct Ledger {
-    /// Void Numbers
-    void_numbers: IndexSet<VoidNumber>,
+    /// Nullifier
+    nullifiers: IndexSet<Nullifier>,
 
     /// UTXOs
     utxos: HashSet<Utxo>,
@@ -131,7 +131,7 @@ impl Ledger {
         verifying_context: MultiVerifyingContext,
     ) -> Self {
         Self {
-            void_numbers: Default::default(),
+            nullifiers: Default::default(),
             utxos: Default::default(),
             shards: (0..MerkleTreeConfiguration::FOREST_WIDTH)
                 .map(move |i| (MerkleForestIndex::from_index(i), Default::default()))
@@ -172,7 +172,7 @@ impl Ledger {
             }
         }
         let senders = self
-            .void_numbers
+            .nullifiers
             .iter()
             .skip(checkpoint.sender_index)
             .copied()
@@ -188,9 +188,9 @@ impl Ledger {
     pub fn push(&mut self, account: AccountId, posts: Vec<TransferPost>) -> bool {
         for post in posts {
             let (sources, sinks) = match TransferShape::from_post(&post) {
-                Some(TransferShape::Mint) => (vec![account], vec![]),
+                Some(TransferShape::ToPrivate) => (vec![account], vec![]),
                 Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
-                Some(TransferShape::Reclaim) => (vec![], vec![account]),
+                Some(TransferShape::ToPublic) => (vec![], vec![account]),
                 _ => return false,
             };
             match post.validate(sources, sinks, &*self) {
@@ -203,16 +203,16 @@ impl Ledger {
 }
 
 impl SenderLedger<Config> for Ledger {
-    type ValidVoidNumber = Wrap<VoidNumber>;
+    type ValidNullifier = Wrap<Nullifier>;
     type ValidUtxoAccumulatorOutput = Wrap<UtxoAccumulatorOutput<Config>>;
     type SuperPostingKey = (Wrap<()>, ());
 
     #[inline]
-    fn is_unspent(&self, void_number: VoidNumber) -> Option<Self::ValidVoidNumber> {
-        if self.void_numbers.contains(&void_number) {
+    fn is_unspent(&self, nullifier: Nullifier) -> Option<Self::ValidNullifier> {
+        if self.nullifiers.contains(&nullifier) {
             None
         } else {
-            Some(Wrap(void_number))
+            Some(Wrap(nullifier))
         }
     }
 
@@ -233,11 +233,11 @@ impl SenderLedger<Config> for Ledger {
     fn spend(
         &mut self,
         utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
-        void_number: Self::ValidVoidNumber,
+        nullifier: Self::ValidNullifier,
         super_key: &Self::SuperPostingKey,
     ) {
         let _ = (utxo_accumulator_output, super_key);
-        self.void_numbers.insert(void_number.0);
+        self.nullifiers.insert(nullifier.0);
     }
 }
 

@@ -711,6 +711,20 @@ where
     pub schnorr_hash_function: C::SchnorrHashFunction,
 }
 
+impl<C> Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    /// Returns the signature scheme for `self`.
+    #[inline]
+    pub fn signature_scheme(&self) -> SignatureScheme<C> {
+        SignatureScheme::<C>::new(
+            self.schnorr_hash_function.clone(),
+            self.base.group_generator.generator().clone(),
+        )
+    }
+}
+
 impl<C> auth::SpendingKeyType for Parameters<C>
 where
     C: Configuration<Bool = bool>,
@@ -889,11 +903,8 @@ where
     where
         R: RngCore + ?Sized,
     {
-        SignatureScheme::<C>::new(
-            self.schnorr_hash_function.clone(),
-            self.base.group_generator.generator().clone(),
-        )
-        .sign(signing_key, &rng.gen(), &message.to_vec(), &mut ())
+        self.signature_scheme()
+            .sign(signing_key, &rng.gen(), &message.to_vec(), &mut ())
     }
 }
 
@@ -906,14 +917,11 @@ where
     fn verify(
         &self,
         authorization_key: &Self::AuthorizationKey,
-        signature: &Self::Signature,
         message: &M,
+        signature: &Self::Signature,
     ) -> bool {
-        SignatureScheme::<C>::new(
-            self.schnorr_hash_function.clone(),
-            self.base.group_generator.generator().clone(),
-        )
-        .verify(authorization_key, &message.to_vec(), signature, &mut ())
+        self.signature_scheme()
+            .verify(authorization_key, &message.to_vec(), signature, &mut ())
     }
 }
 
@@ -1614,6 +1622,8 @@ where
 }
 
 /// Authorization Context
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "C::Group: Debug, C::Scalar: Debug"))]
 pub struct AuthorizationContext<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
@@ -1726,6 +1736,8 @@ where
 }
 
 /// Authorization Proof
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "C::Scalar: Debug, C::Group: Debug"))]
 pub struct AuthorizationProof<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
