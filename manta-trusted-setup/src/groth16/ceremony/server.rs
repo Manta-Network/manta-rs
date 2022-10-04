@@ -21,10 +21,7 @@ use crate::{
         participant::Participant,
         registry::{self, csv::load_append_entries, Registry},
         signature::SignedMessage,
-        util::{
-            canonical_deserialize_from_file, canonical_serialize_into_file, deserialize_from_file,
-            serialize_into_file,
-        },
+        util::{deserialize_from_file, serialize_into_file},
     },
     groth16::{
         ceremony::{
@@ -126,7 +123,7 @@ where
     {
         let folder_path = path.as_ref().display();
         let round_number: u64 =
-            canonical_deserialize_from_file(format!("{}{}", folder_path, "/round_number"))
+            deserialize_from_file(format!("{}{}", folder_path, "/round_number"))
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         println!("Recovering a ceremony at round {:?}", round_number);
 
@@ -412,7 +409,7 @@ where
                 }
             }
 
-            canonical_serialize_into_file(
+            serialize_into_file(
                 OpenOptions::new().write(true).truncate(true).create(true),
                 &format!("{}/round_number", recovery_directory),
                 &round,
