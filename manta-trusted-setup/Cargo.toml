@@ -26,11 +26,11 @@ maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "groth16_phase2_client"
-required-features = ["bincode", "clap", "csv", "ppot", "tokio"]
+required-features = ["bincode", "clap", "csv", "ppot", "reqwest", "tokio"]
 
 [[bin]]
 name = "groth16_phase2_server"
-required-features = ["async-std", "bincode", "clap", "csv", "manta-util/tide", "ppot", "serde_json", "tokio"]
+required-features = ["async-std", "bincode", "clap", "csv", "ppot", "serde_json", "tide", "tokio"]
 
 [features]
 # Bincode for Message Signing
@@ -44,6 +44,9 @@ ppot = ["manta-crypto/ark-bn254", "hex/std"]
 
 # Rayon Parallelization
 rayon = ["manta-util/rayon"]
+
+# Reqwest HTTP Client
+reqwest = ["manta-util/reqwest"]
 
 # Serde Serialization
 serde = [
@@ -59,6 +62,9 @@ std = ["manta-util/std", "ark-std/std"]
 
 # Testing Frameworks
 test = ["manta-crypto/test"]
+
+# Tide HTTP Server
+tide = ["manta-util/tide"]
 
 [dependencies]
 ark-groth16 = { version = "0.3.0", default-features = false }
@@ -78,7 +84,7 @@ dialoguer = { version = "0.10.2", default-features = false }
 hex = { version = "0.4.3", optional = true, default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom", "rand_chacha", "dalek"] }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["arkworks"] }
-manta-util = { path = "../manta-util", default-features = false, features = ["reqwest"] }
+manta-util = { path = "../manta-util", default-features = false }
 memmap = { version = "0.7.0", optional = true, default-features = false }
 parking_lot = { version = "0.12.1", default-features = false }
 serde_json = { version = "1.0", optional = true, default-features = false, features = ["alloc"] }

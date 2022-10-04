@@ -28,7 +28,7 @@ use crate::{
     },
     groth16::{
         ceremony::{
-            coordinator,
+            coordinator::{self, preprocess_request, LockQueue, StateChallengeProof},
             log::{info, warn},
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, CeremonySize, Configuration, Metadata, UnexpectedError,
@@ -40,7 +40,7 @@ use crate::{
     mpc::ChallengeType,
 };
 use alloc::sync::Arc;
-use core::fmt::Debug;
+use core::{fmt::Debug, time::Duration};
 use manta_crypto::arkworks::{
     bn254::{G1Affine, G2Affine},
     pairing::Pairing,
@@ -51,13 +51,11 @@ use manta_util::{
     Array, BoxArray,
 };
 use parking_lot::Mutex;
-use std::{fs::OpenOptions, path::Path, time::Duration};
+use std::{fs::OpenOptions, io::Error, path::Path};
 use tokio::task;
 
 #[cfg(feature = "csv")]
 use crate::ceremony::registry::csv::{load, Record};
-
-use super::coordinator::{preprocess_request, LockQueue, StateChallengeProof};
 
 /// Server
 #[derive(derivative::Derivative)]
@@ -219,10 +217,6 @@ where
         C: 'static,
         R: 'static,
     {
-        let _ = info!(
-            "[REQUEST] processing `start`, from participant with identifier:  {:?}.",
-            request
-        );
         let nonce = self
             .registry
             .lock()
@@ -236,11 +230,30 @@ where
                 let _ = warn!("Unable to update registry.");
             }
         });
-        let _ = info!(
-            "[RESPONSE] responding to `start` with: {:?}.",
-            (&metadata, &nonce)
-        );
         Ok((metadata, nonce))
+    }
+
+    ///
+    #[inline]
+    pub async fn start_endpoint(
+        self,
+        request: C::Identifier,
+    ) -> Result<Result<(Metadata, C::Nonce), CeremonyError<C>>, Error>
+    where
+        C::Nonce: Clone + Debug + Send,
+        R::Registry: Send,
+        C::Challenge: Send,
+        C::Identifier: Debug + Send,
+        C: 'static,
+        R: 'static,
+    {
+        info!(
+            "[REQUEST] processing `start`, from participant with identifier:  {:?}.",
+            request
+        )?;
+        let response = self.start(request).await;
+        info!("[RESPONSE] responding to `start` with: {:?}.", response)?;
+        Ok(response)
     }
 
     /// Queries the server state
@@ -250,31 +263,42 @@ where
         request: SignedMessage<C, C::Identifier, QueryRequest>,
     ) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
-        C::Challenge: Clone + Debug,
-        State<C>: Debug,
+        C::Challenge: Clone,
     {
-        let _ = info!("[REQUEST] processing `query`");
         let priority = preprocess_request(
             &mut *self.registry.lock(),
             &mut *self.lock_queue.lock(),
             self.metadata(),
             &request,
         )?;
-
-        let position =self.lock_queue.lock()
-                .queue_mut()
-                .push_back_if_missing(priority.into(), request.into_identifier());
+        let position = self
+            .lock_queue
+            .lock()
+            .queue_mut()
+            .push_back_if_missing(priority.into(), request.into_identifier());
         if position == 0 {
-            let state = self.sclp.lock().round_state();
-            let _ = info!("[RESPONSE] responding to `query` with round state.");
-            Ok(QueryResponse::State(state))
+            Ok(QueryResponse::State(self.sclp.lock().round_state()))
         } else {
-            let _ = info!(
-                "[RESPONSE] responding to `query` with queue position: {:?}.",
-                &position
-            );
             Ok(QueryResponse::QueuePosition(position as u64))
         }
+    }
+
+    ///
+    #[inline]
+    pub async fn query_endpoint(
+        self,
+        request: SignedMessage<C, C::Identifier, QueryRequest>,
+    ) -> Result<Result<QueryResponse<C>, CeremonyError<C>>, Error>
+    where
+        C::Challenge: Clone + Debug,
+        SignedMessage<C, C::Identifier, QueryRequest>: Debug,
+        QueryResponse<C>: Debug,
+        CeremonyError<C>: Debug,
+    {
+        info!("[REQUEST] processing `query`: {:?}", request)?;
+        let response = self.query(request).await;
+        info!("[RESPONSE] responding to `query` with: {:?}.", response)?;
+        Ok(response)
     }
 
     /// Updates the registry.
@@ -329,7 +353,7 @@ where
             .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
         })
         .await
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
         let sclp = self.sclp.clone();
         let recovery_directory = self.recovery_directory.clone();
         let _ = task::spawn_blocking(move || -> Result<(), CeremonyError<C>> {
@@ -458,7 +482,7 @@ where
         }
 
         self.save_server(round).await?;
-        
+
         println!("{} participants have contributed.", round);
         self.update_registry().await?;
         let challenge = self.sclp.lock().challenge().to_vec();
@@ -472,6 +496,26 @@ where
             index: round,
             challenge,
         })
+    }
+
+    /// Processes a request to update the MPC state and removes the participant if the state was
+    /// updated successfully. If the update succeeds, the current coordinator is saved to disk.
+    #[inline]
+    pub async fn update_endpoint(
+        self,
+        request: SignedMessage<C, C::Identifier, ContributeRequest<C>>,
+    ) -> Result<Result<ContributeResponse<C>, CeremonyError<C>>, Error>
+    where
+        C: 'static,
+        C::Challenge: Clone + Debug + Send + Serialize,
+        C::Identifier: Send,
+        C::Nonce: Send,
+        C::Nonce: Debug,
+        StateChallengeProof<C, CIRCUIT_COUNT>: Send,
+        R::Registry: Send + Serialize,
+        R: 'static,
+    {
+        Ok(self.update(request).await)
     }
 }
 

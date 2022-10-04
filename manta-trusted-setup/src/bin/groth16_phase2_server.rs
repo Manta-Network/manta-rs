@@ -79,17 +79,19 @@ impl Arguments {
                     .expect("Unable to recover from file")
             }
             Command::Recover {
-                recovery_dir_path,
-                server_url, // tODO: are we using this?
+                recovery_dir_path, ..
             } => S::recover(recovery_dir_path.clone(), recovery_dir_path)
                 .expect("Unable to recover from file"),
         };
 
         println!("Network is running!");
         let mut api = tide::Server::with_state(server);
-        api.at("/start").post(|r| execute(r, Server::start));
-        api.at("/query").post(|r| execute(r, Server::query));
-        api.at("/update").post(|r| execute(r, Server::update));
+        api.at("/start")
+            .post(|r| execute(r, Server::start_endpoint));
+        api.at("/query")
+            .post(|r| execute(r, Server::query_endpoint));
+        api.at("/update")
+            .post(|r| execute(r, Server::update_endpoint));
 
         api.listen("127.0.0.1:8080")
             .await

@@ -45,7 +45,7 @@ pub trait Registry<I, P> {
     /// Returns the length of `self`.
     fn len(&self) -> usize;
 
-    /// Returns true if self.len() == 0.
+    /// Returns true if `self.len() == 0`.
     #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -58,10 +58,13 @@ pub trait Registry<I, P> {
 pub trait Configuration {
     ///
     type Identifier;
+
     ///
     type Participant;
+
     ///
     type Record: Record<Self::Identifier, Self::Participant>;
+
     ///
     type Registry: Registry<Self::Identifier, Self::Participant>;
 }
@@ -79,7 +82,7 @@ where
 
     #[inline]
     fn insert(&mut self, key: I, value: P) -> bool {
-        HashMap::insert(self, key, value).is_none()
+        self.insert(key, value).is_none()
     }
 
     #[inline]
@@ -94,6 +97,6 @@ where
 
     #[inline]
     fn len(&self) -> usize {
-        Self::len(&self)
+        self.len()
     }
 }
