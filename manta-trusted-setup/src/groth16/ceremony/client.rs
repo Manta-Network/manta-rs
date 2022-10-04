@@ -226,7 +226,7 @@ where
 
         // This is for testing whether timeout errors work
         println!("Sleeping because I'm lazy.");
-        tokio::time::sleep(Duration::new(7,0)).await; // This client will respond too slowly
+        tokio::time::sleep(Duration::new(7, 0)).await; // This client will respond too slowly
         println!("Now sending my update request");
 
         self.client

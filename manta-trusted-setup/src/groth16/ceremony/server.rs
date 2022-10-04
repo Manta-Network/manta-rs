@@ -177,7 +177,7 @@ where
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
 
         // To avoid cloning states below, compute metadata now.
-        let metadata: Metadata = compute_metadata(Duration::new(5, 0), &states); // changed lock time
+        let metadata: Metadata = compute_metadata(Duration::new(15, 0), &states); // changed lock time
 
         Ok(Self {
             lock_queue: Default::default(),
@@ -262,24 +262,23 @@ where
     where
         C::Challenge: Clone,
         C::Identifier: Debug, // remove
-        C::Nonce: Debug, // remove
+        C::Nonce: Debug,      // remove
     {
-        let priority = preprocess_request(
-            &mut *self.registry.lock(),
-            &mut *self.lock_queue.lock(),
-            self.metadata(),
-            &request,
-        )?;
-        let position = self
-            .lock_queue
-            .lock()
-            .queue_mut()
-            .push_back_if_missing(priority.into(), request.into_identifier());
-        if position == 0 {
-            Ok(QueryResponse::State(self.sclp.lock().round_state()))
-        } else {
-            Ok(QueryResponse::QueuePosition(position as u64))
+        let mut registry = self.registry.lock();
+        let priority = preprocess_request::<C, _, _>(&mut *registry, &request)?;
+        let mut lock_queue = self.lock_queue.lock();
+        let identifier = request.into_identifier();
+        match lock_queue.has_lock(&identifier, &self.metadata, &mut *registry) {
+            Ok(_) => {
+                return Ok(QueryResponse::State(self.sclp.lock().round_state()));
+            }
+            _ => {}
         }
+        let position = lock_queue
+            .queue_mut()
+            .push_back_if_missing(priority.into(), identifier);
+
+        Ok(QueryResponse::QueuePosition((position + 1) as u64))
     }
 
     ///
@@ -291,7 +290,7 @@ where
     where
         C::Challenge: Clone + Debug,
         C::Identifier: Debug, // remove
-        C::Nonce: Debug, // remove
+        C::Nonce: Debug,      // remove
         SignedMessage<C, C::Identifier, QueryRequest>: Debug,
         QueryResponse<C>: Debug,
         CeremonyError<C>: Debug,
@@ -453,13 +452,12 @@ where
         let (identifier, message) = {
             let mut registry = self.registry.lock();
             println!("You should see preprocess request's message next");
-            preprocess_request(
-                &mut *registry,
-                &mut *self.lock_queue.lock(),
-                self.metadata(),
-                &request,
-            )?;
-            request.into_inner()
+            preprocess_request(&mut *registry, &request)?;
+            let (identifier, message) = request.into_inner();
+            self.lock_queue
+                .lock()
+                .has_lock(&identifier, &self.metadata, &mut *registry)?;
+            (identifier, message)
         };
         let _ = info!("About to check contribution validity");
         let sclp = self.sclp.clone();
@@ -487,7 +485,6 @@ where
         }
 
         self.save_server(round).await?;
-
         println!("{} participants have contributed.", round);
         self.update_registry().await?;
         let challenge = self.sclp.lock().challenge().to_vec();

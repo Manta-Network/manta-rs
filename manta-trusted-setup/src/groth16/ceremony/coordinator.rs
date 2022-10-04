@@ -18,7 +18,7 @@
 
 use crate::{
     ceremony::{
-        participant::{Participant, Priority},
+        participant::{self, Participant, Priority},
         registry::Registry,
         signature::{Nonce, SignedMessage},
     },
@@ -69,23 +69,52 @@ where
         &mut self.queue
     }
 
-    ///
+    /// Retuns the participant lock.
+    #[inline]
     pub fn participant_lock(&mut self) -> &Timed<Option<C::Identifier>> {
         &mut self.participant_lock
     }
 
-    /// Checks the lock update errors for the [`Coordinator::update`] method.
+    /// Checks if the lock is expired. If so, it updates it.
     #[inline]
-    pub fn check_lock_update_errors(
-        has_expired: bool,
-        lhs: &Option<C::Identifier>,
-        rhs: &C::Identifier,
-    ) -> Result<(), CeremonyError<C>> {
-        println!("I received lhs: {:?} and rhs: {:?}", lhs, rhs);
-        match lhs {
-            Some(lhs) if lhs == rhs && has_expired => Err(CeremonyError::Timeout),
-            Some(lhs) if lhs != rhs => Err(CeremonyError::NotYourTurn),
-            _ => Ok(()),
+    pub fn update_lock<R>(&mut self, metadata: &Metadata, registry: &mut R) -> Option<C::Identifier>
+    where
+        R: Registry<C::Identifier, C::Participant>,
+    {
+        if self
+            .participant_lock
+            .has_expired(metadata.contribution_time_limit)
+        {
+            self.update_expired_lock(registry)
+        } else {
+            None
+        }
+    }
+
+    /// Checks whether 'participant' has the lock. Returns an Error if not.
+    pub fn has_lock<R>(
+        &mut self,
+        participant: &C::Identifier,
+        metadata: &Metadata,
+        registry: &mut R,
+    ) -> Result<(), CeremonyError<C>>
+    where
+        R: Registry<C::Identifier, C::Participant>,
+    {
+        if let Some(p) = self.update_lock(metadata, registry) {
+            if p == *participant {
+                return Err(CeremonyError::Timeout);
+            }
+        };
+        match self.participant_lock.get() {
+            Some(p) => {
+                if p == participant {
+                    Ok(())
+                } else {
+                    Err(CeremonyError::NotYourTurn)
+                }
+            }
+            _ => Err(CeremonyError::NotYourTurn),
         }
     }
 
@@ -105,35 +134,6 @@ where
             }
             mem::replace(p, self.queue.pop_front())
         })
-    }
-
-    /// Checks the lock for `participant`.
-    #[inline]
-    pub fn check_lock<R>(
-        &mut self,
-        participant: &C::Identifier,
-        registry: &mut R,
-        metadata: &Metadata,
-    ) -> Result<(), CeremonyError<C>>
-    where
-        R: Registry<C::Identifier, C::Participant>,
-        C::Identifier: Debug, // remove
-        C::Nonce: Debug, // remove
-    {
-        println!("Before checking if the lock expired it contained: {:?}", self.participant_lock);
-        if self
-            .participant_lock
-            .has_expired(metadata.contribution_time_limit)
-        {
-            println!("The lock was expired when checking for participant {:?}", participant);
-            // Self::check_lock_update_errors(true, &self.update_expired_lock(registry), participant) // Previously this was changing out the lock too soon
-            let result = Self::check_lock_update_errors(true, self.participant_lock.get(), participant);
-            self.update_expired_lock(registry);
-            println!("The result of the lock check ought to have been an error. It was: {:?}", result);
-            result
-        } else {
-            Self::check_lock_update_errors(false, self.participant_lock.get(), participant)
-        }
     }
 }
 
@@ -270,23 +270,15 @@ where
 
 /// Preprocesses a request by checking the nonce and verifying the signature.
 #[inline]
-pub fn preprocess_request<C, R, T, const N: usize>(
+pub fn preprocess_request<C, R, T>(
     registry: &mut R,
-    lock_queue: &mut LockQueue<C, N>,
-    metadata: &Metadata,
     request: &SignedMessage<C, C::Identifier, T>,
 ) -> Result<C::Priority, CeremonyError<C>>
 where
     T: Serialize,
     C: Ceremony,
     R: Registry<C::Identifier, C::Participant>,
-    C::Identifier: Debug, // remove
-    C::Nonce: Debug, // remove
 {
-    println!("This is preprocess request's message");
-    lock_queue.check_lock(request.identifier(), registry, metadata)?;
-    println!("You should NOT see this message if participant timed out!");
-
     let participant = registry
         .get_mut(request.identifier())
         .ok_or(CeremonyError::NotRegistered)?;
