@@ -417,7 +417,8 @@ where
     let response = client::contribute(
         signing_key,
         identifier,
-        "http://localhost:8080",
+        // "http://localhost:8080",
+        "https://discord.com/channels/794744506536034324/972183441007341668/1026929495304847380",
         |metadata, state| match state {
             Continue::Timeout => {
                 let _ = term.clear_last_lines(1);
