@@ -138,7 +138,7 @@ where
         C::Nonce: DeserializeOwned,
     {
         let mut client_data = client
-            .post("start", &identifier)
+            .post::<_, Result<(Metadata, C::Nonce), CeremonyError<C>>>("start", &identifier)
             .await
             .map_err(into_ceremony_error);
         let term = Term::stdout();
@@ -158,7 +158,7 @@ where
                 .map_err(into_ceremony_error);
             counter += 1;
         }
-        let (metadata, nonce) = client_data?;
+        let (metadata, nonce) = client_data??;
         Ok(Self::new_unchecked(
             Signer::new(nonce, signing_key, identifier),
             client,
@@ -172,13 +172,17 @@ where
     async fn query(&mut self) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
         C::Identifier: Serialize,
-        C::Nonce: Serialize,
+        C::Nonce: DeserializeOwned + Serialize,
         C::Signature: Serialize,
         QueryResponse<C>: DeserializeOwned,
     {
         let signed_message = self.sign(QueryRequest)?;
-        match self.client.post("query", &signed_message).await {
-            Ok(QueryResponse::State(state)) => match state.with_valid_shape() {
+        match self
+            .client
+            .post::<_, Result<QueryResponse<C>, CeremonyError<C>>>("query", &signed_message)
+            .await
+        {
+            Ok(Ok(QueryResponse::State(state))) => match state.with_valid_shape() {
                 Some(state) if self.metadata.ceremony_size.matches(&state.state) => {
                     Ok(QueryResponse::State(state))
                 }
@@ -186,8 +190,9 @@ where
                     UnexpectedError::IncorrectStateSize,
                 )),
             },
-            Ok(response) => Ok(response),
+            Ok(Ok(response)) => Ok(response),
             Err(err) => Err(into_ceremony_error(err)),
+            Ok(Err(err)) => Err(err),
         }
     }
 
@@ -200,7 +205,7 @@ where
     ) -> Result<ContributeResponse<C>, CeremonyError<C>>
     where
         C::Identifier: Serialize,
-        C::Nonce: Serialize,
+        C::Nonce: DeserializeOwned + Serialize,
         C::Signature: Serialize,
         ContributeRequest<C>: Serialize,
         ContributeResponse<C>: DeserializeOwned,
@@ -219,9 +224,9 @@ where
             proof,
         })?;
         self.client
-            .post("update", &signed_message)
+            .post::<_, Result<ContributeResponse<C>, CeremonyError<C>>>("update", &signed_message)
             .await
-            .map_err(into_ceremony_error)
+            .map_err(into_ceremony_error)?
     }
 
     /// Tries to contribute to the ceremony if at the front of the queue. This method returns an
@@ -232,7 +237,7 @@ where
     pub async fn try_contribute(&mut self) -> Result<Update<C>, CeremonyError<C>>
     where
         C::Identifier: Serialize,
-        C::Nonce: Serialize,
+        C::Nonce: DeserializeOwned + Serialize,
         C::Signature: Serialize,
         QueryResponse<C>: DeserializeOwned,
         ContributeRequest<C>: Serialize,
