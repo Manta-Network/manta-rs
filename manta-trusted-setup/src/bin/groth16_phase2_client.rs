@@ -54,6 +54,9 @@ pub struct Arguments {
     /// Command
     #[clap(subcommand)]
     command: Command,
+
+    /// URL
+    url: String,
 }
 
 impl Arguments {
@@ -88,7 +91,8 @@ impl Arguments {
                     Ok(runtime) => {
                         // stupid hack
                         let pk = Array::from_unchecked(*pk.as_bytes());
-                        runtime.block_on(async { client_contribute::<Config>(sk, pk).await })
+                        runtime
+                            .block_on(async { client_contribute::<Config>(sk, pk, self.url).await })
                     }
                     Err(e) => panic!("I/O Error while setting up the tokio Runtime: {:?}", e),
                 }
@@ -101,4 +105,5 @@ fn main() {
     exit_on_error(Arguments::parse().run());
 }
 
-// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client -- contribute
+// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client -- http://localhost:8080 contribute
+// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client -- https://ceremony.manta.network contribute

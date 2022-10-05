@@ -403,6 +403,7 @@ impl fmt::Display for ClientKeyError {
 pub async fn client_contribute<C>(
     signing_key: C::SigningKey,
     identifier: C::Identifier,
+    url: String,
 ) -> Result<(), CeremonyError<C>>
 where
     C: Ceremony,
@@ -417,8 +418,7 @@ where
     let response = client::contribute(
         signing_key,
         identifier,
-        "http://localhost:8080",
-        // "https://ceremony.manta.network",
+        url.as_str(),
         |metadata, state| match state {
             Continue::Timeout => {
                 let _ = term.clear_last_lines(1);

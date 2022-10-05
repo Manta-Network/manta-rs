@@ -56,16 +56,16 @@ pub trait Registry<I, P> {
 #[cfg(feature = "csv")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
 pub trait Configuration {
-    ///
+    /// Identifier Type
     type Identifier;
 
-    ///
+    /// Participant Type
     type Participant;
 
-    ///
+    /// Record Type
     type Record: Record<Self::Identifier, Self::Participant>;
 
-    ///
+    /// Registry Type
     type Registry: Registry<Self::Identifier, Self::Participant>;
 }
 
