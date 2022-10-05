@@ -417,8 +417,8 @@ where
     let response = client::contribute(
         signing_key,
         identifier,
-        // "http://localhost:8080",
-        "https://ceremony.manta.network",
+        "http://localhost:8080",
+        // "https://ceremony.manta.network",
         |metadata, state| match state {
             Continue::Timeout => {
                 let _ = term.clear_last_lines(1);
@@ -428,7 +428,8 @@ where
                 let _ = term.clear_last_lines(1);
                 if position <= u32::MAX.into() {
                     println!(
-                        "Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.",
+                        "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.",
+                        style("[1/5]").bold(),
                         style(position).bold().red(),
                         style(format!("{:?}", metadata.contribution_time_limit * (position as u32))).bold().blue(),
                     );
@@ -442,7 +443,8 @@ where
     )
     .await?;
     println!(
-        "Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
+        "{} Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
+        style("[5/5]").bold(),
         response.index, hex::encode(C::contribution_hash(&response))
     );
     Ok(())

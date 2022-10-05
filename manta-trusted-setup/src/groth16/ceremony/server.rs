@@ -115,7 +115,7 @@ where
 
     /// Recovers from a disk file at `path` and uses `recovery_directory` as the backup directory.
     #[inline]
-    pub fn recover<P>(path: P, recovery_directory: String) -> Result<Self, CeremonyError<C>>
+    pub fn recover<P>(path: P, recovery_directory: String, contribution_time_limit: Duration) -> Result<Self, CeremonyError<C>>
     where
         P: AsRef<Path>,
         C::Challenge: DeserializeOwned,
@@ -177,7 +177,7 @@ where
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
 
         // To avoid cloning states below, compute metadata now.
-        let metadata: Metadata = compute_metadata(Duration::new(15, 0), &states); // changed lock time
+        let metadata: Metadata = compute_metadata(contribution_time_limit, &states);
 
         let registry_path = format!("{}/registry.csv", recovery_directory);
         Ok(Self {
@@ -602,7 +602,7 @@ where
             OpenOptions::new()
                 .write(true)
                 .truncate(true)
-                .create_new(true), // `prepare` should only be called once
+                .create(true), // TODO: Change to create_new for production. `prepare` should only be called once
             &filename_format(
                 folder_path.to_string(),
                 name.clone(),

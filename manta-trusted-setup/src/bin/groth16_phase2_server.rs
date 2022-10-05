@@ -27,12 +27,16 @@ use manta_util::{
     Array,
 };
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// Registry type
 type Registry = HashMap<Array<u8, 32>, Participant>;
 
 /// Current server configuration
 type S = Server<Config, Registry, 2, 3>;
+
+/// Contribution time limit in seconds
+const TIME_LIMIT: u64 = 100;
 
 /// Command
 #[derive(Debug, Subcommand)]
@@ -74,12 +78,12 @@ impl Arguments {
                     recovery_dir_path.clone(),
                     registry_path,
                 );
-                S::recover(recovery_dir_path.clone(), recovery_dir_path)
+                S::recover(recovery_dir_path.clone(), recovery_dir_path, Duration::from_secs(TIME_LIMIT))
                     .expect("Unable to recover from file")
             }
             Command::Recover {
                 recovery_dir_path, ..
-            } => S::recover(recovery_dir_path.clone(), recovery_dir_path)
+            } => S::recover(recovery_dir_path.clone(), recovery_dir_path, Duration::from_secs(TIME_LIMIT))
                 .expect("Unable to recover from file"),
         };
 
