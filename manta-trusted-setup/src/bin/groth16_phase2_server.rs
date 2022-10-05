@@ -26,8 +26,7 @@ use manta_util::{
     http::tide::{self, execute},
     Array,
 };
-use std::collections::HashMap;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 /// Registry type
 type Registry = HashMap<Array<u8, 32>, Participant>;
@@ -78,13 +77,21 @@ impl Arguments {
                     recovery_dir_path.clone(),
                     registry_path,
                 );
-                S::recover(recovery_dir_path.clone(), recovery_dir_path, Duration::from_secs(TIME_LIMIT))
-                    .expect("Unable to recover from file")
+                S::recover(
+                    recovery_dir_path.clone(),
+                    recovery_dir_path,
+                    Duration::from_secs(TIME_LIMIT),
+                )
+                .expect("Unable to recover from file")
             }
             Command::Recover {
                 recovery_dir_path, ..
-            } => S::recover(recovery_dir_path.clone(), recovery_dir_path, Duration::from_secs(TIME_LIMIT))
-                .expect("Unable to recover from file"),
+            } => S::recover(
+                recovery_dir_path.clone(),
+                recovery_dir_path,
+                Duration::from_secs(TIME_LIMIT),
+            )
+            .expect("Unable to recover from file"),
         };
 
         println!("Network is running!");

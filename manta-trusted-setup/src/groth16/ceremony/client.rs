@@ -27,7 +27,7 @@ use crate::{
     },
 };
 use alloc::vec::Vec;
-use console::{Term, style};
+use console::{style, Term};
 use manta_crypto::rand::OsRng;
 use manta_util::{
     http::reqwest::{self, IntoUrl, KnownUrlClient},
@@ -143,14 +143,23 @@ where
             .map_err(into_ceremony_error);
         let term = Term::stdout();
         let mut counter = 0u8;
-        println!("{} Connecting to server for Metadata", style("[0/5]").bold());
+        println!(
+            "{} Connecting to server for Metadata",
+            style("[0/5]").bold()
+        );
         while let Err(CeremonyError::NotRegistered) = client_data {
             if counter >= 60 {
-                panic!("{} This is taking longer than expected, please try again later.", style("[0/5]").bold());
+                panic!(
+                    "{} This is taking longer than expected, please try again later.",
+                    style("[0/5]").bold()
+                );
             }
             term.clear_last_lines(1)
                 .expect("Clear last lines should succeed.");
-            println!("{} Waiting for server registry update. Please make sure you are registered.", style("[0/5]").bold());
+            println!(
+                "{} Waiting for server registry update. Please make sure you are registered.",
+                style("[0/5]").bold()
+            );
             sleep(Duration::from_millis(10000)).await;
             client_data = client
                 .post("start", &identifier)
@@ -210,7 +219,10 @@ where
         ContributeRequest<C>: Serialize,
         ContributeResponse<C>: DeserializeOwned,
     {
-        println!("{} Computing contributions. This may take up to 10 minutes.", style("[2/5]").bold());
+        println!(
+            "{} Computing contributions. This may take up to 10 minutes.",
+            style("[2/5]").bold()
+        );
         let mut rng = OsRng;
         let mut proof = Vec::new();
         for i in 0..round.state.len() {
@@ -224,12 +236,18 @@ where
             state: round.state.into(),
             proof,
         })?;
-        println!("{} Contribution Computed. Sending data to server.", style("[3/5]").bold());
+        println!(
+            "{} Contribution Computed. Sending data to server.",
+            style("[3/5]").bold()
+        );
 
         // This is for testing whether timeout errors work
         tokio::time::sleep(Duration::new(7, 0)).await; // This client will respond too slowly
 
-        println!("{} Awaiting confirmation from server.", style("[4/5]").bold());
+        println!(
+            "{} Awaiting confirmation from server.",
+            style("[4/5]").bold()
+        );
         self.client
             .post::<_, Result<ContributeResponse<C>, CeremonyError<C>>>("update", &signed_message)
             .await

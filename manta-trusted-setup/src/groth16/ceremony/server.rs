@@ -25,7 +25,9 @@ use crate::{
     },
     groth16::{
         ceremony::{
-            coordinator::{self, preprocess_request, LockQueue, StateChallengeProof, save_registry},
+            coordinator::{
+                self, preprocess_request, save_registry, LockQueue, StateChallengeProof,
+            },
             log::{info, warn},
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, CeremonySize, Configuration, Metadata, UnexpectedError,
@@ -115,7 +117,11 @@ where
 
     /// Recovers from a disk file at `path` and uses `recovery_directory` as the backup directory.
     #[inline]
-    pub fn recover<P>(path: P, recovery_directory: String, contribution_time_limit: Duration) -> Result<Self, CeremonyError<C>>
+    pub fn recover<P>(
+        path: P,
+        recovery_directory: String,
+        contribution_time_limit: Duration,
+    ) -> Result<Self, CeremonyError<C>>
     where
         P: AsRef<Path>,
         C::Challenge: DeserializeOwned,
@@ -191,7 +197,7 @@ where
             ))),
             metadata,
             recovery_directory,
-            registry_path
+            registry_path,
         })
     }
 
@@ -269,11 +275,11 @@ where
         let priority = preprocess_request::<C, _, _>(&mut *registry, &request)?;
         let mut lock_queue = self.lock_queue.lock();
         let identifier = request.into_identifier();
-        match lock_queue.has_lock(&identifier, &self.metadata, &mut *registry) {
-            Ok(_) => {
-                return Ok(QueryResponse::State(self.sclp.lock().round_state()));
-            }
-            _ => {}
+        if lock_queue
+            .has_lock(&identifier, &self.metadata, &mut *registry)
+            .is_ok()
+        {
+            return Ok(QueryResponse::State(self.sclp.lock().round_state()));
         }
         let position = lock_queue
             .queue_mut()
@@ -328,108 +334,6 @@ where
         Ok(())
     }
 
-    /// Saves `self` into `self.recovery_directory`. // TODO: Split across the sclp/registry locks
-    pub async fn save_server(&self, round: u64) -> Result<(), CeremonyError<C>>
-    where
-        C::Challenge: Clone + Send + Serialize,
-        C::Nonce: Send,
-        R::Registry: Send + Serialize,
-        C::Identifier: Send,
-        C: 'static,
-        R: 'static,
-    {
-        let _ = info!("Saving server to recovery directory.");
-        let registry = self.registry.clone();
-        let recovery_directory = self.recovery_directory.clone();
-        task::spawn_blocking(move || {
-            let registry = registry.lock();
-            serialize_into_file(
-                OpenOptions::new().write(true).create(true),
-                &filename_format(
-                    recovery_directory.clone(),
-                    "".to_string(),
-                    "registry".to_string(),
-                    round,
-                ),
-                &*registry,
-            )
-            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
-        })
-        .await
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
-        let sclp = self.sclp.clone();
-        let recovery_directory = self.recovery_directory.clone();
-        let _ = task::spawn_blocking(move || -> Result<(), CeremonyError<C>> {
-            let sclp = sclp.lock();
-            assert_eq!(round, sclp.round());
-            for ((state, challenge), name) in sclp
-                .state()
-                .iter()
-                .zip(sclp.challenge().iter())
-                .zip(C::circuits().into_iter().map(|p| p.1))
-            {
-                serialize_into_file(
-                    OpenOptions::new().write(true).truncate(true).create(true),
-                    &filename_format(
-                        recovery_directory.clone(),
-                        name.clone(),
-                        "state".to_string(),
-                        round,
-                    ),
-                    state,
-                )
-                .expect("Writing state to disk should succeed.");
-
-                serialize_into_file(
-                    OpenOptions::new().write(true).truncate(true).create(true),
-                    &filename_format(
-                        recovery_directory.clone(),
-                        name.clone(),
-                        "challenge".to_string(),
-                        round,
-                    ),
-                    &challenge,
-                )
-                .expect("Writing challenge to disk should succeed.");
-            }
-
-            if round > 0 {
-                for (proof, name) in sclp
-                    .latest_proof()
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .zip(C::circuits().into_iter().map(|p| p.1))
-                {
-                    serialize_into_file(
-                        OpenOptions::new().write(true).truncate(true).create(true),
-                        &filename_format(
-                            recovery_directory.clone(),
-                            name.clone(),
-                            "proof".to_string(),
-                            round,
-                        ),
-                        proof,
-                    )
-                    .expect("Writing proof to disk should succeed.");
-                }
-            }
-
-            serialize_into_file(
-                OpenOptions::new().write(true).truncate(true).create(true),
-                &format!("{}/round_number", recovery_directory),
-                &round,
-            )
-            .expect("Must serialize round number to file");
-
-            Ok(())
-        })
-        .await
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
-        let _ = info!("Server successfully saved.");
-        Ok(())
-    }
-
     /// Processes a request to update the MPC state and removes the participant if the state was
     /// updated successfully. If the update succeeds, the current coordinator is saved to disk.
     #[inline]
@@ -463,7 +367,7 @@ where
         let _ = info!("About to check contribution validity");
         let sclp = self.sclp.clone();
         let recovery_directory = self.recovery_directory.clone();
-        let round = task::spawn_blocking(move || {
+        let (round, challenge) = task::spawn_blocking(move || {
             sclp.lock().update(
                 BoxArray::from_vec(message.state),
                 BoxArray::from_vec(message.proof),
@@ -488,14 +392,14 @@ where
                 }
             }
             lock_queue.lock().update_expired_lock(&mut *registry);
-            save_registry::<R::Registry, C>( &registry, recovery_directory, round);
+            save_registry::<R::Registry, C>(&registry, recovery_directory, round);
             Ok(())
-        }
-        ).await.map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
-        
+        })
+        .await
+        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
+
         println!("{} participants have contributed.", round);
         self.update_registry().await?;
-        let challenge = self.sclp.lock().challenge().to_vec();
         let _ = info!(
             "[RESPONSE] responding to `update` with: {:?}",
             (round, &challenge)
@@ -504,7 +408,7 @@ where
 
         Ok(ContributeResponse {
             index: round,
-            challenge,
+            challenge: challenge.to_vec(),
         })
     }
 
@@ -599,10 +503,7 @@ where
             coordinator::initialize(&powers, circuit);
 
         serialize_into_file(
-            OpenOptions::new()
-                .write(true)
-                .truncate(true)
-                .create(true), // TODO: Change to create_new for production. `prepare` should only be called once
+            OpenOptions::new().write(true).truncate(true).create(true), // TODO: Change to create_new for production. `prepare` should only be called once
             &filename_format(
                 folder_path.to_string(),
                 name.clone(),

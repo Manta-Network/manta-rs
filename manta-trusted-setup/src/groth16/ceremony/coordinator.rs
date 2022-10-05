@@ -260,9 +260,9 @@ where
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
         recovery_directory: String,
-    ) -> Result<u64, CeremonyError<C>> 
+    ) -> Result<(u64, BoxArray<C::Challenge, CIRCUIT_COUNT>), CeremonyError<C>>
     where
-    C::Challenge: Serialize,
+        C::Challenge: Clone + Serialize,
     {
         for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
             let next_challenge = C::challenge(&self.challenge[i], &self.state[i], &state, &proof);
@@ -275,7 +275,7 @@ where
         self.increment_round();
         let round = self.round;
         self.save(recovery_directory, round);
-        Ok(round)
+        Ok((round, self.challenge.clone()))
     }
 
     /// Saves State, Challenge and Proof

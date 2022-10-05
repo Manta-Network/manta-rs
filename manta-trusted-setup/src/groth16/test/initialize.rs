@@ -1,7 +1,4 @@
-use crate::groth16::{
-    kzg,
-    mpc::{initialize, ProvingKeyHasher, State},
-};
+use crate::groth16::{kzg, mpc::ProvingKeyHasher};
 use manta_crypto::arkworks::serialize::CanonicalSerialize;
 use memmap::MmapOptions;
 use std::fs;
@@ -35,7 +32,7 @@ fn test_prepare() {
             .map(&reader)
             .expect("unable to create memory map for input")
     };
-    let accumulator: MantaAccumulator =
+    let _accumulator: MantaAccumulator =
         read_subaccumulator(&challenge_reader, Compressed::No).unwrap();
     println!("Phase 1 accumulator read successfully");
 
