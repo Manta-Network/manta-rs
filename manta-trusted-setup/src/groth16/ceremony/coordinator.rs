@@ -18,7 +18,7 @@
 
 use crate::{
     ceremony::{
-        participant::{self, Participant, Priority},
+        participant::{Participant, Priority},
         registry::Registry,
         signature::{Nonce, SignedMessage},
         util::serialize_into_file,
