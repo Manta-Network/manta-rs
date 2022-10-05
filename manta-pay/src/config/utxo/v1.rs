@@ -154,6 +154,9 @@ pub type NoteVar = utxo::Note<ParametersVar>;
 pub type IncomingNote = protocol::IncomingNote<Config>;
 
 ///
+pub type FullIncomingNote = protocol::FullIncomingNote<Config>;
+
+///
 pub type OutgoingNote = protocol::OutgoingNote<Config>;
 
 ///
@@ -1002,6 +1005,7 @@ impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
     #[inline]
     fn tree_index(leaf: &merkle_tree::Leaf<Self>) -> Self::Index {
         let mut hasher = Blake2sVar::new(1).unwrap();
+        hasher.update(b"manta-v1.0.0/merkle-tree-shard-function");
         let mut buffer = Vec::new();
         leaf.0
             .serialize_unchecked(&mut buffer)
@@ -1353,6 +1357,68 @@ pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
     OutgoingEncryptionSchemeConverter<COM>,
 >;
 
+/// Address Partition Function
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct AddressPartitionFunction;
+
+impl protocol::AddressPartitionFunction for AddressPartitionFunction {
+    type Address = Address;
+    type Partition = u8;
+
+    #[inline]
+    fn partition(&self, address: &Self::Address) -> Self::Partition {
+        let mut hasher = Blake2sVar::new(1).unwrap();
+        hasher.update(b"manta-v1.0.0/address-partition-function");
+        let mut buffer = Vec::new();
+        address
+            .receiving_key
+            .0
+            .serialize_unchecked(&mut buffer)
+            .expect("Serializing is not allowed to fail.");
+        hasher.update(&buffer);
+        let mut result = [0];
+        hasher
+            .finalize_variable(&mut result)
+            .expect("Hashing is not allowed to fail.");
+        result[0]
+    }
+}
+
+impl Encode for AddressPartitionFunction {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
+    }
+}
+
+impl Decode for AddressPartitionFunction {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let _ = reader;
+        Ok(Self)
+    }
+}
+
+impl Sample for AddressPartitionFunction {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+        Self
+    }
+}
+
 /// Schnorr Hash Function
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SchnorrHashFunction;
@@ -1479,6 +1545,7 @@ impl protocol::BaseConfiguration<Compiler> for Config<Compiler> {
 }
 
 impl protocol::Configuration for Config {
+    type AddressPartitionFunction = AddressPartitionFunction;
     type SchnorrHashFunction = SchnorrHashFunction;
 }
 

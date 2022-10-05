@@ -45,7 +45,7 @@ use manta_crypto::{
         self,
         alloc::{
             mode::{Derived, Public, Secret},
-            Allocate, Allocator, Constant, Variable,
+            Allocate, Allocator, Constant, Var, Variable,
         },
         bool::{Assert, AssertEq},
         ops::Add,
@@ -119,6 +119,9 @@ pub trait Configuration {
     /// Address Type
     type Address: Clone;
 
+    /// Note Type
+    type Note: AsRef<BaseNote<Self>> + Into<BaseNote<Self>>;
+
     /// Mint Secret Type
     type MintSecret: utxo::QueryIdentifier<Identifier = Identifier<Self>, Utxo = Self::Utxo>;
 
@@ -140,8 +143,12 @@ pub trait Configuration {
         + auth::VerifySignature<TransferPostBody<Self>>
         + utxo::AssetType<Asset = Asset<Self>>
         + utxo::AssociatedDataType<AssociatedData = Self::AssociatedData>
-        + utxo::DeriveMint<Secret = Self::MintSecret, Utxo = Self::Utxo, Address = Self::Address>
-        + utxo::DeriveSpend<
+        + utxo::DeriveMint<
+            Secret = Self::MintSecret,
+            Utxo = Self::Utxo,
+            Address = Self::Address,
+            Note = Self::Note,
+        > + utxo::DeriveSpend<
             UtxoAccumulatorWitness = Self::UtxoAccumulatorWitness,
             UtxoAccumulatorOutput = Self::UtxoAccumulatorOutput,
             Secret = Self::SpendSecret,
@@ -175,7 +182,7 @@ pub trait Configuration {
         + Variable<Public, Self::Compiler, Type = Self::Utxo>;
 
     /// Note Variable Type
-    type NoteVar: Variable<Public, Self::Compiler, Type = utxo::Note<Self::Parameters>>;
+    type NoteVar: Variable<Public, Self::Compiler>;
 
     /// Nullifier Variable Type
     type NullifierVar: Variable<Public, Self::Compiler, Type = Self::Nullifier>;
@@ -344,6 +351,9 @@ pub type AuthorizationSignature<C> = auth::AuthorizationSignature<Parameters<C>>
 
 /// Unspent Transaction Output Type
 pub type Utxo<C> = utxo::Utxo<Parameters<C>>;
+
+/// Base Note Type
+pub type BaseNote<C> = Var<<C as Configuration>::NoteVar, Public, <C as Configuration>::Compiler>;
 
 /// Note Type
 pub type Note<C> = utxo::Note<Parameters<C>>;

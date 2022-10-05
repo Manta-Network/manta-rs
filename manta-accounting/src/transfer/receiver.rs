@@ -16,7 +16,7 @@
 
 //! Transfer Receiver
 
-use crate::transfer::utxo::{DeriveMint, Identifier, Mint, QueryIdentifier};
+use crate::transfer::utxo::{DeriveMint, Identifier, Mint, Note, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     constraint::{HasInput, Input},
@@ -118,11 +118,8 @@ where
     M::Secret: Variable<Secret, COM>,
     M::Utxo: Variable<Public, COM>,
     M::Note: Variable<Public, COM>,
-    M::Type: Mint<
-        Secret = Var<M::Secret, Secret, COM>,
-        Utxo = Var<M::Utxo, Public, COM>,
-        Note = Var<M::Note, Public, COM>,
-    >,
+    M::Type: Mint<Secret = Var<M::Secret, Secret, COM>, Utxo = Var<M::Utxo, Public, COM>>,
+    Note<M::Type>: AsRef<Var<M::Note, Public, COM>>,
 {
     type Type = Receiver<M::Type>;
 
@@ -140,7 +137,7 @@ where
         Self::new(
             this.secret.as_known(compiler),
             this.utxo.as_known(compiler),
-            this.note.as_known(compiler),
+            this.note.as_ref().as_known(compiler),
         )
     }
 }

@@ -93,6 +93,7 @@ impl transfer::Configuration for Config {
     type Nullifier = utxo::v1::Nullifier;
     type Identifier = utxo::v1::Identifier;
     type Address = utxo::v1::Address;
+    type Note = utxo::v1::Note;
     type MintSecret = utxo::v1::MintSecret;
     type SpendSecret = utxo::v1::SpendSecret;
     type UtxoAccumulatorWitness = utxo::v1::UtxoAccumulatorWitness;

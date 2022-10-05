@@ -249,7 +249,7 @@ pub trait QueryIdentifier: IdentifierType + UtxoType {
 
 /// UTXO Minting
 pub trait Mint<COM = ()>: AssetType + NoteType + UtxoType {
-    /// Mint Secret Type
+    /// Secret Type
     type Secret;
 
     /// Returns the asset inside of `utxo` asserting that `secret`, `utxo`, and `note` are

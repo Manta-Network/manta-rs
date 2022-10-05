@@ -255,6 +255,7 @@ pub fn load_transfer_parameters() -> Parameters {
             nullifier_commitment_scheme: load_get_object::<NullifierCommitmentScheme, _>(),
             outgoing_base_encryption_scheme: load_get_object::<OutgoingBaseEncryptionScheme, _>(),
         },
+        address_partition_function: load_get_object::<AddressPartitionFunction, _>(),
         schnorr_hash_function: load_get_object::<SchnorrHashFunction, _>(),
     }
 }

@@ -352,6 +352,11 @@ pub mod pay {
                 "pay/testnet/parameters/outgoing-base-encryption-scheme",
             );
             define_dat!(
+                AddressPartitionFunction,
+                "Address Partition Function",
+                "pay/testnet/parameters/address-partition-function",
+            );
+            define_dat!(
                 SchnorrHashFunction,
                 "Schnorr Hash Function Parameters",
                 "pay/testnet/parameters/schnorr-hash-function",

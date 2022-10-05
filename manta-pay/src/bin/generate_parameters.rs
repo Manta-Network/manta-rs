@@ -60,6 +60,7 @@ pub fn main() -> io::Result<()> {
                 nullifier_commitment_scheme,
                 outgoing_base_encryption_scheme,
             },
+        address_partition_function,
         schnorr_hash_function,
     } = &parameters;
 
@@ -118,6 +119,15 @@ pub fn main() -> io::Result<()> {
         .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
             parameters_dir.join("outgoing-base-encryption-scheme.dat"),
         )?))
+        .unwrap();
+
+    address_partition_function
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("address-partition-function.dat"))?,
+        ))
         .unwrap();
 
     schnorr_hash_function

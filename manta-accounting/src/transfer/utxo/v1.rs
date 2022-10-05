@@ -317,8 +317,23 @@ where
         >;
 }
 
+/// Address Partition Function
+pub trait AddressPartitionFunction {
+    /// Address Type
+    type Address;
+
+    /// Partition Type
+    type Partition;
+
+    /// Returns the partition for the `address`.
+    fn partition(&self, address: &Self::Address) -> Self::Partition;
+}
+
 /// UTXO Configuration
 pub trait Configuration: BaseConfiguration<Bool = bool> {
+    /// Address Partition Function Type
+    type AddressPartitionFunction: AddressPartitionFunction<Address = Address<Self>>;
+
     /// Schnorr Hash Function
     type SchnorrHashFunction: Clone
         + schnorr::HashFunction<Scalar = Self::Scalar, Group = Self::Group, Message = Vec<u8>>;
@@ -377,6 +392,10 @@ pub type OutgoingRandomness<C, COM = ()> = encryption::Randomness<OutgoingEncryp
 
 /// Outgoing Note
 pub type OutgoingNote<C, COM = ()> = EncryptedMessage<OutgoingEncryptionScheme<C, COM>>;
+
+/// Address Partition
+pub type AddressPartition<C> =
+    <<C as Configuration>::AddressPartitionFunction as AddressPartitionFunction>::Partition;
 
 /// Signature Scheme
 pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHashFunction>;
@@ -692,13 +711,27 @@ where
 /// UTXO Model Parameters
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "BaseParameters<C>: Clone, C::SchnorrHashFunction: Clone"),
-    Copy(bound = "BaseParameters<C>: Copy, C::SchnorrHashFunction: Copy"),
-    Debug(bound = "BaseParameters<C>: Debug, C::SchnorrHashFunction: Debug"),
-    Default(bound = "BaseParameters<C>: Default, C::SchnorrHashFunction: Default"),
-    Eq(bound = "BaseParameters<C>: Eq, C::SchnorrHashFunction: Eq"),
-    Hash(bound = "BaseParameters<C>: Hash, C::SchnorrHashFunction: Hash"),
-    PartialEq(bound = "BaseParameters<C>: cmp::PartialEq, C::SchnorrHashFunction: cmp::PartialEq")
+    Clone(
+        bound = "BaseParameters<C>: Clone, C::AddressPartitionFunction: Clone, C::SchnorrHashFunction: Clone"
+    ),
+    Copy(
+        bound = "BaseParameters<C>: Copy, C::AddressPartitionFunction: Copy, C::SchnorrHashFunction: Copy"
+    ),
+    Debug(
+        bound = "BaseParameters<C>: Debug, C::AddressPartitionFunction: Debug, C::SchnorrHashFunction: Debug"
+    ),
+    Default(
+        bound = "BaseParameters<C>: Default, C::AddressPartitionFunction: Default, C::SchnorrHashFunction: Default"
+    ),
+    Eq(
+        bound = "BaseParameters<C>: Eq, C::AddressPartitionFunction: Eq, C::SchnorrHashFunction: Eq"
+    ),
+    Hash(
+        bound = "BaseParameters<C>: Hash, C::AddressPartitionFunction: Hash, C::SchnorrHashFunction: Hash"
+    ),
+    PartialEq(
+        bound = "BaseParameters<C>: cmp::PartialEq, C::AddressPartitionFunction: cmp::PartialEq, C::SchnorrHashFunction: cmp::PartialEq"
+    )
 )]
 pub struct Parameters<C>
 where
@@ -706,6 +739,9 @@ where
 {
     /// Base Parameters
     pub base: BaseParameters<C>,
+
+    /// Address Partition Function
+    pub address_partition_function: C::AddressPartitionFunction,
 
     /// Schnorr Hash Function
     pub schnorr_hash_function: C::SchnorrHashFunction,
@@ -792,7 +828,7 @@ impl<C> utxo::NoteType for Parameters<C>
 where
     C: Configuration<Bool = bool>,
 {
-    type Note = IncomingNote<C>;
+    type Note = FullIncomingNote<C>;
 }
 
 impl<C> utxo::UtxoType for Parameters<C>
@@ -958,7 +994,8 @@ where
         note: &Self::Note,
         compiler: &mut (),
     ) -> Self::Asset {
-        self.base.well_formed_asset(secret, utxo, note, compiler)
+        self.base
+            .well_formed_asset(secret, utxo, &note.incoming_note, compiler)
     }
 }
 
@@ -982,6 +1019,7 @@ where
     where
         R: RngCore + ?Sized,
     {
+        let address_partition = self.address_partition_function.partition(&address);
         let secret = MintSecret::<C>::new(
             address.receiving_key,
             rng.gen(),
@@ -1012,7 +1050,7 @@ where
                 associated_data.public(&asset),
                 utxo_commitment,
             ),
-            incoming_note,
+            FullIncomingNote::new(address_partition, incoming_note),
         )
     }
 }
@@ -1171,12 +1209,14 @@ where
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
+        // TODO: Decrypt only if address paritition matches
         let plaintext = self.base.incoming_base_encryption_scheme.decrypt(
             &note
+                .incoming_note
                 .ephemeral_public_key()
                 .scalar_mul(decryption_key, &mut ()),
             &EmptyHeader::default(),
-            &note.ciphertext.ciphertext,
+            &note.incoming_note.ciphertext.ciphertext,
             &mut (),
         )?;
         Some((
@@ -1186,20 +1226,22 @@ where
     }
 }
 
-impl<C, DBP, DSHF> Sample<(DBP, DSHF)> for Parameters<C>
+impl<C, DBP, DAPF, DSHF> Sample<(DBP, DAPF, DSHF)> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
     BaseParameters<C>: Sample<DBP>,
+    C::AddressPartitionFunction: Sample<DAPF>,
     C::SchnorrHashFunction: Sample<DSHF>,
 {
     #[inline]
-    fn sample<R>(distribution: (DBP, DSHF), rng: &mut R) -> Self
+    fn sample<R>(distribution: (DBP, DAPF, DSHF), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
         Self {
             base: rng.sample(distribution.0),
-            schnorr_hash_function: rng.sample(distribution.1),
+            address_partition_function: rng.sample(distribution.1),
+            schnorr_hash_function: rng.sample(distribution.2),
         }
     }
 }
@@ -1302,6 +1344,85 @@ where
             this.utxo_commitment_randomness.as_known(compiler),
             this.asset.as_known(compiler),
         )
+    }
+}
+
+/// Full Incoming Note
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AddressPartition<C>: Clone, IncomingNote<C>: Clone"),
+    Debug(bound = "AddressPartition<C>: Debug, IncomingNote<C>: Debug")
+)]
+pub struct FullIncomingNote<C>
+where
+    C: Configuration<Bool = bool> + ?Sized,
+{
+    /// Address Partition
+    pub address_partition: AddressPartition<C>,
+
+    /// Incoming Note
+    pub incoming_note: IncomingNote<C>,
+}
+
+impl<C> FullIncomingNote<C>
+where
+    C: Configuration<Bool = bool> + ?Sized,
+{
+    /// Builds a new [`FullIncomingNote`] from `address_partition` and `incoming_note`.
+    #[inline]
+    pub fn new(address_partition: AddressPartition<C>, incoming_note: IncomingNote<C>) -> Self {
+        Self {
+            address_partition,
+            incoming_note,
+        }
+    }
+}
+
+impl<C> Encode for FullIncomingNote<C>
+where
+    C: Configuration<Bool = bool> + ?Sized,
+    AddressPartition<C>: Encode,
+    IncomingNote<C>: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.address_partition.encode(&mut writer)?;
+        self.incoming_note.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<C, P> Input<P> for FullIncomingNote<C>
+where
+    C: Configuration<Bool = bool>,
+    P: HasInput<IncomingNote<C>> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut P::Input) {
+        P::extend(input, &self.incoming_note);
+    }
+}
+
+impl<C> AsRef<IncomingNote<C>> for FullIncomingNote<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn as_ref(&self) -> &IncomingNote<C> {
+        &self.incoming_note
+    }
+}
+
+impl<C> From<FullIncomingNote<C>> for IncomingNote<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn from(note: FullIncomingNote<C>) -> Self {
+        note.incoming_note
     }
 }
 
