@@ -72,7 +72,7 @@ where
 {
     for record in csv::Reader::from_reader(File::open(path)?)
         .deserialize()
-        .skip(registry.len())
+        // .skip(registry.len())
     {
         let (identifier, participant) = T::parse(record?).map_err(Error::Parse)?;
         registry.insert(identifier, participant);
