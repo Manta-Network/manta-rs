@@ -19,6 +19,7 @@
 use crate::transfer::utxo::{DeriveMint, Identifier, Mint, Note, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
+    accumulator::{Accumulator, ItemHashFunction},
     constraint::{HasInput, Input},
     eclair::alloc::{
         mode::{Derived, Public, Secret},
@@ -82,6 +83,19 @@ where
     {
         let (secret, utxo, note) = parameters.derive_mint(address, asset, associated_data, rng);
         Self::new(secret, utxo, note)
+    }
+
+    /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
+    /// of returning a proof later.
+    ///
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
+    #[inline]
+    pub fn insert_utxo<A>(&self, parameters: &M, utxo_accumulator: &mut A) -> bool
+    where
+        M: ItemHashFunction<M::Utxo>,
+        A: Accumulator<Item = M::Item>,
+    {
+        utxo_accumulator.insert(&parameters.item_hash(&self.utxo, &mut ()))
     }
 
     /// Returns the identifier for `self`.

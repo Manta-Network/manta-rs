@@ -173,6 +173,9 @@ pub mod private_transfer {
             .expect("");
         let receiver_1 = Receiver::sample(parameters, address, asset_0, Default::default(), rng);
 
+        receiver_0.insert_utxo(parameters, utxo_accumulator);
+        receiver_1.insert_utxo(parameters, utxo_accumulator);
+
         let private_transfer = PrivateTransfer::build(
             authorization,
             [sender_0, sender_1],
