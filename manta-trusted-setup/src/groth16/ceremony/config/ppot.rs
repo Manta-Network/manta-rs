@@ -259,15 +259,14 @@ impl csv::Record<VerifyingKey, Participant> for Record {
                 verifying_key,
                 self.twitter,
                 // TODO: Fix this, cannot parse priorities right now
-                // match self
-                //     .priority
-                //     .parse::<bool>()
-                //     .map_err(|_| "Cannot parse priority.".to_string())?
-                // {
-                //     true => Priority::High,
-                //     false => Priority::Normal,
-                // },
-                Priority::High,
+                match self
+                    .priority
+                    .parse::<bool>()
+                    .map_err(|_| "Cannot parse priority.".to_string())?
+                {
+                    true => Priority::High,
+                    false => Priority::Normal,
+                },
                 OsRng.gen::<_, u16>() as u64,
                 false,
             ),

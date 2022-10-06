@@ -105,5 +105,6 @@ fn main() {
     exit_on_error(Arguments::parse().run());
 }
 
+// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client -- https://ceremony.manta.network register
 // cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client -- http://localhost:8080 contribute
 // cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client -- https://ceremony.manta.network contribute

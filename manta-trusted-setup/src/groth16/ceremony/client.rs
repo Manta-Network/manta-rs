@@ -242,7 +242,7 @@ where
         );
 
         // This is for testing whether timeout errors work
-        tokio::time::sleep(Duration::new(7, 0)).await; // This client will respond too slowly
+        // tokio::time::sleep(Duration::new(30, 0)).await; // This client will respond too slowly
 
         println!(
             "{} Awaiting confirmation from server.",
