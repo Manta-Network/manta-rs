@@ -253,14 +253,18 @@ impl csv::Record<VerifyingKey, Participant> for Record {
             &signature,
         )
         .map_err(|_| "Cannot verify signature.".to_string())?;
+        let priority = match self.priority.as_str() {
+            "TRUE" => "true",
+            "FALSE" => "false",
+            str => str,
+        };
         Ok((
             verifying_key,
             Participant::new(
                 verifying_key,
                 self.twitter,
                 // TODO: Fix this, cannot parse priorities right now
-                match self
-                    .priority
+                match priority
                     .parse::<bool>()
                     .map_err(|_| "Cannot parse priority.".to_string())?
                 {
