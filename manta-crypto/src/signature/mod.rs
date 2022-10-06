@@ -457,8 +457,8 @@ pub mod schnorr {
         #[inline]
         fn sign(
             &self,
-            randomness: &Self::Randomness,
             signing_key: &Self::SigningKey,
+            randomness: &Self::Randomness,
             message: &Self::Message,
             compiler: &mut COM,
         ) -> Self::Signature {

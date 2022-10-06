@@ -17,14 +17,16 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{FullParametersRef, PrivateTransfer, Proof, ProofSystem, ToPrivate, ToPublic},
+    config::{
+        FullParametersRef, Parameters, PrivateTransfer, Proof, ProofSystem, ToPrivate, ToPublic,
+    },
     test::payment::UtxoAccumulator,
     util::scale::{assert_valid_codec, assert_valid_io_codec},
 };
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    rand::{OsRng, Rand},
+    rand::{OsRng, Rand, Sample},
 };
 use std::io::Cursor;
 
@@ -103,6 +105,22 @@ fn to_public() {
         )
         .expect("Random ToPublic should have successfully produced a proof."),
         "The ToPublic proof should have been valid."
+    );
+}
+
+/// Checks that an empty message will produce a valid signature.
+#[test]
+fn check_empty_message_signature() {
+    let mut rng = OsRng;
+    assert!(
+        manta_crypto::signature::test::correctness(
+            &Parameters::gen(&mut rng).signature_scheme(),
+            &rng.gen(),
+            &rng.gen(),
+            &vec![],
+            &mut (),
+        ),
+        "Unable to verify signature correctly."
     );
 }
 

@@ -130,6 +130,9 @@ pub type UtxoAccumulatorOutput = utxo::UtxoAccumulatorOutput<Parameters>;
 pub type UtxoAccumulatorOutputVar = utxo::UtxoAccumulatorOutput<ParametersVar, Compiler>;
 
 ///
+pub type SignatureScheme = protocol::SignatureScheme<Config>;
+
+///
 pub type Parameters = protocol::Parameters<Config>;
 
 ///
