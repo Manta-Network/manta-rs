@@ -17,6 +17,7 @@
 //! Trusted Setup Ceremony Registry CSV Compatibility
 
 use crate::ceremony::registry::Registry;
+use core::fmt::Debug;
 use manta_util::serde::de::DeserializeOwned;
 use std::{fs::File, path::Path};
 
@@ -56,6 +57,8 @@ where
     T: Record<I, V>,
     R: Registry<I, V>,
     P: AsRef<Path>,
+    T::Error: Debug,
+    I: Debug + Copy,
 {
     let mut registry = R::new();
     load_append_entries::<_, _, T, _, _>(path, &mut registry)?;
@@ -69,13 +72,25 @@ where
     T: Record<I, V>,
     R: Registry<I, V>,
     P: AsRef<Path>,
+    I: Debug + Copy,
+    T::Error: Debug,
 {
     for record in csv::Reader::from_reader(File::open(path)?)
         .deserialize()
-        // .skip(registry.len())
+        .flatten()
     {
-        let (identifier, participant) = T::parse(record?).map_err(Error::Parse)?;
-        registry.insert(identifier, participant);
+        match T::parse(record) {
+            Ok((identifier, participant)) => {
+                let temp = registry.insert(identifier, participant);
+                println!(
+                    "Deserialized participant ID {:?}, they were successfully inserted: {}",
+                    identifier, temp
+                )
+            }
+            Err(e) => {
+                println!("Parsing error: {:?}", e)
+            }
+        };
     }
     Ok(())
 }

@@ -21,7 +21,10 @@
 use self::csv::Record;
 
 #[cfg(feature = "std")]
-use std::{collections::HashMap, hash::Hash};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    hash::Hash,
+};
 
 #[cfg(feature = "csv")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
@@ -82,7 +85,13 @@ where
 
     #[inline]
     fn insert(&mut self, key: I, value: P) -> bool {
-        self.insert(key, value).is_none()
+        match self.entry(key) {
+            Entry::Vacant(entry) => {
+                entry.insert(value);
+                true
+            }
+            _ => false,
+        }
     }
 
     #[inline]

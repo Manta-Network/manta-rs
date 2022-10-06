@@ -218,8 +218,10 @@ where
         R::Registry: Send,
         C::Challenge: Send,
         C::Identifier: Debug + Send,
+        C::Identifier: Copy,
         C: 'static,
         R: 'static,
+        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
         let nonce = self
             .registry
@@ -247,8 +249,10 @@ where
         R::Registry: Send,
         C::Challenge: Send,
         C::Identifier: Debug + Send,
+        C::Identifier: Copy,
         C: 'static,
         R: 'static,
+        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
         info!(
             "[REQUEST] processing `start`, from participant with identifier:  {:?}.",
@@ -323,6 +327,8 @@ where
         C::Challenge: Send,
         C: 'static,
         R: 'static,
+        C::Identifier: Debug + Copy,
+        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
         let _ = info!("Updating participant registry.");
         let registry_path = self.registry_path.clone();
@@ -348,12 +354,14 @@ where
         C: 'static,
         C::Challenge: Clone + Debug + Send + Serialize,
         C::Identifier: Send,
-        C::Identifier: Debug, // remove
+        C::Identifier: Debug + Copy,
         C::Nonce: Send,
         C::Nonce: Debug,
         StateChallengeProof<C, CIRCUIT_COUNT>: Send,
         R::Registry: Send + Serialize,
+        R::Record: Debug,
         R: 'static,
+        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
         let _ = info!("[REQUEST] processing `update`");
         let _ = info!("Preprocessing `update` request: checking signature and nonce, updating queue if applicable");
@@ -426,11 +434,13 @@ where
         C: 'static,
         C::Challenge: Clone + Debug + Send + Serialize,
         C::Identifier: Send,
-        C::Identifier: Debug, //remove
+        C::Identifier: Debug + Copy,
         C::Nonce: Send,
         C::Nonce: Debug,
         StateChallengeProof<C, CIRCUIT_COUNT>: Send,
         R::Registry: Send + Serialize,
+        R::Record: Debug,
+        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
         R: 'static,
     {
         Ok(self.update(request).await)
@@ -484,6 +494,7 @@ where
     R: Debug,
     T: Record<C::Identifier, C::Participant>,
     T::Error: Debug,
+    C::Identifier: Debug + Copy,
 {
     use memmap::MmapOptions;
 
@@ -549,5 +560,5 @@ where
         &registry,
     )
     .expect("Writing registry to disk should succeed.");
-    println!("The registry I saved is {:?}", registry);
+    println!("The registry I saved has length {:?}", registry.len());
 }
