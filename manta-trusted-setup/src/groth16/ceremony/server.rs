@@ -288,8 +288,6 @@ where
             .queue_mut()
             .push_back_if_missing(priority.into(), identifier);
 
-        println!("My queue is {:?}", lock_queue);
-
         Ok(QueryResponse::QueuePosition(position as u64))
     }
 
