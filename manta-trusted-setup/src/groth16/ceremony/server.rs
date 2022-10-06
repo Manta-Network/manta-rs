@@ -225,16 +225,15 @@ where
             .registry
             .lock()
             .get(&request)
-            .ok_or(CeremonyError::NotRegistered)?
-            .nonce()
-            .clone();
+            .ok_or(CeremonyError::NotRegistered)
+            .map(|p| p.nonce().clone());
         let metadata = self.metadata().clone();
         task::spawn(async move {
             if self.update_registry().await.is_err() {
                 let _ = warn!("Unable to update registry.");
             }
         });
-        Ok((metadata, nonce))
+        Ok((metadata, nonce?))
     }
 
     ///
@@ -270,9 +269,13 @@ where
         C::Challenge: Clone,
         C::Identifier: Debug, // remove
         C::Nonce: Debug,      // remove
+        C::Priority: Debug + Copy,
+        usize: From<C::Priority>,
     {
         let mut registry = self.registry.lock();
         let priority = preprocess_request::<C, _, _>(&mut *registry, &request)?;
+        println!("Read priority as {:?}", priority);
+        println!("Priority.into gives {:?}", usize::from(priority));
         let mut lock_queue = self.lock_queue.lock();
         let identifier = request.into_identifier();
         if lock_queue
@@ -284,6 +287,8 @@ where
         let position = lock_queue
             .queue_mut()
             .push_back_if_missing(priority.into(), identifier);
+
+        println!("My queue is {:?}", lock_queue);
 
         Ok(QueryResponse::QueuePosition(position as u64))
     }
@@ -301,6 +306,8 @@ where
         SignedMessage<C, C::Identifier, QueryRequest>: Debug,
         QueryResponse<C>: Debug,
         CeremonyError<C>: Debug,
+        C::Priority: Debug + Copy,
+        usize: From<C::Priority>,
     {
         //info!("[REQUEST] processing `query`: {:?}", request)?;
         let response = self.query(request).await;
@@ -367,6 +374,7 @@ where
         let _ = info!("About to check contribution validity");
         let sclp = self.sclp.clone();
         let recovery_directory = self.recovery_directory.clone();
+
         let (round, challenge) = task::spawn_blocking(move || {
             sclp.lock().update(
                 BoxArray::from_vec(message.state),
@@ -404,7 +412,6 @@ where
             "[RESPONSE] responding to `update` with: {:?}",
             (round, &challenge)
         );
-        tokio::time::sleep(Duration::new(10, 0)).await;
 
         Ok(ContributeResponse {
             index: round,
@@ -478,6 +485,7 @@ where
         Participant = C::Participant,
         Registry = R,
     >,
+    R: Debug,
     T: Record<C::Identifier, C::Participant>,
     T::Error: Debug,
 {
@@ -545,4 +553,5 @@ where
         &registry,
     )
     .expect("Writing registry to disk should succeed.");
+    println!("The registry I saved is {:?}", registry);
 }
