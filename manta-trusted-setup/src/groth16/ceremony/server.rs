@@ -274,8 +274,6 @@ where
     {
         let mut registry = self.registry.lock();
         let priority = preprocess_request::<C, _, _>(&mut *registry, &request)?;
-        println!("Read priority as {:?}", priority);
-        println!("Priority.into gives {:?}", usize::from(priority));
         let mut lock_queue = self.lock_queue.lock();
         let identifier = request.into_identifier();
         if lock_queue
