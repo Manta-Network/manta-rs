@@ -436,7 +436,7 @@ where
                 else if position <= u32::MAX.into() {
                     let _ = term.clear_last_lines(1);
                     println!(
-                        "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.\n",
+                        "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.",
                         style("[1/6]").bold(),
                         style(position).bold().red(),
                         style(format!("{:?} min", (metadata.contribution_time_limit.as_secs() * (position as u64)/60))).bold().red(),
