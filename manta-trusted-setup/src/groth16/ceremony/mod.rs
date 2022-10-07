@@ -21,7 +21,10 @@ use crate::{
         participant::{Participant, Priority},
         signature::SignatureScheme,
     },
-    groth16::mpc::{Configuration, State, StateSize},
+    groth16::{
+        ceremony::message::ContributeResponse,
+        mpc::{Configuration, State, StateSize},
+    },
     mpc,
 };
 use colored::Colorize;
@@ -33,8 +36,6 @@ use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
 };
-
-use self::message::ContributeResponse;
 
 pub mod client;
 pub mod config;
@@ -180,6 +181,7 @@ impl<C> core::fmt::Display for CeremonyError<C>
 where
     C: Ceremony,
 {
+    #[inline]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::NotRegistered => write!(f, "{} Registry update is taking longer than expected. Please make sure you have submitted your registration form and try again later.", style("[Error]").bold().red()),

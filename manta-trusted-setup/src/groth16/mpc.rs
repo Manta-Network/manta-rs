@@ -16,8 +16,6 @@
 
 //! Groth16 MPC
 
-use core::iter::once;
-
 use crate::{
     groth16::kzg::{self, Accumulator},
     mpc,
@@ -26,6 +24,7 @@ use crate::{
 use alloc::{vec, vec::Vec};
 use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
+use core::iter::once;
 use manta_crypto::{
     arkworks::{
         ec::{

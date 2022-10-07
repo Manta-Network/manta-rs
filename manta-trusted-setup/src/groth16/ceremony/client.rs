@@ -217,10 +217,6 @@ where
             "{} Computing contributions. This may take up to 10 minutes.",
             style("[3/6]").bold()
         );
-
-        // This is for testing whether timeout errors work
-        tokio::time::sleep(Duration::new(10, 0)).await; // This client will respond too slowly
-
         let mut rng = OsRng;
         let mut proof = Vec::new();
         for i in 0..round.state.len() {
@@ -238,7 +234,6 @@ where
             "{} Contribution Computed. Sending data to server.",
             style("[4/6]").bold()
         );
-
         println!(
             "{} Awaiting confirmation from server.",
             style("[5/6]").bold()

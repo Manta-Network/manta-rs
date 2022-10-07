@@ -232,9 +232,7 @@ impl csv::Record<VerifyingKey, Participant> for Record {
                 .try_into()
                 .map_err(|_| "Cannot decode to array.".to_string())?,
         );
-        // related to stupid PublicKey as Array hack
         let verifying_key = Array::from_unchecked(*verifying_key.as_bytes());
-
         let signature: ed25519::Signature = ed25519::signature_from_bytes(
             bs58::decode(self.signature)
                 .into_vec()
@@ -262,7 +260,6 @@ impl csv::Record<VerifyingKey, Participant> for Record {
             Participant::new(
                 verifying_key,
                 self.twitter,
-                // TODO: Fix this, cannot parse priorities right now
                 match priority
                     .parse::<bool>()
                     .map_err(|_| "Cannot parse priority.".to_string())?
