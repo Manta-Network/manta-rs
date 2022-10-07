@@ -380,7 +380,7 @@ where
         let recovery_directory = self.recovery_directory.clone();
 
         let (round, challenge) = task::spawn_blocking(move || {
-            sclp.lock().update(
+            sclp.lock().update( // TODO: This needs to check the deserialization of `state`
                 BoxArray::from_vec(message.state),
                 BoxArray::from_vec(message.proof),
                 recovery_directory,

@@ -340,7 +340,7 @@ pub fn register(twitter_account: String, email: String) {
          Save the following text somewhere safe. \n DO NOT share this to anyone else! \
          Please discard this data after the trusted setup ceremony.\n {}",
         "Secret".italic(),
-        mnemonic.phrase().red(),
+        mnemonic.phrase().red().bold(),
     );
 }
 
@@ -451,9 +451,9 @@ where
     )
     .await?;
     println!(
-        "{} Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
+        "{} Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n {}",
         style("[6/6]").bold(),
-        response.index, hex::encode(C::contribution_hash(&response))
+        style(format!("I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {}",response.index, hex::encode(C::contribution_hash(&response)))).bold().blue()
     );
     Ok(())
 }

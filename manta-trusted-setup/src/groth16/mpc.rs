@@ -42,7 +42,7 @@ use manta_crypto::{
 
 #[cfg(feature = "serde")]
 use {
-    manta_crypto::arkworks::serialize::{canonical_deserialize, canonical_serialize},
+    manta_crypto::arkworks::serialize::{canonical_deserialize, canonical_deserialize_unchecked, canonical_serialize, canonical_serialize_uncompressed},
     manta_util::serde::{Deserialize, Serialize},
 };
 
@@ -58,8 +58,8 @@ pub struct State<P>(
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "canonical_serialize::<ProvingKey<P::Pairing>, _>",
-            deserialize_with = "canonical_deserialize::<'de, _, ProvingKey<P::Pairing>>" // TODO: Switch back to unchecked
+            serialize_with = "canonical_serialize_uncompressed::<ProvingKey<P::Pairing>, _>",
+            deserialize_with = "canonical_deserialize_unchecked::<'de, _, ProvingKey<P::Pairing>>" // TODO: Switch back to unchecked
         )
     )]
     pub ProvingKey<P::Pairing>,
