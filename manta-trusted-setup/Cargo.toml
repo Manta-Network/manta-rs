@@ -28,10 +28,6 @@ maintenance = { status = "actively-developed" }
 name = "groth16_phase2_client"
 required-features = ["bincode", "clap", "csv", "ppot", "reqwest", "tokio"]
 
-[[bin]]
-name = "groth16_phase2_server"
-required-features = ["async-std", "bincode", "clap", "csv", "ppot", "serde_json", "tide", "tokio"]
-
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]

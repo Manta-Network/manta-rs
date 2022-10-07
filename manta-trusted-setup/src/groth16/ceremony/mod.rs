@@ -40,16 +40,7 @@ use manta_util::{
 
 pub mod client;
 pub mod config;
-pub mod log;
 pub mod message;
-
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub mod coordinator;
-
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub mod server;
 
 /// Participant Queue Type
 pub type Queue<C, const LEVEL_COUNT: usize> =
