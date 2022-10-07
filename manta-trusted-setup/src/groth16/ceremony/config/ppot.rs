@@ -424,7 +424,7 @@ where
         |metadata, state| match state {
             Continue::Timeout => {
                 let _ = term.clear_last_lines(1);
-                println!("You have timed out. Waiting in queue again ... \n");
+                println!("You have timed out. Waiting in queue again ... \n\n");
             },
             Continue::Position(position) => {
                 let _ = term.clear_last_lines(1);

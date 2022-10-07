@@ -46,7 +46,6 @@ where
     if err.is_timeout() {
         CeremonyError::Timeout
     } else {
-        println!("{}", err);
         CeremonyError::Network
     }
 }
@@ -161,8 +160,8 @@ where
                 .map_err(into_ceremony_error);
             counter += 1;
         }
-        println!("");
         let (metadata, nonce) = client_data??;
+        println!("");
         Ok(Self::new_unchecked(
             Signer::new(nonce, signing_key, identifier),
             client,
@@ -218,6 +217,10 @@ where
             "{} Computing contributions. This may take up to 10 minutes.",
             style("[3/6]").bold()
         );
+
+        // This is for testing whether timeout errors work
+        tokio::time::sleep(Duration::new(10, 0)).await; // This client will respond too slowly
+
         let mut rng = OsRng;
         let mut proof = Vec::new();
         for i in 0..round.state.len() {
@@ -235,9 +238,6 @@ where
             "{} Contribution Computed. Sending data to server.",
             style("[4/6]").bold()
         );
-
-        // This is for testing whether timeout errors work
-        tokio::time::sleep(Duration::new(30, 0)).await; // This client will respond too slowly
 
         println!(
             "{} Awaiting confirmation from server.",
