@@ -26,7 +26,7 @@ use crate::{
         ceremony::{
             client::{self, Continue},
             message::ContributeResponse,
-            Ceremony, CeremonyError,
+            Ceremony, CeremonyError, Circuits,
         },
         kzg::{self, Accumulator, Contribution, Size},
         mpc::{Configuration, Proof, ProvingKeyHasher, State},
@@ -666,9 +666,11 @@ impl Ceremony for Config {
         }
         into_array_unchecked(hasher.finalize())
     }
+}
 
+impl Circuits<Self> for Config {
     #[inline]
-    fn circuits() -> Vec<(R1CS<Self::Scalar>, String)> {
+    fn circuits() -> Vec<(R1CS<<Self as Pairing>::Scalar>, String)> {
         let mut circuits = Vec::new();
         //
         // Placeholder:

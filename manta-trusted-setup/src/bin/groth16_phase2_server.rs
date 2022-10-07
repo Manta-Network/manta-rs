@@ -32,10 +32,10 @@ use std::{collections::HashMap, time::Duration};
 type Registry = HashMap<Array<u8, 32>, Participant>;
 
 /// Current server configuration
-type S = Server<Config, Registry, 2, 3>;
+type S = Server<Config, Registry, 2, 3>; // TODO: Should the circuit count be part of Server<> ?
 
 /// Contribution time limit in seconds
-const TIME_LIMIT: u64 = 100;
+const TIME_LIMIT: u64 = 60;
 
 /// Command
 #[derive(Debug, Subcommand)]

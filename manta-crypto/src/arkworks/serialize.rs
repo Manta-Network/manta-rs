@@ -49,7 +49,8 @@ where
     S: Serializer,
 {
     let mut bytes = Vec::new();
-    data.serialize_uncompressed(&mut bytes).map_err(ser::Error::custom)?;
+    data.serialize_uncompressed(&mut bytes)
+        .map_err(ser::Error::custom)?;
     Serialize::serialize(&bytes, serializer)
 }
 

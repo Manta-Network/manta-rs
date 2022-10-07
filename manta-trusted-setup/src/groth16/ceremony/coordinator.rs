@@ -21,7 +21,7 @@ use crate::{
         participant::{Participant, Priority},
         registry::Registry,
         signature::{Nonce, SignedMessage},
-        util::serialize_into_file,
+        util::{deserialize_from_file, serialize_into_file},
     },
     groth16::{
         ceremony::{
@@ -285,11 +285,15 @@ where
         C::Challenge: Serialize,
     {
         assert_eq!(round, self.round());
+        let names: Vec<String> =
+            deserialize_from_file(format!("{}{}", recovery_directory, "/circuit_names"))
+                .expect("Cannot open circuit name file.");
+
         for ((state, challenge), name) in self
             .state()
             .iter()
             .zip(self.challenge().iter())
-            .zip(C::circuits().into_iter().map(|p| p.1))
+            .zip(names.iter())
         {
             serialize_into_file(
                 OpenOptions::new().write(true).truncate(true).create(true),
@@ -322,7 +326,7 @@ where
                 .as_ref()
                 .unwrap()
                 .iter()
-                .zip(C::circuits().into_iter().map(|p| p.1))
+                .zip(names.iter())
             {
                 serialize_into_file(
                     OpenOptions::new().write(true).truncate(true).create(true),

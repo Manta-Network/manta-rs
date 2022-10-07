@@ -42,7 +42,10 @@ use manta_crypto::{
 
 #[cfg(feature = "serde")]
 use {
-    manta_crypto::arkworks::serialize::{canonical_deserialize, canonical_deserialize_unchecked, canonical_serialize, canonical_serialize_uncompressed},
+    manta_crypto::arkworks::serialize::{
+        canonical_deserialize, canonical_deserialize_unchecked, canonical_serialize,
+        canonical_serialize_uncompressed,
+    },
     manta_util::serde::{Deserialize, Serialize},
 };
 

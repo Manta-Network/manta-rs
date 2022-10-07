@@ -30,7 +30,8 @@ use crate::{
             },
             log::{info, warn},
             message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
-            Ceremony, CeremonyError, CeremonySize, Configuration, Metadata, UnexpectedError,
+            Ceremony, CeremonyError, CeremonySize, Circuits, Configuration, Metadata,
+            UnexpectedError,
         },
         kzg,
         mpc::{self, Proof, State, StateSize},
@@ -133,7 +134,9 @@ where
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         println!("Recovering a ceremony at round {:?}", round_number);
 
-        let names: Vec<String> = C::circuits().into_iter().map(|p| p.1).collect(); // TODO: This wastefully generates the circuit descriptions, perhaps break into `circuits()` and `circuit_names()` in Ceremony trait
+        let names: Vec<String> =
+            deserialize_from_file(format!("{}{}", folder_path, "/circuit_names"))
+                .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         let mut states = Vec::<State<C>>::new();
         let mut challenges = Vec::<C::Challenge>::new();
         let mut proofs = Vec::<Proof<C>>::new();
@@ -380,7 +383,8 @@ where
         let recovery_directory = self.recovery_directory.clone();
 
         let (round, challenge) = task::spawn_blocking(move || {
-            sclp.lock().update( // TODO: This needs to check the deserialization of `state`
+            sclp.lock().update(
+                // TODO: This needs to check the deserialization of `state`
                 BoxArray::from_vec(message.state),
                 BoxArray::from_vec(message.proof),
                 recovery_directory,
@@ -480,7 +484,12 @@ pub fn filename_format(
 /// Also saves registry to file.
 pub fn prepare<C, P, R, T>(phase_one_param_path: String, recovery_path: P, registry_path: P)
 where
-    C: Ceremony + Configuration + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
+    C: Ceremony
+        + Configuration
+        + kzg::Configuration
+        + kzg::Size
+        + mpc::ProvingKeyHasher<C>
+        + Circuits<C>,
     C: mpc::ProvingKeyHasher<C, Output = [u8; 64]>,
     C: ChallengeType<Challenge = Array<u8, 64>>,
     C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
@@ -512,8 +521,10 @@ where
 
     let folder_path = recovery_path.as_ref().display();
     let round_number = 0u64;
+    let mut names = Vec::new();
     for (circuit, name) in C::circuits().into_iter() {
         println!("Creating proving key for {}", name);
+        names.push(name.clone());
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             coordinator::initialize(&powers, circuit);
 
@@ -541,6 +552,13 @@ where
         )
         .expect("Writing challenge to disk should succeed.");
     }
+    serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &format!("{}/circuit_names", folder_path),
+        &names,
+    )
+    .expect("Writing circuit names to disk should succeed.");
+
     serialize_into_file(
         OpenOptions::new().write(true).truncate(true).create(true),
         &format!("{}/round_number", folder_path),

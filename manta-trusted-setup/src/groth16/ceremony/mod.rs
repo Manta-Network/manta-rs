@@ -81,9 +81,15 @@ pub trait Ceremony: Configuration + SignatureScheme {
 
     /// Hashes the contribution response.
     fn contribution_hash(response: &ContributeResponse<Self>) -> Self::ContributionHash;
+}
 
+/// Specifies R1CS circuit descriptions and names for a ceremony.
+pub trait Circuits<C>
+where
+    C: Ceremony,
+{
     /// Returns representations of the circuits used in this ceremony, each named.
-    fn circuits() -> Vec<(R1CS<Self::Scalar>, String)>;
+    fn circuits() -> Vec<(R1CS<C::Scalar>, String)>;
 }
 
 /// Parallel Round Alias
