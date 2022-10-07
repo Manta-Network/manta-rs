@@ -304,22 +304,22 @@ pub fn generate_keys(bytes: &[u8]) -> Option<(ed25519::SecretKey, ed25519::Publi
 #[inline]
 pub fn register(twitter_account: String, email: String) {
     println!(
-        "Your {}: \nCopy the following text to \"Twitter\" Section in Google Sheet:\n {}\n",
+        "Your {}: \nCopy the following text to \"Twitter\" Section in Registration Form:\n {}\n",
         "Twitter Account".italic(),
-        twitter_account.blue(),
+        twitter_account.green(),
     );
     println!(
-        "Your {}: \nCopy the following text to \"Email\" Section in Google Sheet:\n {}\n",
+        "Your {}: \nCopy the following text to \"Email\" Section in Registration Form:\n {}\n",
         "Email".italic(),
-        email.blue(),
+        email.green(),
     );
     let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
     let seed = Seed::new(&mnemonic, "manta-trusted-setup");
     let keypair = generate_keys(seed.as_bytes()).expect("Should generate a key pair.");
     println!(
-        "Your {}: \nCopy the following text to \"Public Key\" Section in Google Sheet:\n {}\n",
+        "Your {}: \nCopy the following text to \"Public Key\" Section in Registration Form:\n {}\n",
         "Public Key".italic(),
-        bs58::encode(keypair.1).into_string().blue(),
+        bs58::encode(keypair.1).into_string().green(),
     );
     let signature = sign::<Ed25519<RawMessage<u64>>, _>(
         &keypair.0,
@@ -331,9 +331,9 @@ pub fn register(twitter_account: String, email: String) {
     )
     .expect("Signing message should succeed.");
     println!(
-        "Your {}: \nCopy the following text to \"Signature\" Section in Google Sheet: \n {}\n",
+        "Your {}: \nCopy the following text to \"Signature\" Section in Registration Form: \n {}\n",
         "Signature".italic(),
-        bs58::encode(signature).into_string().blue()
+        bs58::encode(signature).into_string().green()
     );
     println!(
         "Your {}: \nThe following text stores your secret for trusted setup. \

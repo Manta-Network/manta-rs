@@ -71,7 +71,7 @@ impl Arguments {
                     .interact_text()
                     .expect("");
                 let email = Input::with_theme(&ColorfulTheme::default())
-                    .with_prompt("Your email")
+                    .with_prompt("Your email address")
                     .interact_text()
                     .expect("");
                 register(twitter_account, email);

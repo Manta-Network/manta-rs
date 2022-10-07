@@ -105,7 +105,7 @@ impl Arguments {
 
         api.listen("127.0.0.1:8080")
             .await
-            .expect("Should create a listener."); // TODO: use TLS
+            .expect("Should create a listener.");
         Ok(())
     }
 }
@@ -122,3 +122,4 @@ async fn main() {
 // run with
 // cargo run --release --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/registry.csv /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data
 // cargo run --release --all-features --bin groth16_phase2_server recover manta-trusted-setup/data manta-trusted-setup/data
+// cargo build --release --all-features --bin groth16_phase2_server
