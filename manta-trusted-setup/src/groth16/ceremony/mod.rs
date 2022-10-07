@@ -26,10 +26,13 @@ use crate::{
 };
 use core::{fmt::Debug, time::Duration};
 use manta_crypto::arkworks::pairing::Pairing;
+use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
 };
+
+use self::message::ContributeResponse;
 
 pub mod client;
 pub mod config;
@@ -61,6 +64,27 @@ pub trait Ceremony: Configuration + SignatureScheme {
             VerifyingKey = Self::VerifyingKey,
             Nonce = Self::Nonce,
         > + Priority<Priority = Self::Priority>;
+
+    /// State deserialization error type
+    type SerializationError;
+
+    /// Contribution Hash Type
+    type ContributionHash;
+
+    /// Checks state is valid before verifying a contribution.
+    fn check_state(state: &Self::State) -> Result<(), Self::SerializationError>;
+
+    /// Hashes the contribution response.
+    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::ContributionHash;
+}
+
+/// Specifies R1CS circuit descriptions and names for a ceremony.
+pub trait Circuits<C>
+where
+    C: Ceremony,
+{
+    /// Returns representations of the circuits used in this ceremony, each named.
+    fn circuits() -> Vec<(R1CS<C::Scalar>, String)>;
 }
 
 /// Parallel Round Alias

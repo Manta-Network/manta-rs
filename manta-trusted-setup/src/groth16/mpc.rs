@@ -16,6 +16,8 @@
 
 //! Groth16 MPC
 
+use core::iter::once;
+
 use crate::{
     groth16::kzg::{self, Accumulator},
     mpc,
@@ -26,11 +28,15 @@ use ark_groth16::{ProvingKey, VerifyingKey};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use manta_crypto::{
     arkworks::{
-        ec::{AffineCurve, PairingEngine, ProjectiveCurve},
+        ec::{
+            short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine, ProjectiveCurve,
+            SWModelParameters,
+        },
         ff::{Field, PrimeField, UniformRand, Zero},
         pairing::{Pairing, PairingEngineExt},
         ratio::{HashToGroup, RatioProof},
         relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
+        serialize::SerializationError,
     },
     rand::{CryptoRng, RngCore},
 };
@@ -61,6 +67,48 @@ pub struct State<P>(
 )
 where
     P: Pairing + ?Sized;
+
+impl<P> State<P>
+where
+    P: Pairing,
+{
+    /// Checks that `self` is a valid state before running the ceremony.
+    #[inline]
+    pub fn check<R1, R2>(&self) -> Result<(), SerializationError>
+    where
+        P: Pairing<G1 = GroupAffine<R1>, G2 = GroupAffine<R2>>,
+        R1: SWModelParameters,
+        R2: SWModelParameters,
+    {
+        once(&self.0.vk.alpha_g1)
+            .chain(self.0.vk.gamma_abc_g1.iter())
+            .chain(once(&self.0.beta_g1))
+            .chain(once(&self.0.delta_g1))
+            .chain(self.0.a_query.iter())
+            .chain(self.0.b_g1_query.iter())
+            .chain(self.0.h_query.iter())
+            .chain(self.0.l_query.iter())
+            .try_for_each(curve_point_checks)?;
+        once(&self.0.vk.beta_g2)
+            .chain(once(&self.0.vk.gamma_g2))
+            .chain(once(&self.0.vk.delta_g2))
+            .chain(self.0.b_g2_query.iter())
+            .try_for_each(curve_point_checks)
+    }
+}
+
+/// Checks that `p` is a valid point on the elliptic curve.
+#[inline]
+fn curve_point_checks<P>(p: &GroupAffine<P>) -> Result<(), SerializationError>
+where
+    P: SWModelParameters,
+{
+    if !(p.is_on_curve() && p.is_in_correct_subgroup_assuming_on_curve()) {
+        Err(SerializationError::InvalidData)
+    } else {
+        Ok(())
+    }
+}
 
 /// MPC Proof
 #[cfg_attr(

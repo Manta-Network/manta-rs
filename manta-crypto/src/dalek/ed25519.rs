@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use core::marker::PhantomData;
-use manta_util::AsBytes;
+use manta_util::{Array, AsBytes};
 
 pub use ed25519_dalek::*;
 
@@ -99,6 +99,24 @@ where
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Ed25519<M>(PhantomData<M>);
 
+/// The serialization of a [`PublicKey`].
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct VerifyingKey(Array<u8, 32>);
+
+impl From<PublicKey> for VerifyingKey {
+    fn from(k: PublicKey) -> Self {
+        Self(Array::from_unchecked(*k.as_bytes()))
+    }
+}
+
+// impl TryFrom<VerifyingKey> for PublicKey {
+//     type Error = SignatureError;
+
+//     fn try_from(value: VerifyingKey) -> Result<Self, Self::Error> {
+//         Self::from_bytes(value.0.as_slice())
+//     }
+// }
+
 impl<M> MessageType for Ed25519<M> {
     type Message = M;
 }
@@ -119,7 +137,7 @@ impl<M> SigningKeyType for Ed25519<M> {
 }
 
 impl<M> VerifyingKeyType for Ed25519<M> {
-    type VerifyingKey = PublicKey;
+    type VerifyingKey = Array<u8, 32>; // hack This is the serialization of an ed255::PublicKey
 }
 
 impl<M> Sign for Ed25519<M>
@@ -154,6 +172,8 @@ where
         compiler: &mut (),
     ) -> Self::Verification {
         let _ = compiler;
+        // hack
+        let verifying_key = PublicKey::from_bytes(verifying_key.as_slice())?;
         verifying_key.verify(&message.as_bytes(), signature)
     }
 }

@@ -78,3 +78,27 @@ where
     /// Proof
     pub proof: Vec<Proof<C>>,
 }
+
+/// Contribution Response
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::Challenge: Deserialize<'de>",
+            serialize = "C::Challenge: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+pub struct ContributeResponse<C>
+where
+    C: Ceremony,
+{
+    /// Contribution Index
+    pub index: u64,
+
+    /// Current Challenge
+    pub challenge: Vec<C::Challenge>,
+}
