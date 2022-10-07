@@ -17,6 +17,7 @@
 //! Trusted Setup Ceremony Signatures
 
 use alloc::vec::Vec;
+use core::fmt::Debug;
 use manta_crypto::{
     dalek::ed25519::{Ed25519, SignatureError},
     signature,
@@ -193,6 +194,11 @@ where
         crate = "manta_util::serde",
         deny_unknown_fields,
     )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "S::Signature: Clone, I: Clone, T: Clone"),
+    Debug(bound = "S::Signature: Debug, I: Debug, T: Debug")
 )]
 pub struct SignedMessage<S, I, T>
 where

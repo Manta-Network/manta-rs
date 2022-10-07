@@ -21,6 +21,7 @@ use crate::groth16::{
     mpc::{Proof, State},
 };
 use alloc::vec::Vec;
+use core::fmt::Debug;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -47,6 +48,8 @@ pub struct QueryRequest;
         deny_unknown_fields
     )
 )]
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "Round<C>: Debug"))]
 pub enum QueryResponse<C>
 where
     C: Ceremony,

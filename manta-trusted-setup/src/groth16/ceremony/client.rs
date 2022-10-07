@@ -16,28 +16,25 @@
 
 //! Trusted Setup Client
 
-use core::time::Duration;
-
 use crate::{
     ceremony::signature::{SignedMessage, Signer},
     groth16::{
         ceremony::{
-            message::{ContributeRequest, QueryRequest, QueryResponse},
+            message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, Metadata, Round, UnexpectedError,
         },
         mpc,
     },
 };
 use alloc::vec::Vec;
-use console::style;
+use console::{style, Term};
 use manta_crypto::rand::OsRng;
 use manta_util::{
     http::reqwest::{self, IntoUrl, KnownUrlClient},
     ops::ControlFlow,
     serde::{de::DeserializeOwned, Serialize},
 };
-
-use super::message::ContributeResponse;
+use tokio::time::{sleep, Duration};
 
 /// Converts the [`reqwest`] error `err` into a [`CeremonyError`] depending on whether it comes from
 /// a timeout or other network error.
@@ -49,8 +46,19 @@ where
     if err.is_timeout() {
         CeremonyError::Timeout
     } else {
+        println!("{}", err);
         CeremonyError::Network
     }
+}
+
+/// Client Continuation States
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum Continue {
+    /// Position Updated
+    Position(u64),
+
+    /// Timeout
+    Timeout,
 }
 
 /// Client Update States
@@ -86,6 +94,111 @@ where
             signer,
             client,
             metadata,
+        }
+    }
+
+    /// Updates the client's nonce to the `expected_nonce` returned by the server.
+    #[inline]
+    fn update_nonce(&mut self, expected_nonce: C::Nonce) -> Result<(), CeremonyError<C>> {
+        self.signer
+            .set_valid_nonce(expected_nonce)
+            .then_some(())
+            .ok_or(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed))
+    }
+
+    /// Signs the `message` with the signer in `self`, incrementing its nonce if the signing was
+    /// successful.
+    #[inline]
+    fn sign<T>(
+        &mut self,
+        message: T,
+    ) -> Result<SignedMessage<C, C::Identifier, T>, CeremonyError<C>>
+    where
+        T: Serialize,
+    {
+        let signed_message = self
+            .signer
+            .sign(message)
+            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        self.signer.increment_nonce();
+        Ok(signed_message)
+    }
+
+    /// Builds a new [`Client`] from `signing_key`, `identifier`, and `client` and performs the
+    /// initial synchronization procedure with the ceremony server to establish the correct ceremony
+    /// parameters and registration status.
+    #[inline]
+    pub async fn build(
+        signing_key: C::SigningKey,
+        identifier: C::Identifier,
+        client: KnownUrlClient,
+    ) -> Result<Self, CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        C::Nonce: DeserializeOwned,
+    {
+        let mut client_data = client
+            .post::<_, Result<(Metadata, C::Nonce), CeremonyError<C>>>("start", &identifier)
+            .await
+            .map_err(into_ceremony_error);
+        let term = Term::stdout();
+        let mut counter = 0u8;
+        println!(
+            "{} Connecting to server for Metadata\n",
+            style("[0/6]").bold()
+        );
+        while let Ok(Err(CeremonyError::NotRegistered)) = client_data {
+            if counter >= 60 {
+                panic!("This is taking longer than expected, please try again later.",);
+                // TODO: no panic, handle error.
+            }
+            term.clear_last_lines(1)
+                .expect("Clear last lines should succeed.");
+            println!("Waiting for server registry update. Please make sure you are registered.",);
+            sleep(Duration::from_millis(10000)).await;
+            client_data = client
+                .post("start", &identifier)
+                .await
+                .map_err(into_ceremony_error);
+            counter += 1;
+        }
+        term.clear_last_lines(1)
+            .expect("Clear last lines should succeed.");
+        let (metadata, nonce) = client_data??;
+        Ok(Self::new_unchecked(
+            Signer::new(nonce, signing_key, identifier),
+            client,
+            metadata,
+        ))
+    }
+
+    /// Queries for the state of the ceremony, returning the queue position if the participant is
+    /// not at the front of the queue.
+    #[inline]
+    async fn query(&mut self) -> Result<QueryResponse<C>, CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        C::Nonce: DeserializeOwned + Serialize,
+        C::Signature: Serialize,
+        QueryResponse<C>: DeserializeOwned,
+    {
+        let signed_message = self.sign(QueryRequest)?;
+        match self
+            .client
+            .post::<_, Result<QueryResponse<C>, CeremonyError<C>>>("query", &signed_message)
+            .await
+        {
+            Ok(Ok(QueryResponse::State(state))) => match state.with_valid_shape() {
+                Some(state) if self.metadata.ceremony_size.matches(&state.state) => {
+                    Ok(QueryResponse::State(state))
+                }
+                _ => Err(CeremonyError::Unexpected(
+                    UnexpectedError::IncorrectStateSize,
+                )),
+            },
+            Ok(Ok(response)) => Ok(response),
+            Err(err) => Err(into_ceremony_error(err)),
+            Ok(Err(err)) => Err(err),
         }
     }
 
@@ -136,82 +249,6 @@ where
             .post::<_, Result<ContributeResponse<C>, CeremonyError<C>>>("update", &signed_message)
             .await
             .map_err(into_ceremony_error)?
-    }
-
-    /// Updates the client's nonce to the `expected_nonce` returned by the server.
-    #[inline]
-    fn update_nonce(&mut self, expected_nonce: C::Nonce) -> Result<(), CeremonyError<C>> {
-        self.signer
-            .set_valid_nonce(expected_nonce)
-            .then_some(())
-            .ok_or(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed))
-    }
-
-    /// Signs the `message` with the signer in `self`, incrementing its nonce if the signing was
-    /// successful.
-    #[inline]
-    fn sign<T>(
-        &mut self,
-        message: T,
-    ) -> Result<SignedMessage<C, C::Identifier, T>, CeremonyError<C>>
-    where
-        T: Serialize,
-    {
-        let signed_message = self
-            .signer
-            .sign(message)
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-        self.signer.increment_nonce();
-        Ok(signed_message)
-    }
-
-    /// Builds a new [`Client`] from `signing_key`, `identifier`, and `client` and performs the
-    /// initial synchronization procedure with the ceremony server to establish the correct ceremony
-    /// parameters and registration status.
-    #[inline]
-    pub async fn build(
-        signing_key: C::SigningKey,
-        identifier: C::Identifier,
-        client: KnownUrlClient,
-    ) -> Result<Self, CeremonyError<C>>
-    where
-        C::Identifier: Serialize,
-        C::Nonce: DeserializeOwned,
-    {
-        let (metadata, nonce) = client
-            .post("start", &identifier)
-            .await
-            .map_err(into_ceremony_error)?;
-        Ok(Self::new_unchecked(
-            Signer::new(nonce, signing_key, identifier),
-            client,
-            metadata,
-        ))
-    }
-
-    /// Queries for the state of the ceremony, returning the queue position if the participant is
-    /// not at the front of the queue.
-    #[inline]
-    async fn query(&mut self) -> Result<QueryResponse<C>, CeremonyError<C>>
-    where
-        C::Identifier: Serialize,
-        C::Nonce: Serialize,
-        C::Signature: Serialize,
-        QueryResponse<C>: DeserializeOwned,
-    {
-        let signed_message = self.sign(QueryRequest)?;
-        match self.client.post("query", &signed_message).await {
-            Ok(QueryResponse::State(state)) => match state.with_valid_shape() {
-                Some(state) if self.metadata.ceremony_size.matches(&state.state) => {
-                    Ok(QueryResponse::State(state))
-                }
-                _ => Err(CeremonyError::Unexpected(
-                    UnexpectedError::IncorrectStateSize,
-                )),
-            },
-            Ok(response) => Ok(response),
-            Err(err) => Err(into_ceremony_error(err)),
-        }
     }
 
     /// Tries to contribute to the ceremony if at the front of the queue. This method returns an
@@ -282,14 +319,4 @@ where
             Err(err) => return Err(err),
         }
     }
-}
-
-/// Client Continuation States
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum Continue {
-    /// Position Updated
-    Position(u64),
-
-    /// Timeout
-    Timeout,
 }

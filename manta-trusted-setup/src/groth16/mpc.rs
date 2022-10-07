@@ -29,8 +29,8 @@ use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use manta_crypto::{
     arkworks::{
         ec::{
-            short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine, ProjectiveCurve,
-            SWModelParameters,
+            models::short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine,
+            ProjectiveCurve, SWModelParameters,
         },
         ff::{Field, PrimeField, UniformRand, Zero},
         pairing::{Pairing, PairingEngineExt},
@@ -43,7 +43,10 @@ use manta_crypto::{
 
 #[cfg(feature = "serde")]
 use {
-    manta_crypto::arkworks::serialize::{canonical_deserialize, canonical_serialize},
+    manta_crypto::arkworks::serialize::{
+        canonical_deserialize, canonical_deserialize_unchecked, canonical_serialize,
+        canonical_serialize_uncompressed,
+    },
     manta_util::serde::{Deserialize, Serialize},
 };
 
@@ -54,13 +57,13 @@ use {
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
+#[derivative(Clone(bound = ""), Debug(bound = ""))]
 pub struct State<P>(
     #[cfg_attr(
         feature = "serde",
         serde(
-            serialize_with = "canonical_serialize::<ProvingKey<P::Pairing>, _>",
-            deserialize_with = "canonical_deserialize::<'de, _, ProvingKey<P::Pairing>>"
+            serialize_with = "canonical_serialize_uncompressed::<ProvingKey<P::Pairing>, _>",
+            deserialize_with = "canonical_deserialize_unchecked::<'de, _, ProvingKey<P::Pairing>>"
         )
     )]
     pub ProvingKey<P::Pairing>,

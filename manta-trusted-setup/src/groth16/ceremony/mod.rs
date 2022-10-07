@@ -174,6 +174,23 @@ where
     Unexpected(UnexpectedError),
 }
 
+impl<C> core::fmt::Display for CeremonyError<C>
+where
+    C: Ceremony,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "Ceremony Error encountered: ") // TODO: How can I display the error?
+    }
+}
+
+#[cfg(feature = "std")]
+impl<C> std::error::Error for CeremonyError<C>
+where
+    C: Ceremony,
+    C::Nonce: Debug,
+{
+}
+
 /// Unexpected Error
 #[cfg_attr(
     feature = "serde",
@@ -196,4 +213,7 @@ pub enum UnexpectedError {
 
     /// All Nonces were Used
     AllNoncesUsed,
+
+    /// Task Error
+    TaskError,
 }
