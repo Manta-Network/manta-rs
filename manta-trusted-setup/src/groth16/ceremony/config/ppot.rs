@@ -336,7 +336,7 @@ pub fn register(twitter_account: String, email: String) {
         bs58::encode(signature).into_string().green()
     );
     println!(
-        "Your {}: \nThe following text stores your secret for trusted setup. \
+        "Your {}: \nThe following text stores your secret for the trusted setup. \
          Save the following text somewhere safe. \n DO NOT share this to anyone else! \
          Please discard this data after the trusted setup ceremony.\n {}",
         "Secret".italic(),
@@ -429,12 +429,17 @@ where
             },
             Continue::Position(position) => {
                 let _ = term.clear_last_lines(1);
-                if position <= u32::MAX.into() {
+                if position == 0 {
+                    let _ = term.clear_last_lines(1);
+                    println!("{} Waiting in queue...", style("[1/6]").bold());
+                    println!("{} Receiving data from Server... This may take a few minutes.", style("[2/6]").bold());
+                }
+                else if position <= u32::MAX.into() {
                     println!(
                         "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.",
-                        style("[1/5]").bold(),
+                        style("[1/6]").bold(),
                         style(position).bold().red(),
-                        style(format!("{:?}", metadata.contribution_time_limit * (position as u32))).bold().blue(),
+                        style(format!("{:?} minutes", (metadata.contribution_time_limit.as_secs() * (position as u64)/60))).bold().red(),
                     );
                 } else {
                     println!(
@@ -447,7 +452,7 @@ where
     .await?;
     println!(
         "{} Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n\"I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {:?} \"",
-        style("[5/5]").bold(),
+        style("[6/6]").bold(),
         response.index, hex::encode(C::contribution_hash(&response))
     );
     Ok(())

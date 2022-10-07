@@ -147,7 +147,7 @@ where
             "{} Connecting to server for Metadata",
             style("[0/5]").bold()
         );
-        while let Err(CeremonyError::NotRegistered) = client_data {
+        while let Ok(Err(CeremonyError::NotRegistered)) = client_data {
             if counter >= 60 {
                 panic!(
                     "{} This is taking longer than expected, please try again later.",
@@ -221,7 +221,7 @@ where
     {
         println!(
             "{} Computing contributions. This may take up to 10 minutes.",
-            style("[2/5]").bold()
+            style("[3/6]").bold()
         );
         let mut rng = OsRng;
         let mut proof = Vec::new();
@@ -238,7 +238,7 @@ where
         })?;
         println!(
             "{} Contribution Computed. Sending data to server.",
-            style("[3/5]").bold()
+            style("[4/6]").bold()
         );
 
         // This is for testing whether timeout errors work
@@ -246,7 +246,7 @@ where
 
         println!(
             "{} Awaiting confirmation from server.",
-            style("[4/5]").bold()
+            style("[5/6]").bold()
         );
         self.client
             .post::<_, Result<ContributeResponse<C>, CeremonyError<C>>>("update", &signed_message)
