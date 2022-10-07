@@ -149,12 +149,11 @@ where
         );
         while let Ok(Err(CeremonyError::NotRegistered)) = client_data {
             if counter >= 60 {
-                panic!("This is taking longer than expected, please try again later.",);
-                // TODO: no panic, handle error.
+                return Err(CeremonyError::NotRegistered);
             }
             term.clear_last_lines(1)
                 .expect("Clear last lines should succeed.");
-            println!("Waiting for server registry update. Please make sure you are registered.",);
+            println!("Waiting for server registry update. Please make sure you are registered.");
             sleep(Duration::from_millis(10000)).await;
             client_data = client
                 .post("start", &identifier)

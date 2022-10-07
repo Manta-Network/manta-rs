@@ -38,7 +38,7 @@ use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use blake2::Digest;
 use colored::Colorize;
 use console::{style, Term};
-use core::fmt::{self, Debug};
+use core::fmt::{self, Debug, Display};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     arkworks::{
@@ -451,7 +451,7 @@ where
     )
     .await?;
     println!(
-        "{} Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n {}",
+        "{} Success! You have contributed to the security of Manta Pay! \nNow set your contribution in stone! Tweet:\n{}",
         style("[6/6]").bold(),
         style(format!("I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {}",response.index, hex::encode(C::contribution_hash(&response)))).bold().blue()
     );
@@ -705,13 +705,16 @@ pub fn dummy_circuit(cs: &mut R1CS<<Config as Pairing>::Scalar>) {
 
 /// Panics whenever `result` is an `Err`-variant and formats the error.
 #[inline]
-pub fn exit_on_error<T, E>(result: Result<T, E>) -> T
+pub fn exit_on_error<T, E>(result: Result<T, E>)
 where
-    E: Debug,
+    E: Display,
 {
-    result.unwrap_or_else(|e| {
-        panic!("{}: {:?}", "error".red().bold(), e);
-    })
+    match result {
+        Err(e) => {
+            println!("{}", e);
+        }
+        _ => {}
+    }
 }
 
 /// Testing Suite

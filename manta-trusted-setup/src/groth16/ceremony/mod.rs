@@ -179,7 +179,13 @@ where
     C: Ceremony,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Ceremony Error encountered: ") // TODO: How can I display the error?
+        match self {
+            Self::NotRegistered => write!(f, "Registry update is taking longer than expected. Please try again later."),
+            Self::AlreadyContributed => write!(f, "You have already contributed to the ceremony. Please remember that each participant is only allowed to contribute once."),
+            Self::Timeout => write!(f, "Unable to connect to server, reason: timeout. Please try again later. "),
+            Self::Network => write!(f, "Unable to connect to server, readon: network error. Please try again later."),
+            _ => write!(f, "Unexpecter error occurred.")
+        }
     }
 }
 
