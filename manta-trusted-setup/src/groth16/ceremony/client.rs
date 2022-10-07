@@ -162,8 +162,7 @@ where
                 .map_err(into_ceremony_error);
             counter += 1;
         }
-        term.clear_last_lines(1)
-            .expect("Clear last lines should succeed.");
+        println!("");
         let (metadata, nonce) = client_data??;
         Ok(Self::new_unchecked(
             Signer::new(nonce, signing_key, identifier),

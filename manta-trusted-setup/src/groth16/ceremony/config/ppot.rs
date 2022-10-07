@@ -434,11 +434,12 @@ where
                     println!("{} Receiving data from Server... This may take a few minutes.", style("[2/6]").bold());
                 }
                 else if position <= u32::MAX.into() {
+                    let _ = term.clear_last_lines(1);
                     println!(
-                        "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.",
+                        "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.\n",
                         style("[1/6]").bold(),
                         style(position).bold().red(),
-                        style(format!("{:?} minutes", (metadata.contribution_time_limit.as_secs() * (position as u64)/60))).bold().red(),
+                        style(format!("{:?} min", (metadata.contribution_time_limit.as_secs() * (position as u64)/60))).bold().red(),
                     );
                 } else {
                     println!(
