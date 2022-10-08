@@ -102,7 +102,7 @@ where
         self.signer
             .set_valid_nonce(expected_nonce)
             .then_some(())
-            .ok_or(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed))
+            .ok_or_else(|| CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed))
     }
 
     /// Signs the `message` with the signer in `self`, incrementing its nonce if the signing was
@@ -161,7 +161,7 @@ where
             counter += 1;
         }
         let (metadata, nonce) = client_data??;
-        println!("");
+        println!();
         Ok(Self::new_unchecked(
             Signer::new(nonce, signing_key, identifier),
             client,
@@ -221,9 +221,10 @@ where
         let mut proof = Vec::new();
         for i in 0..round.state.len() {
             proof.push(
-                mpc::contribute(hasher, &round.challenge[i], &mut round.state[i], &mut rng).ok_or(
-                    CeremonyError::Unexpected(UnexpectedError::FailedContribution),
-                )?,
+                mpc::contribute(hasher, &round.challenge[i], &mut round.state[i], &mut rng)
+                    .ok_or_else(|| {
+                        CeremonyError::Unexpected(UnexpectedError::FailedContribution)
+                    })?,
             );
         }
         let signed_message = self.sign(ContributeRequest {

@@ -435,14 +435,14 @@ where
                     let _ = term.clear_last_lines(1);
                     println!("{} Waiting in queue...", style("[1/6]").bold());
                     println!("{} Receiving data from Server... This may take a few minutes.", style("[2/6]").bold());
-                }
-                else if position <= u32::MAX.into() {
+                } else if position <= u32::MAX.into() {
+                    let minutes = metadata.contribution_time_limit.as_secs() * position / 60;
                     let _ = term.clear_last_lines(1);
                     println!(
                         "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.\n",
                         style("[1/6]").bold(),
                         style(position).bold().red(),
-                        style(format!("{:?} min", (metadata.contribution_time_limit.as_secs() * (position as u64)/60))).bold().red(),
+                        style(format!("{:?} min", minutes)).bold().red(),
                     );
                 } else {
                     println!(
@@ -700,17 +700,14 @@ pub fn dummy_circuit(cs: &mut R1CS<<Config as Pairing>::Scalar>) {
         .expect("enforce_equal is not allowed to fail");
 }
 
-/// Panics whenever `result` is an `Err`-variant and formats the error.
+/// Displays whenever `result` is an `Err`-variant and formats the error.
 #[inline]
-pub fn exit_on_error<T, E>(result: Result<T, E>)
+pub fn display_on_error<T, E>(result: Result<T, E>)
 where
     E: Display,
 {
-    match result {
-        Err(e) => {
-            println!("{}", e);
-        }
-        _ => {}
+    if let Err(e) = result {
+        println!("{}", e);
     }
 }
 

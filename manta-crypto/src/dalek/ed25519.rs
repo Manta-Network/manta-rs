@@ -99,17 +99,6 @@ where
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Ed25519<M>(PhantomData<M>);
 
-/// The serialization of a [`PublicKey`].
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct VerifyingKey(Array<u8, 32>);
-
-impl From<PublicKey> for VerifyingKey {
-    #[inline]
-    fn from(k: PublicKey) -> Self {
-        Self(Array::from_unchecked(*k.as_bytes()))
-    }
-}
-
 impl<M> MessageType for Ed25519<M> {
     type Message = M;
 }
