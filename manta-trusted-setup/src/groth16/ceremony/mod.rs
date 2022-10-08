@@ -38,9 +38,12 @@ use manta_util::{
     serde::{Deserialize, Serialize},
 };
 
-pub mod client;
 pub mod config;
 pub mod message;
+
+#[cfg(feature = "reqwest")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
+pub mod client;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
