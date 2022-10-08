@@ -55,7 +55,7 @@ use manta_crypto::{
         Allocate,
     },
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
-    signature::{self, VerifyingKeyType},
+    signature,
 };
 use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::{
@@ -66,7 +66,7 @@ use manta_util::{
 use std::collections::HashMap;
 
 type Signature = Ed25519<RawMessage<u64>>;
-type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
+type VerifyingKey = signature::VerifyingKey<Signature>;
 type Nonce = <Signature as SignatureScheme>::Nonce;
 
 /// Priority
@@ -357,11 +357,12 @@ pub fn get_client_keys() -> Result<(ed25519::SecretKey, ed25519::PublicKey), Cli
     let text = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Your Secret")
         .validate_with(|input: &String| -> Result<(), &str> {
-            Mnemonic::validate(input, Language::English).map_err(|_| "This is not a valid secret.")
+            Mnemonic::validate(input.trim(), Language::English)
+                .map_err(|_| "This is not a valid secret.")
         })
         .interact_text()
         .map_err(|_| ClientKeyError::InvalidSecret)?;
-    let mnemonic = Mnemonic::from_phrase(text.as_str(), Language::English)
+    let mnemonic = Mnemonic::from_phrase(text.trim(), Language::English)
         .map_err(|_| ClientKeyError::MnemonicFailure)?;
     let seed_bytes = Seed::new(&mnemonic, "manta-trusted-setup")
         .as_bytes()
@@ -419,16 +420,20 @@ where
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
 {
+    println!(
+        "{} Retrieving ceremony metadata from server. \
+         Ensure that you are have submitted a registration form for the ceremony.",
+        style("[0/6]").bold()
+    );
     let term = Term::stdout();
     let response = client::contribute(
         signing_key,
         identifier,
         url.as_str(),
         |metadata, state| match state {
-            Continue::Timeout => {
-                let _ = term.clear_last_lines(1);
-                println!("You have timed out. Waiting in queue again ... \n\n");
-            },
+            Continue::Started => {
+                println!("\n");
+            }
             Continue::Position(position) => {
                 let _ = term.clear_last_lines(1);
                 if position == 0 {
@@ -446,17 +451,45 @@ where
                     );
                 } else {
                     println!(
-                        "Waiting in queue... There are many people ahead of you. Estimated Waiting Time: forever.",
+                        "{} Waiting in queue... There are many people ahead of you. Estimated Waiting Time: forever.",
+                        style("[1/6]").bold(),
                     );
                 }
+            },
+            Continue::ComputingUpdate => {
+                println!(
+                    "{} Computing contributions. This may take up to 10 minutes.",
+                    style("[3/6]").bold()
+                );
+            },
+            Continue::SendingUpdate => {
+                println!(
+                    "{} Contribution Computed. Sending data to server.",
+                    style("[4/6]").bold()
+                );
+                println!(
+                    "{} Awaiting confirmation from server.",
+                    style("[5/6]").bold()
+                );
+            },
+            Continue::Timeout => {
+                let _ = term.clear_last_lines(1);
+                println!("You have timed out. Waiting in queue again ... \n\n");
             },
         },
     )
     .await?;
+    let contribution_hash = hex::encode(C::contribution_hash(&response));
+    let tweet = style(
+        format!(
+            "I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {}",
+            response.index,
+            contribution_hash
+        )).bold().blue();
     println!(
         "{} Success! You have contributed to the security of Manta Pay! \nNow set your contribution in stone! Tweet:\n{}",
         style("[6/6]").bold(),
-        style(format!("I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {}",response.index, hex::encode(C::contribution_hash(&response)))).bold().blue()
+        tweet,
     );
     Ok(())
 }
@@ -707,7 +740,7 @@ where
     E: Display,
 {
     if let Err(e) = result {
-        println!("{}", e);
+        println!("{} {}", style("[ERROR]").bold().red(), e);
     }
 }
 

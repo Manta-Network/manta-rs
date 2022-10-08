@@ -27,9 +27,11 @@ use crate::{
     },
     mpc,
 };
-use colored::Colorize;
-use console::{style, Term};
-use core::{fmt::Debug, time::Duration};
+use console::Term;
+use core::{
+    fmt::{self, Debug, Display},
+    time::Duration,
+};
 use manta_crypto::arkworks::pairing::Pairing;
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_util::{
@@ -171,29 +173,52 @@ where
     Timeout,
 
     /// Network Error
-    Network,
+    Network {
+        /// Optional Error Message Display String
+        message: String,
+    },
 
     /// Unexpected Server Error
     Unexpected(UnexpectedError),
 }
 
-impl<C> core::fmt::Display for CeremonyError<C>
+impl<C> Display for CeremonyError<C>
 where
     C: Ceremony,
 {
     #[inline]
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotRegistered => write!(f, "{} Registry update is taking longer than expected. Please make sure you have submitted your registration form and try again later.", style("[Error]").bold().red()),
-            Self::AlreadyContributed => {let term = Term::stdout(); term.clear_last_lines(2).expect("Clearing lines should succeed."); write!(f, "{} You have already contributed to the ceremony. Each participant is only allowed to contribute once.", style("[Error]").bold().red())},
-            Self::Timeout => write!(f, "{} Unable to connect to server: timeout. Please try again later.", style("[Error]").bold().red()), // Is this error reachable with our client?
-            Self::Network => write!(f, "{} Unable to connect to server: network error. Please try again later at the ceremony url: {}.", style("[Error]").bold().red(), "https://ceremony.manta.network".underline()),
-            _ => write!(f, "{} Unexpected error occurred.", style("[Error]").bold().red())
+            Self::NotRegistered => write!(
+                f,
+                "Registry update is taking longer than expected. \
+                 Please make sure you have submitted your registration form and try again later.",
+            ),
+            Self::AlreadyContributed => {
+                let term = Term::stdout();
+                term.clear_last_lines(2)
+                    .expect("Clearing lines should succeed.");
+                write!(
+                    f,
+                    "You have already contributed to the ceremony. \
+                     Each participant is only allowed to contribute once.",
+                )
+            }
+            // TODO: Is this error reachable with our client?
+            Self::Timeout => write!(
+                f,
+                "Unable to connect to the ceremony server: timeout. Please try again later.",
+            ),
+            Self::Network { message } => {
+                write!(f, "Unable to connect to the ceremony server: {}", message,)
+            }
+            _ => write!(f, "Unexpected error occurred."),
         }
     }
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<C> std::error::Error for CeremonyError<C>
 where
     C: Ceremony,
