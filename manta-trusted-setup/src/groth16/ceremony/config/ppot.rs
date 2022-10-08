@@ -42,15 +42,22 @@ use core::fmt::{self, Debug, Display};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     arkworks::{
-        bn254,
+        bn254::{self, Fr},
         ec::{AffineCurve, PairingEngine},
+        ff::field_new,
         pairing::Pairing,
+        r1cs_std::eq::EqGadget,
         serialize::{CanonicalSerialize, SerializationError},
     },
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
+    eclair::alloc::{
+        mode::{Public, Secret},
+        Allocate,
+    },
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     signature::{self, VerifyingKeyType},
 };
+use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::{
     into_array_unchecked,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
@@ -407,11 +414,10 @@ pub async fn client_contribute<C>(
 where
     C: Ceremony,
     C::Challenge: Debug + DeserializeOwned,
-    C::ContributionHash: Debug,
+    C::ContributionHash: AsRef<[u8]> + Debug,
     C::Identifier: Serialize,
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
-    C::ContributionHash: AsRef<[u8]>,
 {
     let term = Term::stdout();
     let response = client::contribute(
@@ -486,6 +492,7 @@ impl Size for Config {
 impl ProvingKeyHasher<Self> for Config {
     type Output = [u8; 64];
 
+    #[inline]
     fn hash(proving_key: &ark_groth16::ProvingKey<<Self as Pairing>::Pairing>) -> Self::Output {
         let mut hasher = BlakeHasher::default();
         proving_key
@@ -503,10 +510,12 @@ impl kzg::Configuration for Config {
     const TAU_DOMAIN_TAG: Self::DomainTag = 0;
     const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
     const BETA_DOMAIN_TAG: Self::DomainTag = 2;
+
     #[inline]
     fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
         Self::HashToGroup { domain_tag }
     }
+
     #[inline]
     fn response(
         state: &Accumulator<Self>,
@@ -679,15 +688,6 @@ impl Circuits<Self> for Config {
         circuits
     }
 }
-
-use manta_crypto::{
-    arkworks::{bn254::Fr, ff::field_new, r1cs_std::eq::EqGadget},
-    eclair::alloc::{
-        mode::{Public, Secret},
-        Allocate,
-    },
-};
-use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 
 /// Generates a dummy R1CS circuit.
 #[inline]
