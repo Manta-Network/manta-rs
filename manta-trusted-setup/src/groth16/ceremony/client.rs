@@ -132,7 +132,7 @@ where
         Ok(signed_message)
     }
 
-    ///
+    /// Queries the server for the ceremony starting metadata and client nonce.
     #[inline]
     async fn start_data(
         client: &KnownUrlClient,
@@ -200,7 +200,7 @@ where
         }
     }
 
-    ///
+    /// Computes the state update for the ceremony and signs the update request message.
     #[inline]
     fn compute_update(
         &mut self,
@@ -226,7 +226,7 @@ where
         })
     }
 
-    ///
+    /// Sends the update `request` to the ceremony server.
     #[inline]
     async fn send_update(
         &self,

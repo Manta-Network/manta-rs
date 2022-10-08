@@ -27,7 +27,6 @@ use crate::{
     },
     mpc,
 };
-use console::Term;
 use core::{
     fmt::{self, Debug, Display},
     time::Duration,
@@ -195,9 +194,6 @@ where
                  Please make sure you have submitted your registration form and try again later.",
             ),
             Self::AlreadyContributed => {
-                let term = Term::stdout();
-                term.clear_last_lines(2)
-                    .expect("Clearing lines should succeed.");
                 write!(
                     f,
                     "You have already contributed to the ceremony. \

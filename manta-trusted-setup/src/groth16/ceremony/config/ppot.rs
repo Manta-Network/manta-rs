@@ -426,68 +426,77 @@ where
         style("[0/6]").bold()
     );
     let term = Term::stdout();
-    let response = client::contribute(
-        signing_key,
-        identifier,
-        url.as_str(),
-        |metadata, state| match state {
-            Continue::Started => {
-                println!("\n");
-            }
-            Continue::Position(position) => {
-                let _ = term.clear_last_lines(1);
-                if position == 0 {
+    let response =
+        client::contribute(
+            signing_key,
+            identifier,
+            url.as_str(),
+            |metadata, state| match state {
+                Continue::Started => {
+                    println!("\n");
+                }
+                Continue::Position(position) => {
                     let _ = term.clear_last_lines(1);
-                    println!("{} Waiting in queue...", style("[1/6]").bold());
-                    println!("{} Receiving data from Server... This may take a few minutes.", style("[2/6]").bold());
-                } else if position <= u32::MAX.into() {
-                    let minutes = metadata.contribution_time_limit.as_secs() * position / 60;
-                    let _ = term.clear_last_lines(1);
+                    if position == 0 {
+                        let _ = term.clear_last_lines(1);
+                        println!("{} Waiting in queue...", style("[1/6]").bold());
+                        println!(
+                            "{} Receiving data from Server... \
+                             This may take a few minutes.",
+                            style("[2/6]").bold()
+                        );
+                    } else if position <= u32::MAX.into() {
+                        let minutes = metadata.contribution_time_limit.as_secs() * position / 60;
+                        let _ = term.clear_last_lines(1);
+                        println!(
+                            "{} Waiting in queue... There are {} people ahead of you. \
+                             Estimated Waiting Time: {}.\n",
+                            style("[1/6]").bold(),
+                            style(position).bold().red(),
+                            style(format!("{:?} min", minutes)).bold().red(),
+                        );
+                    } else {
+                        println!(
+                            "{} Waiting in queue... There are many people ahead of you. \
+                             Estimated Waiting Time: forever.",
+                            style("[1/6]").bold(),
+                        );
+                    }
+                }
+                Continue::ComputingUpdate => {
                     println!(
-                        "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.\n",
-                        style("[1/6]").bold(),
-                        style(position).bold().red(),
-                        style(format!("{:?} min", minutes)).bold().red(),
-                    );
-                } else {
-                    println!(
-                        "{} Waiting in queue... There are many people ahead of you. Estimated Waiting Time: forever.",
-                        style("[1/6]").bold(),
+                        "{} Computing contributions. This may take up to 10 minutes.",
+                        style("[3/6]").bold()
                     );
                 }
+                Continue::SendingUpdate => {
+                    println!(
+                        "{} Contribution Computed. Sending data to server.",
+                        style("[4/6]").bold()
+                    );
+                    println!(
+                        "{} Awaiting confirmation from server.",
+                        style("[5/6]").bold()
+                    );
+                }
+                Continue::Timeout => {
+                    let _ = term.clear_last_lines(1);
+                    println!("You have timed out. Waiting in queue again ... \n\n");
+                }
             },
-            Continue::ComputingUpdate => {
-                println!(
-                    "{} Computing contributions. This may take up to 10 minutes.",
-                    style("[3/6]").bold()
-                );
-            },
-            Continue::SendingUpdate => {
-                println!(
-                    "{} Contribution Computed. Sending data to server.",
-                    style("[4/6]").bold()
-                );
-                println!(
-                    "{} Awaiting confirmation from server.",
-                    style("[5/6]").bold()
-                );
-            },
-            Continue::Timeout => {
-                let _ = term.clear_last_lines(1);
-                println!("You have timed out. Waiting in queue again ... \n\n");
-            },
-        },
-    )
-    .await?;
+        )
+        .await?;
     let contribution_hash = hex::encode(C::contribution_hash(&response));
-    let tweet = style(
-        format!(
-            "I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {}",
-            response.index,
-            contribution_hash
-        )).bold().blue();
+    let tweet = style(format!(
+        "I made contribution number {} to the #MantaNetworkTrustedSetup! \
+         My contribution's hash is {}",
+        response.index, contribution_hash
+    ))
+    .bold()
+    .blue();
     println!(
-        "{} Success! You have contributed to the security of Manta Pay! \nNow set your contribution in stone! Tweet:\n{}",
+        "{} Success! You have contributed to the security of Manta Pay! \n\
+        Now set your contribution in stone! Tweet:\n{}",
         style("[6/6]").bold(),
         tweet,
     );
