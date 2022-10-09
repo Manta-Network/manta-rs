@@ -1,4 +1,4 @@
-name: upload-binaries
+name: Upload Binaries
 on:
   release:
     types: [published]
