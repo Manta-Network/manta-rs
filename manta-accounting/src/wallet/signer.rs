@@ -1333,6 +1333,7 @@ serde(crate = "manta_util::serde")
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub enum NetworkType {
     /// Dolphin Testnet Network
+    #[default]
     Dolphin,
 
     /// Calamari Kusama Relay Chain Network
