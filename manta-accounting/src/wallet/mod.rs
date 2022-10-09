@@ -120,12 +120,12 @@ where
 
     /// Starts a new wallet with `ledger` and `signer` connections.
     #[inline]
-    pub async fn start(ledger: L, signer: S) -> Result<Self, Error<C, L, S>>
+    pub async fn start(ledger: L, signer: S, network: NetworkType) -> Result<Self, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
         let mut wallet = Self::new(ledger, signer);
-        wallet.restart().await?;
+        wallet.restart(network).await?;
         Ok(wallet)
     }
 
@@ -376,7 +376,7 @@ where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>
             + ledger::Write<Vec<TransferPost<C>>>,
     {
-        self.sync().await?;
+        self.sync(network).await?;
         let SignResponse { posts } = self.sign(transaction, metadata, network).await?;
         self.ledger
             .write(posts)

@@ -1330,7 +1330,7 @@ feature = "serde",
 derive(Deserialize, Serialize),
 serde(crate = "manta_util::serde")
 )]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub enum NetworkType {
     /// Dolphin Testnet Network
     Dolphin,
