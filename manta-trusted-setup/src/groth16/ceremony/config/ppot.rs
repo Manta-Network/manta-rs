@@ -421,19 +421,10 @@ where
     C::Signature: Serialize,
 {
     println!(
-        "{} Retrieving ceremony metadata from server. \
-         Ensure that you have submitted a registration form for the ceremony.",
+        "{} Retrieving ceremony metadata from server.",
         style("[0/6]").bold()
     );
 
-    /*
-    // let _ = crossterm::terminal::enable_raw_mode();
-    use crossterm::{
-        execute,
-        terminal::{Clear, ClearType, ScrollUp},
-    };
-    use std::io::{stdout, Write};
-    */
     let term = Term::stdout();
 
     let mut downloading_state = false;
@@ -445,17 +436,12 @@ where
             url.as_str(),
             |metadata, state| match state {
                 Continue::Started => {
-                    println!();
+                    println!("\n");
                 }
                 Continue::Position(position) => {
                     if !downloading_state {
-                        // let _ = term.clear_last_lines(1);
-                        // execute!(stdout(), ScrollUp(1));
-                        // execute!(stdout(), Clear(ClearType::CurrentLine));
+                        let _ = term.clear_last_lines(2);
                         if position == 0 {
-                            let _ = term.clear_last_lines(1);
-                            // execute!(stdout(), ScrollUp(1));
-                            // execute!(stdout(), Clear(ClearType::CurrentLine));
                             println!("{} Waiting in queue...", style("[1/6]").bold());
                             println!(
                                 "{} Receiving data from Server... \
@@ -466,11 +452,8 @@ where
                         } else if position <= u32::MAX.into() {
                             let minutes =
                                 metadata.contribution_time_limit.as_secs() * position / 60;
-                            let _ = term.clear_last_lines(1);
-                            // execute!(stdout(), ScrollUp(1));
-                            // execute!(stdout(), Clear(ClearType::CurrentLine));
                             println!(
-                                "{} Waiting in queue... There are {} people ahead of you. \
+                                "{} Waiting in queue... There are {} people ahead of you.\n      \
                              Estimated Waiting Time: {}.",
                                 style("[1/6]").bold(),
                                 style(position).bold().red(),
@@ -505,9 +488,10 @@ where
                 Continue::Timeout => {
                     downloading_state = false;
                     let _ = term.clear_last_lines(1);
-                    // execute!(stdout(), ScrollUp(1));
-                    // execute!(stdout(), Clear(ClearType::CurrentLine));
-                    println!("You have timed out. Waiting in queue again ... \n\n");
+                    println!(
+                        "{} You have timed out. Waiting in queue again ... \n\n",
+                        style("[WARN]").bold().yellow()
+                    );
                 }
             },
         )
@@ -526,7 +510,6 @@ where
         style("[6/6]").bold(),
         tweet,
     );
-    // let _ = crossterm::terminal::disable_raw_mode();
     Ok(())
 }
 

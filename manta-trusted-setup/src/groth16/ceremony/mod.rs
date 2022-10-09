@@ -187,6 +187,7 @@ where
 impl<C> Display for CeremonyError<C>
 where
     C: Ceremony,
+    C::Nonce: Debug,
 {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -208,9 +209,15 @@ where
                 "Unable to connect to the ceremony server: timeout. Please try again later.",
             ),
             Self::Network { message } => {
-                write!(f, "Unable to connect to the ceremony server: {}", message,)
+                write!(f, "Unable to connect to the ceremony server: {}", message)
             }
-            _ => write!(f, "Unexpected error occurred."),
+            err => write!(
+                f,
+                "Unexpected error occurred. \
+                Please contact us at trusted-setup@manta.network and \
+                paste the following error message in the email:\n{:?}",
+                err
+            ),
         }
     }
 }
