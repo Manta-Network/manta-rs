@@ -189,13 +189,13 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn restart(&mut self) -> Result<(), Error<C, L, S>>
+    pub async fn restart(&mut self, network: NetworkType) -> Result<(), Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
         self.reset_state();
-        self.load_initial_state().await?;
-        while self.sync_with(true).await?.is_continue() {}
+        self.load_initial_state(network).await?;
+        while self.sync_with(true, network).await?.is_continue() {}
         Ok(())
     }
 
@@ -203,8 +203,8 @@ where
     /// [`restart`](Self::restart) to avoid querying the ledger at genesis when a known later
     /// checkpoint exists.
     #[inline]
-    async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
-        self.signer_sync(Default::default()).await
+    async fn load_initial_state(&mut self, network: NetworkType) -> Result<(), Error<C, L, S>> {
+        self.signer_sync(SyncRequest {network, ..Default::default()}).await
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state. This method loops
@@ -218,11 +218,11 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn sync(&mut self) -> Result<(), Error<C, L, S>>
+    pub async fn sync(&mut self, network: NetworkType) -> Result<(), Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
-        while self.sync_partial().await?.is_continue() {}
+        while self.sync_partial(network).await?.is_continue() {}
         Ok(())
     }
 
@@ -237,16 +237,16 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>>
+    pub async fn sync_partial(&mut self, network: NetworkType) -> Result<ControlFlow, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
-        self.sync_with(false).await
+        self.sync_with(false, network).await
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state.
     #[inline]
-    async fn sync_with(&mut self, with_recovery: bool) -> Result<ControlFlow, Error<C, L, S>>
+    async fn sync_with(&mut self, with_recovery: bool, network: NetworkType) -> Result<ControlFlow, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -262,6 +262,7 @@ where
             with_recovery,
             origin_checkpoint: self.checkpoint.clone(),
             data,
+            network
         })
         .await?;
         Ok(ControlFlow::should_continue(should_continue))

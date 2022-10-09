@@ -193,6 +193,8 @@ where
 
     /// Ledger Synchronization Data
     pub data: SyncData<C>,
+
+    pub network: NetworkType
 }
 
 impl<C, T> SyncRequest<C, T>
