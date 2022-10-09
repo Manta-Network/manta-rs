@@ -425,7 +425,19 @@ where
          Ensure that you have submitted a registration form for the ceremony.",
         style("[0/6]").bold()
     );
+
+    /*
+    // let _ = crossterm::terminal::enable_raw_mode();
+    use crossterm::{
+        execute,
+        terminal::{Clear, ClearType, ScrollUp},
+    };
+    use std::io::{stdout, Write};
+    */
     let term = Term::stdout();
+
+    let mut downloading_state = false;
+
     let response =
         client::contribute(
             signing_key,
@@ -433,37 +445,48 @@ where
             url.as_str(),
             |metadata, state| match state {
                 Continue::Started => {
-                    println!("\n");
+                    println!();
                 }
                 Continue::Position(position) => {
-                    let _ = term.clear_last_lines(1);
-                    if position == 0 {
-                        let _ = term.clear_last_lines(1);
-                        println!("{} Waiting in queue...", style("[1/6]").bold());
-                        println!(
-                            "{} Receiving data from Server... \
+                    if !downloading_state {
+                        // let _ = term.clear_last_lines(1);
+                        // execute!(stdout(), ScrollUp(1));
+                        // execute!(stdout(), Clear(ClearType::CurrentLine));
+                        if position == 0 {
+                            let _ = term.clear_last_lines(1);
+                            // execute!(stdout(), ScrollUp(1));
+                            // execute!(stdout(), Clear(ClearType::CurrentLine));
+                            println!("{} Waiting in queue...", style("[1/6]").bold());
+                            println!(
+                                "{} Receiving data from Server... \
                              This may take a few minutes.",
-                            style("[2/6]").bold()
-                        );
-                    } else if position <= u32::MAX.into() {
-                        let minutes = metadata.contribution_time_limit.as_secs() * position / 60;
-                        let _ = term.clear_last_lines(1);
-                        println!(
-                            "{} Waiting in queue... There are {} people ahead of you. \
-                             Estimated Waiting Time: {}.\n",
-                            style("[1/6]").bold(),
-                            style(position).bold().red(),
-                            style(format!("{:?} min", minutes)).bold().red(),
-                        );
-                    } else {
-                        println!(
-                            "{} Waiting in queue... There are many people ahead of you. \
+                                style("[2/6]").bold()
+                            );
+                            downloading_state = true;
+                        } else if position <= u32::MAX.into() {
+                            let minutes =
+                                metadata.contribution_time_limit.as_secs() * position / 60;
+                            let _ = term.clear_last_lines(1);
+                            // execute!(stdout(), ScrollUp(1));
+                            // execute!(stdout(), Clear(ClearType::CurrentLine));
+                            println!(
+                                "{} Waiting in queue... There are {} people ahead of you. \
+                             Estimated Waiting Time: {}.",
+                                style("[1/6]").bold(),
+                                style(position).bold().red(),
+                                style(format!("{:?} min", minutes)).bold().red(),
+                            );
+                        } else {
+                            println!(
+                                "{} Waiting in queue... There are many people ahead of you. \
                              Estimated Waiting Time: forever.",
-                            style("[1/6]").bold(),
-                        );
+                                style("[1/6]").bold(),
+                            );
+                        }
                     }
                 }
                 Continue::ComputingUpdate => {
+                    downloading_state = false;
                     println!(
                         "{} Computing contributions. This may take up to 10 minutes.",
                         style("[3/6]").bold()
@@ -480,7 +503,10 @@ where
                     );
                 }
                 Continue::Timeout => {
+                    downloading_state = false;
                     let _ = term.clear_last_lines(1);
+                    // execute!(stdout(), ScrollUp(1));
+                    // execute!(stdout(), Clear(ClearType::CurrentLine));
                     println!("You have timed out. Waiting in queue again ... \n\n");
                 }
             },
@@ -500,6 +526,7 @@ where
         style("[6/6]").bold(),
         tweet,
     );
+    // let _ = crossterm::terminal::disable_raw_mode();
     Ok(())
 }
 

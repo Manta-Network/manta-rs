@@ -161,12 +161,7 @@ where
         C::Identifier: Serialize,
         C::Nonce: DeserializeOwned,
     {
-        let (metadata, nonce) = loop {
-            match Self::start_data(&client, &identifier).await {
-                Ok(Err(CeremonyError::NotRegistered)) => continue,
-                result => break result??,
-            }
-        };
+        let (metadata, nonce) = Self::start_data(&client, &identifier).await??;
         Ok(Self::new_unchecked(
             Signer::new(nonce, signing_key, identifier),
             client,
