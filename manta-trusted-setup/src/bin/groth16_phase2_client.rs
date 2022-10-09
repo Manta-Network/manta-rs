@@ -47,7 +47,7 @@ pub enum Command {
     /// Register for the Trusted Setup Ceremony
     Register,
 
-    /// Runs the Trusted Setup Ceremony as a Contributor
+    /// Contribute to the Trusted Setup Ceremony
     Contribute,
 }
 

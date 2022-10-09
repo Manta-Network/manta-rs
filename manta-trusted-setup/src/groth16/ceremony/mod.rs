@@ -203,7 +203,6 @@ where
                      Each participant is only allowed to contribute once.",
                 )
             }
-            // TODO: Is this error reachable with our client?
             Self::Timeout => write!(
                 f,
                 "Unable to connect to the ceremony server: timeout. Please try again later.",
