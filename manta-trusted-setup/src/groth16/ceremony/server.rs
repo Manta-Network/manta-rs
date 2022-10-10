@@ -125,10 +125,10 @@ where
     ) -> Result<Self, CeremonyError<C>>
     where
         P: AsRef<Path>,
-        C::Challenge: DeserializeOwned + Send, 
-        C::Identifier: Copy + Debug + Send, 
-        C::Nonce: Send, 
-        R::Registry: DeserializeOwned + Send, 
+        C::Challenge: DeserializeOwned + Send,
+        C::Identifier: Copy + Debug + Send,
+        C::Nonce: Send,
+        R::Registry: DeserializeOwned + Send,
         <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
         C: 'static,
         R: 'static,
@@ -341,18 +341,18 @@ where
         <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
         loop {
-        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-        let _ = info!("Updating participant registry.");
-        let registry_path = self.registry_path.clone();
-        let registry = self.registry.clone();
-        let _ = task::spawn_blocking(move || {
-            load_append_entries::<_, _, R::Record, _, _>(&registry_path, &mut *registry.lock())
-                .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
-        })
-        .await
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
-        let _ = info!("Registry successfully updated.");
-    }
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            let _ = info!("Updating participant registry.");
+            let registry_path = self.registry_path.clone();
+            let registry = self.registry.clone();
+            let _ = task::spawn_blocking(move || {
+                load_append_entries::<_, _, R::Record, _, _>(&registry_path, &mut *registry.lock())
+                    .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
+            })
+            .await
+            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
+            let _ = info!("Registry successfully updated.");
+        }
     }
 
     /// Processes a request to update the MPC state and removes the participant if the state was

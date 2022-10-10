@@ -568,7 +568,7 @@ impl kzg::Configuration for Config {
     fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
         Self::HashToGroup { domain_tag }
     }
-    
+
     #[inline]
     fn response(
         state: &Accumulator<Self>,

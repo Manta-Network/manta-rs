@@ -80,16 +80,21 @@ where
         &mut self.participant_lock
     }
 
+    /// Checks if the lock is expired or if nobody is in it.
+    #[inline]
+    pub fn has_expired(&self, metadata: &Metadata) -> bool {
+        self.participant_lock
+            .has_expired(metadata.contribution_time_limit)
+            || self.participant_lock.get().is_none()
+    }
+
     /// Checks if the lock is expired. If so, it updates it.
     #[inline]
     pub fn update_lock<R>(&mut self, metadata: &Metadata, registry: &mut R) -> Option<C::Identifier>
     where
         R: Registry<C::Identifier, C::Participant>,
     {
-        if self
-            .participant_lock
-            .has_expired(metadata.contribution_time_limit)
-        {
+        if self.has_expired(metadata) {
             self.update_expired_lock(registry)
         } else {
             None
