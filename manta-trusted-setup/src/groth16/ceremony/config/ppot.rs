@@ -40,7 +40,6 @@ use colored::Colorize;
 use console::{style, Term};
 use core::fmt::{self, Debug, Display};
 use dialoguer::{theme::ColorfulTheme, Input};
-use hex;
 use manta_crypto::{
     arkworks::{
         bn254::{self, Fr},
@@ -564,10 +563,12 @@ impl kzg::Configuration for Config {
     const TAU_DOMAIN_TAG: Self::DomainTag = 0;
     const ALPHA_DOMAIN_TAG: Self::DomainTag = 1;
     const BETA_DOMAIN_TAG: Self::DomainTag = 2;
+
     #[inline]
     fn hasher(domain_tag: Self::DomainTag) -> Self::HashToGroup {
         Self::HashToGroup { domain_tag }
     }
+    
     #[inline]
     fn response(
         state: &Accumulator<Self>,

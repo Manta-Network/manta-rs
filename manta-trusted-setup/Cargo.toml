@@ -26,7 +26,7 @@ maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "groth16_phase2_client"
-required-features = ["bincode", "clap", "csv", "ppot", "reqwest", "tokio"]
+required-features = ["clap", "ppot-client", "reqwest", "tokio"]
 
 [[bin]]
 name = "groth16_phase2_server"
@@ -54,7 +54,7 @@ ppot-client = [
 csv = ["dep:csv", "serde", "std"]
 
 # Perpetual Powers of Tau Ceremony
-ppot = ["manta-crypto/ark-bn254", "hex/std"]
+ppot = ["manta-crypto/ark-bn254"]
 
 # Rayon Parallelization
 rayon = ["manta-util/rayon"]
@@ -72,7 +72,7 @@ serde = [
 ]
 
 # Standard Library
-std = ["manta-util/std", "ark-std/std"]
+std = ["ark-std/std", "manta-util/std"]
 
 # Testing Frameworks
 test = ["manta-crypto/test"]
