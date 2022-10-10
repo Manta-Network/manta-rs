@@ -125,8 +125,13 @@ where
     ) -> Result<Self, CeremonyError<C>>
     where
         P: AsRef<Path>,
-        C::Challenge: DeserializeOwned,
-        R::Registry: DeserializeOwned,
+        C::Challenge: DeserializeOwned + Send, 
+        C::Identifier: Copy + Debug + Send, 
+        C::Nonce: Send, 
+        R::Registry: DeserializeOwned + Send, 
+        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
+        C: 'static,
+        R: 'static,
     {
         let folder_path = path.as_ref().display();
         let round_number: u64 =
@@ -189,7 +194,7 @@ where
         let metadata: Metadata = compute_metadata(contribution_time_limit, &states);
 
         let registry_path = format!("{}/registry.csv", recovery_directory);
-        Ok(Self {
+        let server = Self {
             lock_queue: Default::default(),
             registry: Arc::new(Mutex::new(registry)),
             sclp: Arc::new(Mutex::new(StateChallengeProof::new_unchecked(
@@ -201,7 +206,14 @@ where
             metadata,
             recovery_directory,
             registry_path,
-        })
+        };
+        let server_clone = server.clone();
+        task::spawn(async move {
+            if server_clone.update_registry().await.is_err() {
+                let _ = warn!("Unable to update registry.");
+            }
+        });
+        Ok(server)
     }
 
     /// Returns the metadata for this ceremony.
@@ -233,11 +245,6 @@ where
             .ok_or(CeremonyError::NotRegistered)
             .map(|p| p.nonce().clone());
         let metadata = self.metadata().clone();
-        task::spawn(async move {
-            if self.update_registry().await.is_err() {
-                let _ = warn!("Unable to update registry.");
-            }
-        });
         Ok((metadata, nonce?))
     }
 
@@ -333,6 +340,8 @@ where
         C::Identifier: Debug + Copy,
         <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
+        loop {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         let _ = info!("Updating participant registry.");
         let registry_path = self.registry_path.clone();
         let registry = self.registry.clone();
@@ -343,7 +352,7 @@ where
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
         let _ = info!("Registry successfully updated.");
-        Ok(())
+    }
     }
 
     /// Processes a request to update the MPC state and removes the participant if the state was
@@ -415,7 +424,7 @@ where
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
 
         println!("{} participants have contributed.", round);
-        self.update_registry().await?;
+        //self.update_registry().await?;
         let _ = info!(
             "[RESPONSE] responding to `update` with: {:?}",
             (round, &challenge)
