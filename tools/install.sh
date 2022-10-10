@@ -18,36 +18,6 @@ fi
 
 set -u
 
-# # If RUSTUP_UPDATE_ROOT is unset or empty, default it.
-# RUSTUP_UPDATE_ROOT="${RUSTUP_UPDATE_ROOT:-https://static.rust-lang.org/rustup}"
-
-#XXX: If you change anything here, please make the same changes in setup_mode.rs
-# usage() {
-#     cat 1>&2 <<EOF
-# rustup-init 1.25.1 (48d233f65 2022-07-12)
-# The installer for rustup
-# 
-# USAGE:
-#     rustup-init [FLAGS] [OPTIONS]
-# 
-# FLAGS:
-#     -v, --verbose           Enable verbose output
-#     -q, --quiet             Disable progress output
-#     -y                      Disable confirmation prompt.
-#         --no-modify-path    Don't configure the PATH environment variable
-#     -h, --help              Prints help information
-#     -V, --version           Prints version information
-# 
-# OPTIONS:
-#         --default-host <default-host>              Choose a default host triple
-#         --default-toolchain <default-toolchain>    Choose a default toolchain to install
-#         --default-toolchain none                   Do not install any toolchains
-#         --profile [minimal|default|complete]       Choose a profile
-#     -c, --component <components>...                Component name to also install
-#     -t, --target <targets>...                      Target name to also install
-# EOF
-# }
-
 usage() {
     cat 1>&2 <<EOF
 manta-cli-init 1.0.0-beta
@@ -117,7 +87,8 @@ main() {
         *:"${_dir}":*)
             ;;
         *)
-            echo "\nexport PATH=\"${_dir}:\$PATH\";" >> "$HOME/.profile"
+            echo >> "$HOME/.profile"
+            echo "export PATH=\"${_dir}:\$PATH\";" >> "$HOME/.profile"
             printf "[INFO] Updated to the ~/.profile PATH variable.\n\nRun \`source ~/.profile\` to update the current shell PATH.\n"
             ;;
     esac
