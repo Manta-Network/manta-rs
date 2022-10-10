@@ -75,20 +75,17 @@ where
     I: Debug + Copy,
     T::Error: Debug,
 {
-    for record in csv::Reader::from_reader(File::open(path)?)
+    for (number, record) in csv::Reader::from_reader(File::open(path)?)
         .deserialize()
         .flatten()
+        .enumerate()
     {
         match T::parse(record) {
             Ok((identifier, participant)) => {
-                let temp = registry.insert(identifier, participant);
-                println!(
-                    "Deserialized participant ID {:?}, they were successfully inserted: {}",
-                    identifier, temp
-                )
+                registry.insert(identifier, participant);
             }
-            Err(e) => {
-                println!("Parsing error: {:?}", e)
+            Err(_) => {
+                println!("Parsing error in line: {}", number + 2);
             }
         };
     }
