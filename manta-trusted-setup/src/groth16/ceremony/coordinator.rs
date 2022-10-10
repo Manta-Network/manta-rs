@@ -102,6 +102,7 @@ where
     }
 
     /// Checks whether 'participant' has the lock. Returns an Error if not.
+    #[inline]
     pub fn has_lock<R>(
         &mut self,
         participant: &C::Identifier,
