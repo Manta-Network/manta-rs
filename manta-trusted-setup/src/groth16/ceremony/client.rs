@@ -233,6 +233,7 @@ where
         C::Signature: Serialize,
         ContributeResponse<C>: DeserializeOwned,
     {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
         self.client
             .post("update", request)
             .await
