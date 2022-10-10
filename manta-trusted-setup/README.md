@@ -2,6 +2,8 @@
 
 For support, please contact us on [Discord](https://discord.gg/AZTZvK7X).
 
+This guide explains how to install and run the client from source code. Users who do not wish to inspect the source code themselves are encouraged to follow the instructions for a quick download [here](https://docs.manta.network/docs/guides/TrustedSetup). The remainder of this guide assumes that the user wishes to install from source code.
+
 To build the trusted setup client from source code you will need the Rust compiler. If you do not have this installed, follow the OS-specific instructions [here](https://www.rust-lang.org/tools/install). If you already have Rust installed make sure you are using the latest version by running the `rustup update` command.
 
 ## Installation
