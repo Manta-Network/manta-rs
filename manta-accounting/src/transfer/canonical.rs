@@ -25,7 +25,7 @@ use crate::{
         ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, ReceivingKey,
         Sender, SpendingKey, Transfer, TransferPost, VerifyingContext,
     },
-    wallet::signer::NetworkType
+    wallet::signer::NetworkType,
 };
 use alloc::{format, string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
@@ -364,11 +364,24 @@ where
         F: FnOnce(&ReceivingKey<C>) -> String,
     {
         match self {
-            Self::Mint(Asset { value, .. }) => format!("Deposit {} on {} network", metadata.display(*value), network.display()),
+            Self::Mint(Asset { value, .. }) => format!(
+                "Deposit {} on {} network",
+                metadata.display(*value),
+                network.display()
+            ),
             Self::PrivateTransfer(Asset { value, .. }, receiving_key) => {
-                format!("Send {} to {} on {} network", metadata.display(*value), f(receiving_key), network.display())
+                format!(
+                    "Send {} to {} on {} network",
+                    metadata.display(*value),
+                    f(receiving_key),
+                    network.display()
+                )
             }
-            Self::Reclaim(Asset { value, .. }) => format!("Withdraw {} on {} network", metadata.display(*value), network.display()),
+            Self::Reclaim(Asset { value, .. }) => format!(
+                "Withdraw {} on {} network",
+                metadata.display(*value),
+                network.display()
+            ),
         }
     }
 }

@@ -45,12 +45,15 @@ use crate::{
     },
     wallet::ledger::{self, Data},
 };
+use alloc::string::String;
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 use manta_util::{
     array_map,
     future::LocalBoxFutureResult,
@@ -58,9 +61,6 @@ use manta_util::{
     iter::{Finder, IteratorExt},
     persistence::Rollback,
 };
-use alloc::string::String;
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
 
 /// Signer Connection
 pub trait Connection<C>
@@ -194,7 +194,7 @@ where
     /// Ledger Synchronization Data
     pub data: SyncData<C>,
 
-    pub network: NetworkType
+    pub network: NetworkType,
 }
 
 impl<C, T> SyncRequest<C, T>
@@ -332,7 +332,7 @@ where
     pub metadata: Option<AssetMetadata>,
 
     /// Current Network
-    pub network: NetworkType
+    pub network: NetworkType,
 }
 
 /// Signer Signing Response
@@ -414,7 +414,7 @@ where
     ProofSystemError(ProofSystemError<C>),
 
     /// Signer Busy
-    SignerBusy
+    SignerBusy,
 }
 
 /// Signing Result
@@ -1329,9 +1329,9 @@ where
 
 /// Public enum to represent the different network types
 #[cfg_attr(
-feature = "serde",
-derive(Deserialize, Serialize),
-serde(crate = "manta_util::serde")
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde")
 )]
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub enum NetworkType {
@@ -1343,8 +1343,7 @@ pub enum NetworkType {
     Calamari,
 
     /// Manta Polkadot Relay Chain Network
-    Manta
-
+    Manta,
 }
 
 impl NetworkType {
@@ -1352,9 +1351,9 @@ impl NetworkType {
     #[inline]
     pub fn display(&self) -> String {
         match self {
-            NetworkType::Dolphin => {String::from("Dolphin")},
-            NetworkType::Calamari => {String::from("Calamari")},
-            NetworkType::Manta => {String::from("Manta")},
+            NetworkType::Dolphin => String::from("Dolphin"),
+            NetworkType::Calamari => String::from("Calamari"),
+            NetworkType::Manta => String::from("Manta"),
         }
     }
 }

@@ -46,9 +46,9 @@ use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::ops::ControlFlow;
 
+use crate::wallet::signer::NetworkType;
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-use crate::wallet::signer::NetworkType;
 
 pub mod balance;
 pub mod ledger;
@@ -204,7 +204,11 @@ where
     /// checkpoint exists.
     #[inline]
     async fn load_initial_state(&mut self, network: NetworkType) -> Result<(), Error<C, L, S>> {
-        self.signer_sync(SyncRequest {network, ..Default::default()}).await
+        self.signer_sync(SyncRequest {
+            network,
+            ..Default::default()
+        })
+        .await
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state. This method loops
@@ -237,7 +241,10 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn sync_partial(&mut self, network: NetworkType) -> Result<ControlFlow, Error<C, L, S>>
+    pub async fn sync_partial(
+        &mut self,
+        network: NetworkType,
+    ) -> Result<ControlFlow, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -246,7 +253,11 @@ where
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state.
     #[inline]
-    async fn sync_with(&mut self, with_recovery: bool, network: NetworkType) -> Result<ControlFlow, Error<C, L, S>>
+    async fn sync_with(
+        &mut self,
+        with_recovery: bool,
+        network: NetworkType,
+    ) -> Result<ControlFlow, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -262,7 +273,7 @@ where
             with_recovery,
             origin_checkpoint: self.checkpoint.clone(),
             data,
-            network
+            network,
         })
         .await?;
         Ok(ControlFlow::should_continue(should_continue))
@@ -331,7 +342,7 @@ where
         &mut self,
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
-        network: NetworkType
+        network: NetworkType,
     ) -> Result<SignResponse<C>, Error<C, L, S>> {
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
@@ -339,7 +350,7 @@ where
             .sign(SignRequest {
                 transaction,
                 metadata,
-                network
+                network,
             })
             .await
             .map_err(Error::SignerConnectionError)?
@@ -370,7 +381,7 @@ where
         &mut self,
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
-        network: NetworkType
+        network: NetworkType,
     ) -> Result<L::Response, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>
