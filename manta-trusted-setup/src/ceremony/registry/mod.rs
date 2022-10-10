@@ -18,7 +18,7 @@
 
 #[cfg(feature = "csv")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
-use self::csv::Record;
+use crate::ceremony::registry::csv::Record;
 
 #[cfg(feature = "std")]
 use std::{

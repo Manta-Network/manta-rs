@@ -38,20 +38,27 @@ use bip39::{Language, Mnemonic, MnemonicType, Seed};
 use blake2::Digest;
 use colored::Colorize;
 use console::{style, Term};
-use core::fmt::{self, Debug};
+use core::fmt::{self, Debug, Display};
 use dialoguer::{theme::ColorfulTheme, Input};
 use hex;
 use manta_crypto::{
     arkworks::{
-        bn254,
+        bn254::{self, Fr},
         ec::{AffineCurve, PairingEngine},
+        ff::field_new,
         pairing::Pairing,
+        r1cs_std::eq::EqGadget,
         serialize::{CanonicalSerialize, SerializationError},
     },
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
+    eclair::alloc::{
+        mode::{Public, Secret},
+        Allocate,
+    },
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
-    signature::{self, VerifyingKeyType},
+    signature,
 };
+use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::{
     into_array_unchecked,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
@@ -60,7 +67,7 @@ use manta_util::{
 use std::collections::HashMap;
 
 type Signature = Ed25519<RawMessage<u64>>;
-type VerifyingKey = <Signature as VerifyingKeyType>::VerifyingKey;
+type VerifyingKey = signature::VerifyingKey<Signature>;
 type Nonce = <Signature as SignatureScheme>::Nonce;
 
 /// Priority
@@ -233,9 +240,7 @@ impl csv::Record<VerifyingKey, Participant> for Record {
                 .try_into()
                 .map_err(|_| "Cannot decode to array.".to_string())?,
         );
-        // related to stupid PublicKey as Array hack
         let verifying_key = Array::from_unchecked(*verifying_key.as_bytes());
-
         let signature: ed25519::Signature = ed25519::signature_from_bytes(
             bs58::decode(self.signature)
                 .into_vec()
@@ -263,7 +268,6 @@ impl csv::Record<VerifyingKey, Participant> for Record {
             Participant::new(
                 verifying_key,
                 self.twitter,
-                // TODO: Fix this, cannot parse priorities right now
                 match priority
                     .parse::<bool>()
                     .map_err(|_| "Cannot parse priority.".to_string())?
@@ -304,12 +308,12 @@ pub fn generate_keys(bytes: &[u8]) -> Option<(ed25519::SecretKey, ed25519::Publi
 #[inline]
 pub fn register(twitter_account: String, email: String) {
     println!(
-        "Your {}: \nCopy the following text to \"Twitter\" Section in Registration Form:\n {}\n",
+        "Your {}: \nCopy the following text to the \"Twitter\" Section in Registration Form:\n {}\n",
         "Twitter Account".italic(),
         twitter_account.green(),
     );
     println!(
-        "Your {}: \nCopy the following text to \"Email\" Section in Registration Form:\n {}\n",
+        "Your {}: \nCopy the following text to the \"Email\" Section in Registration Form:\n {}\n",
         "Email".italic(),
         email.green(),
     );
@@ -317,7 +321,7 @@ pub fn register(twitter_account: String, email: String) {
     let seed = Seed::new(&mnemonic, "manta-trusted-setup");
     let keypair = generate_keys(seed.as_bytes()).expect("Should generate a key pair.");
     println!(
-        "Your {}: \nCopy the following text to \"Public Key\" Section in Registration Form:\n {}\n",
+        "Your {}: \nCopy the following text to the \"Public Key\" Section in Registration Form:\n {}\n",
         "Public Key".italic(),
         bs58::encode(keypair.1).into_string().green(),
     );
@@ -331,13 +335,13 @@ pub fn register(twitter_account: String, email: String) {
     )
     .expect("Signing message should succeed.");
     println!(
-        "Your {}: \nCopy the following text to \"Signature\" Section in Registration Form: \n {}\n",
+        "Your {}: \nCopy the following text to the \"Signature\" Section in Registration Form: \n {}\n",
         "Signature".italic(),
         bs58::encode(signature).into_string().green()
     );
     println!(
         "Your {}: \nThe following text stores your secret for the trusted setup. \
-         Save the following text somewhere safe. \n DO NOT share this to anyone else! \
+         Save the following text somewhere safe. \n DO NOT share this with anyone else! \
          Please discard this data after the trusted setup ceremony.\n {}",
         "Secret".italic(),
         mnemonic.phrase().red().bold(),
@@ -354,11 +358,12 @@ pub fn get_client_keys() -> Result<(ed25519::SecretKey, ed25519::PublicKey), Cli
     let text = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("Your Secret")
         .validate_with(|input: &String| -> Result<(), &str> {
-            Mnemonic::validate(input, Language::English).map_err(|_| "This is not a valid secret.")
+            Mnemonic::validate(input.trim(), Language::English)
+                .map_err(|_| "This is not a valid secret.")
         })
         .interact_text()
         .map_err(|_| ClientKeyError::InvalidSecret)?;
-    let mnemonic = Mnemonic::from_phrase(text.as_str(), Language::English)
+    let mnemonic = Mnemonic::from_phrase(text.trim(), Language::English)
         .map_err(|_| ClientKeyError::MnemonicFailure)?;
     let seed_bytes = Seed::new(&mnemonic, "manta-trusted-setup")
         .as_bytes()
@@ -387,7 +392,7 @@ impl fmt::Display for ClientKeyError {
             Self::InvalidSecret => {
                 write!(
                     f,
-                    "Your {} is invalid. Please enter your secret received during `Register`.",
+                    "Your {} is invalid. Please enter the secret you received during `Register`.",
                     "secret".italic()
                 )
             }
@@ -411,49 +416,101 @@ pub async fn client_contribute<C>(
 where
     C: Ceremony,
     C::Challenge: Debug + DeserializeOwned,
-    C::ContributionHash: Debug,
+    C::ContributionHash: AsRef<[u8]> + Debug,
     C::Identifier: Serialize,
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
     C::ContributionHash: AsRef<[u8]>,
 {
-    let term = Term::stdout();
-    let response = client::contribute(
-        signing_key,
-        identifier,
-        url.as_str(),
-        |metadata, state| match state {
-            Continue::Timeout => {
-                let _ = term.clear_last_lines(1);
-                println!("You have timed out. Waiting in queue again ... \n");
-            },
-            Continue::Position(position) => {
-                let _ = term.clear_last_lines(1);
-                if position == 0 {
-                    let _ = term.clear_last_lines(1);
-                    println!("{} Waiting in queue...", style("[1/6]").bold());
-                    println!("{} Receiving data from Server... This may take a few minutes.", style("[2/6]").bold());
-                }
-                else if position <= u32::MAX.into() {
-                    println!(
-                        "{} Waiting in queue... There are {} people ahead of you. Estimated Waiting Time: {}.",
-                        style("[1/6]").bold(),
-                        style(position).bold().red(),
-                        style(format!("{:?} minutes", (metadata.contribution_time_limit.as_secs() * (position as u64)/60))).bold().red(),
-                    );
-                } else {
-                    println!(
-                        "Waiting in queue... There are many people ahead of you. Estimated Waiting Time: forever.",
-                    );
-                }
-            },
-        },
-    )
-    .await?;
     println!(
-        "{} Success! You have contributed to the security of Manta Pay! \n Now set your contribution in stone! Tweet:\n {}",
+        "{} Retrieving ceremony metadata from server.",
+        style("[0/6]").bold()
+    );
+
+    let term = Term::stdout();
+
+    let mut downloading_state = false;
+
+    let response =
+        client::contribute(
+            signing_key,
+            identifier,
+            url.as_str(),
+            |metadata, state| match state {
+                Continue::Started => {
+                    println!("\n");
+                }
+                Continue::Position(position) => {
+                    if !downloading_state {
+                        let _ = term.clear_last_lines(2);
+                        if position == 0 {
+                            println!("{} Waiting in queue...", style("[1/6]").bold());
+                            println!(
+                                "{} Receiving data from Server... \
+                             This may take a few minutes.",
+                                style("[2/6]").bold()
+                            );
+                            downloading_state = true;
+                        } else if position <= u32::MAX.into() {
+                            let minutes =
+                                metadata.contribution_time_limit.as_secs() * position / 60;
+                            println!(
+                                "{} Waiting in queue... There are {} people ahead of you.\n      \
+                             Estimated Waiting Time: {}.",
+                                style("[1/6]").bold(),
+                                style(position).bold().red(),
+                                style(format!("{:?} min", minutes)).bold().red(),
+                            );
+                        } else {
+                            println!(
+                                "{} Waiting in queue... There are many people ahead of you. \
+                             Estimated Waiting Time: forever.",
+                                style("[1/6]").bold(),
+                            );
+                        }
+                    }
+                }
+                Continue::ComputingUpdate => {
+                    downloading_state = false;
+                    println!(
+                        "{} Computing contributions. This may take up to 10 minutes.",
+                        style("[3/6]").bold()
+                    );
+                }
+                Continue::SendingUpdate => {
+                    println!(
+                        "{} Contribution Computed. Sending data to server.",
+                        style("[4/6]").bold()
+                    );
+                    println!(
+                        "{} Awaiting confirmation from server.",
+                        style("[5/6]").bold()
+                    );
+                }
+                Continue::Timeout => {
+                    downloading_state = false;
+                    let _ = term.clear_last_lines(1);
+                    println!(
+                        "{} You have timed out. Waiting in queue again ... \n\n",
+                        style("[WARN]").bold().yellow()
+                    );
+                }
+            },
+        )
+        .await?;
+    let contribution_hash = hex::encode(C::contribution_hash(&response));
+    let tweet = style(format!(
+        "I made contribution number {} to the #MantaNetworkTrustedSetup! \
+         My contribution's hash is {}",
+        response.index, contribution_hash
+    ))
+    .bold()
+    .blue();
+    println!(
+        "{} Success! You have contributed to the security of Manta Pay! \n\
+        Now set your contribution in stone! Tweet:\n{}",
         style("[6/6]").bold(),
-        style(format!("I made contribution number {} to the #MantaNetworkTrustedSetup! My contribution's hash is {}",response.index, hex::encode(C::contribution_hash(&response)))).bold().blue()
+        tweet,
     );
     Ok(())
 }
@@ -489,6 +546,7 @@ impl Size for Config {
 impl ProvingKeyHasher<Self> for Config {
     type Output = [u8; 64];
 
+    #[inline]
     fn hash(proving_key: &ark_groth16::ProvingKey<<Self as Pairing>::Pairing>) -> Self::Output {
         let mut hasher = BlakeHasher::default();
         proving_key
@@ -683,15 +741,6 @@ impl Circuits<Self> for Config {
     }
 }
 
-use manta_crypto::{
-    arkworks::{bn254::Fr, ff::field_new, r1cs_std::eq::EqGadget},
-    eclair::alloc::{
-        mode::{Public, Secret},
-        Allocate,
-    },
-};
-use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
-
 /// Generates a dummy R1CS circuit.
 #[inline]
 pub fn dummy_circuit(cs: &mut R1CS<<Config as Pairing>::Scalar>) {
@@ -703,15 +752,15 @@ pub fn dummy_circuit(cs: &mut R1CS<<Config as Pairing>::Scalar>) {
         .expect("enforce_equal is not allowed to fail");
 }
 
-/// Panics whenever `result` is an `Err`-variant and formats the error.
+/// Displays whenever `result` is an `Err`-variant and formats the error.
 #[inline]
-pub fn exit_on_error<T, E>(result: Result<T, E>) -> T
+pub fn display_on_error<T, E>(result: Result<T, E>)
 where
-    E: Debug,
+    E: Display,
 {
-    result.unwrap_or_else(|e| {
-        panic!("{}: {:?}", "error".red().bold(), e);
-    })
+    if let Err(e) = result {
+        println!("{} {}", style("[ERROR]").bold().red(), e);
+    }
 }
 
 /// Testing Suite

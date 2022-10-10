@@ -109,14 +109,6 @@ impl From<PublicKey> for VerifyingKey {
     }
 }
 
-// impl TryFrom<VerifyingKey> for PublicKey {
-//     type Error = SignatureError;
-
-//     fn try_from(value: VerifyingKey) -> Result<Self, Self::Error> {
-//         Self::from_bytes(value.0.as_slice())
-//     }
-// }
-
 impl<M> MessageType for Ed25519<M> {
     type Message = M;
 }
@@ -137,7 +129,7 @@ impl<M> SigningKeyType for Ed25519<M> {
 }
 
 impl<M> VerifyingKeyType for Ed25519<M> {
-    type VerifyingKey = Array<u8, 32>; // hack This is the serialization of an ed255::PublicKey
+    type VerifyingKey = Array<u8, 32>;
 }
 
 impl<M> Sign for Ed25519<M>
@@ -172,7 +164,6 @@ where
         compiler: &mut (),
     ) -> Self::Verification {
         let _ = compiler;
-        // hack
         let verifying_key = PublicKey::from_bytes(verifying_key.as_slice())?;
         verifying_key.verify(&message.as_bytes(), signature)
     }

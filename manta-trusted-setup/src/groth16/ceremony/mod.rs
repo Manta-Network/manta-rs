@@ -28,7 +28,7 @@ use crate::{
     mpc,
 };
 use core::{
-    fmt::{Debug, Display},
+    fmt::{self, Debug, Display},
     time::Duration,
 };
 use manta_crypto::arkworks::pairing::Pairing;
@@ -38,10 +38,13 @@ use manta_util::{
     serde::{Deserialize, Serialize},
 };
 
-pub mod client;
 pub mod config;
 pub mod log;
 pub mod message;
+
+#[cfg(feature = "reqwest")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
+pub mod client;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
@@ -173,7 +176,10 @@ where
     Timeout,
 
     /// Network Error
-    Network,
+    Network {
+        /// Optional Error Message Display String
+        message: String,
+    },
 
     /// Unexpected Server Error
     Unexpected(UnexpectedError),
@@ -182,13 +188,43 @@ where
 impl<C> Display for CeremonyError<C>
 where
     C: Ceremony,
+    C::Nonce: Debug,
 {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Ceremony Error encountered: ") // TODO: How can I display the error?
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotRegistered => write!(
+                f,
+                "Registry update is taking longer than expected. \
+                 Please make sure you have submitted your registration form and try again later.",
+            ),
+            Self::AlreadyContributed => {
+                write!(
+                    f,
+                    "You have already contributed to the ceremony. \
+                     Each participant is only allowed to contribute once.",
+                )
+            }
+            Self::Timeout => write!(
+                f,
+                "Unable to connect to the ceremony server: timeout. Please try again later.",
+            ),
+            Self::Network { message } => {
+                write!(f, "Unable to connect to the ceremony server: {}", message)
+            }
+            err => write!(
+                f,
+                "Unexpected error occurred. \
+                Please contact us at trusted-setup@manta.network and \
+                paste the following error message in the email:\n{:?}",
+                err
+            ),
+        }
     }
 }
 
 #[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<C> std::error::Error for CeremonyError<C>
 where
     C: Ceremony,

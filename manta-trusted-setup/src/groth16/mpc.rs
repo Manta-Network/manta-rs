@@ -62,7 +62,7 @@ pub struct State<P>(
         feature = "serde",
         serde(
             serialize_with = "canonical_serialize_uncompressed::<ProvingKey<P::Pairing>, _>",
-            deserialize_with = "canonical_deserialize_unchecked::<'de, _, ProvingKey<P::Pairing>>" // TODO: Switch back to unchecked
+            deserialize_with = "canonical_deserialize_unchecked::<'de, _, ProvingKey<P::Pairing>>"
         )
     )]
     pub ProvingKey<P::Pairing>,

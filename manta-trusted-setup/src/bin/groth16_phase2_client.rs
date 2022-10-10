@@ -21,21 +21,24 @@ extern crate alloc;
 use clap::{Parser, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::{client_contribute, exit_on_error, get_client_keys, register, Config},
+    config::ppot::{client_contribute, display_on_error, get_client_keys, register, Config},
     CeremonyError,
 };
 use manta_util::Array;
 
 /// Welcome Message
-pub const TITLE: &str = r"
- __  __             _          _______             _           _    _____      _
-|  \/  |           | |        |__   __|           | |         | |  / ____|    | |
-| \  / | __ _ _ __ | |_ __ _     | |_ __ _   _ ___| |_ ___  __| | | (___   ___| |_ _   _ _ __
-| |\/| |/ _` | '_ \| __/ _` |    | | '__| | | / __| __/ _ \/ _` |  \___ \ / _ | __| | | | '_ \
-| |  | | (_| | | | | || (_| |    | | |  | |_| \__ | ||  __| (_| |  ____) |  __| |_| |_| | |_) |
-|_|  |_|\__,_|_| |_|\__\__,_|    |_|_|   \__,_|___/\__\___|\__,_| |_____/ \___|\__|\__,_| .__/
-                                                                                        | |
-                                                                                        |_|
+pub const TITLE: &str = r" __  __             _          _____               _           _
+|  \/  | __ _ _ __ | |_ __ _  |_   _| __ _   _ ___| |_ ___  __| |
+| |\/| |/ _` | '_ \| __/ _` |   | || '__| | | / __| __/ _ \/ _` |
+| |  | | (_| | | | | || (_| |   | || |  | |_| \__ \ ||  __/ (_| |
+|_|  |_|\__,_|_| |_|\__\__,_|   |_||_|   \__,_|___/\__\___|\__,_|
+
+ ____       _
+/ ___|  ___| |_ _   _ _ __
+\___ \ / _ \ __| | | | '_ \
+ ___) |  __/ |_| |_| | |_) |
+|____/ \___|\__|\__,_| .__/
+                     |_|
 ";
 
 /// Command
@@ -44,7 +47,7 @@ pub enum Command {
     /// Register for the Trusted Setup Ceremony
     Register,
 
-    /// Runs the Trusted Setup Ceremony as a Contributor
+    /// Contribute to the Trusted Setup Ceremony
     Contribute,
 }
 
@@ -56,6 +59,7 @@ pub struct Arguments {
     command: Command,
 
     /// URL
+    #[clap(default_value = "https://ceremony.manta.network")]
     url: String,
 }
 
@@ -69,11 +73,11 @@ impl Arguments {
                 let twitter_account = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Your twitter account")
                     .interact_text()
-                    .expect("");
+                    .expect("Unable to get a valid twitter account.");
                 let email = Input::with_theme(&ColorfulTheme::default())
                     .with_prompt("Your email address")
                     .interact_text()
-                    .expect("");
+                    .expect("Unable to get a valid email.");
                 register(twitter_account, email);
                 Ok(())
             }
@@ -89,7 +93,6 @@ impl Arguments {
                     .build()
                 {
                     Ok(runtime) => {
-                        // stupid hack
                         let pk = Array::from_unchecked(*pk.as_bytes());
                         runtime
                             .block_on(async { client_contribute::<Config>(sk, pk, self.url).await })
@@ -102,7 +105,7 @@ impl Arguments {
 }
 
 fn main() {
-    exit_on_error(Arguments::parse().run());
+    display_on_error(Arguments::parse().run());
 }
 
 // cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client -- https://ceremony.manta.network register
