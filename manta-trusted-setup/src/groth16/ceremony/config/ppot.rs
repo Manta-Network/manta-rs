@@ -127,6 +127,13 @@ pub struct Participant {
     contributed: bool,
 }
 
+impl fmt::Display for Participant {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.twitter())
+    }
+}
+
 impl Participant {
     /// Builds a new [`Participant`].
     #[inline]

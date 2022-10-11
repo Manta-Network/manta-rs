@@ -40,7 +40,10 @@ use crate::{
     mpc::ChallengeType,
 };
 use alloc::sync::Arc;
-use core::{fmt::Debug, time::Duration};
+use core::{
+    fmt::{Debug, Display},
+    time::Duration,
+};
 use manta_crypto::arkworks::{
     bn254::{G1Affine, G2Affine},
     pairing::Pairing,
@@ -208,11 +211,7 @@ where
             registry_path,
         };
         let server_clone = server.clone();
-        task::spawn(async move {
-            if server_clone.update_registry().await.is_err() {
-                let _ = warn!("Unable to update registry.");
-            }
-        });
+        task::spawn(async move { server_clone.update_registry().await });
         Ok(server)
     }
 
@@ -264,23 +263,25 @@ where
         R: 'static,
         <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
-        info!(
-            "[REQUEST] processing `start`, from participant with identifier:  {:?}.",
-            request
-        )?;
+        // info!(
+        //     "[REQUEST] processing `start`, from participant with identifier:  {:?}.",
+        //     request
+        // )?;
         let response = self.start(request).await;
-        info!("[RESPONSE] responding to `start` with: {:?}.", response)?;
+        //info!("[RESPONSE] responding to `start` with: {:?}.", response)?;
         Ok(response)
     }
 
-    /// Queries the server state
+    /// Queries the server state. First bool represents whether the participant who posted
+    /// the query got enqueued. Second bool represents whether the lock has been updated.
     #[inline]
     pub async fn query(
         self,
         request: SignedMessage<C, C::Identifier, QueryRequest>,
-    ) -> Result<QueryResponse<C>, CeremonyError<C>>
+    ) -> Result<(bool, bool, QueryResponse<C>, C::Participant), CeremonyError<C>>
     where
         C::Challenge: Clone,
+        C::Participant: Clone,
         C::Identifier: Debug, // remove
         C::Nonce: Debug,      // remove
         C::Priority: Debug + Copy,
@@ -290,17 +291,28 @@ where
         let priority = preprocess_request::<C, _, _>(&mut *registry, &request)?;
         let mut lock_queue = self.lock_queue.lock();
         let identifier = request.into_identifier();
-        if lock_queue
-            .has_lock(&identifier, &self.metadata, &mut *registry)
-            .is_ok()
-        {
-            return Ok(QueryResponse::State(self.sclp.lock().round_state()));
+        let has_lock = lock_queue.has_lock(&identifier, &self.metadata, &mut *registry);
+        let participant = registry
+            .get(&identifier)
+            .expect("Getting participant from valid identifier is not supposed to fail.")
+            .clone();
+        if has_lock.1.is_ok() {
+            return Ok((
+                false,
+                has_lock.0,
+                QueryResponse::State(self.sclp.lock().round_state()),
+                participant,
+            ));
         }
-        let position = lock_queue
+        let (enqueued, position) = lock_queue
             .queue_mut()
             .push_back_if_missing(priority.into(), identifier);
-
-        Ok(QueryResponse::QueuePosition(position as u64))
+        Ok((
+            enqueued,
+            has_lock.0,
+            QueryResponse::QueuePosition(position as u64),
+            participant,
+        ))
     }
 
     ///
@@ -313,6 +325,7 @@ where
         C::Challenge: Clone + Debug,
         C::Identifier: Debug, // remove
         C::Nonce: Debug,      // remove
+        C::Participant: Clone + Display,
         SignedMessage<C, C::Identifier, QueryRequest>: Debug,
         QueryResponse<C>: Debug,
         CeremonyError<C>: Debug,
@@ -320,7 +333,29 @@ where
         usize: From<C::Priority>,
     {
         //info!("[REQUEST] processing `query`: {:?}", request)?;
-        let response = self.query(request).await;
+        let response = match self.query(request).await {
+            Ok((enqueued, lock_changed, response, participant)) => {
+                if lock_changed {
+                    let _ = info!("[ACTION] Lock updated.");
+                }
+                if enqueued {
+                    if let QueryResponse::QueuePosition(position) = response {
+                        let _ = info!(
+                            "[ACTION] Enqueued participant {} in position {}.",
+                            participant, position
+                        );
+                    }
+                }
+                if let QueryResponse::State(_) = response {
+                    let _ = info!(
+                        "[RESPONSE] Responding to query from participant {} with state.",
+                        participant
+                    );
+                }
+                Ok(response)
+            }
+            Err(e) => Err(e),
+        };
         // info!("[RESPONSE] responding to `query` with: {:?}.", response)?;
         //info!("[RESPONSE] responding to `query` with: the state")?;
 
@@ -329,7 +364,7 @@ where
 
     /// Updates the registry.
     #[inline]
-    pub async fn update_registry(&self) -> Result<(), CeremonyError<C>>
+    pub async fn update_registry(&self)
     where
         C::Nonce: Send,
         R::Registry: Send,
@@ -342,16 +377,27 @@ where
     {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            let _ = info!("Updating participant registry.");
+            let _ = info!("[ACTION] Updating participant registry.");
             let registry_path = self.registry_path.clone();
             let registry = self.registry.clone();
-            let _ = task::spawn_blocking(move || {
+            match task::spawn_blocking(move || {
                 load_append_entries::<_, _, R::Record, _, _>(&registry_path, &mut *registry.lock())
                     .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
             })
             .await
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))?;
-            let _ = info!("Registry successfully updated.");
+            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::TaskError)).into_iter().collect::<Result<(), CeremonyError<C>>>() // TODO: Brandon pls review.
+            {
+                Ok(()) => {
+                    let _ = info!("[ACTION] Registry successfully updated.");
+                },
+                Err(CeremonyError::Unexpected(UnexpectedError::Serialization)) => {
+                    let _ = warn!("[ERROR] Unable to update registry. Serialization error.");
+                },
+                Err(CeremonyError::Unexpected(UnexpectedError::TaskError)) => {
+                    let _ = warn!("[ERROR] Unable to update registry. Task error.");
+                },
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -365,8 +411,10 @@ where
     where
         C: 'static,
         C::Challenge: Clone + Debug + Send + Serialize,
+        C::ContributionHash: AsRef<[u8]>,
         C::Identifier: Send,
         C::Identifier: Debug + Copy,
+        C::Participant: Clone + Display,
         C::Nonce: Send,
         C::Nonce: Debug,
         StateChallengeProof<C, CIRCUIT_COUNT>: Send,
@@ -375,19 +423,32 @@ where
         R: 'static,
         <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
-        let _ = info!("[REQUEST] processing `update`");
-        let _ = info!("Preprocessing `update` request: checking signature and nonce, updating queue if applicable");
-        let (identifier, message) = {
+        let _ = info!("[REQUEST] Preprocessing `update` request: checking signature and nonce.");
+        let (identifier, message, participant, has_been_updated) = {
             let mut registry = self.registry.lock();
-            println!("You should see preprocess request's message next");
             preprocess_request(&mut *registry, &request)?;
             let (identifier, message) = request.into_inner();
-            self.lock_queue
-                .lock()
-                .has_lock(&identifier, &self.metadata, &mut *registry)?;
-            (identifier, message)
+            let has_lock =
+                self.lock_queue
+                    .lock()
+                    .has_lock(&identifier, &self.metadata, &mut *registry);
+            // if has_lock.0 {
+            //     let _ = info!("Lock updated");
+            // }
+            has_lock.1?;
+            let participant = registry
+                .get(&identifier)
+                .expect("Getting participant from valid identifier should not fail.")
+                .clone();
+            (identifier, message, participant, has_lock.0)
         };
-        let _ = info!("About to check contribution validity");
+        if has_been_updated {
+            let _ = info!("[ACTION] Lock updated.");
+        }
+        let _ = info!(
+            "[REQUEST] processing `update` from participant: {}.",
+            participant
+        );
         let sclp = self.sclp.clone();
         let recovery_directory = self.recovery_directory.clone();
 
@@ -422,18 +483,18 @@ where
         })
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
-
-        println!("{} participants have contributed.", round);
-        //self.update_registry().await?;
-        let _ = info!(
-            "[RESPONSE] responding to `update` with: {:?}",
-            (round, &challenge)
-        );
-
-        Ok(ContributeResponse {
+        let _ = info!("[ACTION] Lock updated.");
+        let contribute_response = ContributeResponse {
             index: round,
             challenge: challenge.to_vec(),
-        })
+        };
+        let _ = info!(
+            "[RESPONSE] responding to successful `update` number {} from participant {} with the contribution hash: {}",
+            round,
+            participant,
+            hex::encode(C::contribution_hash(&contribute_response))
+        );
+        Ok(contribute_response)
     }
 
     /// Processes a request to update the MPC state and removes the participant if the state was
@@ -446,6 +507,8 @@ where
     where
         C: 'static,
         C::Challenge: Clone + Debug + Send + Serialize,
+        C::ContributionHash: AsRef<[u8]>,
+        C::Participant: Clone + Display,
         C::Identifier: Send,
         C::Identifier: Debug + Copy,
         C::Nonce: Send,
@@ -456,7 +519,20 @@ where
         <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
         R: 'static,
     {
-        Ok(self.update(request).await)
+        let response = self.update(request).await;
+        match &response {
+            Err(CeremonyError::Timeout) => {
+                let _ = warn!("[ERROR] Timeout during contribution.");
+            }
+            Err(CeremonyError::BadRequest) => {
+                let _ = warn!("[ERROR] Invalid contribution.");
+            }
+            Err(e) => {
+                let _ = warn!("[ERROR] Unexpected error {:?}", e);
+            }
+            _ => {}
+        };
+        Ok(response)
     }
 }
 
