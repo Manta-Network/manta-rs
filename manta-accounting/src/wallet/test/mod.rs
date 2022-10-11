@@ -443,14 +443,14 @@ where
     where
         L: PublicBalanceOracle,
     {
-        self.wallet.sync().await?;
+        self.wallet.sync(Default::default()).await?;
         Ok(self.wallet.ledger().public_balances().await)
     }
 
     /// Synchronizes with the ledger, attaching the `action` marker for the possible error branch.
     #[inline]
     async fn sync_with(&mut self, action: ActionType) -> Result<(), ActionLabelledError<C, L, S>> {
-        self.wallet.sync().await.map_err(|err| action.label(err))
+        self.wallet.sync(Default::default()).await.map_err(|err| action.label(err))
     }
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
@@ -481,7 +481,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        self.wallet.sync().await?;
+        self.wallet.sync(Default::default()).await?;
         match rng.select_item(self.wallet.assets()) {
             Some((id, value)) => Ok(Some(id.sample_up_to(*value, rng))),
             _ => Ok(None),
@@ -670,10 +670,10 @@ where
     /// that the balance state has the same or more funds than before the restart.
     #[inline]
     async fn restart(&mut self) -> Result<bool, Error<C, L, S>> {
-        self.wallet.sync().await?;
+        self.wallet.sync(Default::default()).await?;
         let assets = AssetList::from_iter(self.wallet.assets().clone());
         self.wallet
-            .restart()
+            .restart(Default::default())
             .await
             .map(move |_| self.wallet.contains_all(assets))
     }
@@ -823,7 +823,7 @@ where
                         loop {
                             let event = Event {
                                 action,
-                                value: actor.wallet.post(transaction.clone(), None).await,
+                                value: actor.wallet.post(transaction.clone(), None, Default::default()).await,
                             };
                             if let Ok(false) = event.value {
                                 if retries == 0 {
@@ -878,7 +878,7 @@ where
 {
     let mut balances = AssetList::new();
     for wallet in wallets {
-        wallet.sync().await?;
+        wallet.sync(Default::default()).await?;
         balances.deposit_all(wallet.ledger().public_balances().await.unwrap());
         balances.deposit_all(
             wallet
