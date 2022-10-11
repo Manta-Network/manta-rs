@@ -450,7 +450,10 @@ where
     /// Synchronizes with the ledger, attaching the `action` marker for the possible error branch.
     #[inline]
     async fn sync_with(&mut self, action: ActionType) -> Result<(), ActionLabelledError<C, L, S>> {
-        self.wallet.sync(Default::default()).await.map_err(|err| action.label(err))
+        self.wallet
+            .sync(Default::default())
+            .await
+            .map_err(|err| action.label(err))
     }
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
@@ -823,7 +826,10 @@ where
                         loop {
                             let event = Event {
                                 action,
-                                value: actor.wallet.post(transaction.clone(), None, Default::default()).await,
+                                value: actor
+                                    .wallet
+                                    .post(transaction.clone(), None, Default::default())
+                                    .await,
                             };
                             if let Ok(false) = event.value {
                                 if retries == 0 {
