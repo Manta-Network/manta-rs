@@ -194,6 +194,7 @@ where
     /// Ledger Synchronization Data
     pub data: SyncData<C>,
 
+    /// Network Type for Sync Request
     pub network: NetworkType,
 }
 
