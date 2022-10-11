@@ -19,7 +19,10 @@
 use crate::{
     groth16::{
         kzg::{Accumulator, Configuration, Proof, Size, G1},
-        ppot::{hashing::PpotHasher, serialization::PpotSerializer},
+        ppot::{
+            hashing::PpotHasher,
+            serialization::{PointDeserializeError, PpotSerializer},
+        },
     },
     util::{BlakeHasher, Deserializer, Serializer},
 };
@@ -197,3 +200,18 @@ where
 const PPOT_POWERS: usize = 1 << 28;
 /// Type of the original ceremony
 pub type PpotCeremony = PerpetualPowersOfTauCeremony<PpotSerializer, PPOT_POWERS>;
+
+/// Decompresses a `response` file to a `challenge` file, assuming its hash
+/// has been pre-computed and passed as argument. This creates challenge file
+/// in place. Uses approx. 1 GB chunks in case files are large.
+pub fn decompress_response<S, T, M, const POWERS: usize>(
+    reader: &[u8],
+    hash: [u8; 64],
+) -> Result<(), PointDeserializeError>
+where
+    S: Deserializer<T, M> + Serializer<T, M>,
+{
+    // TODO: Choose this number to have chunks of desired size
+    let chunk_size: usize = 1 << 8;
+    Ok(())
+}
