@@ -90,14 +90,18 @@ where
 
     /// Checks if the lock is expired. If so, it updates it.
     #[inline]
-    pub fn update_lock<R>(&mut self, metadata: &Metadata, registry: &mut R) -> Option<C::Identifier>
+    pub fn update_lock<R>(
+        &mut self,
+        metadata: &Metadata,
+        registry: &mut R,
+    ) -> (bool, Option<C::Identifier>)
     where
         R: Registry<C::Identifier, C::Participant>,
     {
         if self.has_expired(metadata) {
-            self.update_expired_lock(registry)
+            (true, self.update_expired_lock(registry))
         } else {
-            None
+            (false, None)
         }
     }
 
@@ -108,24 +112,25 @@ where
         participant: &C::Identifier,
         metadata: &Metadata,
         registry: &mut R,
-    ) -> Result<(), CeremonyError<C>>
+    ) -> (bool, Result<(), CeremonyError<C>>)
     where
         R: Registry<C::Identifier, C::Participant>,
     {
-        if let Some(p) = self.update_lock(metadata, registry) {
+        let (has_been_updated, identifier) = self.update_lock(metadata, registry);
+        if let Some(p) = identifier {
             if p == *participant {
-                return Err(CeremonyError::Timeout);
+                return (has_been_updated, Err(CeremonyError::Timeout));
             }
         };
         match self.participant_lock.get() {
             Some(p) => {
                 if p == participant {
-                    Ok(())
+                    (has_been_updated, Ok(()))
                 } else {
-                    Err(CeremonyError::NotYourTurn)
+                    (has_been_updated, Err(CeremonyError::NotYourTurn))
                 }
             }
-            _ => Err(CeremonyError::NotYourTurn),
+            _ => (has_been_updated, Err(CeremonyError::NotYourTurn)),
         }
     }
 
