@@ -196,7 +196,7 @@ where
         // To avoid cloning states below, compute metadata now.
         let metadata: Metadata = compute_metadata(contribution_time_limit, &states);
 
-        let registry_path = format!("{}/registry.csv", recovery_directory);
+        let registry_path = format!("{}/registry_buffer.csv", recovery_directory);
         let server = Self {
             lock_queue: Default::default(),
             registry: Arc::new(Mutex::new(registry)),
