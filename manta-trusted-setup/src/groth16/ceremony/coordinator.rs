@@ -66,7 +66,6 @@ where
 impl<C, const LEVEL_COUNT: usize> LockQueue<C, LEVEL_COUNT>
 where
     C: Ceremony,
-    C::Identifier: Debug, // remove
 {
     /// Returns a mutable reference to `queue`.
     #[inline]
@@ -264,7 +263,8 @@ where
     ///
     /// # Registration
     ///
-    /// This method requires that `participant` is already registered.
+    /// This method requires that `participant` is already registered. This method assumes the state
+    /// was deserialized without checks and performs these checks here.
     #[inline]
     pub fn update(
         &mut self,
@@ -276,6 +276,7 @@ where
         C::Challenge: Clone + Serialize,
     {
         for (i, (state, proof)) in state.into_iter().zip(proof.clone().into_iter()).enumerate() {
+            C::check_state(&state).map_err(|_| CeremonyError::BadRequest)?;
             let next_challenge = C::challenge(&self.challenge[i], &self.state[i], &state, &proof);
             self.state[i] = verify_transform(&self.challenge[i], &self.state[i], state, proof)
                 .map_err(|_| CeremonyError::BadRequest)?
