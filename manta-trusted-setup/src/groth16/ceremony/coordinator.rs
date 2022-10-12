@@ -66,7 +66,6 @@ where
 impl<C, const LEVEL_COUNT: usize> LockQueue<C, LEVEL_COUNT>
 where
     C: Ceremony,
-    C::Identifier: Debug, // remove
 {
     /// Returns a mutable reference to `queue`.
     #[inline]

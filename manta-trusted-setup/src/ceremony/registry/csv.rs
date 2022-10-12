@@ -57,23 +57,20 @@ where
     T: Record<I, V>,
     R: Registry<I, V>,
     P: AsRef<Path>,
-    T::Error: Debug,
-    I: Debug + Copy,
 {
     let mut registry = R::new();
     load_append_entries::<_, _, T, _, _>(path, &mut registry)?;
     Ok(registry)
 }
 
-/// Loads new entries into `registry` from `path` using `T` as the record type, skipping the first `registry.len()` elements.
+/// Loads new entries into `registry` from `path` using `T` as the record type. It doesn't overwrite 
+/// existing entries.
 #[inline]
 pub fn load_append_entries<I, V, T, R, P>(path: P, registry: &mut R) -> Result<(), Error<T::Error>>
 where
     T: Record<I, V>,
     R: Registry<I, V>,
     P: AsRef<Path>,
-    I: Debug + Copy,
-    T::Error: Debug,
 {
     for (number, record) in csv::Reader::from_reader(File::open(path)?)
         .deserialize()
