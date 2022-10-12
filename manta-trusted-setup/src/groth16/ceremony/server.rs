@@ -141,14 +141,12 @@ where
             deserialize_from_file(format!("{}{}", folder_path, "/round_number"))
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         println!("Recovering a ceremony at round {:?}", round_number);
-
         let names: Vec<String> =
             deserialize_from_file(format!("{}{}", folder_path, "/circuit_names"))
                 .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         let mut states = Vec::<State<C>>::new();
         let mut challenges = Vec::<C::Challenge>::new();
         let mut proofs = Vec::<Proof<C>>::new();
-
         for name in names.into_iter() {
             let state: State<C> = deserialize_from_file(filename_format(
                 folder_path.to_string(),
@@ -158,7 +156,6 @@ where
             ))
             .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
             states.push(state);
-
             let challenge: C::Challenge = deserialize_from_file(filename_format(
                 folder_path.to_string(),
                 name.clone(),
@@ -167,7 +164,6 @@ where
             ))
             .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
             challenges.push(challenge);
-
             if round_number > 0 {
                 let latest_proof: Proof<C> = deserialize_from_file(filename_format(
                     folder_path.to_string(),
@@ -179,12 +175,10 @@ where
                 proofs.push(latest_proof);
             }
         }
-
         let latest_proof = match round_number {
             0 => None,
             _ => Some(BoxArray::from(into_array_unchecked(proofs))),
         };
-
         let registry: R::Registry = deserialize_from_file(filename_format(
             folder_path.to_string(),
             "".to_string(),
@@ -192,11 +186,8 @@ where
             round_number,
         ))
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
-
-        // To avoid cloning states below, compute metadata now.
         let metadata: Metadata = compute_metadata(contribution_time_limit, &states);
-
-        let registry_path = format!("{}/registry_buffer.csv", recovery_directory);
+        let registry_path = format!("{}/registry.csv", recovery_directory);
         let server = Self {
             lock_queue: Default::default(),
             registry: Arc::new(Mutex::new(registry)),
@@ -221,54 +212,23 @@ where
         &self.metadata
     }
 
-    /// Gets the server state size and the current nonce of the participant.
+    /// Processes a `start` request and returns the ceremony metadata.
     #[inline]
     pub async fn start(
         self,
         request: C::Identifier,
-    ) -> Result<(Metadata, C::Nonce), CeremonyError<C>>
-    where
-        C::Nonce: Clone + Debug + Send,
-        R::Registry: Send,
-        C::Challenge: Send,
-        C::Identifier: Debug + Send,
-        C::Identifier: Copy,
-        C: 'static,
-        R: 'static,
-        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
-    {
-        let nonce = self
-            .registry
-            .lock()
-            .get(&request)
-            .ok_or(CeremonyError::NotRegistered)
-            .map(|p| p.nonce().clone());
-        let metadata = self.metadata().clone();
-        Ok((metadata, nonce?))
+    ) -> Result<(Metadata, C::Nonce), CeremonyError<C>> {
+        let _ = request;
+        Ok((self.metadata().clone(), C::Nonce::default()))
     }
 
-    ///
+    /// Processes a `start` request and returns the ceremony metadata.
     #[inline]
     pub async fn start_endpoint(
         self,
         request: C::Identifier,
-    ) -> Result<Result<(Metadata, C::Nonce), CeremonyError<C>>, Error>
-    where
-        C::Nonce: Clone + Debug + Send,
-        R::Registry: Send,
-        C::Challenge: Send,
-        C::Identifier: Debug + Send,
-        C::Identifier: Copy,
-        C: 'static,
-        R: 'static,
-        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
-    {
-        // info!(
-        //     "[REQUEST] processing `start`, from participant with identifier:  {:?}.",
-        //     request
-        // )?;
+    ) -> Result<Result<(Metadata, C::Nonce), CeremonyError<C>>, Error> {
         let response = self.start(request).await;
-        //info!("[RESPONSE] responding to `start` with: {:?}.", response)?;
         Ok(response)
     }
 
@@ -282,10 +242,6 @@ where
     where
         C::Challenge: Clone,
         C::Participant: Clone,
-        C::Identifier: Debug, // remove
-        C::Nonce: Debug,      // remove
-        C::Priority: Debug + Copy,
-        usize: From<C::Priority>,
     {
         let mut registry = self.registry.lock();
         let priority = preprocess_request::<C, _, _>(&mut *registry, &request)?;
@@ -315,24 +271,16 @@ where
         ))
     }
 
-    ///
+    /// Queries the server state and logs any changes to the lock and the queue.
     #[inline]
     pub async fn query_endpoint(
         self,
         request: SignedMessage<C, C::Identifier, QueryRequest>,
     ) -> Result<Result<QueryResponse<C>, CeremonyError<C>>, Error>
     where
-        C::Challenge: Clone + Debug,
-        C::Identifier: Debug, // remove
-        C::Nonce: Debug,      // remove
+        C::Challenge: Clone,
         C::Participant: Clone + Display,
-        SignedMessage<C, C::Identifier, QueryRequest>: Debug,
-        QueryResponse<C>: Debug,
-        CeremonyError<C>: Debug,
-        C::Priority: Debug + Copy,
-        usize: From<C::Priority>,
     {
-        //info!("[REQUEST] processing `query`: {:?}", request)?;
         let response = match self.query(request).await {
             Ok((enqueued, lock_changed, response, participant)) => {
                 if lock_changed {
@@ -356,9 +304,6 @@ where
             }
             Err(e) => Err(e),
         };
-        // info!("[RESPONSE] responding to `query` with: {:?}.", response)?;
-        //info!("[RESPONSE] responding to `query` with: the state")?;
-
         Ok(response)
     }
 
@@ -366,14 +311,10 @@ where
     #[inline]
     pub async fn update_registry(&self)
     where
-        C::Nonce: Send,
-        R::Registry: Send,
-        C::Identifier: Send,
-        C::Challenge: Send,
         C: 'static,
+        C::Nonce: Send,
         R: 'static,
-        C::Identifier: Debug + Copy,
-        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
+        R::Registry: Send,
     {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -410,18 +351,13 @@ where
     ) -> Result<ContributeResponse<C>, CeremonyError<C>>
     where
         C: 'static,
-        C::Challenge: Clone + Debug + Send + Serialize,
+        C::Challenge: Clone + Send + Serialize,
         C::ContributionHash: AsRef<[u8]>,
         C::Identifier: Send,
-        C::Identifier: Debug + Copy,
-        C::Participant: Clone + Display,
         C::Nonce: Send,
-        C::Nonce: Debug,
-        StateChallengeProof<C, CIRCUIT_COUNT>: Send,
-        R::Registry: Send + Serialize,
-        R::Record: Debug,
+        C::Participant: Clone + Display,
         R: 'static,
-        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
+        R::Registry: Send + Serialize,
     {
         let _ = info!("[REQUEST] Preprocessing `update` request: checking signature and nonce.");
         let (identifier, message, participant, has_been_updated) = {
@@ -432,9 +368,6 @@ where
                 self.lock_queue
                     .lock()
                     .has_lock(&identifier, &self.metadata, &mut *registry);
-            // if has_lock.0 {
-            //     let _ = info!("Lock updated");
-            // }
             has_lock.1?;
             let participant = registry
                 .get(&identifier)
@@ -454,7 +387,6 @@ where
 
         let (round, challenge) = task::spawn_blocking(move || {
             sclp.lock().update(
-                // TODO: This needs to check the deserialization of `state`
                 BoxArray::from_vec(message.state),
                 BoxArray::from_vec(message.proof),
                 recovery_directory,
@@ -462,8 +394,6 @@ where
         })
         .await
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::TaskError))??;
-
-        // Lock should expire here no matter what
         let registry = self.registry.clone();
         let lock_queue = self.lock_queue.clone();
         let recovery_directory = self.recovery_directory.clone();
@@ -489,8 +419,10 @@ where
             challenge: challenge.to_vec(),
         };
         let _ = info!(
-            "[RESPONSE] responding to successful `update` number {} from participant {} with the contribution hash: {}",
+            "[RESPONSE] responding to successful `update` number {} from participant \n\
+            {}{} with the contribution hash: {}",
             round,
+            "                                      ",
             participant,
             hex::encode(C::contribution_hash(&contribute_response))
         );
@@ -506,18 +438,13 @@ where
     ) -> Result<Result<ContributeResponse<C>, CeremonyError<C>>, Error>
     where
         C: 'static,
-        C::Challenge: Clone + Debug + Send + Serialize,
+        C::Challenge: Clone + Send + Serialize,
         C::ContributionHash: AsRef<[u8]>,
-        C::Participant: Clone + Display,
         C::Identifier: Send,
-        C::Identifier: Debug + Copy,
-        C::Nonce: Send,
-        C::Nonce: Debug,
-        StateChallengeProof<C, CIRCUIT_COUNT>: Send,
-        R::Registry: Send + Serialize,
-        R::Record: Debug,
-        <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
+        C::Nonce: Debug + Send,
+        C::Participant: Clone + Display,
         R: 'static,
+        R::Registry: Send + Serialize,
     {
         let response = self.update(request).await;
         match &response {
