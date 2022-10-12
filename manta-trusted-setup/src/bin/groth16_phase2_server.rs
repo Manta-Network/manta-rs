@@ -123,3 +123,6 @@ async fn main() {
 // cargo run --release --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/registry.csv /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data
 // cargo run --release --all-features --bin groth16_phase2_server recover manta-trusted-setup/data manta-trusted-setup/data
 // cargo build --release --all-features --bin groth16_phase2_server
+
+// experimental
+// cargo run --release --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/registry_buffer.csv /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data

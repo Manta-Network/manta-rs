@@ -288,13 +288,110 @@ impl csv::Record<VerifyingKey, Participant> for Record {
     }
 }
 
+/// Record
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[serde(
+    bound(deserialize = "", serialize = ""),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)]
+pub struct RegistrationInfo {
+
+    /// First name (may be empty)
+    name: String,
+
+    /// Email Account
+    email: String,
+
+    /// Signature
+    signature: String,
+
+    /// Verifying Key
+    verifying_key: String,
+
+    /// Twitter Account
+    twitter: String,
+
+    /// Why is privacy important (may be empty)
+    why_privacy: String,
+
+    /// Wallet address (may be empty)
+    wallet: String,
+
+    /// Score
+    score: String,
+
+    /// Repeated field
+    twitter_repeat: String,
+
+    /// Repeated field
+    verifying_key_repeat: String,
+
+    /// Discord ID (may be empty)
+    discord: String,
+
+    // Submission time
+    submission_time: String,
+
+    // Submission token
+    submission_token: String,
+}
+
+impl csv::Record<VerifyingKey, Participant> for RegistrationInfo {
+    type Error = String;
+
+    #[inline]
+    fn parse(self) -> Result<(VerifyingKey, Participant), Self::Error> {
+        let verifying_key = ed25519::public_key_from_bytes(
+            bs58::decode(self.verifying_key)
+                .into_vec()
+                .map_err(|_| "Cannot decode verifying key.".to_string())?
+                .try_into()
+                .map_err(|_| "Cannot decode to array.".to_string())?,
+        );
+        let verifying_key = Array::from_unchecked(*verifying_key.as_bytes());
+        let signature: ed25519::Signature = ed25519::signature_from_bytes(
+            bs58::decode(self.signature)
+                .into_vec()
+                .map_err(|_| "Cannot decode signature.".to_string())?
+                .try_into()
+                .map_err(|_| "Cannot decode to array.".to_string())?,
+        );
+        verify::<Signature, _>(
+            &verifying_key,
+            0,
+            &format!(
+                "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+                self.twitter, self.email
+            ),
+            &signature,
+        )
+        .map_err(|_| "Cannot verify signature.".to_string())?;
+        // let priority = match self.priority.as_str() {
+        //     "TRUE" => "true",
+        //     "FALSE" => "false",
+        //     str => str,
+        // };
+        Ok((
+            verifying_key,
+            Participant::new(
+                verifying_key,
+                self.twitter,
+                Priority::Normal,
+                OsRng.gen::<_, u16>() as u64,
+                false,
+            ),
+        ))
+    }
+}
+
 /// The registry used in this ceremony
 pub type Registry = HashMap<VerifyingKey, Participant>;
 
 impl registry::Configuration for Registry {
     type Identifier = VerifyingKey;
     type Participant = Participant;
-    type Record = Record;
+    type Record = RegistrationInfo;
     type Registry = Self;
 }
 
