@@ -228,7 +228,7 @@ where
         request: C::Identifier,
     ) -> Result<(Metadata, C::Nonce), CeremonyError<C>>
     where
-        C::Nonce: Clone + Debug + Send,
+        C::Nonce: Clone + Debug + Default + Send,
         R::Registry: Send,
         C::Challenge: Send,
         C::Identifier: Debug + Send,
@@ -237,14 +237,16 @@ where
         R: 'static,
         <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
     {
-        let nonce = self
-            .registry
-            .lock()
-            .get(&request)
-            .ok_or(CeremonyError::NotRegistered)
-            .map(|p| p.nonce().clone());
+        // let nonce = self
+        //     .registry
+        //     .lock()
+        //     .get(&request)
+        //     .ok_or(CeremonyError::NotRegistered)
+        //     .map(|p| p.nonce().clone());
+        let _ = request;
+        let nonce = C::Nonce::default();
         let metadata = self.metadata().clone();
-        Ok((metadata, nonce?))
+        Ok((metadata, nonce))
     }
 
     ///
