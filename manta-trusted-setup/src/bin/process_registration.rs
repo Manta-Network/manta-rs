@@ -19,30 +19,22 @@
 use clap::{Parser, Subcommand};
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{Config, Participant},
-    server::Server,
     CeremonyError,
 };
 use manta_util::{
-    http::tide::{self, execute},
     Array,
 };
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf};
 
 /// Registry type
 type Registry = HashMap<Array<u8, 32>, Participant>;
-
-/// Current server configuration
-type S = Server<Config, Registry, 2, 3>; // TODO: Should the circuit count be part of Server<> ?
-
-/// Contribution time limit in seconds
-const TIME_LIMIT: u64 = 60;
 
 /// Command
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Recovers a server from disk.
-    Recover {
-        recovery_dir_path: String,
+    Process {
+        raw_registry_path: String,
         registry_path: String,
     },
 }
@@ -59,30 +51,12 @@ impl Arguments {
     /// Runs a server.
     #[inline]
     pub async fn run(self) -> Result<(), CeremonyError<Config>> {
-        let server = match self.command {
-            Command::Recover {
-                recovery_dir_path,
+        match self.command {
+            Command::Process {
+                raw_registry_path,
                 registry_path
-            } => S::recover(
-                PathBuf::from(recovery_dir_path),
-                PathBuf::from(registry_path),
-                Duration::from_secs(TIME_LIMIT),
-            )
-            .expect("Unable to recover from file"),
+            } => todo!()
         };
-
-        println!("Network is running!");
-        let mut api = tide::Server::with_state(server);
-        api.at("/start")
-            .post(|r| execute(r, Server::start_endpoint));
-        api.at("/query")
-            .post(|r| execute(r, Server::query_endpoint));
-        api.at("/update")
-            .post(|r| execute(r, Server::update_endpoint));
-
-        api.listen("127.0.0.1:8080")
-            .await
-            .expect("Should create a listener.");
         Ok(())
     }
 }
@@ -98,4 +72,5 @@ async fn main() {
 
 // run with
 // cargo run --release --all-features --bin groth16_phase2_server recover manta-trusted-setup/data manta-trusted-setup/data/registry.csv
+// TODO: Update server start command!
 // cargo build --release --all-features --bin groth16_phase2_server

@@ -63,15 +63,17 @@ where
     Ok(registry)
 }
 
-/// Loads new entries into `registry` from `path` using `T` as the record type. It doesn't overwrite
-/// existing entries.
+/// Loads new entries into `registry` from `path` using `T` as the record type without overwriting
+/// existing entries. Returns the number of new entries added.
 #[inline]
-pub fn load_append_entries<I, V, T, R, P>(path: P, registry: &mut R) -> Result<(), Error<T::Error>>
+pub fn load_append_entries<I, V, T, R, P>(path: P, registry: &mut R) -> Result<usize, Error<T::Error>>
 where
     T: Record<I, V>,
     R: Registry<I, V>,
     P: AsRef<Path>,
 {
+    let length = registry.len();
+
     for (number, record) in csv::Reader::from_reader(File::open(path)?)
         .deserialize()
         .flatten()
@@ -86,5 +88,5 @@ where
             }
         };
     }
-    Ok(())
+    Ok(registry.len() - length)
 }

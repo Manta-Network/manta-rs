@@ -113,6 +113,7 @@ where
     #[inline]
     pub fn recover(
         path: PathBuf,
+        registry_path: PathBuf,
         contribution_time_limit: Duration,
     ) -> Result<Self, CeremonyError<C>>
     where
@@ -176,8 +177,6 @@ where
         ))
         .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         let metadata: Metadata = compute_metadata(contribution_time_limit, &states);
-        let mut registry_path = path.clone();
-        registry_path.push(r"registry.csv");
         let server = Self {
             lock_queue: Default::default(),
             registry: Arc::new(Mutex::new(registry)),
@@ -316,18 +315,17 @@ where
                     .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
             })
             .await
-            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::TaskError)).into_iter().collect::<Result<(), CeremonyError<C>>>() // TODO: Brandon pls review.
+            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::TaskError))
             {
-                Ok(()) => {
-                    let _ = info!("[ACTION] Registry successfully updated.");
+                Ok(Ok(added)) => {
+                    let _ = info!("[ACTION] Registry successfully updated. {} New entries added", added);
                 },
-                Err(CeremonyError::Unexpected(UnexpectedError::Serialization)) => {
+                Ok(Err(CeremonyError::Unexpected(UnexpectedError::Serialization))) => {
                     let _ = warn!("[ERROR] Unable to update registry. Serialization error.");
                 },
-                Err(CeremonyError::Unexpected(UnexpectedError::TaskError)) => {
+                _ => {
                     let _ = warn!("[ERROR] Unable to update registry. Task error.");
                 },
-                _ => unreachable!(),
             }
         }
     }

@@ -33,7 +33,7 @@ pub enum Command {
     /// Transforms Phase 1 Parameters into Phase 2 Parameters.
     Prepare {
         phase_one_param_path: PathBuf,
-        file_target_directory: PathBuf,
+        recovery_directory: PathBuf,
     },
 }
 
@@ -52,9 +52,9 @@ impl Arguments {
         match self.command {
             Command::Prepare {
                 phase_one_param_path,
-                file_target_directory,
+                recovery_directory,
             } => {
-                prepare::<Config, Registry, Record>(phase_one_param_path, file_target_directory);
+                prepare::<Config, Registry, Record>(phase_one_param_path, recovery_directory);
             }
         };
         Ok(())

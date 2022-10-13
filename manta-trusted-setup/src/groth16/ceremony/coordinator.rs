@@ -446,7 +446,7 @@ where
 
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
 /// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
-/// TODO: Should this read registry too?
+/// Creates a `_registry_0` file containing an empty registry.
 pub fn prepare<C, R, T>(phase_one_param_path: PathBuf, target_path: PathBuf)
 where
     C: Ceremony
@@ -483,7 +483,6 @@ where
     let powers = read_subaccumulator(&reader, Compressed::No)
         .expect("Cannot read Phase 1 accumulator from file");
 
-    // let folder_path = target_path;
     let round_number = 0u64;
     let mut names = Vec::new();
     for (circuit, name) in C::circuits().into_iter() {
@@ -531,7 +530,6 @@ where
     .expect("Must serialize round number to file");
 
     let registry = R::default();
-    // let registry = load::<C::Identifier, C::Participant, T, R, _>(target_path).unwrap();
     serialize_into_file(
         OpenOptions::new().write(true).truncate(true).create(true),
         &filename_format(
@@ -543,7 +541,6 @@ where
         &registry,
     )
     .expect("Writing registry to disk should succeed.");
-    // println!("The registry I saved has length {:?}", registry.len());
 }
 
 /// Saves registry
