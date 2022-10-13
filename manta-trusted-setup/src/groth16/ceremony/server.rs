@@ -315,6 +315,7 @@ where
         C::Nonce: Send,
         R: 'static,
         R::Registry: Send,
+        <R::Record as Record<R::Identifier, R::Participant>>::Error: Debug,
     {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
