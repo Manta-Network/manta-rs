@@ -304,6 +304,7 @@ where
         C::Nonce: Send,
         R: 'static,
         R::Registry: Send,
+        <R::Record as Record<R::Identifier, R::Participant>>::Error: Debug,
     {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
@@ -375,7 +376,6 @@ where
 
         let (round, challenge) = task::spawn_blocking(move || {
             sclp.lock().update(
-                // TODO: This needs to check the deserialization of `state`
                 BoxArray::from_vec(message.state),
                 BoxArray::from_vec(message.proof),
                 recovery_directory,

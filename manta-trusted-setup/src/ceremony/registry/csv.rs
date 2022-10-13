@@ -18,6 +18,7 @@
 
 use crate::ceremony::registry::Registry;
 use core::fmt::Debug;
+use csv::Reader;
 use manta_util::serde::de::DeserializeOwned;
 use std::{fs::File, path::Path};
 
@@ -57,6 +58,7 @@ where
     T: Record<I, V>,
     R: Registry<I, V>,
     P: AsRef<Path>,
+    T::Error: Debug,
 {
     let mut registry = R::new();
     load_append_entries::<_, _, T, _, _>(path, &mut registry)?;
@@ -71,6 +73,7 @@ where
     T: Record<I, V>,
     R: Registry<I, V>,
     P: AsRef<Path>,
+    T::Error: Debug,
 {
     let length = registry.len();
 
@@ -83,8 +86,8 @@ where
             Ok((identifier, participant)) => {
                 registry.insert(identifier, participant);
             }
-            Err(_) => {
-                println!("Parsing error in line: {}", number + 2);
+            Err(e) => {
+                println!("Line: {} Parsing error {:?}", number + 2, e);
             }
         };
     }
