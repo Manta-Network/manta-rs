@@ -63,7 +63,7 @@ where
     Ok(registry)
 }
 
-/// Loads new entries into `registry` from `path` using `T` as the record type. It doesn't overwrite 
+/// Loads new entries into `registry` from `path` using `T` as the record type. It doesn't overwrite
 /// existing entries.
 #[inline]
 pub fn load_append_entries<I, V, T, R, P>(path: P, registry: &mut R) -> Result<(), Error<T::Error>>

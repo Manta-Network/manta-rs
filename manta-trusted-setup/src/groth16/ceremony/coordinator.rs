@@ -19,29 +19,37 @@
 use crate::{
     ceremony::{
         participant::{Participant, Priority},
-        registry::Registry,
+        registry::{self, Registry},
         signature::{Nonce, SignedMessage},
         util::{deserialize_from_file, serialize_into_file},
     },
     groth16::{
         ceremony::{
-            server::filename_format, Ceremony, CeremonyError, Metadata, Queue, Round,
-            UnexpectedError,
+            server::filename_format, Ceremony, CeremonyError, Circuits, Configuration, Metadata,
+            Queue, Round, UnexpectedError,
         },
         kzg,
-        kzg::{Accumulator, Configuration},
+        kzg::Accumulator,
         mpc,
         mpc::{verify_transform, Proof, ProvingKeyHasher, State},
+        ppot::serialization::{read_subaccumulator, Compressed}, // TODO: generic prepare fn
     },
     mpc::ChallengeType,
 };
 use core::{fmt::Debug, mem};
-use manta_crypto::arkworks::relations::r1cs::ConstraintSynthesizer;
-use manta_util::{time::lock::Timed, BoxArray};
-use std::fs::OpenOptions;
+use manta_crypto::arkworks::{
+    bn254::{G1Affine, G2Affine},
+    pairing::Pairing,
+    relations::r1cs::ConstraintSynthesizer,
+};
+use manta_util::{time::lock::Timed, Array, BoxArray};
+use std::{fs::OpenOptions, path::PathBuf};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+
+#[cfg(feature = "csv")]
+use crate::ceremony::registry::csv::Record;
 
 /// Queue and Participant Lock
 #[derive(derivative::Derivative)]
@@ -270,7 +278,7 @@ where
         &mut self,
         state: BoxArray<State<C>, CIRCUIT_COUNT>,
         proof: BoxArray<Proof<C>, CIRCUIT_COUNT>,
-        recovery_directory: String,
+        recovery_directory: PathBuf,
     ) -> Result<(u64, BoxArray<C::Challenge, CIRCUIT_COUNT>), CeremonyError<C>>
     where
         C::Challenge: Clone + Serialize,
@@ -292,14 +300,15 @@ where
 
     /// Saves State, Challenge and Proof
     #[inline]
-    fn save(&self, recovery_directory: String, round: u64)
+    fn save(&self, recovery_directory: PathBuf, round: u64)
     where
         C::Challenge: Serialize,
     {
         assert_eq!(round, self.round());
+        let mut names_path = recovery_directory.clone();
+        names_path.push(r"circuit_names");
         let names: Vec<String> =
-            deserialize_from_file(format!("{}{}", recovery_directory, "/circuit_names"))
-                .expect("Cannot open circuit name file.");
+            deserialize_from_file(names_path).expect("Cannot open circuit name file.");
 
         for ((state, challenge), name) in self
             .state()
@@ -310,7 +319,7 @@ where
             serialize_into_file(
                 OpenOptions::new().write(true).truncate(true).create(true),
                 &filename_format(
-                    recovery_directory.clone(),
+                    &recovery_directory,
                     name.clone(),
                     "state".to_string(),
                     round,
@@ -322,7 +331,7 @@ where
             serialize_into_file(
                 OpenOptions::new().write(true).truncate(true).create(true),
                 &filename_format(
-                    recovery_directory.clone(),
+                    &recovery_directory,
                     name.clone(),
                     "challenge".to_string(),
                     round,
@@ -343,7 +352,7 @@ where
                 serialize_into_file(
                     OpenOptions::new().write(true).truncate(true).create(true),
                     &filename_format(
-                        recovery_directory.clone(),
+                        &recovery_directory,
                         name.clone(),
                         "proof".to_string(),
                         round,
@@ -354,9 +363,11 @@ where
             }
         }
 
+        let mut round_path = recovery_directory;
+        round_path.push("round_number");
         serialize_into_file(
             OpenOptions::new().write(true).truncate(true).create(true),
-            &format!("{}/round_number", recovery_directory),
+            &round_path,
             &round,
         )
         .expect("Must serialize round number to file");
@@ -423,7 +434,7 @@ pub fn initialize<C, S>(
     cs: S,
 ) -> (<C as ChallengeType>::Challenge, State<C>)
 where
-    C: Ceremony + Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
+    C: Ceremony + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
     <C as ProvingKeyHasher<C>>::Output: Into<<C as ChallengeType>::Challenge>, // TODO Is this weird?
     S: ConstraintSynthesizer<C::Scalar>,
 {
@@ -433,9 +444,111 @@ where
     (challenge.into(), state)
 }
 
+/// Prepare by initalizing each circuit's prover key, challenge hash and saving
+/// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
+/// TODO: Should this read registry too?
+pub fn prepare<C, R, T>(phase_one_param_path: PathBuf, target_path: PathBuf)
+where
+    C: Ceremony
+        + Configuration
+        + kzg::Configuration
+        + kzg::Size
+        + mpc::ProvingKeyHasher<C>
+        + Circuits<<C as Pairing>::Scalar>,
+    C: mpc::ProvingKeyHasher<C, Output = [u8; 64]>,
+    C: ChallengeType<Challenge = Array<u8, 64>>,
+    C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
+    R: Default + Registry<C::Identifier, C::Participant> + Serialize,
+    R: registry::Configuration<
+        Identifier = C::Identifier,
+        Participant = C::Participant,
+        Registry = R,
+    >,
+    R: Debug,
+    T: Record<C::Identifier, C::Participant>,
+    T::Error: Debug,
+    C::Identifier: Debug + Copy,
+{
+    use memmap::MmapOptions;
+
+    let file = OpenOptions::new()
+        .read(true)
+        .open(phase_one_param_path)
+        .expect("Unable to open phase 1 parameter file in this directory");
+    let reader = unsafe {
+        MmapOptions::new()
+            .map(&file)
+            .expect("unable to create memory map for input")
+    };
+    let powers = read_subaccumulator(&reader, Compressed::No)
+        .expect("Cannot read Phase 1 accumulator from file");
+
+    // let folder_path = target_path;
+    let round_number = 0u64;
+    let mut names = Vec::new();
+    for (circuit, name) in C::circuits().into_iter() {
+        println!("Creating proving key for {}", name);
+        names.push(name.clone());
+        let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
+            initialize(&powers, circuit);
+
+        serialize_into_file(
+            OpenOptions::new().write(true).truncate(true).create(true), // TODO: Change to create_new for production. `prepare` should only be called once
+            &filename_format(
+                &target_path,
+                name.clone(),
+                "state".to_string(),
+                round_number,
+            ),
+            &state,
+        )
+        .expect("Writing state to disk should succeed.");
+
+        serialize_into_file(
+            OpenOptions::new().write(true).truncate(true).create(true),
+            &filename_format(&target_path, name, "challenge".to_string(), round_number),
+            &challenge,
+        )
+        .expect("Writing challenge to disk should succeed.");
+    }
+
+    let mut names_path = target_path.clone();
+    names_path.push(r"circuit_names");
+    serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &names_path,
+        &names,
+    )
+    .expect("Writing circuit names to disk should succeed.");
+
+    let mut round_path = target_path.clone();
+    round_path.push(r"round_number");
+    serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &round_path,
+        &round_number,
+    )
+    .expect("Must serialize round number to file");
+
+    let registry = R::default();
+    // let registry = load::<C::Identifier, C::Participant, T, R, _>(target_path).unwrap();
+    serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &filename_format(
+            &target_path,
+            "".to_string(),
+            "registry".to_string(),
+            round_number,
+        ),
+        &registry,
+    )
+    .expect("Writing registry to disk should succeed.");
+    // println!("The registry I saved has length {:?}", registry.len());
+}
+
 /// Saves registry
 #[inline]
-pub fn save_registry<R, C>(registry: &R, recovery_directory: String, round: u64)
+pub fn save_registry<R, C>(registry: &R, recovery_directory: &PathBuf, round: u64)
 where
     R: Registry<C::Identifier, C::Participant> + Serialize,
     C: Ceremony,

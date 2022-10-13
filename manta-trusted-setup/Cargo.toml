@@ -32,6 +32,10 @@ required-features = ["clap", "ppot-client", "reqwest", "tokio"]
 name = "groth16_phase2_server"
 required-features = ["async-std", "bincode", "clap", "csv", "ppot", "serde_json", "tide", "tokio"]
 
+[[bin]]
+name = "groth16_phase2_prepare"
+required-features = ["ppot-client"]
+
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]

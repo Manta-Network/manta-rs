@@ -31,7 +31,7 @@ use core::{
     fmt::{self, Debug, Display},
     time::Duration,
 };
-use manta_crypto::arkworks::pairing::Pairing;
+use manta_crypto::arkworks::{ff::PrimeField, pairing::Pairing};
 use manta_pay::crypto::constraint::arkworks::R1CS;
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
@@ -87,12 +87,12 @@ pub trait Ceremony: Configuration + SignatureScheme {
 }
 
 /// Specifies R1CS circuit descriptions and names for a ceremony.
-pub trait Circuits<C>
+pub trait Circuits<F>
 where
-    C: Ceremony,
+    F: PrimeField,
 {
     /// Returns representations of the circuits used in this ceremony, each named.
-    fn circuits() -> Vec<(R1CS<C::Scalar>, String)>;
+    fn circuits() -> Vec<(R1CS<F>, String)>;
 }
 
 /// Parallel Round Alias

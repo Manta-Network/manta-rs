@@ -18,15 +18,15 @@
 
 use clap::{Parser, Subcommand};
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::{Config, Participant, Record},
-    server::{prepare, Server},
+    config::ppot::{Config, Participant},
+    server::Server,
     CeremonyError,
 };
 use manta_util::{
     http::tide::{self, execute},
     Array,
 };
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 /// Registry type
 type Registry = HashMap<Array<u8, 32>, Participant>;
@@ -40,13 +40,6 @@ const TIME_LIMIT: u64 = 60;
 /// Command
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Transforms Phase 1 Parameters into Phase 2 Parameters.
-    Prepare {
-        registry_path: String,
-        phase_one_param_path: String,
-        recovery_dir_path: String,
-    },
-
     /// Recovers a server from disk.
     Recover {
         recovery_dir_path: String,
@@ -67,28 +60,10 @@ impl Arguments {
     #[inline]
     pub async fn run(self) -> Result<(), CeremonyError<Config>> {
         let server = match self.command {
-            Command::Prepare {
-                registry_path,
-                phase_one_param_path,
-                recovery_dir_path,
-            } => {
-                prepare::<Config, _, Registry, Record>(
-                    phase_one_param_path,
-                    recovery_dir_path.clone(),
-                    registry_path,
-                );
-                S::recover(
-                    recovery_dir_path.clone(),
-                    recovery_dir_path,
-                    Duration::from_secs(TIME_LIMIT),
-                )
-                .expect("Unable to recover from file")
-            }
             Command::Recover {
                 recovery_dir_path, ..
             } => S::recover(
-                recovery_dir_path.clone(),
-                recovery_dir_path,
+                PathBuf::from(recovery_dir_path),
                 Duration::from_secs(TIME_LIMIT),
             )
             .expect("Unable to recover from file"),
@@ -120,6 +95,8 @@ async fn main() {
 }
 
 // run with
-// cargo run --release --all-features --bin groth16_phase2_server prepare manta-trusted-setup/data/registry.csv /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data
 // cargo run --release --all-features --bin groth16_phase2_server recover manta-trusted-setup/data manta-trusted-setup/data
 // cargo build --release --all-features --bin groth16_phase2_server
+
+// experimental
+// cargo run --release --all-features --bin groth16_phase2_server prepare /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/test_registry.csv /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data

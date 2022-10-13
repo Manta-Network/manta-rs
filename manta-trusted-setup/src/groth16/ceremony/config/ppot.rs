@@ -734,7 +734,7 @@ impl Ceremony for Config {
     }
 }
 
-impl Circuits<Self> for Config {
+impl Circuits<<Self as Pairing>::Scalar> for Config {
     #[inline]
     fn circuits() -> Vec<(R1CS<<Self as Pairing>::Scalar>, String)> {
         let mut circuits = Vec::new();
