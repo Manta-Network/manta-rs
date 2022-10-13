@@ -18,7 +18,6 @@
 
 use crate::ceremony::registry::Registry;
 use core::fmt::Debug;
-use csv::Reader;
 use manta_util::serde::de::DeserializeOwned;
 use std::{fs::File, path::Path};
 
@@ -68,7 +67,10 @@ where
 /// Loads new entries into `registry` from `path` using `T` as the record type without overwriting
 /// existing entries. Returns the number of new entries added.
 #[inline]
-pub fn load_append_entries<I, V, T, R, P>(path: P, registry: &mut R) -> Result<usize, Error<T::Error>>
+pub fn load_append_entries<I, V, T, R, P>(
+    path: P,
+    registry: &mut R,
+) -> Result<usize, Error<T::Error>>
 where
     T: Record<I, V>,
     R: Registry<I, V>,

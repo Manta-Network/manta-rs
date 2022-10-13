@@ -36,6 +36,10 @@ required-features = ["async-std", "bincode", "clap", "csv", "ppot", "serde_json"
 name = "groth16_phase2_prepare"
 required-features = ["ppot-client"]
 
+[[bin]]
+name = "process_registration"
+required-features = ["ppot-client"] # TODO: May be overkill on features
+
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]

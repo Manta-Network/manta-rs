@@ -18,8 +18,7 @@
 
 use crate::{
     ceremony::{
-        participant,
-        registry,
+        participant, registry,
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
     groth16::{
@@ -239,6 +238,25 @@ pub struct Record {
     signature: String,
 }
 
+impl Record {
+    /// Constructor
+    pub fn new(
+        twitter: String,
+        email: String,
+        priority: String,
+        verifying_key: String,
+        signature: String,
+    ) -> Self {
+        Self {
+            twitter,
+            email,
+            priority,
+            verifying_key,
+            signature,
+        }
+    }
+}
+
 impl registry::csv::Record<VerifyingKey, Participant> for Record {
     type Error = String;
 
@@ -305,69 +323,6 @@ impl registry::csv::Record<VerifyingKey, Participant> for Record {
     }
 }
 
-/// Registration info collected by our registration form.
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(
-    bound(deserialize = "", serialize = ""),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)]
-pub struct RegistrationInfo {
-    /// First name (may be empty)
-    pub name: String,
-
-    /// Email Account
-    pub email: String,
-
-    /// Signature
-    pub signature: String,
-
-    /// Verifying Key
-    pub verifying_key: String,
-
-    /// Twitter Account
-    pub twitter: String,
-
-    /// Why is privacy important (may be empty)
-    pub why_privacy: String,
-
-    /// Wallet address (may be empty)
-    pub wallet: String,
-
-    /// Score
-    pub score: String,
-
-    /// Named field that's always empty
-    pub twitter_null: String,
-
-    /// Named field that's always empty
-    pub verifying_key_null: String,
-
-    /// Discord ID (may be empty)
-    pub discord: String,
-
-    /// Motivation to participate (may be empty)
-    pub motivation: String,
-
-    /// Submission time
-    pub submission_time: String,
-
-    /// Submission token
-    pub submission_token: String,
-}
-
-impl From<RegistrationInfo> for Record {
-    fn from(value: RegistrationInfo) -> Self {
-        Self {
-            twitter: value.twitter,
-            email: value.email,
-            priority: "false".to_string(),
-            verifying_key: value.verifying_key,
-            signature: value.signature,
-        }
-    }
-}
-
 /// Errors that may occur when processing raw registration data.
 #[derive(Debug)]
 pub enum RegistrationProcessingError {
@@ -386,45 +341,17 @@ pub enum RegistrationProcessingError {
 /// the existing field names do not match the expected names
 /// from our registration form.
 /// TODO: [`Reader`] already has a method with a similar name
-pub fn set_header(reader: &mut Reader<&File>) -> Result<(), RegistrationProcessingError> {
-    let expected_headers = vec![
-        "First up, what\'s your first name?", 
-        "What is your email address? ", 
-        "Okay {{field:c393dfe5f7faa4de}}, what your signature?", 
-        "What\'s your public key, {{field:c393dfe5f7faa4de}}?", 
-        "Finally, what\'s your Twitter Handle?  ", 
-        "Alright {{field:c393dfe5f7faa4de}}, why is privacy important to you?", 
-        "We want to reward participation with a POAP designed to commemorate this historical Web 3 achievement. If you would like to receive one please share your wallet address", 
-        "score", 
-        "Finally, what\'s your Twitter Handle?  ", 
-        "What\'s your public key, {{field:c393dfe5f7faa4de}}?", 
-        "What\'s your Discord ID, {{field:c393dfe5f7faa4de}}?", 
-        "What is your motivation for participating in the Trusted Setup, {{field:c393dfe5f7faa4de}}?",
-        "Submitted At", 
-        "Token"
-    ];
+pub fn set_header(
+    reader: &mut Reader<&File>,
+    expected_headers: Vec<&str>,
+    short_headers: Vec<&str>,
+) -> Result<(), RegistrationProcessingError> {
     match reader.byte_headers() {
         Ok(headers) => {
             if headers != expected_headers {
                 println!("Actual headers were \n{:?}", headers);
                 Err(RegistrationProcessingError::WrongHeaders)
             } else {
-                let short_headers = vec![
-                    "name",
-                    "email",
-                    "signature",
-                    "verifying_key_null",
-                    "twitter_null",
-                    "why_privacy",
-                    "wallet",
-                    "score",
-                    "twitter",
-                    "verifying_key",
-                    "discord",
-                    "motivation",
-                    "submission_time",
-                    "submission_token",
-                ];
                 assert_eq!(expected_headers.len(), short_headers.len());
                 reader.set_headers(StringRecord::from(short_headers));
                 Ok(())
@@ -434,40 +361,22 @@ pub fn set_header(reader: &mut Reader<&File>) -> Result<(), RegistrationProcessi
     }
 }
 
-#[test]
-fn test_set_headers() {
-    let file = File::open("/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/registry_buffer.csv").expect("Cannot open file");
-    let mut reader = Reader::from_reader(&file);
-    assert!(set_header(&mut reader).is_ok());
-    assert!(
-        reader.byte_headers().unwrap()
-            == vec![
-                "name",
-                "email",
-                "signature",
-                "verifying_key_null",
-                "twitter_null",
-                "why_privacy",
-                "wallet",
-                "score",
-                "twitter",
-                "verifying_key",
-                "discord",
-                "motivation",
-                "submission_time",
-                "submission_token",
-            ]
-    );
-}
-
 /// Extracts all [`Record`]s from a CSV file of raw registration
 /// data and creates new CSV file containing only these `Record`s
 /// at the specified path. A [`Registry`] can be loaded from the
-/// resulting file. 
+/// resulting file.
 /// TODO: This gives all participants low priority.
-pub fn extract_registry(file: &File, path: PathBuf) -> Result<(), RegistrationProcessingError> {
+pub fn extract_registry<R>(
+    file: &File,
+    path: PathBuf,
+    expected_headers: Vec<&str>,
+    short_headers: Vec<&str>,
+) -> Result<(), RegistrationProcessingError>
+where
+    R: DeserializeOwned + Into<Record>,
+{
     let mut reader = Reader::from_reader(file);
-    set_header(&mut reader)?;
+    set_header(&mut reader, expected_headers, short_headers)?;
     let mut file_out = OpenOptions::new()
         .write(true)
         .create(true)
@@ -475,21 +384,12 @@ pub fn extract_registry(file: &File, path: PathBuf) -> Result<(), RegistrationPr
         .open(path)
         .map_err(|_| RegistrationProcessingError::WriteError)?;
     let mut writer = WriterBuilder::new().from_writer(&mut file_out);
-    for record in reader.deserialize::<RegistrationInfo>().flatten() {
+    for record in reader.deserialize::<R>().flatten() {
         writer
-            .serialize(Into::<Record>::into(record))
+            .serialize(record.into())
             .map_err(|_| RegistrationProcessingError::WriteError)?;
     }
     Ok(())
-}
-
-#[test]
-fn test_extract_registry() {
-    let file = File::open("/Users/thomascnorton/Downloads/Trusted Setup Signups - Trusted Setup (2).csv").expect("Cannot open file");
-    let path = PathBuf::from(
-        r"/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/test_registry.csv",
-    );
-    extract_registry(&file, path).unwrap();
 }
 
 /// The registry used in this ceremony

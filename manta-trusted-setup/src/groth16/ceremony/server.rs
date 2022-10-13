@@ -319,14 +319,17 @@ where
             .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::TaskError))
             {
                 Ok(Ok(added)) => {
-                    let _ = info!("[ACTION] Registry successfully updated. {} New entries added", added);
-                },
+                    let _ = info!(
+                        "[ACTION] Registry successfully updated. {} New entries added",
+                        added
+                    );
+                }
                 Ok(Err(CeremonyError::Unexpected(UnexpectedError::Serialization))) => {
                     let _ = warn!("[ERROR] Unable to update registry. Serialization error.");
-                },
+                }
                 _ => {
                     let _ = warn!("[ERROR] Unable to update registry. Task error.");
-                },
+                }
             }
         }
     }

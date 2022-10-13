@@ -62,7 +62,7 @@ impl Arguments {
         let server = match self.command {
             Command::Recover {
                 recovery_dir_path,
-                registry_path
+                registry_path,
             } => S::recover(
                 PathBuf::from(recovery_dir_path),
                 PathBuf::from(registry_path),
@@ -98,7 +98,5 @@ async fn main() {
 
 // run with
 // cargo run --release --all-features --bin groth16_phase2_server recover manta-trusted-setup/data manta-trusted-setup/data/registry.csv
+// TODO: Update server start command!
 // cargo build --release --all-features --bin groth16_phase2_server
-
-// experimental
-// cargo run --release --all-features --bin groth16_phase2_server prepare /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/test_registry.csv /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data
