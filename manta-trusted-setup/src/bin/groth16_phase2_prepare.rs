@@ -33,6 +33,8 @@ pub enum Command {
     /// Transforms Phase 1 Parameters into Phase 2 Parameters.
     Prepare {
         phase_one_param_path: PathBuf,
+
+        #[clap(default_value = "manta-trusted-setup/data/")]
         recovery_directory: PathBuf,
     },
 }
@@ -71,4 +73,4 @@ async fn main() {
 }
 
 // run with
-// cargo run --release --all-features --bin groth16_phase2_prepare prepare /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 manta-trusted-setup/data
+// cargo run --release --all-features --bin groth16_phase2_prepare prepare /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072

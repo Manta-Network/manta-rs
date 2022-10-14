@@ -42,7 +42,10 @@ const TIME_LIMIT: u64 = 60;
 pub enum Command {
     /// Recovers a server from disk.
     Recover {
+        #[clap(default_value = "manta-trusted-setup/data/")]
         recovery_dir_path: String,
+
+        #[clap(default_value = "manta-trusted-setup/data/registry.csv")]
         registry_path: String,
     },
 }
@@ -98,5 +101,8 @@ async fn main() {
 
 // run with
 // cargo run --release --all-features --bin groth16_phase2_server recover manta-trusted-setup/data manta-trusted-setup/data/registry.csv
+// or
+// cargo run --release --all-features --bin groth16_phase2_server recover
 // TODO: Update server start command!
+// build with
 // cargo build --release --all-features --bin groth16_phase2_server
