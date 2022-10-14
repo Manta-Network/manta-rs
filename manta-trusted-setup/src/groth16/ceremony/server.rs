@@ -125,14 +125,10 @@ where
         C: 'static,
         R: 'static,
     {
-        let mut round_number_path = path.clone();
-        round_number_path.push(r"round_number");
-        let round_number: u64 = deserialize_from_file(round_number_path)
+        let round_number: u64 = deserialize_from_file(path.join(r"round_number"))
             .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         println!("Recovering a ceremony at round {:?}", round_number);
-        let mut names_path = path.clone();
-        names_path.push("circuit_names");
-        let names: Vec<String> = deserialize_from_file(names_path)
+        let names: Vec<String> = deserialize_from_file(path.join(r"circuit_names"))
             .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
         if names.len() != CIRCUIT_COUNT {
             return Err(CeremonyError::Unexpected(
@@ -485,7 +481,5 @@ pub fn filename_format(
     kind: String,
     round_number: u64,
 ) -> PathBuf {
-    let mut path = folder_path.clone();
-    path.push(format!("{}_{}_{}", name, kind, round_number));
-    path
+    folder_path.join(format!("{}_{}_{}", name, kind, round_number))
 }

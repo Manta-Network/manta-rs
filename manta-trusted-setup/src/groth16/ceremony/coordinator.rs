@@ -305,10 +305,8 @@ where
         C::Challenge: Serialize,
     {
         assert_eq!(round, self.round());
-        let mut names_path = recovery_directory.clone();
-        names_path.push(r"circuit_names");
-        let names: Vec<String> =
-            deserialize_from_file(names_path).expect("Cannot open circuit name file.");
+        let names: Vec<String> = deserialize_from_file(recovery_directory.join(r"circuit_names"))
+            .expect("Cannot open circuit name file.");
 
         for ((state, challenge), name) in self
             .state()
@@ -363,11 +361,9 @@ where
             }
         }
 
-        let mut round_path = recovery_directory;
-        round_path.push("round_number");
         serialize_into_file(
             OpenOptions::new().write(true).truncate(true).create(true),
-            &round_path,
+            &recovery_directory.join(r"round_number"),
             &round,
         )
         .expect("Must serialize round number to file");
@@ -511,20 +507,16 @@ where
         .expect("Writing challenge to disk should succeed.");
     }
 
-    let mut names_path = target_path.clone();
-    names_path.push(r"circuit_names");
     serialize_into_file(
         OpenOptions::new().write(true).truncate(true).create(true),
-        &names_path,
+        &target_path.join(r"circuit_names"),
         &names,
     )
     .expect("Writing circuit names to disk should succeed.");
 
-    let mut round_path = target_path.clone();
-    round_path.push(r"round_number");
     serialize_into_file(
         OpenOptions::new().write(true).truncate(true).create(true),
-        &round_path,
+        &target_path.join(r"round_number"),
         &round_number,
     )
     .expect("Must serialize round number to file");
