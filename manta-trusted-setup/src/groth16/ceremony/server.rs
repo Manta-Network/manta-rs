@@ -134,6 +134,11 @@ where
         names_path.push("circuit_names");
         let names: Vec<String> = deserialize_from_file(names_path)
             .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        if names.len() != CIRCUIT_COUNT {
+            return Err(CeremonyError::Unexpected(
+                UnexpectedError::IncorrectStateSize,
+            ));
+        }
         let mut states = Vec::<State<C>>::new();
         let mut challenges = Vec::<C::Challenge>::new();
         let mut proofs = Vec::<Proof<C>>::new();
@@ -222,7 +227,7 @@ where
     }
 
     /// Queries the server state. First bool represents whether the participant who posted
-    /// the query got enqueued. Second bool represents whether the lock has been updated.
+    /// the query was enqueued. Second bool represents whether the lock has been updated.
     #[inline]
     pub async fn query(
         self,

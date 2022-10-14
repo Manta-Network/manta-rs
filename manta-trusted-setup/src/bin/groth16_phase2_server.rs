@@ -15,8 +15,12 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Trusted Setup Ceremony Server
+//! Run with `cargo run --release --all-features --bin groth16_phase2_server`
+//! or optionally specify recovery directory and registry path.
 
-use clap::{Parser, Subcommand};
+// TODO: Update server start command!
+
+use clap::Parser;
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{Config, Participant},
     server::Server,
@@ -32,47 +36,31 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 type Registry = HashMap<Array<u8, 32>, Participant>;
 
 /// Current server configuration
-type S = Server<Config, Registry, 2, 3>; // TODO: Should the circuit count be part of Server<> ?
+type S = Server<Config, Registry, 2, 3>;
 
 /// Contribution time limit in seconds
 const TIME_LIMIT: u64 = 60;
 
-/// Command
-#[derive(Debug, Subcommand)]
-pub enum Command {
-    /// Recovers a server from disk.
-    Recover {
-        #[clap(default_value = "manta-trusted-setup/data/")]
-        recovery_dir_path: String,
-
-        #[clap(default_value = "manta-trusted-setup/data/registry.csv")]
-        registry_path: String,
-    },
-}
-
 /// Server CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
-    /// Server Command
-    #[clap(subcommand)]
-    pub command: Command,
+    #[clap(default_value = "manta-trusted-setup/data/")]
+    recovery_dir_path: String,
+
+    #[clap(default_value = "manta-trusted-setup/data/registry.csv")]
+    registry_path: String,
 }
 
 impl Arguments {
     /// Runs a server.
     #[inline]
     pub async fn run(self) -> Result<(), CeremonyError<Config>> {
-        let server = match self.command {
-            Command::Recover {
-                recovery_dir_path,
-                registry_path,
-            } => S::recover(
-                PathBuf::from(recovery_dir_path),
-                PathBuf::from(registry_path),
-                Duration::from_secs(TIME_LIMIT),
-            )
-            .expect("Unable to recover from file"),
-        };
+        let server = S::recover(
+            PathBuf::from(self.recovery_dir_path),
+            PathBuf::from(self.registry_path),
+            Duration::from_secs(TIME_LIMIT),
+        )
+        .expect("Unable to recover from file");
 
         println!("Network is running!");
         let mut api = tide::Server::with_state(server);
@@ -92,17 +80,8 @@ impl Arguments {
 
 #[async_std::main]
 async fn main() {
-    // exit_on_error(Arguments::parse().run());
     Arguments::parse()
         .run()
         .await
         .expect("Server error occurred");
 }
-
-// run with
-// cargo run --release --all-features --bin groth16_phase2_server recover manta-trusted-setup/data manta-trusted-setup/data/registry.csv
-// or
-// cargo run --release --all-features --bin groth16_phase2_server recover
-// TODO: Update server start command!
-// build with
-// cargo build --release --all-features --bin groth16_phase2_server

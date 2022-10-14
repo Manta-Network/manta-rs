@@ -17,9 +17,11 @@
 //! Trusted Setup Ceremony Preparation
 //! Given Phase 1 parameters and circuit descriptions, prepares files
 //! needed for a server to act as ceremony coordinator.
-//! NOTE: This currently saves an empty registry file.
+//! NOTE: This saves an empty registry file. Registry updates are
+//! triggered automatically by server.
+//! Run with `cargo run --release --all-features --bin groth16_phase2_prepare /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072`
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{Config, Record, Registry},
     coordinator::prepare,
@@ -27,50 +29,28 @@ use manta_trusted_setup::groth16::ceremony::{
 };
 use std::path::PathBuf;
 
-/// Command
-#[derive(Debug, Subcommand)]
-pub enum Command {
-    /// Transforms Phase 1 Parameters into Phase 2 Parameters.
-    Prepare {
-        phase_one_param_path: PathBuf,
-
-        #[clap(default_value = "manta-trusted-setup/data/")]
-        recovery_directory: PathBuf,
-    },
-}
-
 /// Preparer CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
-    /// Server Command
-    #[clap(subcommand)]
-    pub command: Command,
+    phase_one_param_path: PathBuf,
+
+    #[clap(default_value = "manta-trusted-setup/data/")]
+    recovery_directory: PathBuf,
 }
 
 impl Arguments {
     /// Prepares for phase 2 ceremony
     #[inline]
     pub async fn run(self) -> Result<(), CeremonyError<Config>> {
-        match self.command {
-            Command::Prepare {
-                phase_one_param_path,
-                recovery_directory,
-            } => {
-                prepare::<Config, Registry, Record>(phase_one_param_path, recovery_directory);
-            }
-        };
+        prepare::<Config, Registry, Record>(self.phase_one_param_path, self.recovery_directory);
         Ok(())
     }
 }
 
 #[async_std::main]
 async fn main() {
-    // exit_on_error(Arguments::parse().run());
     Arguments::parse()
         .run()
         .await
         .expect("Preparation error occurred");
 }
-
-// run with
-// cargo run --release --all-features --bin groth16_phase2_prepare prepare /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072

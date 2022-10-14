@@ -16,7 +16,7 @@
 
 //! Trusted Setup Ceremony Server
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{extract_registry, Config, Record},
     CeremonyError,
@@ -67,53 +67,34 @@ const SHORT_HEADERS: [&str; 14] = [
     "submission_token",
 ];
 
-/// Command
-#[derive(Debug, Subcommand)]
-pub enum Command {
-    /// Recovers a server from disk.
-    Process {
-        raw_registry_path: String,
-
-        #[clap(default_value = "manta-trusted-setup/data/registry.csv")]
-        registry_path: String,
-    },
-}
-
 /// Server CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
-    /// Server Command
-    #[clap(subcommand)]
-    pub command: Command,
+    raw_registry_path: String,
+
+    #[clap(default_value = "manta-trusted-setup/data/registry.csv")]
+    registry_path: String,
 }
 
 impl Arguments {
     /// Runs a server.
     #[inline]
     pub async fn run(self) -> Result<(), CeremonyError<Config>> {
-        match self.command {
-            Command::Process {
-                raw_registry_path,
-                registry_path,
-            } => {
-                let file =
-                    File::open(raw_registry_path).expect("Unable to open file raw registry file");
-                extract_registry::<RegistrationInfo>(
-                    &file,
-                    registry_path.into(),
-                    EXPECTED_HEADERS.into(),
-                    SHORT_HEADERS.into(),
-                )
-                .expect("Registry processing failed.")
-            }
-        };
+        let file =
+            File::open(self.raw_registry_path).expect("Unable to open file raw registry file");
+        extract_registry::<RegistrationInfo>(
+            &file,
+            self.registry_path.into(),
+            EXPECTED_HEADERS.into(),
+            SHORT_HEADERS.into(),
+        )
+        .expect("Registry processing failed.");
         Ok(())
     }
 }
 
 #[async_std::main]
 async fn main() {
-    // exit_on_error(Arguments::parse().run());
     Arguments::parse()
         .run()
         .await
@@ -186,6 +167,7 @@ impl From<RegistrationInfo> for Record {
 #[test]
 fn test_extract_registry() {
     use manta_trusted_setup::groth16::ceremony::config::ppot::extract_registry;
+    use std::path::PathBuf;
     let file = File::open("/Users/thomascnorton/Downloads/Trusted_Setup_Signups.csv")
         .expect("Cannot open file");
     let path = PathBuf::from(
