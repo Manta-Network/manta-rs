@@ -173,7 +173,7 @@ where
         Self::new_unchecked(*mnemonic.to_seed(password).as_bytes(), mnemonic)
     }
 
-    /// Exposes a shared reference to the [`Mnemonic`] for `self`
+    /// Exposes a shared reference to the [`Mnemonic`] for `self`.
     #[inline]
     pub fn expose_mnemonic(&self) -> &Mnemonic {
         &self.mnemonic

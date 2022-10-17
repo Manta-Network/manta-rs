@@ -1,0 +1,55 @@
+---
+on:
+  release:
+    types:
+      - created
+jobs:
+  build:
+    name: build release binary
+    strategy:
+      fail-fast: false
+      matrix:
+        os: 
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+        channel:
+          - stable
+          - nightly
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup update ${{ matrix.channel }}
+      - run: rustup default ${{ matrix.channel }}
+      - run: cargo build --release --verbose --package manta-trusted-setup --all-features --bin groth16_phase2_client
+      - id: get_release
+        uses: bruceadams/get-release@v1.2.3
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - if: matrix.os == 'macos-latest'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: ./target/release/groth16_phase2_client
+          asset_name: groth16-phase2-client-${{ matrix.channel }}-macos
+          asset_content_type: application/octet-stream
+      - if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: ./target/release/groth16_phase2_client
+          asset_name: groth16-phase2-client-${{ matrix.channel }}-ubuntu
+          asset_content_type: application/octet-stream
+      - if: matrix.os == 'windows-latest'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: ./target/release/groth16_phase2_client
+          asset_name: groth16-phase2-client-${{ matrix.channel }}-windows
+          asset_content_type: application/octet-stream

@@ -192,9 +192,6 @@ where
 
     /// Ledger Synchronization Data
     pub data: SyncData<C>,
-
-    /// Network Type for Sync Request
-    pub network: NetworkType,
 }
 
 impl<C, T> SyncRequest<C, T>
@@ -330,9 +327,6 @@ where
 
     /// Asset Metadata
     pub metadata: Option<AssetMetadata>,
-
-    /// Current Network
-    pub network: NetworkType,
 }
 
 /// Signer Signing Response
