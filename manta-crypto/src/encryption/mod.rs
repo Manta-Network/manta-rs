@@ -723,6 +723,36 @@ pub mod test {
         )
     }
 
+    /// used to assert that the two plaintexts are the same.
+    #[inline]
+    pub fn decrypt_only<E>(
+        cipher: &E,
+        encryption_key: &Vec<E::EncryptionKey>,
+        decryption_key: &Vec<E::DecryptionKey>,
+        randomness: &E::Randomness,
+        header: &E::Header,
+        plaintext: &E::Plaintext,
+        iterations: usize,
+    ) where
+        E: Decrypt + Encrypt,
+    {
+        use std::time::Instant;
+        let mut enc_vec = Vec::new();
+
+        for i in 0..iterations {
+            let cipher_text =
+                cipher.encrypt(&encryption_key[i], randomness, header, plaintext, &mut ());
+            enc_vec.push(cipher_text);
+        }
+
+        let now = Instant::now();
+        for i in 0..iterations {
+            cipher.decrypt(&decryption_key[i], header, &enc_vec[i], &mut ());
+        }
+        let elapsed = now.elapsed();
+        println!("Elapsed: {:.2?}", elapsed);
+    }
+
     /// Derives an [`EncryptionKey`](EncryptionKeyType::EncryptionKey) from `decryption_key` and
     /// then runs the [`correctness`] assertion test.
     #[inline]

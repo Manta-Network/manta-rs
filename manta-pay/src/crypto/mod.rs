@@ -18,4 +18,60 @@
 
 pub mod constraint;
 pub mod ecc;
+/// Testing Suite
 pub mod poseidon;
+
+/// Testing Suite
+#[cfg(test)]
+mod test {
+    use crate::config::utxo::v1::IncomingBaseEncryptionScheme;
+    use manta_accounting::transfer::utxo::v1::IncomingPlaintext;
+    use manta_crypto::{
+        encryption::{self, EmptyHeader},
+        rand::{OsRng, Rand},
+    };
+
+    // /// Tests if symmetric encryption of [`Note`] decrypts properly.
+    // #[test]
+    // fn note_symmetric_encryption() {
+    //     let mut rng = OsRng;
+    //     let key = rng.gen();
+    //     encryption::test::correctness::<IncomingBaseEncryptionScheme, _>(
+    //         &rng.gen(),
+    //         &key,
+    //         &key,
+    //         &(),
+    //         &(),
+    //         &rng.gen(),
+    //         |plaintext, decrypted_plaintext| {
+    //             assert_eq!(
+    //                 plaintext,
+    //                 &decrypted_plaintext.expect("Unable to decrypt ciphertext.")
+    //             );
+    //         },
+    //     );
+    // }
+    #[test]
+    fn note_symmetric_encryption_100_000_times() {
+        let mut rng = OsRng;
+        let mut enc_vec = Vec::new();
+        let mut dec_vec = Vec::new();
+
+        let iterations = 100_000;
+
+        for _ in 0..iterations {
+            enc_vec.push(rng.gen());
+            dec_vec.push(rng.gen());
+        }
+
+        encryption::test::decrypt_only::<IncomingBaseEncryptionScheme>(
+            &rng.gen(),
+            &enc_vec,
+            &dec_vec,
+            &(),
+            &EmptyHeader::default(),
+            &IncomingPlaintext::new(rng.gen(), rng.gen()),
+            iterations,
+        );
+    }
+}
