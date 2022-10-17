@@ -1,4 +1,5 @@
 #!/bin/sh
 
-rm -r pkg
-wasm-pack build --target web --release # --debug
+rm -rf snap-debug-pkg snap-release-pkg
+wasm-pack build --debug --target web --out-dir snap-debug-pkg
+wasm-pack build --release --target web --out-dir snap-release-pkg
