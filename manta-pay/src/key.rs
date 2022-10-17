@@ -29,7 +29,7 @@ use core::marker::PhantomData;
 use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
-use manta_crypto::rand::{CryptoRng, OsRng, RngCore, Sample};
+use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
@@ -178,18 +178,14 @@ where
     pub fn expose_mnemonic(&self) -> &Mnemonic {
         &self.mnemonic
     }
-}
 
-impl<C> Sample for KeySecret<C>
-where
-    C: CoinType,
-{
+    /// Samples a random [`KeySecret`] from `rng` with no password.
     #[inline]
-    fn sample<R>(_: (), _rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
+    pub fn sample<R>(rng: &mut R) -> Self
+        where
+            R: CryptoRng + RngCore + ?Sized,
     {
-        Self::new(Mnemonic::sample(&mut OsRng), "")
+        Self::new(Mnemonic::sample(rng), "")
     }
 }
 
