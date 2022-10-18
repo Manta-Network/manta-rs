@@ -45,7 +45,7 @@ use crate::{
     },
     wallet::ledger::{self, Data},
 };
-use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
@@ -1318,36 +1318,5 @@ where
         request: ReceivingKeyRequest,
     ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error> {
         Box::pin(async move { Ok(self.receiving_keys(request)) })
-    }
-}
-
-/// Public enum to represent the different network types
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde")
-)]
-#[derive(Copy, Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub enum NetworkType {
-    /// Dolphin Testnet Network
-    #[default]
-    Dolphin,
-
-    /// Calamari Kusama Relay Chain Network
-    Calamari,
-
-    /// Manta Polkadot Relay Chain Network
-    Manta,
-}
-
-impl NetworkType {
-    /// Returns a string formatting of `network` interpreted using `self`.
-    #[inline]
-    pub fn display(&self) -> String {
-        match self {
-            NetworkType::Dolphin => String::from("Dolphin"),
-            NetworkType::Calamari => String::from("Calamari"),
-            NetworkType::Manta => String::from("Manta"),
-        }
     }
 }
