@@ -113,6 +113,7 @@ indexmap = { version = "1.9.1", optional = true, default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["rand_chacha"] }
 manta-parameters = { path = "../manta-parameters", optional = true, default-features = false }
+manta-signer = { git = "https://github.com/manta-network/manta-signer.git", branch = "redesign", default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }

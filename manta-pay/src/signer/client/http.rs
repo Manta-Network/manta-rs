@@ -25,6 +25,7 @@ use crate::{
 };
 use alloc::{boxed::Box, vec::Vec};
 use manta_accounting::wallet::{self, signer};
+use manta_signer::network::{Network,Message};
 use manta_util::{
     future::LocalBoxFutureResult,
     http::reqwest::{self, IntoUrl, KnownUrlClient},
@@ -37,7 +38,7 @@ pub use reqwest::Error;
 pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
 
 /// HTTP Signer Client
-pub struct Client(KnownUrlClient);
+pub struct Client(KnownUrlClient, Option<Network>);
 
 impl Client {
     /// Builds a new HTTP [`Client`] that connects to `server_url`.
@@ -47,6 +48,18 @@ impl Client {
         U: IntoUrl,
     {
         Ok(Self(KnownUrlClient::new(server_url)?))
+    }
+
+    /// Sets the network that will be used to wrap HTTP requests.
+    #[inline]
+    pub fn set_network(self,network:Option<Network>) {
+        self.1 = network;
+    }
+
+    /// Wraps the current outgoing Request with a network.
+    #[inline]
+    pub fn wrap_request<T>(self,request:T) -> Message<T> {
+        Message {network: self.1, message:request}
     }
 }
 
@@ -59,15 +72,21 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SyncRequest,
     ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
-        Box::pin(async move { self.0.post("sync", &request).await })
+        Box::pin(async move {
+            let message = self.wrap_request(request);
+            self.0.post("sync", &message).await
+        })
     }
 
     #[inline]
     fn sign(
         &mut self,
-        request: SignRequest,
+        request: SignRequest
     ) -> LocalBoxFutureResult<Result<SignResponse, SignError>, Self::Error> {
-        Box::pin(async move { self.0.post("sign", &request).await })
+        Box::pin(async move {
+            let message = self.wrap_request(request);
+            self.0.post("sign", &message).await
+        })
     }
 
     #[inline]
