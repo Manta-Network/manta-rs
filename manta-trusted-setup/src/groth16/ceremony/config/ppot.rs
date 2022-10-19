@@ -417,24 +417,9 @@ pub fn generate_keys(bytes: &[u8]) -> Option<(ed25519::SecretKey, ed25519::Publi
 /// Registers a participant.
 #[inline]
 pub fn register(twitter_account: String, email: String) {
-    println!(
-        "Your {}: \nCopy the following text to the \"Twitter\" Section in Registration Form:\n {}\n",
-        "Twitter Account".italic(),
-        twitter_account.green(),
-    );
-    println!(
-        "Your {}: \nCopy the following text to the \"Email\" Section in Registration Form:\n {}\n",
-        "Email".italic(),
-        email.green(),
-    );
     let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
     let seed = Seed::new(&mnemonic, "manta-trusted-setup");
     let keypair = generate_keys(seed.as_bytes()).expect("Should generate a key pair.");
-    println!(
-        "Your {}: \nCopy the following text to the \"Public Key\" Section in Registration Form:\n {}\n",
-        "Public Key".italic(),
-        bs58::encode(keypair.1).into_string().green(),
-    );
     let signature = sign::<Ed25519<RawMessage<u64>>, _>(
         &keypair.0,
         Default::default(),
@@ -445,17 +430,20 @@ pub fn register(twitter_account: String, email: String) {
     )
     .expect("Signing message should succeed.");
     println!(
-        "Your {}: \nCopy the following text to the \"Signature\" Section in Registration Form: \n {}\n",
-        "Signature".italic(),
-        bs58::encode(signature).into_string().green()
-    );
-    println!(
         "Your {}: \nThe following text stores your secret for the trusted setup. \
          Save the following text somewhere safe. \n DO NOT share this with anyone else! \
-         Please discard this data after the trusted setup ceremony.\n {}",
+         Please discard this data after the trusted setup ceremony.\n {} \n",
         "Secret".italic(),
         mnemonic.phrase().red().bold(),
     );
+
+    println!("Your registration is not complete until you submit the following form: \n Copy the following link to your browser and complete registration there \n \n{}", register_link(twitter_account, email, bs58::encode(keypair.1).into_string(), bs58::encode(signature).into_string()).green());
+}
+
+/// Generates link to registration form with Twitter, Email, Public Key,
+/// Signature fields pre-filled.
+pub fn register_link(twitter: String, email: String, public_key: String, signature: String) -> String {
+    format!("https://docs.google.com/forms/d/e/1FAIpQLSd46JcUspiEoFUEUyqG3C8xCoA_PZTO1djDGwxgizQ7ZdUt3g/viewform?usp=pp_url&entry.1686182444={}&entry.189942850={}&entry.1521507065={}&entry.2074961119={} \n", twitter, email, public_key, signature)
 }
 
 /// Prompts the client information and get client keys.
