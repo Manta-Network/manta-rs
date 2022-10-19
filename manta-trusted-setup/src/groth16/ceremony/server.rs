@@ -119,7 +119,7 @@ where
     where
         C::Challenge: DeserializeOwned + Send,
         C::Identifier: Copy + Debug + Send,
-        C::Nonce: Send,
+        C::Nonce: Debug + Send,
         R::Registry: DeserializeOwned + Send,
         <R::Record as Record<C::Identifier, C::Participant>>::Error: Debug,
         C: 'static,
@@ -302,13 +302,13 @@ where
     pub async fn update_registry(&self)
     where
         C: 'static,
-        C::Nonce: Send,
+        C::Nonce: Debug + Send,
         R: 'static,
         R::Registry: Send,
         <R::Record as Record<R::Identifier, R::Participant>>::Error: Debug,
     {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             let _ = info!("[ACTION] Updating participant registry.");
             let registry_path = self.registry_path.clone();
             let registry = self.registry.clone();
@@ -317,8 +317,10 @@ where
                     .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
             })
             .await
-            .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::TaskError))
-            {
+            .map_err(|e| {
+                println!("Encountered join error {:?}", e);
+                CeremonyError::<C>::Unexpected(UnexpectedError::TaskError)
+            }) {
                 Ok(Ok(added)) => {
                     let _ = info!(
                         "[ACTION] Registry successfully updated. {} New entries added",
@@ -328,7 +330,12 @@ where
                 Ok(Err(CeremonyError::Unexpected(UnexpectedError::Serialization))) => {
                     let _ = warn!("[ERROR] Unable to update registry. Serialization error.");
                 }
-                _ => {
+                Ok(Err(e)) => {
+                    println!("Encountered Ok(error) {:?}", e);
+                    let _ = warn!("[ERROR] Unable to update registry. Serialization error.");
+                }
+                Err(e) => {
+                    println!("Encountered error {:?}", e);
                     let _ = warn!("[ERROR] Unable to update registry. Task error.");
                 }
             }

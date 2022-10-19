@@ -274,7 +274,8 @@ impl registry::csv::Record<VerifyingKey, Participant> for Record {
                     println!("Array conversion failed on verifying key {:?}", e);
                     "Cannot decode to array.".to_string()
                 })?,
-        );
+        )
+        .map_err(|_| "Byte conversion failed on verifying key.".to_string())?;
         let verifying_key = Array::from_unchecked(*verifying_key.as_bytes());
         let signature: ed25519::Signature = ed25519::signature_from_bytes(
             bs58::decode(self.signature)
@@ -288,7 +289,8 @@ impl registry::csv::Record<VerifyingKey, Participant> for Record {
                     println!("Array conversion failed on signature {:?}", e);
                     "Cannot decode to array.".to_string()
                 })?,
-        );
+        )
+        .map_err(|_| "Byte conversion failed on signature.".to_string())?;
         verify::<Signature, _>(
             &verifying_key,
             0,
@@ -364,16 +366,18 @@ pub fn set_header(
 /// Extracts all [`Record`]s from a CSV file of raw registration
 /// data and creates new CSV file containing only these `Record`s
 /// at the specified path. A [`Registry`] can be loaded from the
-/// resulting file.
+/// resulting file. Creates another CSV file of malformed registry entries
+/// in case ceremony coordinators wish to examine these.
+/// Returns the pair (number successfully parsed, number malformed)
 /// TODO: This gives all participants low priority.
 pub fn extract_registry<R>(
     file: &File,
     path: PathBuf,
     expected_headers: Vec<&str>,
     short_headers: Vec<&str>,
-) -> Result<(), RegistrationProcessingError>
+) -> Result<(usize, usize), RegistrationProcessingError>
 where
-    R: DeserializeOwned + Into<Record>,
+    R: DeserializeOwned + Into<Record> + Clone,
 {
     let mut reader = Reader::from_reader(file);
     set_header(&mut reader, expected_headers, short_headers)?;
@@ -381,15 +385,41 @@ where
         .write(true)
         .create(true)
         .truncate(true)
-        .open(path)
+        .open(&path)
+        .map_err(|_| RegistrationProcessingError::WriteError)?;
+    let mut file_malformed = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(
+            path.parent()
+                .expect("Path should have a parent")
+                .join("malformed_registry_submissions"),
+        )
         .map_err(|_| RegistrationProcessingError::WriteError)?;
     let mut writer = WriterBuilder::new().from_writer(&mut file_out);
-    for record in reader.deserialize::<R>().flatten() {
-        writer
-            .serialize(record.into())
-            .map_err(|_| RegistrationProcessingError::WriteError)?;
+    let mut writer_malformed = WriterBuilder::new().from_writer(&mut file_malformed);
+
+    let mut num_successful = 0;
+    let mut num_malformed = 0;
+    for (i, record) in reader.deserialize::<R>().flatten().enumerate() {
+        match <Record as registry::csv::Record<_, _>>::parse(record.clone().into()) {
+            Ok(_) => {
+                num_successful += 1;
+                writer
+                    .serialize(record.into())
+                    .map_err(|_| RegistrationProcessingError::WriteError)?
+            }
+            Err(e) => {
+                println!("Encountered error {:?} when reading entry {}", e, i + 2);
+                num_malformed += 1;
+                writer_malformed
+                    .serialize(record.into())
+                    .map_err(|_| RegistrationProcessingError::WriteError)?
+            }
+        }
     }
-    Ok(())
+    Ok((num_successful, num_malformed))
 }
 
 /// The registry used in this ceremony
@@ -442,7 +472,13 @@ pub fn register(twitter_account: String, email: String) {
 
 /// Generates link to registration form with Twitter, Email, Public Key,
 /// Signature fields pre-filled.
-pub fn register_link(twitter: String, email: String, public_key: String, signature: String) -> String {
+/// TODO: This is the link to a dummy google form! Replace with real typeform
+pub fn register_link(
+    twitter: String,
+    email: String,
+    public_key: String,
+    signature: String,
+) -> String {
     format!("https://docs.google.com/forms/d/e/1FAIpQLSd46JcUspiEoFUEUyqG3C8xCoA_PZTO1djDGwxgizQ7ZdUt3g/viewform?usp=pp_url&entry.1686182444={}&entry.189942850={}&entry.1521507065={}&entry.2074961119={} \n", twitter, email, public_key, signature)
 }
 
