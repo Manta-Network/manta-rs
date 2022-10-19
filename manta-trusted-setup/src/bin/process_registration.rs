@@ -179,6 +179,7 @@ fn test_extract_registry() {
         path,
         EXPECTED_HEADERS.into(),
         SHORT_HEADERS.into(),
+        HashMap::new(),
     )
     .unwrap();
 }

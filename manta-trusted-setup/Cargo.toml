@@ -34,11 +34,11 @@ required-features = ["async-std", "bincode", "clap", "csv", "ppot", "serde_json"
 
 [[bin]]
 name = "groth16_phase2_prepare"
-required-features = ["ppot-client"]
+required-features = ["ppot-client", "serde", "tokio"]
 
 [[bin]]
 name = "process_registration"
-required-features = ["ppot-client"]
+required-features = ["clap", "ppot-client", "serde", "tokio"]
 
 [features]
 # Bincode for Message Signing
