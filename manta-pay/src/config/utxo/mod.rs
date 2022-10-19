@@ -17,3 +17,4 @@
 //! Manta-Pay UTXO Model Configurations
 
 pub mod v1;
+pub mod v2;

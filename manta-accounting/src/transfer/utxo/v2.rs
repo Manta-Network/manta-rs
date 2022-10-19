@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! UTXO Version 2 Protocol
+//! UTXO Version 1 Protocol
 
 use crate::{
     asset,
@@ -43,7 +43,7 @@ use manta_crypto::{
         ops::{BitAnd, BitOr},
         Has,
     },
-    encryption::{self, hybrid::Hybrid, Decrypt, EmptyHeader, Encrypt, EncryptedMessage},
+    encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage},
     rand::{Rand, RngCore, Sample},
     signature::{self, schnorr, Sign, Verify},
 };
@@ -267,15 +267,34 @@ where
         ViewingKey = Self::Scalar,
     >;
 
+    /// Incoming Light Ciphertext Type
+    type LightIncomingCiphertext: PartialEq<Self::LightIncomingCiphertext, COM>;
+
+    /// Incoming Light Header
+    type LightIncomingHeader: Default + PartialEq<Self::LightIncomingHeader, COM>;
+
+    /// Base Encryption Scheme for [`LightIncomingNote`]
+    type LightIncomingBaseEncryptionScheme: Clone
+        + Encrypt<
+            COM,
+            EncryptionKey = Self::Group,
+            Header = Self::LightIncomingHeader,
+            Plaintext = IncomingPlaintext<Self, COM>,
+            Ciphertext = Self::LightIncomingCiphertext,
+        >;
+
     /// Incoming Ciphertext Type
     type IncomingCiphertext: PartialEq<Self::IncomingCiphertext, COM>;
+
+    /// Incoming Header
+    type IncomingHeader: Default + PartialEq<Self::IncomingHeader, COM>;
 
     /// Base Encryption Scheme for [`IncomingNote`]
     type IncomingBaseEncryptionScheme: Clone
         + Encrypt<
             COM,
             EncryptionKey = Self::Group,
-            Header = EmptyHeader<COM>,
+            Header = Self::IncomingHeader,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::IncomingCiphertext,
         >;
@@ -303,6 +322,9 @@ where
         UtxoAccumulatorItem = UtxoAccumulatorItem<Self, COM>,
     >;
 
+    /// Outgoing Header
+    type OutgoingHeader: Default + PartialEq<Self::OutgoingHeader, COM>;
+
     /// Outgoing Ciphertext Type
     type OutgoingCiphertext: PartialEq<Self::OutgoingCiphertext, COM>;
 
@@ -311,7 +333,7 @@ where
         + Encrypt<
             COM,
             EncryptionKey = Self::Group,
-            Header = EmptyHeader<COM>,
+            Header = Self::OutgoingHeader,
             Plaintext = Asset<Self, COM>,
             Ciphertext = Self::OutgoingCiphertext,
         >;
@@ -1039,7 +1061,7 @@ where
         .encrypt_into(
             &secret.receiving_key,
             &secret.incoming_randomness,
-            EmptyHeader::default(),
+            C::IncomingHeader::default(),
             &secret.plaintext,
             &mut (),
         );
@@ -1162,7 +1184,7 @@ where
         .encrypt_into(
             receiving_key,
             &secret.outgoing_randomness,
-            EmptyHeader::default(),
+            C::OutgoingHeader::default(),
             &asset,
             &mut (),
         );
@@ -1215,7 +1237,7 @@ where
                 .incoming_note
                 .ephemeral_public_key()
                 .scalar_mul(decryption_key, &mut ()),
-            &EmptyHeader::default(),
+            &C::IncomingHeader::default(),
             &note.incoming_note.ciphertext.ciphertext,
             &mut (),
         )?;
@@ -1646,7 +1668,7 @@ where
         .encrypt_into(
             &self.receiving_key,
             &self.incoming_randomness,
-            EmptyHeader::default(),
+            C::IncomingHeader::default(),
             &self.plaintext,
             compiler,
         )
@@ -2050,7 +2072,7 @@ where
         .encrypt_into(
             receiving_key,
             &self.outgoing_randomness,
-            EmptyHeader::default(),
+            C::OutgoingHeader::default(),
             asset,
             compiler,
         )

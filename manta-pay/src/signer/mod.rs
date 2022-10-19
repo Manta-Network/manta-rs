@@ -16,13 +16,13 @@
 
 //! Manta Pay Signer Tools
 
-use crate::config::{Checkpoint, Config};
+use crate::config::{utxo::v1::Checkpoint, Config};
 use manta_accounting::wallet::signer;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-pub mod client;
+//pub mod client;
 
 #[cfg(feature = "wallet")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]
@@ -32,13 +32,13 @@ pub mod base;
 pub type SyncRequest = signer::SyncRequest<Config, Checkpoint>;
 
 /// Synchronization Response
-pub type SyncResponse = signer::SyncResponse<Checkpoint>;
+pub type SyncResponse = signer::SyncResponse<Config, Checkpoint>;
 
 /// Synchronization Error
 pub type SyncError = signer::SyncError<Checkpoint>;
 
 /// Synchronization Result
-pub type SyncResult = signer::SyncResult<Checkpoint>;
+pub type SyncResult = signer::SyncResult<Config, Checkpoint>;
 
 /// Signing Request
 pub type SignRequest = signer::SignRequest<Config>;
