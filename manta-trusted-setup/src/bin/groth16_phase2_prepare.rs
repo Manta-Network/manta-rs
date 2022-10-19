@@ -19,7 +19,6 @@
 //! needed for a server to act as ceremony coordinator.
 //! NOTE: This saves an empty registry file. Registry updates are
 //! triggered automatically by server.
-//! Run with `cargo run --release --all-features --bin groth16_phase2_prepare /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072`
 
 use clap::Parser;
 use manta_trusted_setup::groth16::ceremony::{

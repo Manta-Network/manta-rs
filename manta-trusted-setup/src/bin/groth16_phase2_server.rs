@@ -15,8 +15,6 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Trusted Setup Ceremony Server
-//! Run with `cargo run --release --all-features --bin groth16_phase2_server`
-//! or optionally specify recovery directory and registry path.
 
 // TODO: Update server start command!
 
