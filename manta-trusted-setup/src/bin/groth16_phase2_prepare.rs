@@ -41,16 +41,14 @@ pub struct Arguments {
 impl Arguments {
     /// Prepares for phase 2 ceremony
     #[inline]
-    pub async fn run(self) -> Result<(), CeremonyError<Config>> {
+    pub fn run(self) -> Result<(), CeremonyError<Config>> {
         prepare::<Config, Registry, Record>(self.phase_one_param_path, self.recovery_directory);
         Ok(())
     }
 }
 
-#[async_std::main]
-async fn main() {
+fn main() {
     Arguments::parse()
         .run()
-        .await
         .expect("Preparation error occurred");
 }

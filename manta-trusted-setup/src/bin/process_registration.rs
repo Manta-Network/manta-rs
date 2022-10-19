@@ -79,7 +79,7 @@ pub struct Arguments {
 impl Arguments {
     /// Runs a server.
     #[inline]
-    pub async fn run(self) -> Result<(), CeremonyError<Config>> {
+    pub fn run(self) -> Result<(), CeremonyError<Config>> {
         let file =
             File::open(self.raw_registry_path).expect("Unable to open file raw registry file");
         let (successful, malformed) = extract_registry::<RegistrationInfo>(
@@ -101,12 +101,8 @@ impl Arguments {
     }
 }
 
-#[async_std::main]
-async fn main() {
-    Arguments::parse()
-        .run()
-        .await
-        .expect("Server error occurred");
+fn main() {
+    Arguments::parse().run().expect("Server error occurred");
 }
 
 /// Registration info collected by our registration form.
