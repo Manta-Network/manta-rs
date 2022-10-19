@@ -98,6 +98,33 @@ impl From<Priority> for usize {
     }
 }
 
+impl From<Priority> for String {
+    #[inline]
+    fn from(value: Priority) -> Self {
+        match value {
+            Priority::High => "high".to_string(),
+            _ => "normal".to_string(),
+        }
+    }
+}
+
+impl From<&Priority> for String {
+    #[inline]
+    fn from(value: &Priority) -> Self {
+        Self::from(*value)
+    }
+}
+
+impl From<String> for Priority {
+    #[inline]
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "high" => Priority::High,
+            _ => Priority::Normal,
+        }
+    }
+}
+
 /// Participant
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(
@@ -301,23 +328,12 @@ impl registry::csv::Record<VerifyingKey, Participant> for Record {
             &signature,
         )
         .map_err(|_| "Cannot verify signature.".to_string())?;
-        let priority = match self.priority.as_str() {
-            "TRUE" => "true",
-            "FALSE" => "false",
-            str => str,
-        };
         Ok((
             verifying_key,
             Participant::new(
                 verifying_key,
                 self.twitter,
-                match priority
-                    .parse::<bool>()
-                    .map_err(|_| "Cannot parse priority.".to_string())?
-                {
-                    true => Priority::High,
-                    false => Priority::Normal,
-                },
+                self.priority.into(),
                 OsRng.gen::<_, u16>() as u64,
                 false,
             ),
@@ -368,12 +384,13 @@ pub fn set_header(
 /// resulting file. Creates another CSV file of malformed registry entries
 /// in case ceremony coordinators wish to examine these.
 /// Returns the pair (number successfully parsed, number malformed)
-/// TODO: This gives all participants low priority.
+/// Participants are given default priority
 pub fn extract_registry<R>(
     file: &File,
     path: PathBuf,
     expected_headers: Vec<&str>,
     short_headers: Vec<&str>,
+    priority_list: HashMap<Array<u8, 32>, Priority>,
 ) -> Result<(usize, usize), RegistrationProcessingError>
 where
     R: DeserializeOwned + Into<Record> + Clone,
@@ -403,10 +420,16 @@ where
     let mut num_malformed = 0;
     for (i, record) in reader.deserialize::<R>().flatten().enumerate() {
         match <Record as registry::csv::Record<_, _>>::parse(record.clone().into()) {
-            Ok(_) => {
+            Ok((verifying_key, _)) => {
+                let mut record: Record = record.into();
+                if let Some(priority) = priority_list.get(&verifying_key) {
+                    record.priority = priority.into();
+                } else {
+                    record.priority = Priority::Normal.into();
+                }
                 num_successful += 1;
                 writer
-                    .serialize(record.into())
+                    .serialize(record)
                     .map_err(|_| RegistrationProcessingError::WriteError)?
             }
             Err(e) => {
@@ -451,7 +474,7 @@ pub fn register(twitter_account: String, email: String) {
     let keypair = generate_keys(seed.as_bytes()).expect("Should generate a key pair.");
     let signature = sign::<Ed25519<RawMessage<u64>>, _>(
         &keypair.0,
-        Default::default(), 
+        Default::default(),
         &format!(
             "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
             twitter_account, email

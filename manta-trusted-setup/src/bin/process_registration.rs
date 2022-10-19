@@ -22,6 +22,7 @@ use manta_trusted_setup::groth16::ceremony::{
     CeremonyError,
 };
 use manta_util::serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::File;
 
 // run with
@@ -82,11 +83,13 @@ impl Arguments {
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
         let file =
             File::open(self.raw_registry_path).expect("Unable to open file raw registry file");
+        let mut priority_list = HashMap::new();
         let (successful, malformed) = extract_registry::<RegistrationInfo>(
             &file,
             self.registry_path.into(),
             EXPECTED_HEADERS.into(),
             SHORT_HEADERS.into(),
+            priority_list
         )
         .expect("Registry processing failed.");
         println!(
