@@ -38,7 +38,7 @@ required-features = ["ppot-client"]
 
 [[bin]]
 name = "process_registration"
-required-features = ["ppot-client"] # TODO: May be overkill on features
+required-features = ["ppot-client"]
 
 [features]
 # Bincode for Message Signing

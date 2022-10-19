@@ -32,7 +32,7 @@ use crate::{
         kzg::Accumulator,
         mpc,
         mpc::{verify_transform, Proof, ProvingKeyHasher, State},
-        ppot::serialization::{read_subaccumulator, Compressed}, // TODO: generic prepare fn
+        ppot::serialization::{read_subaccumulator, Compressed},
     },
     mpc::ChallengeType,
 };
