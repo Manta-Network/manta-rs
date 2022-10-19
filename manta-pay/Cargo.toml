@@ -51,9 +51,6 @@ download = ["manta-parameters/download", "std"]
 # Enable Groth16 ZKP System
 groth16 = ["ark-groth16", "ark-snark", "arkworks"]
 
-# Enable HTTP Signer Client
-http = ["manta-util/reqwest", "serde"]
-
 # SCALE Codec and Type Info
 scale = ["scale-codec", "scale-info"]
 
