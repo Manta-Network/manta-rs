@@ -354,10 +354,8 @@ pub enum RegistrationProcessingError {
     WriteError,
 }
 
-/// Sets the header (column names) of this CSV Reader to
-/// match the field names of [`RegistrationInfo`]. Error if
-/// the existing field names do not match the expected names
-/// from our registration form.
+/// Sets the header (column names) of this CSV Reader. Error if
+/// the existing field names do not match the given expected names.
 pub fn set_header(
     reader: &mut Reader<&File>,
     expected_headers: Vec<&str>,
@@ -489,19 +487,19 @@ pub fn register(twitter_account: String, email: String) {
         mnemonic.phrase().red().bold(),
     );
 
-    println!("Your registration is not complete until you submit the following form: \n Copy the following link to your browser and complete registration there \n \n{}", register_link(twitter_account, email, bs58::encode(keypair.1).into_string(), bs58::encode(signature).into_string()).green());
+    println!("Your registration is not complete until you submit the following form: \nCopy the following link to your browser and complete registration there \n \n{}\nBe sure to copy this link exactly! Do not leave out any characters!", register_link(twitter_account, email, bs58::encode(keypair.1).into_string(), bs58::encode(signature).into_string()).green());
 }
 
 /// Generates link to registration form with Twitter, Email, Public Key,
 /// Signature fields pre-filled.
-/// TODO: This is the link to a dummy google form! Replace with real typeform
+/// TODO: This is a placeholder link
 pub fn register_link(
     twitter: String,
     email: String,
     public_key: String,
     signature: String,
 ) -> String {
-    format!("https://docs.google.com/forms/d/e/1FAIpQLSd46JcUspiEoFUEUyqG3C8xCoA_PZTO1djDGwxgizQ7ZdUt3g/viewform?usp=pp_url&entry.1686182444={}&entry.189942850={}&entry.1521507065={}&entry.2074961119={} \n", twitter, email, public_key, signature)
+    format!("https://mantanetwork.typeform.com/to/t8TXhPD9#email={}&twitter={}&verifying_key={}&signature={} \n", email, twitter, public_key, signature)
 }
 
 /// Prompts the client information and get client keys.
