@@ -342,7 +342,6 @@ pub enum RegistrationProcessingError {
 /// match the field names of [`RegistrationInfo`]. Error if
 /// the existing field names do not match the expected names
 /// from our registration form.
-/// TODO: [`Reader`] already has a method with a similar name
 pub fn set_header(
     reader: &mut Reader<&File>,
     expected_headers: Vec<&str>,
@@ -394,7 +393,7 @@ where
         .open(
             path.parent()
                 .expect("Path should have a parent")
-                .join("malformed_registry_submissions"),
+                .join("malformed_registry_submissions.csv"),
         )
         .map_err(|_| RegistrationProcessingError::WriteError)?;
     let mut writer = WriterBuilder::new().from_writer(&mut file_out);
@@ -452,7 +451,7 @@ pub fn register(twitter_account: String, email: String) {
     let keypair = generate_keys(seed.as_bytes()).expect("Should generate a key pair.");
     let signature = sign::<Ed25519<RawMessage<u64>>, _>(
         &keypair.0,
-        Default::default(),
+        Default::default(), 
         &format!(
             "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
             twitter_account, email

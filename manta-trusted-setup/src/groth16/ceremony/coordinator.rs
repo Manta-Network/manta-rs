@@ -441,8 +441,8 @@ where
 }
 
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
-/// to file. TODO: Currently assumes that the challenge hash type is [u8; 64].
-/// Creates a `_registry_0` file containing an empty registry.
+/// to file. Creates a `_registry_0` file containing an empty registry.
+/// TODO: Generalize ProvingKeyHasher Output type and curves.
 pub fn prepare<C, R, T>(phase_one_param_path: PathBuf, target_path: PathBuf)
 where
     C: Ceremony
