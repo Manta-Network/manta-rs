@@ -734,6 +734,16 @@ pub type AES = aes::FixedNonceAesGcm<AES_PLAINTEXT_SIZE, AES_CIPHERTEXT_SIZE>;
 #[derivative(Clone, Default)]
 pub struct IncomingAESEncryptionScheme<COM = ()>(PhantomData<COM>);
 
+impl Sample for IncomingAESEncryptionScheme {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self(rng.sample(distribution))
+    }
+}
+
 impl<COM> encryption::HeaderType for IncomingAESEncryptionScheme<COM> {
     type Header = <AES as encryption::HeaderType>::Header;
 }
@@ -780,6 +790,19 @@ impl<COM> encryption::Encrypt for IncomingAESEncryptionScheme<COM> {
             plaintext,
             compiler,
         )
+    }
+}
+
+impl<COM> encryption::Decrypt for IncomingAESEncryptionScheme<COM> {
+    fn decrypt(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        header: &Self::Header,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut (),
+    ) -> Self::DecryptedPlaintext {
+        let aes = AES::default();
+        AES::decrypt(&aes, decryption_key, header, ciphertext, compiler)
     }
 }
 
