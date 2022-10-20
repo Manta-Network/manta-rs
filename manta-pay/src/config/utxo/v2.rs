@@ -772,14 +772,20 @@ impl<COM> encryption::Encrypt for IncomingAESEncryptionScheme<COM> {
         compiler: &mut (),
     ) -> Self::Ciphertext {
         let aes = AES::default();
-        AES::encrypt(
-            &aes,
-            encryption_key,
-            randomness,
-            header,
-            plaintext,
-            compiler,
-        )
+        aes.encrypt(encryption_key, randomness, header, plaintext, compiler)
+    }
+}
+
+impl<COM> encryption::Decrypt for IncomingAESEncryptionScheme<COM> {
+    fn decrypt(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        header: &Self::Header,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut (),
+    ) -> Self::DecryptedPlaintext {
+        let aes = AES::default();
+        aes.decrypt(decryption_key, header, ciphertext, compiler)
     }
 }
 
@@ -2036,7 +2042,7 @@ pub mod test {
                 key::Encryption,
                 plaintext::{Forward, Reverse},
             },
-            EmptyHeader, Encrypt,
+            Decrypt, EmptyHeader, Encrypt,
         },
         rand::{OsRng, Sample},
     };
@@ -2072,7 +2078,7 @@ pub mod test {
             "Randomness is not the same"
         );
         assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
-        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.")
+        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
     }
 
     /// Same but w.r.t. compiler
@@ -2125,7 +2131,8 @@ pub mod test {
         <IncomingAESConverter<Compiler> as Encryption<Compiler>>::as_target(&group, &mut cs);
     }
 
-    /// Checks encryption is properly executed (i.e. that the ciphertext size is consistent with all the parameters).
+    /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
+    /// decryption is the inverse of encryption.
     #[test]
     fn check_encryption() {
         let mut rng = OsRng;
@@ -2143,6 +2150,21 @@ pub mod test {
                 value: asset_value,
             },
         );
-        base_aes.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
+        let ciphertext =
+            base_aes.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
+        let decrypted_ciphertext = base_aes
+            .decrypt(&encryption_key, &header, &ciphertext, &mut ())
+            .expect("Decryption returned None.");
+        let new_randomness = decrypted_ciphertext.utxo_commitment_randomness;
+        let (new_asset_id, new_asset_value) = (
+            decrypted_ciphertext.asset.id,
+            decrypted_ciphertext.asset.value,
+        );
+        assert_eq!(
+            new_randomness, utxo_commitment_randomness,
+            "Randomness is not the same"
+        );
+        assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
+        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
     }
 }
