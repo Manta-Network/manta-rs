@@ -16,6 +16,6 @@
 
 //! Groth16 Trusted Setup Ceremony Configurations
 
-#[cfg(feature = "csv")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "csv")))]
+#[cfg(feature = "ppot-client")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ppot-client")))]
 pub mod ppot;

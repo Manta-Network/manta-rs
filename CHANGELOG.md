@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#211](https://github.com/Manta-Network/manta-rs/pull/211) GLV scalar multiplication implementation
+- [\#267](https://github.com/Manta-Network/manta-rs/pull/267) Add trusted setup client downloader
+
+### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.5.5] - 2022-10-09
+### Added
+- [\#264](https://github.com/Manta-Network/manta-rs/pull/238) Add trusted setup client binary
 - [\#238](https://github.com/Manta-Network/manta-rs/pull/238) Add trusted setup ceremony primitives for server and client
 - [\#237](https://github.com/Manta-Network/manta-rs/pull/237) Public input fuzzing tests for transfer protocol
 - [\#215](https://github.com/Manta-Network/manta-rs/pull/215) Add windowed multiplication algorithm for groups
@@ -22,15 +37,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#180](https://github.com/Manta-Network/manta-rs/pull/180) Start moving to new `arkworks` backend for `manta-crypto`
 - [\#191](https://github.com/Manta-Network/manta-rs/pull/191) Move HTTP Utilities to `manta-util`
 
-### Deprecated
-
-### Removed
-
 ### Fixed
 - [\#212](https://github.com/Manta-Network/manta-rs/pull/212) Reduce the number of checks when computing `is_identity` and `is_symmetric` on matrices
 - [\#220](https://github.com/Manta-Network/manta-rs/pull/220) Add support for `.gitignore` and `README.md` to `manta-parameters`
-
-### Security
 
 ## [0.5.4] - 2022-07-28
 ### Added

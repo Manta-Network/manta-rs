@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use core::marker::PhantomData;
-use manta_util::AsBytes;
+use manta_util::{Array, AsBytes};
 
 pub use ed25519_dalek::*;
 
@@ -119,7 +119,7 @@ impl<M> SigningKeyType for Ed25519<M> {
 }
 
 impl<M> VerifyingKeyType for Ed25519<M> {
-    type VerifyingKey = PublicKey;
+    type VerifyingKey = Array<u8, 32>;
 }
 
 impl<M> Sign for Ed25519<M>
@@ -154,6 +154,7 @@ where
         compiler: &mut (),
     ) -> Self::Verification {
         let _ = compiler;
+        let verifying_key = PublicKey::from_bytes(verifying_key.as_slice())?;
         verifying_key.verify(&message.as_bytes(), signature)
     }
 }
