@@ -17,17 +17,10 @@
 //! Arkworks Elliptic Curve Implementation
 
 use crate::arkworks::{
-    ec::{
-        models::{
-            short_weierstrass_jacobian, twisted_edwards_extended, SWModelParameters,
-            TEModelParameters,
-        },
-        AffineCurve, ProjectiveCurve,
-    },
-    ff::PrimeField,
+    ec::{AffineCurve, AffineCurveExt, ProjectiveCurve},
+    ff::{BigInteger, Field, PrimeField},
 };
 use alloc::{vec, vec::Vec};
-use ark_ff::{BigInteger, Field};
 use core::str::FromStr;
 use num_bigint::{BigInt, BigUint, Sign};
 
@@ -36,58 +29,6 @@ use crate::arkworks::bls12_381;
 
 #[cfg(feature = "ark-bn254")]
 use crate::arkworks::bn254;
-
-/// Affine Curve Extension
-pub trait AffineCurveExt: AffineCurve {
-    /// Returns the `x` coordinate of `self`.
-    fn x(&self) -> &Self::BaseField;
-
-    /// Returns the `y` coordinate of `self`.
-    fn y(&self) -> &Self::BaseField;
-
-    /// Builds [`Self`] from `x` and `y`.
-    fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self;
-}
-
-impl<P> AffineCurveExt for short_weierstrass_jacobian::GroupAffine<P>
-where
-    P: SWModelParameters,
-{
-    #[inline]
-    fn x(&self) -> &Self::BaseField {
-        &self.x
-    }
-
-    #[inline]
-    fn y(&self) -> &Self::BaseField {
-        &self.y
-    }
-
-    #[inline]
-    fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self {
-        Self::new(x, y, false)
-    }
-}
-
-impl<P> AffineCurveExt for twisted_edwards_extended::GroupAffine<P>
-where
-    P: TEModelParameters,
-{
-    #[inline]
-    fn x(&self) -> &Self::BaseField {
-        &self.x
-    }
-
-    #[inline]
-    fn y(&self) -> &Self::BaseField {
-        &self.y
-    }
-
-    #[inline]
-    fn from_xy_unchecked(x: Self::BaseField, y: Self::BaseField) -> Self {
-        Self::new(x, y)
-    }
-}
 
 /// Given a scalar `k` and basis vectors `v` and `u` finds integer scalars `k1` and `k2`,
 /// so that `(k, 0)` is close to `k1v + k2u`, meaning the norm of the difference `||(k,0) - (k1v + k2u)||`
@@ -98,10 +39,11 @@ where
     F: PrimeField,
 {
     let k = BigInt::from_bytes_be(Sign::Plus, &k.into_repr().to_bytes_be());
-    let q1 = (u.1 * &k) / ((v.0 * u.1) - (v.1 * u.0));
-    let q2 = (-v.1 * &k) / ((v.0 * u.1) - (v.1 * u.0));
+    let det = (v.0 * u.1) - (v.1 * u.0);
+    let q1 = (u.1 * &k) / &det;
+    let q2 = (-v.1 * &k) / det;
     let k1 = k - &q1 * v.0 - &q2 * u.0;
-    let k2 = 0 - q1 * v.1 - q2 * u.1;
+    let k2 = -q1 * v.1 - q2 * u.1;
     (k1, k2)
 }
 
@@ -290,15 +232,14 @@ where
 #[cfg(test)]
 pub mod test {
     use super::*;
-    use crate::rand::RngCore;
+    use crate::rand::{OsRng, RngCore};
     use ark_ff::UniformRand;
-    use rand_core::OsRng;
 
     /// Checks the GLV scalar multiplication gives the expected result for the curve `C`.
     #[inline]
     pub fn glv_is_correct<C, R, M>(rng: &mut R)
     where
-        C: AffineCurveExt + HasGLV<M>,
+        C: HasGLV<M>,
         R: RngCore + ?Sized,
     {
         let scalar = C::ScalarField::rand(rng);

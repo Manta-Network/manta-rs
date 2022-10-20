@@ -16,7 +16,6 @@
 
 //! Arkworks Backend
 
-pub use ark_ec as ec;
 pub use ark_r1cs_std as r1cs_std;
 pub use ark_relations as relations;
 
@@ -34,6 +33,7 @@ pub use ark_ed_on_bn254 as ed_on_bn254;
 
 pub mod algebra;
 pub mod constraint;
+pub mod ec;
 pub mod ff;
 pub mod glv;
 pub mod pairing;

@@ -18,10 +18,7 @@
 
 use core::iter::repeat_with;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_benchmark::{
-    benchmark::{glv::GLVMutiplicationSetup, Benchmark},
-    ecc,
-};
+use manta_benchmark::{ecc, glv::GLVMutiplicationSetup, Benchmark};
 use manta_crypto::{
     arkworks::bls12_381::{G1Affine as BLSAffine, G1Projective as BLSProjective},
     rand::OsRng,

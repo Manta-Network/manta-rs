@@ -16,14 +16,14 @@
 
 //! Benchmark trait
 
-use crate::benchmark::Benchmark;
-use ark_ec::ProjectiveCurve;
+use crate::Benchmark;
 use core::marker::PhantomData;
 use criterion::black_box;
 use manta_crypto::{
     arkworks::{
+        ec::{AffineCurveExt, ProjectiveCurve},
         ff::UniformRand,
-        glv::{AffineCurveExt, GLVParameters, HasGLV},
+        glv::{GLVParameters, HasGLV},
     },
     rand::RngCore,
 };
