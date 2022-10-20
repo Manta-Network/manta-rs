@@ -165,6 +165,7 @@ impl From<RegistrationInfo> for Record {
     }
 }
 
+#[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
 #[test]
 fn test_extract_registry() {
     use manta_trusted_setup::groth16::ceremony::config::ppot::extract_registry;
@@ -184,6 +185,7 @@ fn test_extract_registry() {
     .unwrap();
 }
 
+#[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
 #[test]
 fn test_set_headers() {
     use csv::Reader;
