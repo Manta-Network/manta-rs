@@ -28,7 +28,7 @@
 
 use crate::{
     asset::{AssetMap, AssetMetadata},
-    key::{Account, AccountMap, LimitAccount},
+    key::{Account, AccountMap, RegularAccount},
     transfer::{
         self,
         batch::Join,
@@ -484,7 +484,7 @@ pub trait Configuration: transfer::Configuration {
     >;
 
     /// Account Map Type
-    type AccountMap: AccountMap<Account = LimitAccount<Self::Account>>;
+    type AccountMap: AccountMap<Account = RegularAccount<Self::Account>>;
 
     /// [`Utxo`] Accumulator Type
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
@@ -621,7 +621,7 @@ where
 
     /// Returns the default account for `self`.
     #[inline]
-    fn default_account(&self) -> &LimitAccount<C::Account> {
+    fn default_account(&self) -> &RegularAccount<C::Account> {
         self.accounts.get_default()
     }
 
@@ -650,10 +650,10 @@ where
         )
     }
 
-    /// Returns the default address for the default account of `self`.
+    /// Returns the address for the default account of `self`.
     #[inline]
     fn default_address(&mut self, parameters: &C::Parameters) -> Address<C> {
-        self.accounts.get_mut_default().default_address(parameters)
+        self.accounts.get_mut_default().address(parameters)
     }
 
     ///
@@ -1227,8 +1227,10 @@ where
         self.state.utxo_accumulator.rollback();
         result
     }
-
-    /// Returns addresses according to the `request`.
+    
+    // @TODO: Update this for new key system
+    /*
+    // Returns addresses according to the `request`.
     #[inline]
     pub fn addresses(&mut self, request: AddressRequest) -> Vec<Address<C>> {
         let account = self.state.accounts.get_mut_default();
@@ -1243,8 +1245,12 @@ where
                 .collect(),
         }
     }
+    */
+    
 }
 
+// @TODO: Update addresses() for new key system
+/*
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
@@ -1279,3 +1285,4 @@ where
         Box::pin(async move { Ok(self.addresses(request)) })
     }
 }
+*/

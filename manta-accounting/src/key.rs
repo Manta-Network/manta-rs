@@ -17,10 +17,8 @@
 //! Key Accounting
 
 use core::{
-    cmp,
     fmt::{self, Debug},
     hash::Hash,
-    iter,
     marker::PhantomData,
 };
 
@@ -109,12 +107,6 @@ impl_index_type!(
     AccountIndexType,
     AccountIndex
 );
-impl_index_type!(
-    "Address Index",
-    "AddressIndex",
-    AddressIndexType,
-    AddressIndex
-);
 
 /// Account
 pub trait Account {
@@ -130,14 +122,9 @@ pub trait Account {
     /// Returns the spending key associated to this account.
     fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey;
 
-    /// Returns the address at the given `index` for this account.
-    fn address(&mut self, parameters: &Self::Parameters, index: AddressIndex) -> Self::Address;
+    /// Returns the address for this account.
+    fn address(&mut self, parameters: &Self::Parameters) -> Self::Address;
 
-    /// Returns the default address for this account.
-    #[inline]
-    fn default_address(&mut self, parameters: &Self::Parameters) -> Self::Address {
-        self.address(parameters, Default::default())
-    }
 }
 
 impl<A> Account for &mut A
@@ -154,14 +141,10 @@ where
     }
 
     #[inline]
-    fn address(&mut self, parameters: &Self::Parameters, index: AddressIndex) -> Self::Address {
-        (*self).address(parameters, index)
+    fn address(&mut self, parameters: &Self::Parameters) -> Self::Address {
+        (*self).address(parameters)
     }
 
-    #[inline]
-    fn default_address(&mut self, parameters: &Self::Parameters) -> Self::Address {
-        (*self).default_address(parameters)
-    }
 }
 
 /// Spending Key Type
@@ -173,81 +156,15 @@ pub type Address<A> = <A as Account>::Address;
 /// Parameters Type
 pub type Parameters<A> = <A as Account>::Parameters;
 
-/// Limit Account
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct LimitAccount<A>
-where
-    A: Account,
-{
-    /// Account Data
-    account: A,
 
-    /// Address Limit
-    address_limit: AddressIndex,
+/// Regular Account
+pub struct RegularAccount<A>
+where
+    A: Account, {
+    account: A
 }
 
-impl<A> LimitAccount<A>
-where
-    A: Account,
-{
-    /// Builds a new [`LimitAccount`] over `account` without checking that the `address_limit` is
-    /// positive.
-    #[inline]
-    fn new_unchecked(account: A, address_limit: AddressIndex) -> Self {
-        Self {
-            account,
-            address_limit,
-        }
-    }
-
-    /// Builds a new [`LimitAccount`] over `account`.
-    #[inline]
-    pub fn new(account: A) -> Self {
-        Self::new_unchecked(account, 1.into())
-    }
-
-    /// Builds a new [`LimitAccount`] over `account` with the given `address_limit`.
-    ///
-    /// # Panics
-    ///
-    /// This constructor panics if `address_limit == 0`.
-    #[inline]
-    pub fn with_limit(account: A, address_limit: AddressIndex) -> Self {
-        assert!(
-            address_limit.index() > 0,
-            "Address limit should be positive."
-        );
-        Self::new_unchecked(account, address_limit)
-    }
-
-    /// Returns the next new address for `self`.
-    #[inline]
-    pub fn next_address(&mut self, parameters: &Parameters<Self>) -> Address<Self> {
-        let address = self.account.address(parameters, self.address_limit);
-        self.address_limit.increment();
-        address
-    }
-
-    /// Returns an iterator over all of the already observed addresses.
-    #[inline]
-    pub fn iter_observed<'s>(
-        &'s mut self,
-        parameters: &'s Parameters<Self>,
-    ) -> impl 's + Iterator<Item = Address<Self>> {
-        (0..self.address_limit.index()).map(|i| self.account.address(parameters, i.into()))
-    }
-
-    /// Returns an iterator over all addresses beyond what have already been observed.
-    #[inline]
-    pub fn iter_new<'s>(
-        &'s mut self,
-        parameters: &'s Parameters<Self>,
-    ) -> impl 's + Iterator<Item = Address<Self>> {
-        iter::repeat_with(|| self.next_address(parameters))
-    }
-}
-
-impl<A> Account for LimitAccount<A>
+impl<A> Account for RegularAccount<A>
 where
     A: Account,
 {
@@ -261,14 +178,8 @@ where
     }
 
     #[inline]
-    fn address(&mut self, parameters: &Self::Parameters, index: AddressIndex) -> Self::Address {
-        self.address_limit = cmp::max(self.address_limit, index);
-        self.account.address(parameters, index)
-    }
-
-    #[inline]
-    fn default_address(&mut self, parameters: &Self::Parameters) -> Self::Address {
-        self.account.default_address(parameters)
+    fn address(&mut self, parameters: &Self::Parameters) -> Self::Address {
+        self.account.address(parameters)
     }
 }
 

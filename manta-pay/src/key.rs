@@ -27,7 +27,7 @@
 use alloc::{format, string::String};
 use core::marker::PhantomData;
 use manta_accounting::key::{
-    self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
+    self, AccountMap, AccountIndex, RegularAccount
 };
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::{create_seal, seal, Array};
@@ -66,7 +66,7 @@ macro_rules! impl_coin_type {
         $id:expr,
         $coin_type_id:ident,
         $key_secret:ident,
-        $account_table:ident
+        $account_map:ident
     ) => {
         #[doc = $doc]
         #[doc = "Network"]
@@ -83,8 +83,8 @@ macro_rules! impl_coin_type {
         pub type $key_secret = KeySecret<$coin>;
 
         #[doc = stringify!($coin)]
-        #[doc = "[`AccountTable`] Type"]
-        pub type $account_table = AccountTable<$coin>;
+        #[doc = "[`AccountMap`] Type"]
+        pub type $account_map = dyn AccountMap<Account = RegularAccount<()>>;
 
         seal!($coin);
 
@@ -101,7 +101,7 @@ impl_coin_type!(
     1,
     TESTNET_COIN_TYPE_ID,
     TestnetKeySecret,
-    TestnetAccountTable
+    TestnetAccountMap
 );
 
 impl_coin_type!(
@@ -111,7 +111,7 @@ impl_coin_type!(
     611,
     MANTA_COIN_TYPE_ID,
     MantaKeySecret,
-    MantaAccountTable
+    MantaAccountMap
 );
 
 impl_coin_type!(
@@ -121,11 +121,23 @@ impl_coin_type!(
     612,
     CALAMARI_COIN_TYPE_ID,
     CalamariKeySecret,
-    CalamariAccountTable
+    CalamariAccountMap
 );
 
-/// Account Table Type
-pub type AccountTable<C> = key::AccountTable<KeySecret<C>>;
+/// Key Kind
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Kind {
+    /// Spend Key
+    Spend,
+
+    /// View Key
+    View,
+}
 
 /// Seed Byte Array Type
 type SeedBytes = Array<u8, { Seed::SIZE }>;
@@ -174,6 +186,30 @@ where
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
         Self::from_seed(mnemonic.to_seed(password))
     }
+
+    /// Derives a spend secret key for `account`.
+    #[inline]
+    fn derive_spend(&self, account: AccountIndex) -> SecretKey {
+        SecretKey::derive_from_path(
+            self.seed,
+            &path_string::<C>(account, Kind::Spend)
+                .parse()
+                .expect("Path string is valid by construction."),
+        )
+        .expect("Unable to generate secret key for valid seed and path string.")
+    }
+
+    /// Derives a view secret key for `account`.
+    #[inline]
+    fn derive_view(&self, account: AccountIndex) -> SecretKey {
+        SecretKey::derive_from_path(
+            self.seed,
+            &path_string::<C>(account, Kind::View)
+                .parse()
+                .expect("Path string is valid by construction."),
+        )
+        .expect("Unable to generate secret key for valid seed and path string.")
+    }
 }
 
 impl<C> Sample for KeySecret<C>
@@ -196,39 +232,20 @@ where
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 #[inline]
 #[must_use]
-pub fn path_string<C>(account: AccountIndex, kind: Kind, index: KeyIndex) -> String
+pub fn path_string<C>(account: AccountIndex, kind: Kind) -> String
 where
     C: CoinType,
 {
     const BIP_44_PURPOSE_ID: u8 = 44;
+    const ADDRESS_INDEX: u8 = 0;
     format!(
         "m/{}'/{}'/{}'/{}'/{}'",
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
         account.index(),
         kind as u8,
-        index.index(),
+        ADDRESS_INDEX,
     )
-}
-
-impl<C> HierarchicalKeyDerivationScheme for KeySecret<C>
-where
-    C: CoinType,
-{
-    const GAP_LIMIT: IndexType = 20;
-
-    type SecretKey = SecretKey;
-
-    #[inline]
-    fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
-        SecretKey::derive_from_path(
-            self.seed,
-            &path_string::<C>(account, kind, index)
-                .parse()
-                .expect("Path string is valid by construction."),
-        )
-        .expect("Unable to generate secret key for valid seed and path string.")
-    }
 }
 
 /// Mnemonic
