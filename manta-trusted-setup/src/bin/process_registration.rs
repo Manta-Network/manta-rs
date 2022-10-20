@@ -77,7 +77,7 @@ impl Arguments {
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
         let file =
             File::open(self.raw_registry_path).expect("Unable to open file raw registry file");
-        let mut priority_list = HashMap::new();
+        let priority_list = HashMap::new();
         let (successful, malformed) = extract_registry::<RegistrationInfo>(
             &file,
             self.registry_path.into(),
