@@ -528,7 +528,7 @@ pub enum ElementType {
 impl ElementType {
     /// Returns the size of a given type of point with the specified compression.
     /// This function is specific to the PPoT Bn254 serialization.
-    fn get_size(&self, compression: Compressed) -> usize {
+    pub fn get_size(&self, compression: Compressed) -> usize {
         match compression {
             Compressed::No => {
                 if self.is_g1_type() {
@@ -548,7 +548,7 @@ impl ElementType {
     }
 
     /// The number of powers of elements of this type in an accumulator.
-    fn num_powers<S>(&self) -> usize
+    pub fn num_powers<S>(&self) -> usize
     where
         S: Size,
     {
@@ -560,24 +560,23 @@ impl ElementType {
     }
 
     /// Element is a point on the G1 curve
-    fn is_g1_type(&self) -> bool {
+    pub fn is_g1_type(&self) -> bool {
         !matches!(self, ElementType::TauG2 | ElementType::BetaG2)
     }
 }
 
-/// Reads appropriate number of elements of `element_type` for an accumulator of given `Size` from PPoT challenge file.
+/// Reads `size`-many elements of `element_type` from PPoT challenge/response file,
+/// starting at `start`.
 #[inline]
-pub fn read_g1_powers<S>(
+pub fn read_g1_powers(
     reader: &[u8],
     element: ElementType,
     compression: Compressed,
-) -> Result<Vec<G1Affine>, PointDeserializeError>
-where
-    S: Size,
-{
-    let size = element.num_powers::<S>();
+    size: usize,
+    start: usize,
+) -> Result<Vec<G1Affine>, PointDeserializeError> {
     let mut powers = Vec::new();
-    let mut start_position = calculate_mmap_position(0, element, compression);
+    let mut start_position = calculate_mmap_position(start, element, compression);
     let mut end_position = start_position + element.get_size(compression);
     for _ in 0..size {
         let mut reader = &reader[start_position..end_position];
@@ -620,17 +619,15 @@ where
 
 /// Reads `size` many elements of `element_type` from PPoT challenge file.
 #[inline]
-pub fn read_g2_powers<S>(
+pub fn read_g2_powers(
     reader: &[u8],
     element: ElementType,
     compression: Compressed,
-) -> Result<Vec<G2Affine>, PointDeserializeError>
-where
-    S: Size,
-{
-    let size = element.num_powers::<S>();
+    size: usize,
+    start: usize,
+) -> Result<Vec<G2Affine>, PointDeserializeError> {
     let mut powers = Vec::new();
-    let mut start_position = calculate_mmap_position(0, element, compression);
+    let mut start_position = calculate_mmap_position(start, element, compression);
     let mut end_position = start_position + element.get_size(compression);
     for _ in 0..size {
         let mut reader = &reader[start_position..end_position];
@@ -671,6 +668,34 @@ where
     Ok(powers)
 }
 
+/// Reads the full number G1 powers needed by a
+/// subaccumulator of size S.
+pub fn read_all_g1_powers<S>(
+    reader: &[u8],
+    element: ElementType,
+    compression: Compressed,
+) -> Result<Vec<G1Affine>, PointDeserializeError>
+where
+    S: Size,
+{
+    let size = element.num_powers::<S>();
+    read_g1_powers(reader, element, compression, size, 0)
+}
+
+/// Reads the full number G2 powers needed by a
+/// subaccumulator of size S.
+pub fn read_all_g2_powers<S>(
+    reader: &[u8],
+    element: ElementType,
+    compression: Compressed,
+) -> Result<Vec<G2Affine>, PointDeserializeError>
+where
+    S: Size,
+{
+    let size = element.num_powers::<S>();
+    read_g2_powers(reader, element, compression, size, 0)
+}
+
 /// Reads the proof of correct KZG contribution
 /// This is specific to the compressed PPoT transcript called `response`,
 /// since only it contains this proof.
@@ -693,11 +718,11 @@ where
     C: Pairing<G1 = G1Affine, G2 = G2Affine> + Size,
 {
     Ok(Accumulator {
-        tau_powers_g1: read_g1_powers::<C>(reader, ElementType::TauG1, compression)?,
-        tau_powers_g2: read_g2_powers::<C>(reader, ElementType::TauG2, compression)?,
-        alpha_tau_powers_g1: read_g1_powers::<C>(reader, ElementType::AlphaG1, compression)?,
-        beta_tau_powers_g1: read_g1_powers::<C>(reader, ElementType::BetaG1, compression)?,
-        beta_g2: read_g2_powers::<C>(reader, ElementType::BetaG2, compression)?[0],
+        tau_powers_g1: read_all_g1_powers::<C>(reader, ElementType::TauG1, compression)?,
+        tau_powers_g2: read_all_g2_powers::<C>(reader, ElementType::TauG2, compression)?,
+        alpha_tau_powers_g1: read_all_g1_powers::<C>(reader, ElementType::AlphaG1, compression)?,
+        beta_tau_powers_g1: read_all_g1_powers::<C>(reader, ElementType::BetaG1, compression)?,
+        beta_g2: read_all_g2_powers::<C>(reader, ElementType::BetaG2, compression)?[0],
     })
 }
 

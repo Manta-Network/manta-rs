@@ -18,11 +18,8 @@
 
 use crate::{
     groth16::{
-        kzg::{Accumulator, Configuration, Proof, Size, G1},
-        ppot::{
-            hashing::PpotHasher,
-            serialization::{PointDeserializeError, PpotSerializer},
-        },
+        kzg::{Accumulator, Configuration, Proof, Size, G1, G2},
+        ppot::{hashing::PpotHasher, serialization::PpotSerializer},
     },
     util::{BlakeHasher, Deserializer, Serializer},
 };
@@ -201,17 +198,311 @@ const PPOT_POWERS: usize = 1 << 28;
 /// Type of the original ceremony
 pub type PpotCeremony = PerpetualPowersOfTauCeremony<PpotSerializer, PPOT_POWERS>;
 
-/// Decompresses a `response` file to a `challenge` file, assuming its hash
-/// has been pre-computed and passed as argument. This creates challenge file
-/// in place. Uses approx. 1 GB chunks in case files are large.
-pub fn decompress_response<S, T, M, const POWERS: usize>(
-    reader: &[u8],
-    hash: [u8; 64],
-) -> Result<(), PointDeserializeError>
-where
-    S: Deserializer<T, M> + Serializer<T, M>,
-{
-    // TODO: Choose this number to have chunks of desired size
-    let chunk_size: usize = 1 << 8;
-    Ok(())
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+/// Tools for decompressing the `response` files of PPoT
+pub mod decompression {
+    use super::*;
+    use crate::{
+        groth16::ppot::serialization::{
+            read_all_g2_powers, read_g1_powers, read_g2_powers, Compressed, ElementType,
+            PointDeserializeError,
+        },
+        util::Serializer,
+    };
+    use manta_crypto::arkworks::serialize::CanonicalDeserialize;
+    use memmap::MmapOptions;
+    use std::{cmp::min, fs::OpenOptions, path::PathBuf};
+
+    /// Decompresses a `response` file to a `challenge` file, assuming its hash
+    /// has been pre-computed and passed as argument. This creates challenge file
+    /// at the specified `path` with Arkworks [`CanonicalSerialize`] encoding.
+    /// Uses approx. 1 GB chunks in case files are large.
+    pub fn decompress_reencode_response<S>(
+        reader: &[u8],
+        hash: [u8; 64],
+        path: PathBuf,
+    ) -> Result<(), PointDeserializeError>
+    where
+        S: Size,
+    {
+        // TODO: Choose this number to have chunks of desired size
+        let chunk_size: usize = 1 << 12;
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .expect("Failed to open target file at given path");
+        let mut powers_read = 0;
+
+        // First write the 64-byte hash to file
+        file.write_all(&hash).expect("Failed to write hash to file");
+
+        // Read TauG1 powers
+        while powers_read < ElementType::TauG1.num_powers::<S>() {
+            let powers = read_g1_powers(
+                reader,
+                ElementType::TauG1,
+                Compressed::Yes,
+                min(
+                    chunk_size,
+                    ElementType::TauG1.num_powers::<S>() - powers_read,
+                ),
+                powers_read,
+            )?;
+            for element in powers.iter() {
+                element
+                    .serialize_uncompressed(&mut file)
+                    .expect("Encountered serialization error");
+            }
+            println!("Have serialized {} tau_g1 powers", powers_read);
+            powers_read += chunk_size;
+        }
+        powers_read = 0;
+
+        // Read TauG2 powers
+        while powers_read < ElementType::TauG2.num_powers::<S>() {
+            let powers = read_g2_powers(
+                reader,
+                ElementType::TauG2,
+                Compressed::Yes,
+                min(
+                    chunk_size,
+                    ElementType::TauG2.num_powers::<S>() - powers_read,
+                ),
+                powers_read,
+            )?;
+            for element in powers.iter() {
+                element
+                    .serialize_uncompressed(&mut file)
+                    .expect("Encountered serialization error");
+            }
+            println!("Have serialized {} tau_g2 powers", powers_read);
+            powers_read += chunk_size;
+        }
+        powers_read = 0;
+
+        // Read AlphaTauG1 powers
+        while powers_read < ElementType::AlphaG1.num_powers::<S>() {
+            let powers = read_g1_powers(
+                reader,
+                ElementType::AlphaG1,
+                Compressed::Yes,
+                min(
+                    chunk_size,
+                    ElementType::AlphaG1.num_powers::<S>() - powers_read,
+                ),
+                powers_read,
+            )?;
+            for element in powers.iter() {
+                element
+                    .serialize_uncompressed(&mut file)
+                    .expect("Encountered serialization error");
+            }
+            println!("Have serialized {} alpha_tau_g1 powers", powers_read);
+            powers_read += chunk_size;
+        }
+        powers_read = 0;
+
+        // Read BetaTauG1 powers
+        while powers_read < ElementType::BetaG1.num_powers::<S>() {
+            let powers = read_g1_powers(
+                reader,
+                ElementType::BetaG1,
+                Compressed::Yes,
+                min(
+                    chunk_size,
+                    ElementType::BetaG1.num_powers::<S>() - powers_read,
+                ),
+                powers_read,
+            )?;
+            for element in powers.iter() {
+                element
+                    .serialize_uncompressed(&mut file)
+                    .expect("Encountered serialization error");
+            }
+            println!("Have serialized {} beta_tau_g1 powers", powers_read);
+            powers_read += chunk_size;
+        }
+
+        // Read BetaG2
+        let element =
+            read_all_g2_powers::<PpotCeremony>(reader, ElementType::BetaG2, Compressed::Yes)?[0];
+        element
+            .serialize_uncompressed(&mut file)
+            .expect("Unable to serialize betaG2");
+
+        Ok(())
+    }
+
+    /// Decompresses a `response` file to a `challenge` file, assuming its hash
+    /// has been pre-computed and passed as argument. This creates challenge file
+    /// at the specified `path` with same bellman encoding used by PPoT.
+    /// Uses approx. 1 GB chunks in case files are large.
+    pub fn decompress_response<S>(
+        reader: &[u8],
+        hash: [u8; 64],
+        path: PathBuf,
+    ) -> Result<(), PointDeserializeError>
+    where
+        S: Size,
+    {
+        // Choose this number to have chunks of desired size
+        let chunk_size: usize = 1 << 18;
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .expect("Failed to open target file at given path");
+        let mut powers_read = 0;
+
+        // First write the 64-byte hash to file
+        file.write_all(&hash).expect("Failed to write hash to file");
+
+        // Read TauG1 powers
+        while powers_read < ElementType::TauG1.num_powers::<S>() {
+            let powers = read_g1_powers(
+                reader,
+                ElementType::TauG1,
+                Compressed::Yes,
+                min(
+                    chunk_size,
+                    ElementType::TauG1.num_powers::<S>() - powers_read,
+                ),
+                powers_read,
+            )?;
+            for element in powers.iter() {
+                <PpotCeremony as Serializer<G1Affine, G1>>::serialize_uncompressed(
+                    element, &mut file,
+                )
+                .expect("Unable to serialize");
+            }
+            println!("Have serialized {} tau_g1 powers", powers_read);
+            powers_read += chunk_size;
+        }
+        powers_read = 0;
+
+        // Read TauG2 powers
+        while powers_read < ElementType::TauG2.num_powers::<S>() {
+            let powers = read_g2_powers(
+                reader,
+                ElementType::TauG2,
+                Compressed::Yes,
+                min(
+                    chunk_size,
+                    ElementType::TauG2.num_powers::<S>() - powers_read,
+                ),
+                powers_read,
+            )?;
+            for element in powers.iter() {
+                <PpotCeremony as Serializer<G2Affine, G2>>::serialize_uncompressed(
+                    element, &mut file,
+                )
+                .expect("Unable to serialize");
+            }
+            println!("Have serialized {} tau_g2 powers", powers_read);
+            powers_read += chunk_size;
+        }
+        powers_read = 0;
+
+        // Read AlphaTauG1 powers
+        while powers_read < ElementType::AlphaG1.num_powers::<S>() {
+            let powers = read_g1_powers(
+                reader,
+                ElementType::AlphaG1,
+                Compressed::Yes,
+                min(
+                    chunk_size,
+                    ElementType::AlphaG1.num_powers::<S>() - powers_read,
+                ),
+                powers_read,
+            )?;
+            for element in powers.iter() {
+                <PpotCeremony as Serializer<G1Affine, G1>>::serialize_uncompressed(
+                    element, &mut file,
+                )
+                .expect("Unable to serialize");
+            }
+            println!("Have serialized {} alpha_tau_g1 powers", powers_read);
+            powers_read += chunk_size;
+        }
+        powers_read = 0;
+
+        // Read BetaTauG1 powers
+        while powers_read < ElementType::BetaG1.num_powers::<S>() {
+            let powers = read_g1_powers(
+                reader,
+                ElementType::BetaG1,
+                Compressed::Yes,
+                min(
+                    chunk_size,
+                    ElementType::BetaG1.num_powers::<S>() - powers_read,
+                ),
+                powers_read,
+            )?;
+            for element in powers.iter() {
+                <PpotCeremony as Serializer<G1Affine, G1>>::serialize_uncompressed(
+                    element, &mut file,
+                )
+                .expect("Unable to serialize");
+            }
+            println!("Have serialized {} beta_tau_g1 powers", powers_read);
+            powers_read += chunk_size;
+        }
+
+        // Read BetaG2
+        let element =
+            read_all_g2_powers::<PpotCeremony>(reader, ElementType::BetaG2, Compressed::Yes)?[0];
+        <PpotCeremony as Serializer<G2Affine, G2>>::serialize_uncompressed(&element, &mut file)
+            .expect("Unable to serialize");
+
+        Ok(())
+    }
+
+    #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
+    #[test]
+    pub fn decompress_test() {
+        // cargo test decompress_test
+        let source_path =
+            PathBuf::from("/Users/thomascnorton/Documents/Manta/trusted-setup/response_0070");
+        let target_path = source_path
+            .parent()
+            .expect("source path has no parent")
+            .join("response_70_decompressed");
+        let file = OpenOptions::new()
+            .read(true)
+            .open(source_path)
+            .expect("Cannot open response file at path");
+
+        let mmap = unsafe {
+            MmapOptions::new()
+                .map(&file)
+                .expect("Unable to create memory map for input")
+        };
+        let hash = [1u8; 64];
+        // decompress_reencode_response::<PpotCeremony>(&mmap, hash, target_path).expect("Error decompressing");
+        // I already did that above step with the bin, but I only let it get to about halfway through. Let's check
+        // that that part was decompressed accurately:
+
+        let mut target_file = OpenOptions::new()
+            .read(true)
+            .open(target_path)
+            .expect("Cannot open target file");
+        let mut written_hash = [0u8; 64];
+        assert_eq!(target_file.read(&mut written_hash[..]).unwrap(), 64);
+        assert_eq!(written_hash, hash);
+
+        let g1_powers = read_g1_powers(&mmap, ElementType::TauG1, Compressed::Yes, 100, 0)
+            .expect("Cannot read from response file");
+        // let g2_powers = read_g2_powers(&mmap, ElementType::TauG2, Compressed::Yes, 100, 0).expect("Cannot read from response file");
+        for element in g1_powers.iter() {
+            let point: G1Affine = CanonicalDeserialize::deserialize_uncompressed(&mut target_file)
+                .expect("Deserialization error");
+            assert_eq!(point, *element);
+        }
+    }
 }

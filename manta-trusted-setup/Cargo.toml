@@ -28,6 +28,10 @@ maintenance = { status = "actively-developed" }
 name = "groth16_phase2_client"
 required-features = ["clap", "ppot-client", "reqwest", "tokio"]
 
+[[bin]]
+name = "decompress_test"
+required-features = ["std"]
+
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]
