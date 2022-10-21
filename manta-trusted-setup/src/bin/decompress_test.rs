@@ -7,6 +7,9 @@ use std::{
     path::PathBuf,
 };
 
+// on remote, run with
+// nohup cargo run --release --bin decompress_test --all-features &> ./decompress_test.log &
+
 fn main() {
     let source_path = PathBuf::from("/home/mobula/ppot-verifier/response_0058");
     let target_path = source_path
@@ -37,18 +40,19 @@ fn main() {
         64
     );
 
-    decompress_response::<PpotCeremony>(&mmap, hash, target_path.clone())
-        .expect("Error decompressing");
+    // decompress_response::<PpotCeremony>(&mmap, hash, target_path.clone())
+    //     .expect("Error decompressing");
 
-    // Then hash the result
+    // // Then hash the result
     let new_hash_path = PathBuf::from("/home/mobula/ppot-verifier/response_0058_decompressed_hash");
     let mut new_hash_file = OpenOptions::new()
         .write(true)
+        .read(true)
         .create(true)
         .truncate(true)
         .open(new_hash_path)
         .expect("Unable to open hash file");
-    hash_to(&mut new_hash_file, target_path).expect("Hashing error");
+    // hash_to(&mut new_hash_file, target_path).expect("Hashing error");
 
     // Check the result:
     let mut new_hash = [0u8; 64];
