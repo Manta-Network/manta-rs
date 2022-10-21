@@ -804,7 +804,6 @@ impl<COM> encryption::convert::header::Header<COM> for IncomingAESConverter<COM>
     #[inline]
     fn as_target(source: &Self::Header, _: &mut COM) -> Self::TargetHeader {
         let _ = source;
-        ()
     }
 }
 
@@ -1575,7 +1574,6 @@ impl<COM> encryption::convert::header::Header<COM> for OutgoingAESConverter<COM>
     #[inline]
     fn as_target(source: &Self::Header, _: &mut COM) -> Self::TargetHeader {
         let _ = source;
-        ()
     }
 }
 
