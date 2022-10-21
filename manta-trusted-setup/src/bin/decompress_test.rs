@@ -52,7 +52,7 @@ fn main() {
             .truncate(true)
             .open(new_hash_path.clone())
             .expect("Unable to open hash file");
-        // hash_to(&mut new_hash_file, target_path).expect("Hashing error");
+        hash_to(&mut new_hash_file, target_path).expect("Hashing error");
     }
 
     // Check the result:
@@ -61,12 +61,12 @@ fn main() {
         .read(true)
         .open(new_hash_path)
         .expect("Unable to open hash file");
-    // assert_eq!(
-    //     new_hash_file
-    //         .read(&mut new_hash[..])
-    //         .expect("Failed to read new hash"),
-    //     64
-    // );
+    assert_eq!(
+        new_hash_file
+            .read(&mut new_hash[..])
+            .expect("Failed to read new hash"),
+        64
+    );
 
     let mut old_hash = [0u8; 64];
     let old_hash_path = PathBuf::from("/home/mobula/ppot-verifier/challenge_0058_hash");
