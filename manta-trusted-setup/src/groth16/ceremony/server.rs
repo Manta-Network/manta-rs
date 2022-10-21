@@ -125,11 +125,18 @@ where
         C: 'static,
         R: 'static,
     {
-        let round_number: u64 = deserialize_from_file(path.join(r"round_number"))
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        let round_number: u64 = deserialize_from_file(path.join(r"round_number")).map_err(|e| {
+            CeremonyError::Unexpected(UnexpectedError::Serialization {
+                message: format!("{:?}", e),
+            })
+        })?;
         println!("Recovering a ceremony at round {:?}", round_number);
-        let names: Vec<String> = deserialize_from_file(path.join(r"circuit_names"))
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        let names: Vec<String> =
+            deserialize_from_file(path.join(r"circuit_names")).map_err(|e| {
+                CeremonyError::Unexpected(UnexpectedError::Serialization {
+                    message: format!("{:?}", e),
+                })
+            })?;
         if names.len() != CIRCUIT_COUNT {
             return Err(CeremonyError::Unexpected(
                 UnexpectedError::IncorrectStateSize,
@@ -145,7 +152,11 @@ where
                 "state".to_string(),
                 round_number,
             ))
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+            .map_err(|e| {
+                CeremonyError::Unexpected(UnexpectedError::Serialization {
+                    message: format!("{:?}", e),
+                })
+            })?;
             states.push(state);
             let challenge: C::Challenge = deserialize_from_file(filename_format(
                 &path,
@@ -153,7 +164,11 @@ where
                 "challenge".to_string(),
                 round_number,
             ))
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+            .map_err(|e| {
+                CeremonyError::Unexpected(UnexpectedError::Serialization {
+                    message: format!("{:?}", e),
+                })
+            })?;
             challenges.push(challenge);
             if round_number > 0 {
                 let latest_proof: Proof<C> = deserialize_from_file(filename_format(
@@ -162,7 +177,11 @@ where
                     "proof".to_string(),
                     round_number,
                 ))
-                .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+                .map_err(|e| {
+                    CeremonyError::Unexpected(UnexpectedError::Serialization {
+                        message: format!("{:?}", e),
+                    })
+                })?;
                 proofs.push(latest_proof);
             }
         }
@@ -176,7 +195,11 @@ where
             "registry".to_string(),
             round_number,
         ))
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        .map_err(|e| {
+            CeremonyError::Unexpected(UnexpectedError::Serialization {
+                message: format!("{:?}", e),
+            })
+        })?;
         let metadata: Metadata = compute_metadata(contribution_time_limit, &states);
         let server = Self {
             lock_queue: Default::default(),
@@ -314,7 +337,11 @@ where
             let registry = self.registry.clone();
             match task::spawn_blocking(move || {
                 load_append_entries::<_, _, R::Record, _, _>(&registry_path, &mut *registry.lock())
-                    .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::Serialization))
+                    .map_err(|e| {
+                        CeremonyError::<C>::Unexpected(UnexpectedError::Serialization {
+                            message: format!("{:?}", e),
+                        })
+                    })
             })
             .await
             .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::TaskError))
@@ -325,7 +352,9 @@ where
                         added
                     );
                 }
-                Ok(Err(CeremonyError::Unexpected(UnexpectedError::Serialization))) => {
+                Ok(Err(CeremonyError::Unexpected(UnexpectedError::Serialization {
+                    message: _,
+                }))) => {
                     let _ = warn!("[ERROR] Unable to update registry. Serialization error.");
                 }
                 _ => {

@@ -241,7 +241,10 @@ where
 #[derive(Debug)]
 pub enum UnexpectedError {
     /// Serialization Error
-    Serialization,
+    Serialization {
+        /// Optional Error Message Display String
+        message: String,
+    },
 
     /// Failed to generate a valid Contribution
     FailedContribution,
