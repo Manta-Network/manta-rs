@@ -36,6 +36,10 @@ required-features = ["clap", "std"]
 name = "decompress_test"
 required-features = ["std"]
 
+[[bin]]
+name = "hash_file"
+required-features = ["clap", "std"]
+
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]

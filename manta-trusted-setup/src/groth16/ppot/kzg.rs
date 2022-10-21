@@ -210,8 +210,6 @@ pub mod decompression {
         },
         util::Serializer,
     };
-    use manta_crypto::arkworks::serialize::CanonicalDeserialize;
-    use memmap::MmapOptions;
     use std::{cmp::min, fs::OpenOptions, path::PathBuf};
 
     /// Decompresses a `response` file to a `challenge` file, assuming its hash
@@ -466,6 +464,9 @@ pub mod decompression {
     #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
     #[test]
     pub fn decompress_test() {
+        use manta_crypto::arkworks::serialize::CanonicalDeserialize;
+        use memmap::MmapOptions;
+
         // cargo test decompress_test
         let source_path =
             PathBuf::from("/Users/thomascnorton/Documents/Manta/trusted-setup/response_0070");

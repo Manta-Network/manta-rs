@@ -16,7 +16,8 @@
 
 //! PPoT response file decompressor
 
-// cargo run --bin decompress_response --all-features 0045 /home/mobula/ppot-verifier
+// cargo run --release --bin decompress_response --all-features 0073 /home/mobula/ppot-verifier
+// nohup cargo run --release --bin decompress_response --all-features 0073 /home/mobula/ppot-verifier &> ./decompress_response_0073.log &
 
 use clap::Parser;
 use manta_trusted_setup::groth16::ppot::kzg::{decompression::decompress_response, PpotCeremony};
