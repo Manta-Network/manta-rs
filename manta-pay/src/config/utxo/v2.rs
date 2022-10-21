@@ -2025,7 +2025,10 @@ impl From<Checkpoint> for RawCheckpoint {
 pub mod test {
     use crate::{
         config::{
-            utxo::v2::{Config, IncomingAESConverter, IncomingBaseAES},
+            utxo::v2::{
+                Config, IncomingAESConverter, IncomingBaseAES, AES_CIPHERTEXT_SIZE,
+                AES_PLAINTEXT_SIZE,
+            },
             Compiler, ConstraintField, Group, GroupVar,
         },
         crypto::constraint::arkworks::Fp,
@@ -2064,9 +2067,10 @@ pub mod test {
         );
         let final_array = <IncomingAESConverter as Forward>::as_target(&source_plaintext, &mut ());
         assert_eq!(
-            80,
+            AES_PLAINTEXT_SIZE,
             final_array.len(),
-            "Length doesn't match, should be {}",
+            "Length doesn't match, should be {} but is {}",
+            AES_PLAINTEXT_SIZE,
             final_array.len()
         );
         let new_source = IncomingAESConverter::into_source(Some(final_array), &mut ())
@@ -2106,9 +2110,10 @@ pub mod test {
             &mut cs,
         );
         assert_eq!(
-            80,
+            AES_PLAINTEXT_SIZE,
             final_array.len(),
-            "Length doesn't match, should be {}",
+            "Length doesn't match, should be {} but is {}",
+            AES_PLAINTEXT_SIZE,
             final_array.len()
         );
     }
@@ -2152,6 +2157,13 @@ pub mod test {
         );
         let ciphertext =
             base_aes.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
+        assert_eq!(
+            AES_CIPHERTEXT_SIZE,
+            ciphertext.len(),
+            "Ciphertext length doesn't match, should be {} but is {}",
+            AES_CIPHERTEXT_SIZE,
+            ciphertext.len()
+        );
         let decrypted_ciphertext = base_aes
             .decrypt(&encryption_key, &header, &ciphertext, &mut ())
             .expect("Decryption returned None.");

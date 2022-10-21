@@ -398,7 +398,8 @@ pub type LightIncomingEncryptionScheme<C, COM = ()> = Hybrid<
 >;
 
 /// Light Incoming Randomness
-pub type LightIncomingRandomness<C, COM = ()> = encryption::Randomness<LightIncomingEncryptionScheme<C, COM>>;
+pub type LightIncomingRandomness<C, COM = ()> =
+    encryption::Randomness<LightIncomingEncryptionScheme<C, COM>>;
 
 /// Light Incoming Encrypted Note
 pub type LightIncomingNote<C, COM = ()> = EncryptedMessage<LightIncomingEncryptionScheme<C, COM>>;
