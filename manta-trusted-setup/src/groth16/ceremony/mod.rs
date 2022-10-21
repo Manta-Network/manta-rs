@@ -194,8 +194,8 @@ where
         match self {
             Self::NotRegistered => write!(
                 f,
-                "Registry update is taking longer than expected. \
-                 Please make sure you have submitted your registration form and try again later.",
+                "Please make sure you have submitted your registration form. \
+                 Check whether the ceremony has begun at <ceremony.manta.network>.",
             ),
             Self::AlreadyContributed => {
                 write!(
