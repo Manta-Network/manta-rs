@@ -62,6 +62,7 @@ impl Arguments {
 
         println!("Network is running!");
         let mut api = tide::Server::with_state(server);
+        api.at("/").serve_file("/home/mobula/manta-rs/index.html")?;
         api.at("/start")
             .post(|r| execute(r, Server::start_endpoint));
         api.at("/query")
