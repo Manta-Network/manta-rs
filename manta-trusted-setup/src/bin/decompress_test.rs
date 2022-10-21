@@ -40,8 +40,8 @@ fn main() {
         64
     );
 
-    // decompress_response::<PpotCeremony>(&mmap, hash, target_path.clone())
-    //     .expect("Error decompressing");
+    decompress_response::<PpotCeremony>(&mmap, hash, target_path.clone())
+        .expect("Error decompressing");
 
     // // Then hash the result
     let new_hash_path = PathBuf::from("/home/mobula/ppot-verifier/response_0058_decompressed_hash");
