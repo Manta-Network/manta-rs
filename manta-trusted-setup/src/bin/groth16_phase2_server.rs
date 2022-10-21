@@ -42,10 +42,10 @@ const TIME_LIMIT: u64 = 60;
 /// Server CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
-    #[clap(default_value = "manta-trusted-setup/data/")]
+    #[clap(default_value = "/home/mobula/manta-rs/manta-trusted-setup/data")]
     recovery_dir_path: String,
 
-    #[clap(default_value = "manta-trusted-setup/data/registry.csv")]
+    #[clap(default_value = "/home/mobula/manta-rs/manta-trusted-setup/data/registry.csv")]
     registry_path: String,
 }
 
