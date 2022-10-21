@@ -63,7 +63,7 @@ fn main() {
         .expect("Unable to open hash file");
     assert_eq!(
         new_hash_file
-            .read(&mut new_hash)
+            .read(&mut new_hash[..])
             .expect("Failed to read new hash"),
         64
     );
