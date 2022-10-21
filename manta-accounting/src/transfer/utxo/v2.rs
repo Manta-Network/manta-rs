@@ -388,6 +388,21 @@ pub type IncomingRandomness<C, COM = ()> = encryption::Randomness<IncomingEncryp
 /// Incoming Encrypted Note
 pub type IncomingNote<C, COM = ()> = EncryptedMessage<IncomingEncryptionScheme<C, COM>>;
 
+/// Incoming Encryption Scheme
+pub type LightIncomingEncryptionScheme<C, COM = ()> = Hybrid<
+    StandardDiffieHellman<
+        <C as BaseConfiguration<COM>>::Scalar,
+        <C as BaseConfiguration<COM>>::Group,
+    >,
+    <C as BaseConfiguration<COM>>::LightIncomingBaseEncryptionScheme,
+>;
+
+/// Light Incoming Randomness
+pub type LightIncomingRandomness<C, COM = ()> = encryption::Randomness<LightIncomingEncryptionScheme<C, COM>>;
+
+/// Light Incoming Encrypted Note
+pub type LightIncomingNote<C, COM = ()> = EncryptedMessage<LightIncomingEncryptionScheme<C, COM>>;
+
 /// UTXO Accumulator Item
 pub type UtxoAccumulatorItem<C, COM = ()> =
     <<C as BaseConfiguration<COM>>::UtxoAccumulatorItemHash as UtxoAccumulatorItemHash<COM>>::Item;
