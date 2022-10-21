@@ -67,11 +67,7 @@ fn main() {
     //         .expect("Failed to read new hash"),
     //     64
     // );
-    let bytes_read = new_hash_file
-            .read(&mut new_hash[..])
-            .expect("Failed to read new hash");
-    println!("Just read {} bytes of new hash", bytes_read);
-    
+
     let mut old_hash = [0u8; 64];
     let old_hash_path = PathBuf::from("/home/mobula/ppot-verifier/challenge_0058_hash");
     let mut old_hash_file = OpenOptions::new()
