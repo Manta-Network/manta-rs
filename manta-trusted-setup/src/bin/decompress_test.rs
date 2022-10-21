@@ -45,17 +45,22 @@ fn main() {
 
     // // Then hash the result
     let new_hash_path = PathBuf::from("/home/mobula/ppot-verifier/response_0058_decompressed_hash");
-    let mut new_hash_file = OpenOptions::new()
-        .write(true)
-        .read(true)
-        .create(true)
-        .truncate(true)
-        .open(new_hash_path)
-        .expect("Unable to open hash file");
-    // hash_to(&mut new_hash_file, target_path).expect("Hashing error");
+    {
+        let mut new_hash_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(new_hash_path.clone())
+            .expect("Unable to open hash file");
+        // hash_to(&mut new_hash_file, target_path).expect("Hashing error");
+    }
 
     // Check the result:
     let mut new_hash = [0u8; 64];
+    let mut new_hash_file = OpenOptions::new()
+        .read(true)
+        .open(new_hash_path)
+        .expect("Unable to open hash file");
     assert_eq!(
         new_hash_file
             .read(&mut new_hash)
