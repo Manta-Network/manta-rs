@@ -158,6 +158,7 @@ pub type Parameters<A> = <A as Account>::Parameters;
 
 
 /// Regular Account
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct RegularAccount<A>
 where
     A: Account, {
@@ -216,4 +217,58 @@ pub trait AccountMap {
         self.get_mut(Default::default())
             .expect("The default account must always exist.")
     }
+}
+
+/// [`Vec`] Account Map Type
+pub type VecAccountMap<A> = Vec<RegularAccount<A>>;
+
+impl<A> AccountMap for VecAccountMap<A>
+where
+    A: Account + std::default::Default {
+
+    type Account = RegularAccount<A>;
+
+    #[inline]
+    fn new() -> Self {
+        let mut this = Self::new();
+        this.create_account();
+        this
+    }
+
+    #[inline]
+    fn last_account(&self) -> AccountIndex {
+        AccountIndex::new(
+            (self.len() - 1)
+                .try_into()
+                .expect("AccountIndex is not allowed to exceed IndexType::MAX."),
+        )
+    }
+
+    #[inline]
+    fn create_account(&mut self) -> AccountIndex {
+        let index = AccountIndex::new(
+            self.len()
+                .try_into()
+                .expect("AccountIndex is not allowed to exceed IndexType::MAX."),
+        );
+        self.push(Default::default());
+        index
+    }
+
+    #[inline]
+    fn get_default(&self) -> &Self::Account {
+        self.get(Default::default())
+            .expect("The default account must always exist.")
+    }
+
+    #[inline]
+    fn get(&self, account: AccountIndex) -> Option<&Self::Account> {
+        self.as_slice().get(account.index() as usize)
+    }
+
+    #[inline]
+    fn get_mut(&mut self, account: AccountIndex) -> Option<&mut Self::Account> {
+        self.as_mut_slice().get_mut(account.index() as usize)
+    }
+
 }
