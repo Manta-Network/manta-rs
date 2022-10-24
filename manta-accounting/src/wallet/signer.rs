@@ -619,6 +619,25 @@ where
         }
     }
 
+    /// Builds a new [`SignerState`] from `accounts`, `utxo_accumulator`, `assets`, `rng` and
+    /// `checkpoint`.
+    #[inline]
+    fn build_with_checkpoint(
+        accounts: AccountTable<C>,
+        utxo_accumulator: C::UtxoAccumulator,
+        assets: C::AssetMap,
+        rng: C::Rng,
+        checkpoint: C::Checkpoint
+    ) -> Self {
+        Self {
+            accounts,
+            checkpoint: checkpoint,
+            utxo_accumulator,
+            assets,
+            rng,
+        }
+    }
+
     /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator`.
     #[inline]
     pub fn new(
@@ -630,6 +649,23 @@ where
             utxo_accumulator,
             Default::default(),
             FromEntropy::from_entropy(),
+        )
+    }
+
+    /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator` and `checkpoint`.
+    /// For skipping initial sync.
+    #[inline]
+    pub fn new_with_checkpoint(
+        keys: C::HierarchicalKeyDerivationScheme,
+        utxo_accumulator: C::UtxoAccumulator,
+        checkpoint: C::Checkpoint
+    ) -> Self {
+        Self::build_with_checkpoint(
+            AccountTable::<C>::new(keys),
+            utxo_accumulator,
+            Default::default(),
+            FromEntropy::from_entropy(),
+            checkpoint
         )
     }
 
@@ -1048,6 +1084,12 @@ where
     ) -> Receiver<C> {
         receiving_key.into_receiver(parameters, self.rng.gen(), asset)
     }
+
+    /// Sets the internal `checkpoint` in order to skip the initial sync.
+    #[inline]
+    pub fn set_checkpoint(&mut self, checkpoint: C::Checkpoint) {
+        self.checkpoint = checkpoint;
+    }
 }
 
 impl<C> Clone for SignerState<C>
@@ -1275,12 +1317,6 @@ where
                 .map(|k| self.parameters.receiving_key(k))
                 .collect(),
         }
-    }
-
-    /// Sets the internal `checkpoint` in order to skip the initial sync.
-    #[inline]
-    pub fn set_checkpoint(&mut self, checkpoint: C::Checkpoint) {
-        self.state.checkpoint = checkpoint;
     }
 }
 
