@@ -455,12 +455,6 @@ where
     /// Updates `self` by viewing `count`-many void numbers.
     fn update_from_void_numbers(&mut self, count: usize);
 
-    /// Sets the `sender_index`.
-    fn set_sender_index(&mut self, sender_index: u64);
-
-    /// Sets the `receiver_index`.
-    fn set_receiver_index(&mut self, receiver_index: [u64;256]);
-
     /// Updates `self` by viewing a new `accumulator`.
     fn update_from_utxo_accumulator(&mut self, accumulator: &Self::UtxoAccumulator);
 
@@ -625,6 +619,25 @@ where
         }
     }
 
+    /// Builds a new [`SignerState`] from `accounts`, `utxo_accumulator`, `assets`, `rng` and
+    /// `checkpoint`.
+    #[inline]
+    fn build_with_checkpoint(
+        accounts: AccountTable<C>,
+        utxo_accumulator: C::UtxoAccumulator,
+        assets: C::AssetMap,
+        rng: C::Rng,
+        checkpoint: C::Checkpoint
+    ) -> Self {
+        Self {
+            accounts,
+            checkpoint,
+            utxo_accumulator,
+            assets,
+            rng,
+        }
+    }
+
     /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator`.
     #[inline]
     pub fn new(
@@ -639,12 +652,22 @@ where
         )
     }
 
-    /// Sets state checkpoint to `checkpoint`, for skipping initial sync.
+    /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator` and `checkpoint`.
+    /// For skipping initial sync.
     #[inline]
-    pub fn set_checkpoint(&mut self, sender_index: u64, receiver_index: [u64;256]) {
-        self.checkpoint.set_sender_index(sender_index);
-        self.checkpoint.set_receiver_index(receiver_index);
-    } 
+    pub fn new_with_checkpoint(
+        keys: C::HierarchicalKeyDerivationScheme,
+        utxo_accumulator: C::UtxoAccumulator,
+        checkpoint: C::Checkpoint
+    ) -> Self {
+        Self::build_with_checkpoint(
+            AccountTable::<C>::new(keys),
+            utxo_accumulator,
+            Default::default(),
+            FromEntropy::from_entropy(),
+            checkpoint
+        )
+    }
 
     /// Finds the next viewing key that can decrypt the `encrypted_note` from the `view_key_table`.
     #[inline]
@@ -1060,6 +1083,12 @@ where
         receiving_key: ReceivingKey<C>,
     ) -> Receiver<C> {
         receiving_key.into_receiver(parameters, self.rng.gen(), asset)
+    }
+
+    /// Sets the internal `checkpoint` in order to skip the initial sync.
+    #[inline]
+    pub fn set_checkpoint(&mut self, checkpoint: C::Checkpoint) {
+        self.checkpoint = checkpoint;
     }
 }
 

@@ -95,16 +95,6 @@ impl signer::Checkpoint<Config> for Checkpoint {
     type UtxoAccumulator = UtxoAccumulator;
 
     #[inline]
-    fn set_sender_index(&mut self, sender_index: u64) {
-        self.sender_index = sender_index;
-    }
-
-    #[inline]
-    fn set_receiver_index(&mut self, receiver_index: [u64;256]) {
-        self.receiver_index = receiver_index;
-    }
-
-    #[inline]
     fn update_from_void_numbers(&mut self, count: usize) {
         self.sender_index += count;
     }
