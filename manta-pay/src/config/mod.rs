@@ -23,10 +23,9 @@ use crate::crypto::{
 use manta_accounting::transfer;
 use manta_crypto::arkworks::{
     algebra::ScalarVar,
-    bls12_381::{self, Bls12_381},
-    ed_on_bls12_381::{
-        self, constraints::EdwardsVar as Bls12_381_EdwardsVar,
-        EdwardsProjective as Bls12_381_Edwards,
+    bn254::{self, Bn254},
+    ed_on_bn254::{
+        self, constraints::EdwardsVar as Bn254_EdwardsVar, EdwardsProjective as Bn254_Edwards,
     },
 };
 
@@ -37,10 +36,10 @@ pub mod poseidon;
 pub mod utxo;
 
 /// Pairing Curve Type
-pub type PairingCurve = Bls12_381;
+pub type PairingCurve = Bn254;
 
 /// Embedded Scalar Field Type
-pub type EmbeddedScalarField = ed_on_bls12_381::Fr;
+pub type EmbeddedScalarField = ed_on_bn254::Fr;
 
 /// Embedded Scalar Type
 pub type EmbeddedScalar = ecc::arkworks::Scalar<GroupCurve>;
@@ -49,13 +48,13 @@ pub type EmbeddedScalar = ecc::arkworks::Scalar<GroupCurve>;
 pub type EmbeddedScalarVar = ScalarVar<GroupCurve, GroupCurveVar>;
 
 /// Embedded Group Curve Type
-pub type GroupCurve = Bls12_381_Edwards;
+pub type GroupCurve = Bn254_Edwards;
 
 /// Embedded Group Curve Type
-pub type GroupCurveAffine = ed_on_bls12_381::EdwardsAffine;
+pub type GroupCurveAffine = ed_on_bn254::EdwardsAffine;
 
 /// Embedded Group Curve Variable Type
-pub type GroupCurveVar = Bls12_381_EdwardsVar;
+pub type GroupCurveVar = Bn254_EdwardsVar;
 
 /// Embedded Group Type
 pub type Group = ecc::arkworks::Group<GroupCurve>;
@@ -64,7 +63,7 @@ pub type Group = ecc::arkworks::Group<GroupCurve>;
 pub type GroupVar = ecc::arkworks::GroupVar<GroupCurve, GroupCurveVar>;
 
 /// Constraint Field
-pub type ConstraintField = bls12_381::Fr;
+pub type ConstraintField = bn254::Fr;
 
 /// Constraint Field Variable
 pub type ConstraintFieldVar = FpVar<ConstraintField>;

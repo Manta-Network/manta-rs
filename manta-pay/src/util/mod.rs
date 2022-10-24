@@ -16,6 +16,8 @@
 
 //! Manta Pay Utilities
 
+pub mod utxo_utilities;
+
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
 pub mod scale;

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta-Pay UTXO Model Version 1 Configuration
+//! Manta-Pay UTXO Model Version 3 Configuration
 
 use crate::{
     config::{
@@ -26,8 +26,10 @@ use crate::{
     },
     crypto::{
         constraint::arkworks::{codec::SerializationError, rem_mod_prime, Boolean, Fp, FpVar},
+        encryption::aes,
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
+    util::utxo_utilities,
 };
 use alloc::{vec, vec::Vec};
 use blake2::{
@@ -35,12 +37,16 @@ use blake2::{
     Blake2s256, Blake2sVar, Digest,
 };
 use core::{fmt::Debug, marker::PhantomData};
-use manta_accounting::{asset::Asset, wallet::ledger};
+use manta_accounting::{
+    asset::{self, Asset},
+    wallet::ledger,
+};
 use manta_crypto::{
     algebra::HasGenerator,
     arkworks::{
         algebra::{affine_point_as_bytes, ScalarVar},
-        ff::{try_into_u128, PrimeField},
+        ff::{try_into_u128, PrimeField, ToConstraintField},
+        r1cs_std::R1CSVar,
         serialize::CanonicalSerialize,
     },
     eclair::{
@@ -64,7 +70,7 @@ use manta_util::serde::{Deserialize, Serialize};
 
 pub use manta_accounting::transfer::{
     self,
-    utxo::{self, v1 as protocol},
+    utxo::{self, v2 as protocol},
 };
 
 /// Asset Id Type
@@ -715,6 +721,307 @@ pub type IncomingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Conv
 >;
 
 ///
+pub const AES_PLAINTEXT_SIZE: usize = 80;
+
+///
+pub const AES_CIPHERTEXT_SIZE: usize = AES_PLAINTEXT_SIZE + 16;
+
+///
+pub type AES = aes::FixedNonceAesGcm<AES_PLAINTEXT_SIZE, AES_CIPHERTEXT_SIZE>;
+
+///
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Default)]
+pub struct IncomingAESEncryptionScheme<COM = ()>(PhantomData<COM>);
+
+impl<COM> encryption::HeaderType for IncomingAESEncryptionScheme<COM> {
+    type Header = <AES as encryption::HeaderType>::Header;
+}
+
+impl<COM> encryption::EncryptionKeyType for IncomingAESEncryptionScheme<COM> {
+    type EncryptionKey = <AES as encryption::EncryptionKeyType>::EncryptionKey;
+}
+
+impl<COM> encryption::DecryptionKeyType for IncomingAESEncryptionScheme<COM> {
+    type DecryptionKey = <AES as encryption::DecryptionKeyType>::DecryptionKey;
+}
+
+impl<COM> encryption::PlaintextType for IncomingAESEncryptionScheme<COM> {
+    type Plaintext = <AES as encryption::PlaintextType>::Plaintext;
+}
+
+impl<COM> encryption::DecryptedPlaintextType for IncomingAESEncryptionScheme<COM> {
+    type DecryptedPlaintext = <AES as encryption::DecryptedPlaintextType>::DecryptedPlaintext;
+}
+
+impl<COM> encryption::CiphertextType for IncomingAESEncryptionScheme<COM> {
+    type Ciphertext = <AES as encryption::CiphertextType>::Ciphertext;
+}
+
+impl<COM> encryption::RandomnessType for IncomingAESEncryptionScheme<COM> {
+    type Randomness = <AES as encryption::RandomnessType>::Randomness;
+}
+
+impl<COM> encryption::Encrypt for IncomingAESEncryptionScheme<COM> {
+    fn encrypt(
+        &self,
+        encryption_key: &Self::EncryptionKey,
+        randomness: &Self::Randomness,
+        header: &Self::Header,
+        plaintext: &Self::Plaintext,
+        compiler: &mut (),
+    ) -> Self::Ciphertext {
+        let aes = AES::default();
+        aes.encrypt(encryption_key, randomness, header, plaintext, compiler)
+    }
+}
+
+impl<COM> encryption::Decrypt for IncomingAESEncryptionScheme<COM> {
+    fn decrypt(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        header: &Self::Header,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut (),
+    ) -> Self::DecryptedPlaintext {
+        let aes = AES::default();
+        aes.decrypt(decryption_key, header, ciphertext, compiler)
+    }
+}
+
+///
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Default)]
+pub struct IncomingAESConverter<COM = ()>(PhantomData<COM>);
+
+impl<COM> encryption::HeaderType for IncomingAESConverter<COM> {
+    type Header = encryption::EmptyHeader<COM>;
+}
+
+impl<COM> encryption::convert::header::Header<COM> for IncomingAESConverter<COM> {
+    type TargetHeader = encryption::Header<IncomingAESEncryptionScheme<COM>>;
+
+    #[inline]
+    fn as_target(source: &Self::Header, _: &mut COM) -> Self::TargetHeader {
+        let _ = source;
+    }
+}
+
+impl encryption::EncryptionKeyType for IncomingAESConverter {
+    type EncryptionKey = Group;
+}
+
+impl encryption::EncryptionKeyType for IncomingAESConverter<Compiler> {
+    type EncryptionKey = GroupVar;
+}
+
+impl encryption::convert::key::Encryption for IncomingAESConverter {
+    type TargetEncryptionKey = encryption::EncryptionKey<IncomingAESEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::EncryptionKey, _: &mut ()) -> Self::TargetEncryptionKey {
+        let key = source.to_vec();
+        assert_eq!(
+            key.len(),
+            32,
+            "Wrong key length: {}. Expected 32 bytes.",
+            key.len()
+        );
+        key.try_into()
+            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+    }
+}
+
+impl encryption::convert::key::Encryption<Compiler> for IncomingAESConverter<Compiler> {
+    type TargetEncryptionKey = encryption::EncryptionKey<IncomingAESEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
+        let key = Fp(*source
+            .0
+            .value()
+            .expect("Getting the group element from GroupVar is not allowed to fail.")
+            .to_field_elements()
+            .expect("Getting the field elements from a group element is not allowed to fail.")
+            .get(0)
+            .expect("Vector of group elements in not empty"))
+        .to_vec();
+        // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
+        // to reconstruct source from the key.
+        assert_eq!(
+            key.len(),
+            32,
+            "Wrong key length: {}. Expected 32 bytes.",
+            key.len()
+        );
+        key.try_into()
+            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+    }
+}
+
+impl encryption::DecryptionKeyType for IncomingAESConverter {
+    type DecryptionKey = Group;
+}
+
+impl encryption::DecryptionKeyType for IncomingAESConverter<Compiler> {
+    type DecryptionKey = GroupVar;
+}
+
+impl encryption::convert::key::Decryption for IncomingAESConverter {
+    type TargetDecryptionKey = encryption::DecryptionKey<IncomingAESEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::DecryptionKey, _: &mut ()) -> Self::TargetDecryptionKey {
+        let key = source.to_vec();
+        assert_eq!(
+            key.len(),
+            32,
+            "Wrong key length: {}. Expected 32 bytes.",
+            key.len()
+        );
+        key.try_into()
+            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+    }
+}
+
+impl encryption::convert::key::Decryption<Compiler> for IncomingAESConverter<Compiler> {
+    type TargetDecryptionKey = encryption::DecryptionKey<IncomingAESEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
+        let key = Fp(*source
+            .0
+            .value()
+            .expect("Getting the group element from GroupVar is not allowed to fail.")
+            .to_field_elements()
+            .expect("Getting the field elements from a group element is not allowed to fail.")
+            .get(0)
+            .expect("Vector of group elements in not empty"))
+        .to_vec();
+        // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
+        // to reconstruct source from the key.
+        assert_eq!(
+            key.len(),
+            32,
+            "Wrong key length: {}. Expected 32 bytes.",
+            key.len()
+        );
+        key.try_into()
+            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+    }
+}
+
+impl encryption::PlaintextType for IncomingAESConverter {
+    type Plaintext = protocol::IncomingPlaintext<Config>;
+}
+
+impl encryption::PlaintextType for IncomingAESConverter<Compiler> {
+    type Plaintext = protocol::IncomingPlaintext<Config<Compiler>, Compiler>;
+}
+
+impl encryption::convert::plaintext::Forward for IncomingAESConverter {
+    type TargetPlaintext = encryption::Plaintext<IncomingAESEncryptionScheme>;
+
+    #[inline]
+    fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
+        let mut target_plaintext = Vec::<u8>::with_capacity(AES_PLAINTEXT_SIZE);
+        target_plaintext.extend(source.utxo_commitment_randomness.to_vec());
+        target_plaintext.extend(source.asset.id.to_vec());
+        target_plaintext.extend(source.asset.value.to_le_bytes().to_vec());
+        assert_eq!(
+            target_plaintext.len(),
+            AES_PLAINTEXT_SIZE,
+            "Wrong plaintext length: {}. Expected {} bytes",
+            target_plaintext.len(),
+            AES_PLAINTEXT_SIZE
+        );
+        Array::from_unchecked::<Vec<u8>>(target_plaintext)
+    }
+}
+
+impl encryption::convert::plaintext::Forward<Compiler> for IncomingAESConverter<Compiler> {
+    type TargetPlaintext = encryption::Plaintext<IncomingAESEncryptionScheme<Compiler>>;
+
+    #[inline]
+    fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
+        let mut target_plaintext = Vec::<u8>::with_capacity(AES_PLAINTEXT_SIZE);
+        target_plaintext.extend(
+            utxo_utilities::bytes_from_gadget(&source.utxo_commitment_randomness)
+                .expect("Converting FpVar into bytes is not allowed to fail."),
+        );
+        target_plaintext.extend(
+            utxo_utilities::bytes_from_gadget(&source.asset.id)
+                .expect("Converting FpVar into bytes is not allowed to fail."),
+        );
+        target_plaintext.extend(utxo_utilities::from_little_endian(
+            utxo_utilities::bytes_from_unsigned(&source.asset.value)
+                .expect("Converting U128 into bytes is not allowed to fail."),
+            16,
+        ));
+        assert_eq!(
+            target_plaintext.len(),
+            AES_PLAINTEXT_SIZE,
+            "Wrong plaintext length: {}. Expected {} bytes",
+            target_plaintext.len(),
+            AES_PLAINTEXT_SIZE
+        );
+        Array::from_unchecked::<Vec<u8>>(target_plaintext)
+    }
+}
+
+impl encryption::DecryptedPlaintextType for IncomingAESConverter {
+    type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
+}
+
+impl encryption::convert::plaintext::Reverse for IncomingAESConverter {
+    type TargetDecryptedPlaintext = encryption::DecryptedPlaintext<IncomingAESEncryptionScheme>;
+
+    #[inline]
+    fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
+        let bytes_vector = target?.0;
+        let utxo_randomness_bytes = bytes_vector[0..32].to_vec();
+        let asset_id_bytes = bytes_vector[32..64].to_vec();
+        let asset_value_bytes =
+            manta_util::Array::<u8, 16>::from_vec(bytes_vector[64..80].to_vec()).0;
+        let utxo_randomness = Fp::<ConstraintField>::from_vec(utxo_randomness_bytes)
+            .expect("Error while converting the bytes into a field element.");
+        let asset_id = Fp::<ConstraintField>::from_vec(asset_id_bytes)
+            .expect("Error while converting the bytes into a field element.");
+        let asset_value = u128::from_le_bytes(asset_value_bytes);
+        let source_plaintext = protocol::IncomingPlaintext::<Config>::new(
+            utxo_randomness,
+            asset::Asset {
+                id: asset_id,
+                value: asset_value,
+            },
+        );
+        Some(source_plaintext)
+    }
+}
+
+impl<COM> Constant<COM> for IncomingAESConverter<COM> {
+    type Type = IncomingAESConverter;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Self::default()
+    }
+}
+
+///
+pub type IncomingBaseAES<COM = ()> = encryption::convert::key::Converter<
+    encryption::convert::header::Converter<
+        encryption::convert::plaintext::Converter<
+            IncomingAESEncryptionScheme<COM>,
+            IncomingAESConverter<COM>,
+        >,
+        IncomingAESConverter<COM>,
+    >,
+    IncomingAESConverter<COM>,
+>;
+
+///
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UtxoAccumulatorItemHashDomainTag;
 
@@ -1184,159 +1491,277 @@ impl protocol::NullifierCommitmentScheme<Compiler> for NullifierCommitmentScheme
 }
 
 ///
+pub const OUT_AES_PLAINTEXT_SIZE: usize = 48;
+
+///
+pub const OUT_AES_CIPHERTEXT_SIZE: usize = OUT_AES_PLAINTEXT_SIZE + 16;
+
+///
+pub type OutAes = aes::FixedNonceAesGcm<OUT_AES_PLAINTEXT_SIZE, OUT_AES_CIPHERTEXT_SIZE>;
+
+///
 #[derive(derivative::Derivative)]
-#[derivative(Default)]
-pub struct OutgoingEncryptionSchemeConverter<COM = ()>(PhantomData<COM>);
+#[derivative(Clone, Default)]
+pub struct OutgoingAESEncryptionScheme<COM = ()>(PhantomData<COM>);
 
-impl encryption::HeaderType for OutgoingEncryptionSchemeConverter {
-    type Header = encryption::EmptyHeader;
+impl<COM> encryption::HeaderType for OutgoingAESEncryptionScheme<COM> {
+    type Header = <OutAes as encryption::HeaderType>::Header;
 }
 
-impl encryption::HeaderType for OutgoingEncryptionSchemeConverter<Compiler> {
-    type Header = encryption::EmptyHeader<Compiler>;
+impl<COM> encryption::EncryptionKeyType for OutgoingAESEncryptionScheme<COM> {
+    type EncryptionKey = <OutAes as encryption::EncryptionKeyType>::EncryptionKey;
 }
 
-impl encryption::convert::header::Header for OutgoingEncryptionSchemeConverter {
-    type TargetHeader = encryption::Header<OutgoingPoseidonEncryptionScheme>;
+impl<COM> encryption::DecryptionKeyType for OutgoingAESEncryptionScheme<COM> {
+    type DecryptionKey = <OutAes as encryption::DecryptionKeyType>::DecryptionKey;
+}
 
-    #[inline]
-    fn as_target(source: &Self::Header, _: &mut ()) -> Self::TargetHeader {
-        let _ = source;
-        vec![]
+impl<COM> encryption::PlaintextType for OutgoingAESEncryptionScheme<COM> {
+    type Plaintext = <OutAes as encryption::PlaintextType>::Plaintext;
+}
+
+impl<COM> encryption::DecryptedPlaintextType for OutgoingAESEncryptionScheme<COM> {
+    type DecryptedPlaintext = <OutAes as encryption::DecryptedPlaintextType>::DecryptedPlaintext;
+}
+
+impl<COM> encryption::CiphertextType for OutgoingAESEncryptionScheme<COM> {
+    type Ciphertext = <OutAes as encryption::CiphertextType>::Ciphertext;
+}
+
+impl<COM> encryption::RandomnessType for OutgoingAESEncryptionScheme<COM> {
+    type Randomness = <OutAes as encryption::RandomnessType>::Randomness;
+}
+
+impl<COM> encryption::Encrypt for OutgoingAESEncryptionScheme<COM> {
+    fn encrypt(
+        &self,
+        encryption_key: &Self::EncryptionKey,
+        randomness: &Self::Randomness,
+        header: &Self::Header,
+        plaintext: &Self::Plaintext,
+        compiler: &mut (),
+    ) -> Self::Ciphertext {
+        let aes = OutAes::default();
+        aes.encrypt(encryption_key, randomness, header, plaintext, compiler)
     }
 }
 
-impl encryption::convert::header::Header<Compiler> for OutgoingEncryptionSchemeConverter<Compiler> {
-    type TargetHeader = encryption::Header<OutgoingPoseidonEncryptionScheme<Compiler>>;
-
-    #[inline]
-    fn as_target(source: &Self::Header, _: &mut Compiler) -> Self::TargetHeader {
-        let _ = source;
-        vec![]
+impl<COM> encryption::Decrypt for OutgoingAESEncryptionScheme<COM> {
+    fn decrypt(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        header: &Self::Header,
+        ciphertext: &Self::Ciphertext,
+        compiler: &mut (),
+    ) -> Self::DecryptedPlaintext {
+        let aes = OutAes::default();
+        aes.decrypt(decryption_key, header, ciphertext, compiler)
     }
 }
 
-impl encryption::EncryptionKeyType for OutgoingEncryptionSchemeConverter {
+///
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Default)]
+pub struct OutgoingAESConverter<COM = ()>(PhantomData<COM>);
+
+impl<COM> encryption::HeaderType for OutgoingAESConverter<COM> {
+    type Header = encryption::EmptyHeader<COM>;
+}
+
+impl<COM> encryption::convert::header::Header<COM> for OutgoingAESConverter<COM> {
+    type TargetHeader = encryption::Header<OutgoingAESEncryptionScheme<COM>>;
+
+    #[inline]
+    fn as_target(source: &Self::Header, _: &mut COM) -> Self::TargetHeader {
+        let _ = source;
+    }
+}
+
+impl encryption::EncryptionKeyType for OutgoingAESConverter {
     type EncryptionKey = Group;
 }
 
-impl encryption::EncryptionKeyType for OutgoingEncryptionSchemeConverter<Compiler> {
+impl encryption::EncryptionKeyType for OutgoingAESConverter<Compiler> {
     type EncryptionKey = GroupVar;
 }
 
-impl encryption::convert::key::Encryption for OutgoingEncryptionSchemeConverter {
-    type TargetEncryptionKey = encryption::EncryptionKey<OutgoingPoseidonEncryptionScheme>;
+impl encryption::convert::key::Encryption for OutgoingAESConverter {
+    type TargetEncryptionKey = encryption::EncryptionKey<OutgoingAESEncryptionScheme>;
 
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut ()) -> Self::TargetEncryptionKey {
-        vec![Fp(source.0.x), Fp(source.0.y)]
+        let key = source.to_vec();
+        assert_eq!(
+            key.len(),
+            32,
+            "Wrong key length: {}. Expected 32 bytes.",
+            key.len()
+        );
+        key.try_into()
+            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
     }
 }
 
-impl encryption::convert::key::Encryption<Compiler>
-    for OutgoingEncryptionSchemeConverter<Compiler>
-{
-    type TargetEncryptionKey =
-        encryption::EncryptionKey<OutgoingPoseidonEncryptionScheme<Compiler>>;
+impl encryption::convert::key::Encryption<Compiler> for OutgoingAESConverter<Compiler> {
+    type TargetEncryptionKey = encryption::EncryptionKey<OutgoingAESEncryptionScheme<Compiler>>;
 
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
-        vec![source.0.x.clone(), source.0.y.clone()]
+        let key = Fp(*source
+            .0
+            .value()
+            .expect("Getting the group element from GroupVar is not allowed to fail.")
+            .to_field_elements()
+            .expect("Getting the field elements from a group element is not allowed to fail.")
+            .get(0)
+            .expect("Vector of group elements in not empty"))
+        .to_vec();
+        // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
+        // to reconstruct source from the key.
+        assert_eq!(
+            key.len(),
+            32,
+            "Wrong key length: {}. Expected 32 bytes.",
+            key.len()
+        );
+        key.try_into()
+            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
     }
 }
 
-impl encryption::DecryptionKeyType for OutgoingEncryptionSchemeConverter {
+impl encryption::DecryptionKeyType for OutgoingAESConverter {
     type DecryptionKey = Group;
 }
 
-impl encryption::DecryptionKeyType for OutgoingEncryptionSchemeConverter<Compiler> {
+impl encryption::DecryptionKeyType for OutgoingAESConverter<Compiler> {
     type DecryptionKey = GroupVar;
 }
 
-impl encryption::convert::key::Decryption for OutgoingEncryptionSchemeConverter {
-    type TargetDecryptionKey = encryption::DecryptionKey<OutgoingPoseidonEncryptionScheme>;
+impl encryption::convert::key::Decryption for OutgoingAESConverter {
+    type TargetDecryptionKey = encryption::DecryptionKey<OutgoingAESEncryptionScheme>;
 
     #[inline]
     fn as_target(source: &Self::DecryptionKey, _: &mut ()) -> Self::TargetDecryptionKey {
-        vec![Fp(source.0.x), Fp(source.0.y)]
+        let key = source.to_vec();
+        assert_eq!(
+            key.len(),
+            32,
+            "Wrong key length: {}. Expected 32 bytes.",
+            key.len()
+        );
+        key.try_into()
+            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
     }
 }
 
-impl encryption::convert::key::Decryption<Compiler>
-    for OutgoingEncryptionSchemeConverter<Compiler>
-{
-    type TargetDecryptionKey =
-        encryption::DecryptionKey<OutgoingPoseidonEncryptionScheme<Compiler>>;
+impl encryption::convert::key::Decryption<Compiler> for OutgoingAESConverter<Compiler> {
+    type TargetDecryptionKey = encryption::DecryptionKey<OutgoingAESEncryptionScheme<Compiler>>;
 
     #[inline]
     fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
-        vec![source.0.x.clone(), source.0.y.clone()]
+        let key = Fp(*source
+            .0
+            .value()
+            .expect("Getting the group element from GroupVar is not allowed to fail.")
+            .to_field_elements()
+            .expect("Getting the field elements from a group element is not allowed to fail.")
+            .get(0)
+            .expect("Vector of group elements in not empty"))
+        .to_vec();
+        // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
+        // to reconstruct source from the key.
+        assert_eq!(
+            key.len(),
+            32,
+            "Wrong key length: {}. Expected 32 bytes.",
+            key.len()
+        );
+        key.try_into()
+            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
     }
 }
 
-impl encryption::PlaintextType for OutgoingEncryptionSchemeConverter {
+impl encryption::PlaintextType for OutgoingAESConverter {
     type Plaintext = Asset<AssetId, AssetValue>;
 }
 
-impl encryption::PlaintextType for OutgoingEncryptionSchemeConverter<Compiler> {
+impl encryption::PlaintextType for OutgoingAESConverter<Compiler> {
     type Plaintext = Asset<AssetIdVar, AssetValueVar>;
 }
 
-impl encryption::convert::plaintext::Forward for OutgoingEncryptionSchemeConverter {
-    type TargetPlaintext = encryption::Plaintext<OutgoingPoseidonEncryptionScheme>;
+impl encryption::convert::plaintext::Forward for OutgoingAESConverter {
+    type TargetPlaintext = encryption::Plaintext<OutgoingAESEncryptionScheme>;
 
     #[inline]
     fn as_target(source: &Self::Plaintext, _: &mut ()) -> Self::TargetPlaintext {
-        BlockArray(
-            [poseidon::encryption::PlaintextBlock(
-                vec![source.id, Fp(source.value.into())].into(),
-            )]
-            .into(),
-        )
+        let mut target_plaintext = Vec::<u8>::with_capacity(OUT_AES_PLAINTEXT_SIZE);
+        target_plaintext.extend(source.id.to_vec());
+        target_plaintext.extend(source.value.to_vec());
+        assert_eq!(
+            target_plaintext.len(),
+            OUT_AES_PLAINTEXT_SIZE,
+            "Wrong plaintext length: {}. Expected {} bytes",
+            target_plaintext.len(),
+            OUT_AES_PLAINTEXT_SIZE
+        );
+        Array::from_unchecked::<Vec<u8>>(target_plaintext)
     }
 }
 
-impl encryption::convert::plaintext::Forward<Compiler>
-    for OutgoingEncryptionSchemeConverter<Compiler>
-{
-    type TargetPlaintext = encryption::Plaintext<OutgoingPoseidonEncryptionScheme<Compiler>>;
+impl encryption::convert::plaintext::Forward<Compiler> for OutgoingAESConverter<Compiler> {
+    type TargetPlaintext = encryption::Plaintext<OutgoingAESEncryptionScheme<Compiler>>;
 
     #[inline]
     fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
-        BlockArray(
-            [poseidon::encryption::PlaintextBlock(
-                vec![source.id.clone(), source.value.as_ref().clone()].into(),
-            )]
-            .into(),
-        )
+        let mut target_plaintext = Vec::<u8>::with_capacity(OUT_AES_PLAINTEXT_SIZE);
+        target_plaintext.extend(
+            utxo_utilities::bytes_from_gadget(&source.id)
+                .expect("Converting FpVar into bytes is not allowed to fail."),
+        );
+        target_plaintext.extend(utxo_utilities::from_little_endian(
+            utxo_utilities::bytes_from_unsigned(&source.value)
+                .expect("Converting U128 into bytes is not allowed to fail."),
+            16,
+        ));
+        assert_eq!(
+            target_plaintext.len(),
+            OUT_AES_PLAINTEXT_SIZE,
+            "Wrong plaintext length: {}. Expected {} bytes",
+            target_plaintext.len(),
+            OUT_AES_PLAINTEXT_SIZE
+        );
+        Array::from_unchecked::<Vec<u8>>(target_plaintext)
     }
 }
 
-impl encryption::DecryptedPlaintextType for OutgoingEncryptionSchemeConverter {
+impl encryption::DecryptedPlaintextType for OutgoingAESConverter {
     type DecryptedPlaintext = Option<<Self as encryption::PlaintextType>::Plaintext>;
 }
 
-impl encryption::convert::plaintext::Reverse for OutgoingEncryptionSchemeConverter {
-    type TargetDecryptedPlaintext =
-        encryption::DecryptedPlaintext<OutgoingPoseidonEncryptionScheme>;
+impl encryption::convert::plaintext::Reverse for OutgoingAESConverter {
+    type TargetDecryptedPlaintext = encryption::DecryptedPlaintext<OutgoingAESEncryptionScheme>;
 
     #[inline]
     fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
-        if target.0 && target.1.len() == 1 {
-            let block = &target.1[0].0;
-            if block.len() == 2 {
-                Some(Asset::new(block[0], try_into_u128(block[1].0)?))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        let bytes_vector = target?.0;
+        let asset_id_bytes = bytes_vector[0..32].to_vec();
+        let asset_value_bytes = manta_util::Array::<u8, 16>::from_vec(
+            bytes_vector[32..OUT_AES_PLAINTEXT_SIZE].to_vec(),
+        )
+        .0;
+        let asset_id = Fp::<ConstraintField>::from_vec(asset_id_bytes)
+            .expect("Error while converting the bytes into a field element.");
+        let asset_value = u128::from_le_bytes(asset_value_bytes);
+        let source_plaintext = asset::Asset {
+            id: asset_id,
+            value: asset_value,
+        };
+        Some(source_plaintext)
     }
 }
 
-impl<COM> Constant<COM> for OutgoingEncryptionSchemeConverter<COM> {
-    type Type = OutgoingEncryptionSchemeConverter;
+impl<COM> Constant<COM> for OutgoingAESConverter<COM> {
+    type Type = OutgoingAESConverter;
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
@@ -1346,19 +1771,15 @@ impl<COM> Constant<COM> for OutgoingEncryptionSchemeConverter<COM> {
 }
 
 ///
-pub type OutgoingPoseidonEncryptionScheme<COM = ()> =
-    poseidon::encryption::FixedDuplexer<1, Poseidon2, COM>;
-
-///
-pub type OutgoingBaseEncryptionScheme<COM = ()> = encryption::convert::key::Converter<
+pub type OutgoingBaseAES<COM = ()> = encryption::convert::key::Converter<
     encryption::convert::header::Converter<
         encryption::convert::plaintext::Converter<
-            OutgoingPoseidonEncryptionScheme<COM>,
-            OutgoingEncryptionSchemeConverter<COM>,
+            OutgoingAESEncryptionScheme<COM>,
+            OutgoingAESConverter<COM>,
         >,
-        OutgoingEncryptionSchemeConverter<COM>,
+        OutgoingAESConverter<COM>,
     >,
-    OutgoingEncryptionSchemeConverter<COM>,
+    OutgoingAESConverter<COM>,
 >;
 
 /// Address Partition Function
@@ -1521,13 +1942,17 @@ impl protocol::BaseConfiguration for Config {
     type IncomingCiphertext =
         <Self::IncomingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
     type IncomingBaseEncryptionScheme = IncomingBaseEncryptionScheme;
+    type LightIncomingHeader = EmptyHeader;
+    type LightIncomingBaseEncryptionScheme = IncomingBaseAES;
+    type LightIncomingCiphertext =
+        <Self::LightIncomingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
     type UtxoAccumulatorItemHash = UtxoAccumulatorItemHash;
     type UtxoAccumulatorModel = UtxoAccumulatorModel;
     type NullifierCommitmentScheme = NullifierCommitmentScheme;
     type OutgoingHeader = EmptyHeader;
     type OutgoingCiphertext =
         <Self::OutgoingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
-    type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme;
+    type OutgoingBaseEncryptionScheme = OutgoingBaseAES;
 }
 
 impl protocol::BaseConfiguration<Compiler> for Config<Compiler> {
@@ -1543,13 +1968,19 @@ impl protocol::BaseConfiguration<Compiler> for Config<Compiler> {
     type IncomingCiphertext =
         <Self::IncomingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
     type IncomingBaseEncryptionScheme = IncomingBaseEncryptionScheme<Compiler>;
+    type LightIncomingHeader = EmptyHeader<Compiler>;
+    type LightIncomingCiphertext =
+        <Self::LightIncomingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
+    type LightIncomingBaseEncryptionScheme =
+        encryption::UnsafeNoEncrypt<IncomingBaseAES<Compiler>, Compiler>;
     type UtxoAccumulatorItemHash = UtxoAccumulatorItemHash<Compiler>;
     type UtxoAccumulatorModel = UtxoAccumulatorModelVar;
     type NullifierCommitmentScheme = NullifierCommitmentScheme<Compiler>;
     type OutgoingHeader = EmptyHeader<Compiler>;
     type OutgoingCiphertext =
         <Self::OutgoingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
-    type OutgoingBaseEncryptionScheme = OutgoingBaseEncryptionScheme<Compiler>;
+    type OutgoingBaseEncryptionScheme =
+        encryption::UnsafeNoEncrypt<OutgoingBaseAES<Compiler>, Compiler>;
 }
 
 impl protocol::Configuration for Config {
@@ -1700,5 +2131,139 @@ impl From<Checkpoint> for RawCheckpoint {
             (*checkpoint.receiver_index).map(|i| i as u64),
             checkpoint.sender_index as u64,
         )
+    }
+}
+
+/// Test
+#[cfg(test)]
+pub mod test {
+    use crate::{
+        config::{
+            utxo::v3::{
+                OutgoingAESConverter, OutgoingBaseAES, OUT_AES_CIPHERTEXT_SIZE,
+                OUT_AES_PLAINTEXT_SIZE,
+            },
+            Compiler, ConstraintField, Group, GroupVar,
+        },
+        crypto::constraint::arkworks::Fp,
+    };
+    use manta_accounting::asset;
+    use manta_crypto::{
+        arkworks::constraint::FpVar,
+        eclair::{
+            alloc::{mode::Secret, Allocate},
+            num::U128,
+        },
+        encryption::{
+            convert::{
+                key::Encryption,
+                plaintext::{Forward, Reverse},
+            },
+            Decrypt, EmptyHeader, Encrypt,
+        },
+        rand::{OsRng, Sample},
+    };
+
+    /// Checks that the length of the fixed-nonce AES plaintext is 80. Checks that converting back returns
+    /// what we started with.
+    #[test]
+    fn check_plaintext_conversion() {
+        let mut rng = OsRng;
+        let asset_id = Fp::<ConstraintField>::gen(&mut rng);
+        let asset_value = u128::gen(&mut rng);
+        let source_plaintext = asset::Asset {
+            id: asset_id,
+            value: asset_value,
+        };
+        let final_array = <OutgoingAESConverter as Forward>::as_target(&source_plaintext, &mut ());
+        assert_eq!(
+            OUT_AES_PLAINTEXT_SIZE,
+            final_array.len(),
+            "Length doesn't match, should be {} but is {}",
+            OUT_AES_PLAINTEXT_SIZE,
+            final_array.len()
+        );
+        let new_source = OutgoingAESConverter::into_source(Some(final_array), &mut ())
+            .expect("Converting back returns None.");
+        let (new_asset_id, new_asset_value) = (new_source.id, new_source.value);
+        assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
+        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
+    }
+
+    /// Same but w.r.t. compiler
+    #[test]
+    fn check_plaintext_conversion_r1cs() {
+        let mut cs = Compiler::for_proofs();
+        let mut rng = OsRng;
+        let base_asset_id = Fp::<ConstraintField>::gen(&mut rng);
+        let asset_id = base_asset_id.as_known::<Secret, FpVar<ConstraintField>>(&mut cs);
+        let base_asset_value = u128::gen(&mut rng);
+        let asset_value =
+            base_asset_value.as_known::<Secret, U128<FpVar<ConstraintField>>>(&mut cs);
+        let source_plaintext = asset::Asset {
+            id: asset_id,
+            value: asset_value,
+        };
+        let final_array = <OutgoingAESConverter<Compiler> as Forward<Compiler>>::as_target(
+            &source_plaintext,
+            &mut cs,
+        );
+        assert_eq!(
+            OUT_AES_PLAINTEXT_SIZE,
+            final_array.len(),
+            "Length doesn't match, should be {} but is {}",
+            OUT_AES_PLAINTEXT_SIZE,
+            final_array.len()
+        );
+    }
+
+    /// Checks the encryption key conversion is properly executed.
+    #[test]
+    fn check_encryption_key_conversion() {
+        let mut rng = OsRng;
+        let group_element = Group::gen(&mut rng);
+        <OutgoingAESConverter as Encryption>::as_target(&group_element, &mut ());
+    }
+
+    /// Checks the encryption key conversion is properly executed for Compiler.
+    #[test]
+    fn check_encryption_key_conversion_r1cs() {
+        let mut cs = Compiler::for_proofs();
+        let mut rng = OsRng;
+        let base_group = Group::gen(&mut rng);
+        let group = base_group.as_known::<Secret, GroupVar>(&mut cs);
+        <OutgoingAESConverter<Compiler> as Encryption<Compiler>>::as_target(&group, &mut cs);
+    }
+
+    /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
+    /// decryption is the inverse of encryption.
+    #[test]
+    fn check_encryption() {
+        let mut rng = OsRng;
+        let encryption_key = Group::gen(&mut rng);
+        let header = EmptyHeader::default();
+        let base_aes = OutgoingBaseAES::default();
+        let randomness = ();
+        let asset_id = Fp::<ConstraintField>::gen(&mut rng);
+        let asset_value = u128::gen(&mut rng);
+        let plaintext = asset::Asset {
+            id: asset_id,
+            value: asset_value,
+        };
+        let ciphertext =
+            base_aes.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
+        assert_eq!(
+            OUT_AES_CIPHERTEXT_SIZE,
+            ciphertext.len(),
+            "Ciphertext length doesn't match, should be {} but is {}",
+            OUT_AES_CIPHERTEXT_SIZE,
+            ciphertext.len()
+        );
+        let decrypted_ciphertext = base_aes
+            .decrypt(&encryption_key, &header, &ciphertext, &mut ())
+            .expect("Decryption returned None.");
+        let (new_asset_id, new_asset_value) = (decrypted_ciphertext.id, decrypted_ciphertext.value);
+        assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
+        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
     }
 }

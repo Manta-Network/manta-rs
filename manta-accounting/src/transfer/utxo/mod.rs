@@ -32,6 +32,7 @@ use manta_util::cmp::IndependenceContext;
 
 pub mod auth;
 pub mod v1;
+pub mod v2;
 
 #[doc(inline)]
 pub use v1 as protocol;

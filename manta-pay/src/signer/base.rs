@@ -17,7 +17,7 @@
 //! Manta Pay Signer Configuration
 
 use crate::{
-    config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},
+    config::{utxo::v1::MerkleTreeConfiguration, Bn254_Edwards, Config, SecretKey},
     crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
     signer::Checkpoint,
@@ -25,8 +25,7 @@ use crate::{
 use alloc::collections::BTreeMap;
 use core::{cmp, marker::PhantomData, mem};
 use manta_accounting::{
-    asset::HashAssetMap,
-    key::{self, HierarchicalKeyDerivationScheme},
+    asset::{AssetMap, HashAssetMap},
     wallet::{
         self,
         signer::{self, AssetMapKey, SyncData},
@@ -42,36 +41,36 @@ use manta_crypto::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Hierarchical Key Derivation Function
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct HierarchicalKeyDerivationFunction<C = Testnet>(PhantomData<C>)
-where
-    C: CoinType;
+// /// Hierarchical Key Derivation Function
+// #[cfg_attr(
+//     feature = "serde",
+//     derive(Deserialize, Serialize),
+//     serde(crate = "manta_util::serde", deny_unknown_fields)
+// )]
+// #[derive(derivative::Derivative)]
+// #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+// pub struct HierarchicalKeyDerivationFunction<C = Testnet>(PhantomData<C>)
+// where
+//     C: CoinType;
 
-impl<C> KeyDerivationFunction for HierarchicalKeyDerivationFunction<C>
-where
-    C: CoinType,
-{
-    type Key = <KeySecret<C> as HierarchicalKeyDerivationScheme>::SecretKey;
-    type Output = SecretKey;
+// impl<C> KeyDerivationFunction for HierarchicalKeyDerivationFunction<C>
+// where
+//     C: CoinType,
+// {
+//     type Key = <KeySecret<C> as HierarchicalKeyDerivationScheme>::SecretKey;
+//     type Output = SecretKey;
 
-    #[inline]
-    fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
-        // FIXME: Check that this conversion is logical/safe.
-        let bytes: [u8; 32] = key
-            .private_key()
-            .to_bytes()
-            .try_into()
-            .expect("The secret key has 32 bytes.");
-        Fp(<Bls12_381_Edwards as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
-    }
-}
+//     #[inline]
+//     fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
+//         // FIXME: Check that this conversion is logical/safe.
+//         let bytes: [u8; 32] = key
+//             .private_key()
+//             .to_bytes()
+//             .try_into()
+//             .expect("The secret key has 32 bytes.");
+//         Fp(<Bn254_Edwards as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
+//     }
+// }
 
 /// Signer UTXO Accumulator
 pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
@@ -84,11 +83,11 @@ pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
 >;
 
 impl wallet::signer::Configuration for Config {
+    type Account = todo!();
+    type AccountMap = todo!();
     type Checkpoint = Checkpoint;
-    type HierarchicalKeyDerivationScheme =
-        key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
     type UtxoAccumulator = UtxoAccumulator;
-    type AssetMap = HashAssetMap<AssetMapKey<Self>>;
+    type AssetMap = HashAssetMap<AssetMapKey<Self>, Self::AssetId, Self::AssetValue>;
     type Rng = ChaCha20Rng;
 }
 
@@ -96,7 +95,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
     type UtxoAccumulator = UtxoAccumulator;
 
     #[inline]
-    fn update_from_void_numbers(&mut self, count: usize) {
+    fn update_from_nullifiers(&mut self, count: usize) {
         self.sender_index += count;
     }
 

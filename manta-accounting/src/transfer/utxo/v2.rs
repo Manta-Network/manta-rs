@@ -54,7 +54,7 @@ use manta_util::{
 };
 
 /// UTXO Version Number
-pub const VERSION: u8 = 1;
+pub const VERSION: u8 = 2;
 
 /// UTXO Visibility
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -267,6 +267,22 @@ where
         ViewingKey = Self::Scalar,
     >;
 
+    /// Incoming Light Ciphertext Type
+    type LightIncomingCiphertext: PartialEq<Self::LightIncomingCiphertext, COM>;
+
+    /// Incoming Light Header
+    type LightIncomingHeader: Default + PartialEq<Self::LightIncomingHeader, COM>;
+
+    /// Base Encryption Scheme for [`LightIncomingNote`]
+    type LightIncomingBaseEncryptionScheme: Clone
+        + Encrypt<
+            COM,
+            EncryptionKey = Self::Group,
+            Header = Self::LightIncomingHeader,
+            Plaintext = IncomingPlaintext<Self, COM>,
+            Ciphertext = Self::LightIncomingCiphertext,
+        >;
+
     /// Incoming Ciphertext Type
     type IncomingCiphertext: PartialEq<Self::IncomingCiphertext, COM>;
 
@@ -371,6 +387,22 @@ pub type IncomingRandomness<C, COM = ()> = encryption::Randomness<IncomingEncryp
 
 /// Incoming Encrypted Note
 pub type IncomingNote<C, COM = ()> = EncryptedMessage<IncomingEncryptionScheme<C, COM>>;
+
+/// Incoming Encryption Scheme
+pub type LightIncomingEncryptionScheme<C, COM = ()> = Hybrid<
+    StandardDiffieHellman<
+        <C as BaseConfiguration<COM>>::Scalar,
+        <C as BaseConfiguration<COM>>::Group,
+    >,
+    <C as BaseConfiguration<COM>>::LightIncomingBaseEncryptionScheme,
+>;
+
+/// Light Incoming Randomness
+pub type LightIncomingRandomness<C, COM = ()> =
+    encryption::Randomness<LightIncomingEncryptionScheme<C, COM>>;
+
+/// Light Incoming Encrypted Note
+pub type LightIncomingNote<C, COM = ()> = EncryptedMessage<LightIncomingEncryptionScheme<C, COM>>;
 
 /// UTXO Accumulator Item
 pub type UtxoAccumulatorItem<C, COM = ()> =
