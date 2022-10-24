@@ -1279,7 +1279,7 @@ where
 
     /// Sets the internal `checkpoint` in order to skip the initial sync.
     #[inline]
-    fn set_checkpoint(&mut self, checkpoint: C::Checkpoint) {
+    pub fn set_checkpoint(&mut self, checkpoint: C::Checkpoint) {
         self.state.checkpoint = checkpoint;
     }
 }
