@@ -669,6 +669,12 @@ where
         )
     }
 
+    /// Updates state `keys` for skipping initial sync.
+    #[inline]
+    pub fn set_keys(&mut self, keys: C::HierarchicalKeyDerivationScheme) {
+        self.accounts = AccountTable::<C>::new(keys)
+    }
+
     /// Finds the next viewing key that can decrypt the `encrypted_note` from the `view_key_table`.
     #[inline]
     fn find_next_key<'h>(
@@ -1083,12 +1089,6 @@ where
         receiving_key: ReceivingKey<C>,
     ) -> Receiver<C> {
         receiving_key.into_receiver(parameters, self.rng.gen(), asset)
-    }
-
-    /// Sets the internal `checkpoint` in order to skip the initial sync.
-    #[inline]
-    pub fn set_checkpoint(&mut self, checkpoint: C::Checkpoint) {
-        self.checkpoint = checkpoint;
     }
 }
 
