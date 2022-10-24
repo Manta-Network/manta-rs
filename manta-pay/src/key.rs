@@ -26,7 +26,7 @@
 
 use alloc::{format, string::String};
 use core::marker::PhantomData;
-use manta_accounting::key::{AccountIndex, VecAccountMap};
+use manta_accounting::key::{self, AccountIndex, VecAccountMap};
 use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 use manta_util::{create_seal, seal, Array};
 
@@ -55,6 +55,8 @@ pub trait CoinType: sealed::Sealed {
     const COIN_TYPE_ID: CoinTypeId;
 }
 
+pub type VecAccountMap<C> = key::VecAccountMap<KeySecret<C>>;
+
 /// Implements the [`CoinType`] trait for `$coin` with coin type id given by `$id`.
 macro_rules! impl_coin_type {
     (
@@ -82,8 +84,7 @@ macro_rules! impl_coin_type {
 
         #[doc = stringify!($coin)]
         #[doc = "[`VecAccountMap`] Type"]
-        // @TODO: Replace () with a type that implements Account
-        pub type $account_map = VecAccountMap<()>;
+        pub type $account_map = VecAccountMap<$coin>;
 
         seal!($coin);
 
@@ -122,21 +123,6 @@ impl_coin_type!(
     CalamariKeySecret,
     CalamariAccountMap
 );
-
-/// Change Kind
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Change {
-    /// External chain
-    External,
-
-    /// Internal chain
-    Internal,
-}
 
 /// Seed Byte Array Type
 type SeedBytes = Array<u8, { Seed::SIZE }>;
@@ -185,25 +171,24 @@ where
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
         Self::from_seed(mnemonic.to_seed(password))
     }
+}
 
-    /// Derives secret key with for `account` where change parameter is internal.
-    #[inline]
-    fn derive_internal(&self, account: AccountIndex) -> SecretKey {
-        SecretKey::derive_from_path(
-            self.seed,
-            &path_string::<C>(account, Change::Internal)
-                .parse()
-                .expect("Path string is valid by construction."),
-        )
-        .expect("Unable to generate secret key for valid seed and path string.")
-    }
+struct Account 
+where C: CoinType {
+    key_secret: KeySecret<C>,
+    index: AccountIndex
+}
 
-    /// Derives a view secret key for `account` where change parameter is external.
+impl key::Account for Account<C> {
+    
+    type SpendingKey = SecretKey;
+    type Parameters = ();
+
     #[inline]
-    fn derive_external(&self, account: AccountIndex) -> SecretKey {
+    fn spending_key(&self, parameters: &Self::Parameters) -> SecretKey {
         SecretKey::derive_from_path(
-            self.seed,
-            &path_string::<C>(account, Change::External)
+            self.key_secret.seed,
+            &path_string::<C>(self.index)
                 .parse()
                 .expect("Path string is valid by construction."),
         )
@@ -231,19 +216,16 @@ where
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 #[inline]
 #[must_use]
-pub fn path_string<C>(account: AccountIndex, change: Change) -> String
+pub fn path_string<C>(account: AccountIndex) -> String
 where
     C: CoinType,
 {
     const BIP_44_PURPOSE_ID: u8 = 44;
-    const ADDRESS_INDEX: u8 = 0;
     format!(
         "m/{}'/{}'/{}'/{}'/{}'",
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
-        account.index(),
-        change as u8,
-        ADDRESS_INDEX,
+        account.index()
     )
 }
 

@@ -113,18 +113,11 @@ pub trait Account {
     /// Spending Key Type
     type SpendingKey;
 
-    /// Address Type
-    type Address;
-
     /// Account Key-Generation Parameters
     type Parameters;
 
     /// Returns the spending key associated to this account.
     fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey;
-
-    /// Returns the address for this account.
-    fn address(&mut self, parameters: &Self::Parameters) -> Self::Address;
-
 }
 
 impl<A> Account for &mut A
@@ -132,57 +125,19 @@ where
     A: Account,
 {
     type SpendingKey = A::SpendingKey;
-    type Address = A::Address;
     type Parameters = A::Parameters;
 
     #[inline]
     fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey {
         (**self).spending_key(parameters)
     }
-
-    #[inline]
-    fn address(&mut self, parameters: &Self::Parameters) -> Self::Address {
-        (*self).address(parameters)
-    }
-
 }
 
 /// Spending Key Type
 pub type SpendingKey<A> = <A as Account>::SpendingKey;
 
-/// Address Type
-pub type Address<A> = <A as Account>::Address;
-
 /// Parameters Type
 pub type Parameters<A> = <A as Account>::Parameters;
-
-
-/// Regular Account
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub struct RegularAccount<A>
-where
-    A: Account, {
-    account: A
-}
-
-impl<A> Account for RegularAccount<A>
-where
-    A: Account,
-{
-    type SpendingKey = A::SpendingKey;
-    type Address = A::Address;
-    type Parameters = A::Parameters;
-
-    #[inline]
-    fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey {
-        self.account.spending_key(parameters)
-    }
-
-    #[inline]
-    fn address(&mut self, parameters: &Self::Parameters) -> Self::Address {
-        self.account.address(parameters)
-    }
-}
 
 /// Account Map
 pub trait AccountMap {
@@ -220,13 +175,13 @@ pub trait AccountMap {
 }
 
 /// [`Vec`] Account Map Type
-pub type VecAccountMap<A> = Vec<RegularAccount<A>>;
+pub type VecAccountMap<A> = Vec<A>;
 
 impl<A> AccountMap for VecAccountMap<A>
 where
     A: Account + std::default::Default {
 
-    type Account = RegularAccount<A>;
+    type Account = A;
 
     #[inline]
     fn new() -> Self {
@@ -253,12 +208,6 @@ where
         );
         self.push(Default::default());
         index
-    }
-
-    #[inline]
-    fn get_default(&self) -> &Self::Account {
-        self.get(Default::default())
-            .expect("The default account must always exist.")
     }
 
     #[inline]

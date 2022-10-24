@@ -28,7 +28,7 @@
 
 use crate::{
     asset::{AssetMap, AssetMetadata},
-    key::{Account, AccountMap, RegularAccount},
+    key::{Account, AccountMap},
     transfer::{
         self,
         batch::Join,
@@ -479,12 +479,11 @@ pub trait Configuration: transfer::Configuration {
     /// Account Type
     type Account: Account<
         SpendingKey = SpendingKey<Self>,
-        Address = Address<Self>,
         Parameters = Self::Parameters,
     >;
 
     /// Account Map Type
-    type AccountMap: AccountMap<Account = RegularAccount<Self::Account>>;
+    type AccountMap: AccountMap<Account = Self::Account>;
 
     /// [`Utxo`] Accumulator Type
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
@@ -621,7 +620,7 @@ where
 
     /// Returns the default account for `self`.
     #[inline]
-    fn default_account(&self) -> &RegularAccount<C::Account> {
+    fn default_account(&self) -> &C::Account {
         self.accounts.get_default()
     }
 
@@ -650,11 +649,13 @@ where
         )
     }
 
+    /*
     /// Returns the address for the default account of `self`.
     #[inline]
     fn default_address(&mut self, parameters: &C::Parameters) -> Address<C> {
         self.accounts.get_mut_default().address(parameters)
     }
+    */
 
     ///
     #[allow(clippy::too_many_arguments)] // FIXME: Use a better abstraction here.
