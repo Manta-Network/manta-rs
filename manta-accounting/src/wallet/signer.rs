@@ -1276,6 +1276,12 @@ where
                 .collect(),
         }
     }
+
+    /// Sets the internal `checkpoint` in order to skip the initial sync.
+    #[inline]
+    fn set_checkpoint(&mut self, checkpoint: C::Checkpoint) {
+        self.state.checkpoint = checkpoint;
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
