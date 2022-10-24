@@ -23,7 +23,7 @@ jobs:
       - run: rustup default ${{ matrix.channel }}
       - run: cargo build --release --verbose --package manta-trusted-setup --all-features --bin groth16_phase2_client
       - id: get_release
-        uses: bruceadams/get-release@v1.2.3
+        uses: bruceadams/get-release@v1.3.1
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - if: matrix.os == 'macos-latest'
