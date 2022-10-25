@@ -85,9 +85,9 @@ pub mod ser {
         #[inline]
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                Self::UnsupportedFeature(feature) => write!(f, "Unsupported Feature: {}", feature),
-                Self::Serialization(msg) => write!(f, "Serialization Error: {}", msg),
-                Self::Io(err) => write!(f, "File I/O Error: {}", err),
+                Self::UnsupportedFeature(feature) => write!(f, "Unsupported Feature: {feature}"),
+                Self::Serialization(msg) => write!(f, "Serialization Error: {msg}"),
+                Self::Io(err) => write!(f, "File I/O Error: {err}"),
             }
         }
     }
@@ -109,7 +109,7 @@ pub mod ser {
         where
             T: Display,
         {
-            Self::Serialization(format!("{}", msg))
+            Self::Serialization(format!("{msg}"))
         }
     }
 }
@@ -717,15 +717,15 @@ pub mod de {
         #[inline]
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                Self::Io(err) => write!(f, "File I/O Error: {}", err),
+                Self::Io(err) => write!(f, "File I/O Error: {err}"),
                 Self::MissingBytes => write!(f, "Missing Bytes"),
-                Self::UnsupportedFeature(feature) => write!(f, "Unsupported Feature: {}", feature),
-                Self::InvalidBoolTag(tag) => write!(f, "Invalid Bool Tag: {}", tag),
-                Self::InvalidOptionTag(tag) => write!(f, "Invalid Option Tag: {}", tag),
-                Self::InvalidCharacter(integer) => write!(f, "Invalid Character: {}", integer),
-                Self::LargeLengthTag(len) => write!(f, "Large Length Tag: {}", len),
-                Self::FromUtf8Error(err) => write!(f, "From UTF-8 Error: {}", err),
-                Self::Deserialization(msg) => write!(f, "Deserialization Error: {}", msg),
+                Self::UnsupportedFeature(feature) => write!(f, "Unsupported Feature: {feature}"),
+                Self::InvalidBoolTag(tag) => write!(f, "Invalid Bool Tag: {tag}"),
+                Self::InvalidOptionTag(tag) => write!(f, "Invalid Option Tag: {tag}"),
+                Self::InvalidCharacter(integer) => write!(f, "Invalid Character: {integer}"),
+                Self::LargeLengthTag(len) => write!(f, "Large Length Tag: {len}"),
+                Self::FromUtf8Error(err) => write!(f, "From UTF-8 Error: {err}"),
+                Self::Deserialization(msg) => write!(f, "Deserialization Error: {msg}"),
             }
         }
     }
@@ -747,7 +747,7 @@ pub mod de {
         where
             T: Display,
         {
-            Self::Deserialization(format!("{}", msg))
+            Self::Deserialization(format!("{msg}"))
         }
     }
 

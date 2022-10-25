@@ -51,7 +51,7 @@ pub fn main() {
         Err(err) => Simulation::command()
             .error(
                 ErrorKind::Io,
-                format_args!("Unable to start `tokio` runtime: {}", err),
+                format_args!("Unable to start `tokio` runtime: {err}"),
             )
             .exit(),
     }

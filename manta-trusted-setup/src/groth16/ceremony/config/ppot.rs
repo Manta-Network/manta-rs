@@ -337,7 +337,7 @@ pub fn register_link(
     public_key: String,
     signature: String,
 ) -> String {
-    format!("https://mantanetwork.typeform.com/trustedsetup2#twitter={}&email={}&verifying_key={}&signature={} \n", twitter, email, public_key, signature)
+    format!("https://mantanetwork.typeform.com/trustedsetup2#twitter={twitter}&email={email}&verifying_key={public_key}&signature={signature} \n")
 }
 
 /// Prompts the client information and get client keys.
@@ -450,7 +450,7 @@ where
                              Estimated Waiting Time: {}.",
                                 style("[1/6]").bold(),
                                 style(position).bold().red(),
-                                style(format!("{:?} min", minutes)).bold().red(),
+                                style(format!("{minutes:?} min")).bold().red(),
                             );
                         } else {
                             println!(
@@ -492,8 +492,8 @@ where
     let contribution_hash = hex::encode(C::contribution_hash(&response));
     let tweet = style(format!(
         "I made contribution number {} to the #MantaNetworkTrustedSetup! \
-         My contribution's hash is {}",
-        response.index, contribution_hash
+         My contribution's hash is {contribution_hash}",
+         response.index
     ))
     .bold()
     .blue();
@@ -728,7 +728,7 @@ impl Circuits<Self> for Config {
         for i in 0..3 {
             let mut cs = R1CS::for_contexts();
             dummy_circuit(&mut cs);
-            circuits.push((cs, format!("{}_{}", "dummy", i)));
+            circuits.push((cs, format!("dummy_{i}")));
         }
         circuits
     }
@@ -752,7 +752,7 @@ where
     E: Display,
 {
     if let Err(e) = result {
-        println!("{} {}", style("[ERROR]").bold().red(), e);
+        println!("{} {e}", style("[ERROR]").bold().red());
     }
 }
 

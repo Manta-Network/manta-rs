@@ -385,8 +385,8 @@ pub mod cocoon {
         #[inline]
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match self {
-                Self::IoError(err) => write!(f, "File I/O Error: {}", err),
-                Self::Cocoon(err) => write!(f, "Cocoon Error: {:?}", err),
+                Self::IoError(err) => write!(f, "File I/O Error: {err}"),
+                Self::Cocoon(err) => write!(f, "Cocoon Error: {err:?}"),
             }
         }
     }

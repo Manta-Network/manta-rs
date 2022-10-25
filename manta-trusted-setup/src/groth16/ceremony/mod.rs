@@ -209,7 +209,7 @@ where
                 "Unable to connect to the ceremony server: timeout. Please try again later.",
             ),
             Self::Network { message } => {
-                write!(f, "Unable to connect to the ceremony server: {}", message)
+                write!(f, "Unable to connect to the ceremony server: {message}")
             }
             err => write!(
                 f,
