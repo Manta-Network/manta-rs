@@ -29,12 +29,12 @@ name = "groth16_phase2_client"
 required-features = ["clap", "ppot-client", "reqwest", "tokio"]
 
 [[bin]]
-name = "groth16_phase2_server"
-required-features = ["async-std", "bincode", "clap", "csv", "ppot", "serde_json", "tide", "tokio"]
-
-[[bin]]
 name = "groth16_phase2_prepare"
 required-features = ["ppot-client", "serde", "tokio"]
+
+[[bin]]
+name = "groth16_phase2_server"
+required-features = ["async-std", "bincode", "clap", "csv", "ppot", "serde_json", "tide", "tokio"]
 
 [[bin]]
 name = "process_registration"
@@ -43,6 +43,12 @@ required-features = ["clap", "ppot-client", "serde", "tokio"]
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]
+
+# CSV for Ceremony Registries
+csv = ["dep:csv", "serde", "std"]
+
+# Perpetual Powers of Tau Ceremony
+ppot = ["manta-crypto/ark-bn254"]
 
 # PPoT Client Features
 ppot-client = [
@@ -57,12 +63,6 @@ ppot-client = [
     "ppot",
     "tiny-bip39",
 ]
-
-# CSV for Ceremony Registries
-csv = ["dep:csv", "serde", "std"]
-
-# Perpetual Powers of Tau Ceremony
-ppot = ["manta-crypto/ark-bn254"]
 
 # Rayon Parallelization
 rayon = ["manta-util/rayon"]
