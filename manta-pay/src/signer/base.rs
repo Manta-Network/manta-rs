@@ -16,10 +16,10 @@
 
 //! Manta Pay Signer Configuration
 
-use crate::utxo::v3 as protocol_pay;
+use crate::config::utxo::v2 as protocol_pay;
 use manta_accounting::transfer::utxo::v2 as protocol;
 use crate::{
-    config::{utxo::v1::MerkleTreeConfiguration, Bn254_Edwards, Config, SecretKey},
+    config::{utxo::v2::MerkleTreeConfiguration, Config, SecretKey},
     crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
     signer::Checkpoint,
@@ -34,8 +34,8 @@ use manta_accounting::{
     },
 };
 use manta_crypto::{
-    arkworks::{ec::ProjectiveCurve, ff::PrimeField},
-    key::kdf::KeyDerivationFunction,
+    arkworks::{ec::ProjectiveCurve, ff::PrimeField, ed_on_bn254::EdwardsProjective as Bn254_Edwards},
+    //key::kdf::KeyDerivationFunction,
     merkle_tree::{self, forest::Configuration},
     rand::ChaCha20Rng,
 };
@@ -124,7 +124,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
         }
         let mut updated_origin = *origin;
         for receiver in &data.utxo_note_data {
-            let key = MerkleTreeConfiguration::tree_index(&receiver.0);
+            let key = MerkleTreeConfiguration::tree_index(&receiver.0.item_hash(protocol_pay::UtxoAccumulatorItemHash::default(),&mut ()));
             updated_origin.receiver_index[key as usize] += 1;
         }
         updated_origin.sender_index += data.nullifier_data.len();
@@ -150,7 +150,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
         }
         let mut data_map = BTreeMap::<_, Vec<_>>::new();
         for receiver in mem::take(&mut data.utxo_note_data) {
-            let key = MerkleTreeConfiguration::tree_index(&receiver.0);
+            let key = MerkleTreeConfiguration::tree_index(&receiver.0.item_hash(protocol_pay::UtxoAccumulatorItemHash::default(),&mut ()));
             match data_map.get_mut(&key) {
                 Some(entry) => entry.push(receiver),
                 _ => {

@@ -16,7 +16,7 @@
 
 //! Manta Pay Signer Tools
 
-use crate::config::{utxo::v1::Checkpoint, Config};
+use crate::config::{utxo::v3::Checkpoint, Config};
 use manta_accounting::wallet::signer;
 
 #[cfg(feature = "serde")]
@@ -52,5 +52,5 @@ pub type SignError = signer::SignError<Config>;
 /// Signing Result
 pub type SignResult = signer::SignResult<Config>;
 
-/// Receiving Key Request
-pub type ReceivingKeyRequest = signer::ReceivingKeyRequest;
+// Receiving Key Request
+// pub type ReceivingKeyRequest = signer::ReceivingKeyRequest;

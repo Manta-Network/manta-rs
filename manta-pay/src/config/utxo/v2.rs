@@ -1050,7 +1050,8 @@ type UtxoAccumulatorItemHashType<COM = ()> =
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoAccumulatorItemHashType<COM>: Clone"),
-    Debug(bound = "UtxoAccumulatorItemHashType<COM>: Debug")
+    Debug(bound = "UtxoAccumulatorItemHashType<COM>: Debug"),
+    Default(bound = "")
 )]
 pub struct UtxoAccumulatorItemHash<COM = ()>(UtxoAccumulatorItemHashType<COM>)
 where

@@ -28,6 +28,7 @@ use manta_crypto::arkworks::{
         self, constraints::EdwardsVar as Bn254_EdwardsVar, EdwardsProjective as Bn254_Edwards,
     },
 };
+use crate::config::utxo::v2 as protocol_pay;
 
 #[cfg(feature = "bs58")]
 use {alloc::string::String, manta_util::codec::Encode};
@@ -85,32 +86,32 @@ pub struct Config;
 
 impl transfer::Configuration for Config {
     type Compiler = Compiler;
-    type AssetId = utxo::v1::AssetId;
-    type AssetValue = utxo::v1::AssetValue;
-    type AssociatedData = utxo::v1::AssociatedData;
-    type Utxo = utxo::v1::Utxo;
-    type Nullifier = utxo::v1::Nullifier;
-    type Identifier = utxo::v1::Identifier;
-    type Address = utxo::v1::Address;
-    type Note = utxo::v1::Note;
-    type MintSecret = utxo::v1::MintSecret;
-    type SpendSecret = utxo::v1::SpendSecret;
-    type UtxoAccumulatorWitness = utxo::v1::UtxoAccumulatorWitness;
-    type UtxoAccumulatorOutput = utxo::v1::UtxoAccumulatorOutput;
-    type Parameters = utxo::v1::Parameters;
-    type AuthorizationContextVar = utxo::v1::AuthorizationContextVar;
-    type AuthorizationProofVar = utxo::v1::AuthorizationProofVar;
-    type AssetIdVar = utxo::v1::AssetIdVar;
-    type AssetValueVar = utxo::v1::AssetValueVar;
-    type UtxoVar = utxo::v1::UtxoVar;
-    type NoteVar = utxo::v1::NoteVar;
-    type NullifierVar = utxo::v1::NullifierVar;
-    type UtxoAccumulatorWitnessVar = utxo::v1::UtxoAccumulatorWitnessVar;
-    type UtxoAccumulatorOutputVar = utxo::v1::UtxoAccumulatorOutputVar;
-    type UtxoAccumulatorModelVar = utxo::v1::UtxoAccumulatorModelVar;
-    type MintSecretVar = utxo::v1::MintSecretVar;
-    type SpendSecretVar = utxo::v1::SpendSecretVar;
-    type ParametersVar = utxo::v1::ParametersVar;
+    type AssetId = protocol_pay::AssetId;
+    type AssetValue = protocol_pay::AssetValue;
+    type AssociatedData = protocol_pay::AssociatedData;
+    type Utxo = protocol_pay::Utxo;
+    type Nullifier = protocol_pay::Nullifier;
+    type Identifier = protocol_pay::Identifier;
+    type Address = protocol_pay::Address;
+    type Note = protocol_pay::Note;
+    type MintSecret = protocol_pay::MintSecret;
+    type SpendSecret = protocol_pay::SpendSecret;
+    type UtxoAccumulatorWitness = protocol_pay::UtxoAccumulatorWitness;
+    type UtxoAccumulatorOutput = protocol_pay::UtxoAccumulatorOutput;
+    type Parameters = protocol_pay::Parameters;
+    type AuthorizationContextVar = protocol_pay::AuthorizationContextVar;
+    type AuthorizationProofVar = protocol_pay::AuthorizationProofVar;
+    type AssetIdVar = protocol_pay::AssetIdVar;
+    type AssetValueVar = protocol_pay::AssetValueVar;
+    type UtxoVar = protocol_pay::UtxoVar;
+    type NoteVar = protocol_pay::NoteVar;
+    type NullifierVar = protocol_pay::NullifierVar;
+    type UtxoAccumulatorWitnessVar = protocol_pay::UtxoAccumulatorWitnessVar;
+    type UtxoAccumulatorOutputVar = protocol_pay::UtxoAccumulatorOutputVar;
+    type UtxoAccumulatorModelVar = protocol_pay::UtxoAccumulatorModelVar;
+    type MintSecretVar = protocol_pay::MintSecretVar;
+    type SpendSecretVar = protocol_pay::SpendSecretVar;
+    type ParametersVar = protocol_pay::ParametersVar;
     type ProofSystem = ProofSystem;
 }
 
