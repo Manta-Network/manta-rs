@@ -37,7 +37,10 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, NoteOpen},
+        utxo::{
+            auth::DeriveContext, v2::UtxoAccumulatorItemHash, DeriveDecryptionKey, DeriveSpend,
+            NoteOpen, Spend,
+        },
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
@@ -137,9 +140,16 @@ impl<C> Data<C::Checkpoint> for SyncData<C>
 where
     C: Configuration + ?Sized,
 {
+    type Parameters = C::UtxoAccumulatorItemHash;
+
     #[inline]
-    fn prune(&mut self, origin: &C::Checkpoint, checkpoint: &C::Checkpoint) -> bool {
-        C::Checkpoint::prune(self, origin, checkpoint)
+    fn prune(
+        &mut self,
+        parameters: &Self::Parameters,
+        origin: &C::Checkpoint,
+        checkpoint: &C::Checkpoint,
+    ) -> bool {
+        C::Checkpoint::prune(parameters, self, origin, checkpoint)
     }
 }
 
@@ -191,11 +201,16 @@ where
     /// [`data`]: Self::data
     /// [`origin_checkpoint`]: Self::origin_checkpoint
     #[inline]
-    pub fn prune(&mut self, checkpoint: &T) -> bool
+    pub fn prune(
+        &mut self,
+        parameters: &<SyncData<C> as Data<T>>::Parameters,
+        checkpoint: &T,
+    ) -> bool
     where
         SyncData<C>: Data<T>,
     {
-        self.data.prune(&self.origin_checkpoint, checkpoint)
+        self.data
+            .prune(parameters, &self.origin_checkpoint, checkpoint)
     }
 }
 
@@ -416,6 +431,9 @@ where
         Model = UtxoAccumulatorModel<C>,
     >;
 
+    /// UTXO Accumulator Hash Type
+    type UtxoAccumulatorItemHash: ItemHashFunction<Utxo<C>, Item = UtxoAccumulatorItem<C>>;
+
     /// Updates `self` by viewing `count`-many nullifiers.
     fn update_from_nullifiers(&mut self, count: usize);
 
@@ -432,13 +450,22 @@ where
 
     /// Prunes the `data` required for a [`sync`](Connection::sync) call against `origin` and
     /// `signer_checkpoint`, returning `true` if the data was pruned.
-    fn prune(data: &mut SyncData<C>, origin: &Self, signer_checkpoint: &Self) -> bool;
+    fn prune(
+        parameters: &Self::UtxoAccumulatorItemHash,
+        data: &mut SyncData<C>,
+        origin: &Self,
+        signer_checkpoint: &Self,
+    ) -> bool;
 }
 
 /// Signer Configuration
 pub trait Configuration: transfer::Configuration {
     /// Checkpoint Type
-    type Checkpoint: Checkpoint<Self, UtxoAccumulator = Self::UtxoAccumulator>;
+    type Checkpoint: Checkpoint<
+        Self,
+        UtxoAccumulator = Self::UtxoAccumulator,
+        UtxoAccumulatorItemHash = Self::UtxoAccumulatorItemHash,
+    >;
 
     /// Account Type
     type Account: Account<SpendingKey = SpendingKey<Self>, Parameters = Self::Parameters>
@@ -618,6 +645,13 @@ where
     }
 
     ///
+    fn item_hash(parameters: &C::Parameters, utxo: &Utxo<C>) -> UtxoAccumulatorItem<C> {
+        parameters
+            .utxo_accumulator_item_hash()
+            .item_hash(utxo, &mut ())
+    }
+
+    ///
     #[allow(clippy::too_many_arguments)] // FIXME: Use a better abstraction here.
     #[inline]
     fn insert_next_item<R>(
@@ -647,7 +681,7 @@ where
             {
                 nullifiers.remove(index);
             } else {
-                utxo_accumulator.insert(&parameters.item_hash(&utxo, &mut ()));
+                utxo_accumulator.insert(&Self::item_hash(&parameters, &utxo));
                 if !asset.is_zero() {
                     deposit.push(asset.clone());
                 }
@@ -655,7 +689,7 @@ where
                 return;
             }
         }
-        utxo_accumulator.insert_nonprovable(&parameters.item_hash(&utxo, &mut ()));
+        utxo_accumulator.insert_nonprovable(&Self::item_hash(&parameters, &utxo));
     }
 
     /// Checks if `asset` matches with `nullifier`, removing it from the `utxo_accumulator` and
@@ -682,7 +716,7 @@ where
             .position(move |n| n.is_related(&nullifier))
         {
             nullifiers.remove(index);
-            utxo_accumulator.remove_proof(&parameters.item_hash(&utxo, &mut ()));
+            utxo_accumulator.remove_proof(&Self::item_hash(&parameters, &utxo));
             if !asset.is_zero() {
                 withdraw.push(asset);
             }
@@ -724,7 +758,7 @@ where
                 );
             } else {
                 self.utxo_accumulator
-                    .insert_nonprovable(&parameters.item_hash(&utxo, &mut ()));
+                    .insert_nonprovable(&Self::item_hash(&parameters, &utxo));
             }
         }
         self.assets.retain(|identifier, assets| {
@@ -1094,7 +1128,10 @@ where
                 checkpoint: checkpoint.clone(),
             })
         } else {
-            let has_pruned = request.prune(checkpoint);
+            let has_pruned = request.prune(
+                self.parameters.parameters.utxo_accumulator_item_hash(),
+                checkpoint,
+            );
             let SyncData {
                 utxo_note_data,
                 nullifier_data,

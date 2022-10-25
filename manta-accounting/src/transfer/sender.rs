@@ -21,7 +21,7 @@ use crate::transfer::utxo::{
 };
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
-    accumulator::{self, Accumulator},
+    accumulator::{self, Accumulator, ItemHashFunction},
     constraint::{HasInput, Input},
     eclair::alloc::{
         mode::{Derived, Public, Secret},
@@ -90,7 +90,11 @@ where
     where
         A: Accumulator<Item = UtxoAccumulatorItem<S>, Model = S::UtxoAccumulatorModel>,
     {
-        utxo_accumulator.insert(&parameters.item_hash(&self.utxo, &mut ()))
+        utxo_accumulator.insert(
+            &parameters
+                .utxo_accumulator_item_hash()
+                .item_hash(&self.utxo, &mut ()),
+        )
     }
 
     /// Requests the membership proof of the [`Utxo`] corresponding to `self` from
@@ -103,8 +107,11 @@ where
         A: Accumulator<Item = UtxoAccumulatorItem<S>, Model = S::UtxoAccumulatorModel>,
     {
         Some(SenderProof {
-            utxo_membership_proof: utxo_accumulator
-                .prove(&parameters.item_hash(&self.utxo, &mut ()))?,
+            utxo_membership_proof: utxo_accumulator.prove(
+                &parameters
+                    .utxo_accumulator_item_hash()
+                    .item_hash(&self.utxo, &mut ()),
+            )?,
         })
     }
 

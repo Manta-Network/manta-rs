@@ -39,7 +39,7 @@ use crate::{
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
 use manta_crypto::{
-    accumulator,
+    accumulator::{self, ItemHashFunction},
     constraint::{HasInput, Input, ProofSystem},
     eclair::{
         self,
@@ -134,6 +134,9 @@ pub trait Configuration {
     /// [`Utxo`] Accumulator Output Type
     type UtxoAccumulatorOutput: Default;
 
+    /// [`Utxo`] Accumulator Item Hash Type
+    type UtxoAccumulatorItemHash: ItemHashFunction<Utxo<Self>, Item = UtxoAccumulatorItem<Self>>;
+
     /// Parameters Type
     type Parameters: auth::DeriveContext
         + auth::ProveAuthorization
@@ -151,6 +154,7 @@ pub trait Configuration {
         > + utxo::DeriveSpend<
             UtxoAccumulatorWitness = Self::UtxoAccumulatorWitness,
             UtxoAccumulatorOutput = Self::UtxoAccumulatorOutput,
+            UtxoAccumulatorItemHash = Self::UtxoAccumulatorItemHash,
             Secret = Self::SpendSecret,
             Nullifier = Self::Nullifier,
             Identifier = Self::Identifier,

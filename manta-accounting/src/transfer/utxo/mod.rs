@@ -280,9 +280,7 @@ pub trait QueryAsset: AssetType + UtxoType {
 }
 
 /// UTXO Spending
-pub trait Spend<COM = ()>:
-    ItemHashFunction<Self::Utxo, COM> + AuthorizationContextType + AssetType + UtxoType + NullifierType
-{
+pub trait Spend<COM = ()>: AuthorizationContextType + AssetType + UtxoType + NullifierType {
     /// UTXO Accumulator Witness Type
     type UtxoAccumulatorWitness;
 
@@ -292,13 +290,22 @@ pub trait Spend<COM = ()>:
     /// UTXO Accumulator Model Type
     type UtxoAccumulatorModel: accumulator::Model<
         COM,
-        Item = Self::Item,
         Witness = Self::UtxoAccumulatorWitness,
         Output = Self::UtxoAccumulatorOutput,
     >;
 
+    /// UTXO Accumulator Item Hash Type
+    type UtxoAccumulatorItemHash: ItemHashFunction<
+        Self::Utxo,
+        COM,
+        Item = UtxoAccumulatorItem<Self, COM>,
+    >;
+
     /// Spend Secret Type
     type Secret;
+
+    ///
+    fn utxo_accumulator_item_hash(&self) -> &Self::UtxoAccumulatorItemHash;
 
     /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
     /// well-formed and that `utxo_membership_proof` is a valid proof.

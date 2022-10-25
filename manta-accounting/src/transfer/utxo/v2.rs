@@ -167,35 +167,6 @@ pub trait ViewingKeyDerivationFunction<COM = ()> {
     ) -> Self::ViewingKey;
 }
 
-/// UTXO Accumulator Item Hash
-pub trait UtxoAccumulatorItemHash<COM = ()> {
-    /// Boolean Type
-    type Bool;
-
-    /// Asset Id Type
-    type AssetId;
-
-    /// Asset Value Type
-    type AssetValue;
-
-    /// UTXO Commitment Type
-    type Commitment;
-
-    /// Item Type
-    type Item;
-
-    /// Computes the accumulator item by hashing `is_transparent`, `public_asset_id`,
-    /// `public_asset_value`, and `commitment`.
-    fn hash(
-        &self,
-        is_transparent: &Self::Bool,
-        public_asset_id: &Self::AssetId,
-        public_asset_value: &Self::AssetValue,
-        commitment: &Self::Commitment,
-        compiler: &mut COM,
-    ) -> Self::Item;
-}
-
 /// Nullifier Commitment Scheme
 pub trait NullifierCommitmentScheme<COM = ()>
 where
@@ -300,13 +271,7 @@ where
         >;
 
     /// UTXO Accumulator Item Hash
-    type UtxoAccumulatorItemHash: UtxoAccumulatorItemHash<
-        COM,
-        Bool = Self::Bool,
-        AssetId = Self::AssetId,
-        AssetValue = Self::AssetValue,
-        Commitment = UtxoCommitment<Self, COM>,
-    >;
+    type UtxoAccumulatorItemHash: ItemHashFunction<Utxo<Self, COM>, COM>;
 
     /// UTXO Accumulator Model
     type UtxoAccumulatorModel: accumulator::Model<
@@ -406,7 +371,14 @@ pub type LightIncomingNote<C, COM = ()> = EncryptedMessage<LightIncomingEncrypti
 
 /// UTXO Accumulator Item
 pub type UtxoAccumulatorItem<C, COM = ()> =
-    <<C as BaseConfiguration<COM>>::UtxoAccumulatorItemHash as UtxoAccumulatorItemHash<COM>>::Item;
+    <<C as BaseConfiguration<COM>>::UtxoAccumulatorItemHash as ItemHashFunction<
+        Utxo<C, COM>,
+        COM,
+    >>::Item;
+
+/// UTXO Accumulator Item Hash Type
+pub type UtxoAccumulatorItemHash<C, COM = ()> =
+    <C as BaseConfiguration<COM>>::UtxoAccumulatorItemHash;
 
 /// UTXO Membership Proof
 pub type UtxoMembershipProof<C, COM = ()> =
@@ -616,13 +588,7 @@ where
 
     #[inline]
     fn item_hash(&self, utxo: &Utxo<C, COM>, compiler: &mut COM) -> Self::Item {
-        self.utxo_accumulator_item_hash.hash(
-            &utxo.is_transparent,
-            &utxo.public_asset.id,
-            &utxo.public_asset.value,
-            &utxo.commitment,
-            compiler,
-        )
+        self.utxo_accumulator_item_hash.item_hash(&utxo, compiler)
     }
 }
 
@@ -635,6 +601,12 @@ where
     type UtxoAccumulatorOutput = utxo::UtxoAccumulatorOutput<Self, COM>;
     type UtxoAccumulatorModel = C::UtxoAccumulatorModel;
     type Secret = SpendSecret<C, COM>;
+    type UtxoAccumulatorItemHash = C::UtxoAccumulatorItemHash;
+
+    #[inline]
+    fn utxo_accumulator_item_hash(&self) -> &Self::UtxoAccumulatorItemHash {
+        &self.utxo_accumulator_item_hash
+    }
 
     #[inline]
     fn well_formed_asset(
@@ -1113,6 +1085,12 @@ where
     type UtxoAccumulatorOutput = utxo::UtxoAccumulatorOutput<Self>;
     type UtxoAccumulatorModel = C::UtxoAccumulatorModel;
     type Secret = SpendSecret<C>;
+    type UtxoAccumulatorItemHash = C::UtxoAccumulatorItemHash;
+
+    #[inline]
+    fn utxo_accumulator_item_hash(&self) -> &Self::UtxoAccumulatorItemHash {
+        self.base.utxo_accumulator_item_hash()
+    }
 
     #[inline]
     fn well_formed_asset(
@@ -1473,7 +1451,7 @@ where
 )]
 pub struct Utxo<C, COM = ()>
 where
-    C: BaseConfiguration<COM>,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Transparency Flag
@@ -1488,7 +1466,7 @@ where
 
 impl<C, COM> Utxo<C, COM>
 where
-    C: BaseConfiguration<COM>,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Builds a new [`Utxo`] from `is_transparent`, `public_asset`, and `commitment`.
@@ -1512,13 +1490,7 @@ where
         hasher: &C::UtxoAccumulatorItemHash,
         compiler: &mut COM,
     ) -> UtxoAccumulatorItem<C, COM> {
-        hasher.hash(
-            &self.is_transparent,
-            &self.public_asset.id,
-            &self.public_asset.value,
-            &self.commitment,
-            compiler,
-        )
+        hasher.item_hash(&self, compiler)
     }
 }
 

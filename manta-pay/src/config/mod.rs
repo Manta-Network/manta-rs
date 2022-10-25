@@ -16,9 +16,12 @@
 
 //! Manta-Pay Configuration
 
-use crate::crypto::{
-    constraint::arkworks::{groth16, FpVar, R1CS},
-    ecc,
+use crate::{
+    config::utxo::v2 as protocol_pay,
+    crypto::{
+        constraint::arkworks::{groth16, FpVar, R1CS},
+        ecc,
+    },
 };
 use manta_accounting::transfer;
 use manta_crypto::arkworks::{
@@ -28,7 +31,6 @@ use manta_crypto::arkworks::{
         self, constraints::EdwardsVar as Bn254_EdwardsVar, EdwardsProjective as Bn254_Edwards,
     },
 };
-use crate::config::utxo::v2 as protocol_pay;
 
 #[cfg(feature = "bs58")]
 use {alloc::string::String, manta_util::codec::Encode};

@@ -16,10 +16,11 @@
 
 //! Manta Pay Signer Configuration
 
-use crate::config::utxo::v2 as protocol_pay;
-use manta_accounting::transfer::utxo::v2 as protocol;
 use crate::{
-    config::{utxo::v2::MerkleTreeConfiguration, Config, SecretKey},
+    config::{
+        utxo::{v2 as protocol_pay, v2::MerkleTreeConfiguration},
+        Config, SecretKey,
+    },
     crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
     signer::Checkpoint,
@@ -28,13 +29,16 @@ use alloc::collections::BTreeMap;
 use core::{cmp, marker::PhantomData, mem};
 use manta_accounting::{
     asset::{AssetMap, HashAssetMap},
+    transfer::utxo::v2 as protocol,
     wallet::{
         self,
         signer::{self, AssetMapKey, SyncData},
     },
 };
 use manta_crypto::{
-    arkworks::{ec::ProjectiveCurve, ff::PrimeField, ed_on_bn254::EdwardsProjective as Bn254_Edwards},
+    arkworks::{
+        ec::ProjectiveCurve, ed_on_bn254::EdwardsProjective as Bn254_Edwards, ff::PrimeField,
+    },
     //key::kdf::KeyDerivationFunction,
     merkle_tree::{self, forest::Configuration},
     rand::ChaCha20Rng,
@@ -124,7 +128,11 @@ impl signer::Checkpoint<Config> for Checkpoint {
         }
         let mut updated_origin = *origin;
         for receiver in &data.utxo_note_data {
-            let key = MerkleTreeConfiguration::tree_index(&receiver.0.item_hash(protocol_pay::UtxoAccumulatorItemHash::default(),&mut ()));
+            let key = MerkleTreeConfiguration::tree_index(
+                &receiver
+                    .0
+                    .item_hash(&protocol_pay::UtxoAccumulatorItemHash::default(), &mut ()),
+            );
             updated_origin.receiver_index[key as usize] += 1;
         }
         updated_origin.sender_index += data.nullifier_data.len();
@@ -150,7 +158,11 @@ impl signer::Checkpoint<Config> for Checkpoint {
         }
         let mut data_map = BTreeMap::<_, Vec<_>>::new();
         for receiver in mem::take(&mut data.utxo_note_data) {
-            let key = MerkleTreeConfiguration::tree_index(&receiver.0.item_hash(protocol_pay::UtxoAccumulatorItemHash::default(),&mut ()));
+            let key = MerkleTreeConfiguration::tree_index(
+                &receiver
+                    .0
+                    .item_hash(&protocol_pay::UtxoAccumulatorItemHash::default(), &mut ()),
+            );
             match data_map.get_mut(&key) {
                 Some(entry) => entry.push(receiver),
                 _ => {
