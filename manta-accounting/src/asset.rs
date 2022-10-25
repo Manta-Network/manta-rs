@@ -307,7 +307,7 @@ impl<'a> Sum<&'a AssetValue> for AssetValue {
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
-#[display(fmt = "{{id: {}, value: {}}}", id, value)]
+#[display(fmt = "{{id: {id}, value: {value}}}")]
 pub struct Asset<I = AssetId, V = AssetValue> {
     /// Asset Id
     pub id: I,
@@ -1166,7 +1166,7 @@ impl AssetMetadata {
         let value_base_units = value.0 / (10u128.pow(self.decimals));
         let fractional_digits = value.0 / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
             % (10u128.pow(FRACTIONAL_DIGITS));
-        format!("{}.{:0>3}", value_base_units, fractional_digits)
+        format!("{value_base_units}.{fractional_digits:0>3}")
     }
 
     /// Returns a string formatting of `value` interpreted using `self` as the metadata including
