@@ -999,24 +999,24 @@ where
     }
 }
 
-impl<C> utxo::DeriveAddress<SpendingKey<Self>> for Parameters<C>
-where
-    C: Configuration<Bool = bool>,
-{
-    #[inline]
-    fn derive_address(&self, key: &SpendingKey<Self>) -> Self::Address {
-        let generator = self.base.group_generator.generator();
-        Address::new(
-            generator.scalar_mul(
-                &self
-                    .base
-                    .viewing_key_derivation_function
-                    .viewing_key(&generator.scalar_mul(key, &mut ()), &mut ()),
-                &mut (),
-            ),
-        )
-    }
-}
+// impl<C> utxo::DeriveAddress<SpendingKey<Self>> for Parameters<C>
+// where
+//     C: Configuration<Bool = bool>,
+// {
+//     #[inline]
+//     fn derive_address(&self, key: &SpendingKey<Self>) -> Self::Address {
+//         let generator = self.base.group_generator.generator();
+//         Address::new(
+//             generator.scalar_mul(
+//                 &self
+//                     .base
+//                     .viewing_key_derivation_function
+//                     .viewing_key(&generator.scalar_mul(key, &mut ()), &mut ()),
+//                 &mut (),
+//             ),
+//         )
+//     }
+// }
 
 impl<C> utxo::Mint for Parameters<C>
 where

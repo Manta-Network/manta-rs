@@ -20,7 +20,7 @@ use manta_crypto::rand::OsRng;
 use manta_pay::{
     config::{self, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel},
     parameters,
-    test::payment,
+    //test::payment,
 };
 use wasm_bindgen::prelude::wasm_bindgen;
 

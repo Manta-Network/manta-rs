@@ -143,12 +143,6 @@ pub trait AddressType {
 /// Address Type
 pub type Address<T> = <T as AddressType>::Address;
 
-///
-pub trait DeriveAddress<T>: AddressType {
-    ///
-    fn derive_address(&self, key: &T) -> Self::Address;
-}
-
 /// Associated Data
 pub trait AssociatedDataType {
     /// Associated Data Type

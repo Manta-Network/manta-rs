@@ -28,7 +28,7 @@
 
 use crate::{
     asset::{AssetMap, AssetMetadata},
-    key::{Account, AccountMap},
+    key::{Account, AccountMap, DeriveAddress},
     transfer::{
         self,
         batch::Join,
@@ -45,8 +45,8 @@ use crate::{
     },
     wallet::ledger::{self, Data},
 };
-use alloc::{boxed::Box, vec, vec::Vec};
-use core::{convert::Infallible, fmt::Debug, hash::Hash};
+use alloc::{vec, vec::Vec};
+use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
@@ -89,10 +89,7 @@ where
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
     /// Returns addresses according to the `request`.
-    fn addresses(
-        &mut self,
-        request: AddressRequest,
-    ) -> LocalBoxFutureResult<Vec<Address<C>>, Self::Error>;
+    fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error>;
 }
 
 /// Signer Synchronization Data
@@ -408,39 +405,6 @@ where
 /// Signing Result
 pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
 
-/// Address Request
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum AddressRequest {
-    /// Get Specific Address
-    ///
-    /// Requests the address at the specific `index`. If the signer's response is an empty key
-    /// vector, then the index was out of bounds.
-    Get {
-        /// Target Address Index
-        index: u32,
-    },
-
-    /// Get All Addresses
-    ///
-    /// Requests all the addresses associated to the signer. The signer should always respond to
-    /// this request with at least one address, the default address.
-    GetAll,
-
-    /// New Addresses
-    ///
-    /// Requests `count`-many new addresses. The signer should always respond with at most
-    /// `count`-many addresses but may return fewer.
-    New {
-        /// Number of New Addresses to Generate
-        count: usize,
-    },
-}
-
 /// Signer Checkpoint
 pub trait Checkpoint<C>: ledger::Checkpoint
 where
@@ -477,10 +441,8 @@ pub trait Configuration: transfer::Configuration {
     type Checkpoint: Checkpoint<Self, UtxoAccumulator = Self::UtxoAccumulator>;
 
     /// Account Type
-    type Account: Account<
-        SpendingKey = SpendingKey<Self>,
-        Parameters = Self::Parameters,
-    >;
+    type Account: Account<SpendingKey = SpendingKey<Self>, Parameters = Self::Parameters>
+        + DeriveAddress<Parameters = Self::Parameters, Address = Self::Address>;
 
     /// Account Map Type
     type AccountMap: AccountMap<Account = Self::Account>;
@@ -649,13 +611,11 @@ where
         )
     }
 
-    /*
     /// Returns the address for the default account of `self`.
     #[inline]
     fn default_address(&mut self, parameters: &C::Parameters) -> Address<C> {
         self.accounts.get_mut_default().address(parameters)
     }
-    */
 
     ///
     #[allow(clippy::too_many_arguments)] // FIXME: Use a better abstraction here.
@@ -1228,7 +1188,7 @@ where
         self.state.utxo_accumulator.rollback();
         result
     }
-    
+
     // @TODO: Update this for new key system
     /*
     // Returns addresses according to the `request`.
@@ -1247,7 +1207,6 @@ where
         }
     }
     */
-    
 }
 
 // @TODO: Update addresses() for new key system

@@ -23,12 +23,14 @@ use crate::config::{
     MultiProvingContext, Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate,
     ToPublic, TransferPost,
 };
-use manta_accounting::transfer::{self, test::value_distribution, utxo::DeriveAddress};
+use manta_accounting::transfer::{self, test::value_distribution};
 use manta_crypto::{
     accumulator::Accumulator,
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
+use manta_accounting::key::DeriveAddress;
+use crate::key::SecretKey;
 
 /// UTXO Accumulator for Building Test Circuits
 pub type UtxoAccumulator =
@@ -106,6 +108,10 @@ pub mod to_private {
 
 /// Utility Module for [`PrivateTransfer`]
 pub mod private_transfer {
+    use manta_crypto::arkworks::{ed_on_bn254::FrParameters, ff::Fp256};
+
+    use crate::crypto::constraint::arkworks::Fp;
+
     use super::*;
 
     /// Generates a proof for a [`PrivateTransfer`] transaction including pre-requisite
@@ -125,8 +131,9 @@ pub mod private_transfer {
     {
         let asset_0 = Asset::new(asset_id, values[0]);
         let asset_1 = Asset::new(asset_id, values[1]);
-        let spending_key = rng.gen();
-        let address = parameters.derive_address(&spending_key);
+        let spending_key: SecretKey = rng.gen();
+        //let address = parameters.derive_address(&spending_key);
+        let address = spending_key.address(parameters);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
 
         let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(
@@ -258,7 +265,8 @@ pub mod to_public {
         let asset_0 = Asset::new(asset_id, values[0]);
         let asset_1 = Asset::new(asset_id, values[1]);
         let spending_key = rng.gen();
-        let address = parameters.derive_address(&spending_key);
+        //let address = parameters.derive_address(&spending_key);
+        let address = spending_key.address(parameters);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
 
         let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(

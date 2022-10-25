@@ -37,8 +37,8 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            AddressRequest, BalanceUpdate, SignError, SignRequest, SignResponse, SyncData,
-            SyncError, SyncRequest, SyncResponse,
+            BalanceUpdate, SignError, SignRequest, SignResponse, SyncData, SyncError, SyncRequest,
+            SyncResponse,
         },
     },
 };
@@ -389,13 +389,10 @@ where
             .map_err(Error::LedgerConnectionError)
     }
 
-    /// Returns addresses according to the `request`.
+    /// Returns the address.
     #[inline]
-    pub async fn addresses(
-        &mut self,
-        request: AddressRequest,
-    ) -> Result<Vec<Address<C>>, S::Error> {
-        self.signer.addresses(request).await
+    pub async fn address(&mut self) -> Result<Address<C>, S::Error> {
+        self.signer.address().await
     }
 }
 

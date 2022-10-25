@@ -24,7 +24,7 @@ use crate::{
     transfer::{canonical::Transaction, Address, Asset, Configuration, TransferPost},
     wallet::{
         ledger,
-        signer::{self, AddressRequest, SyncData},
+        signer::{self, SyncData},
         BalanceState, Error, Wallet,
     },
 };
@@ -438,12 +438,9 @@ where
     #[inline]
     async fn default_address(&mut self) -> Result<Address<C>, Error<C, L, S>> {
         self.wallet
-            .addresses(AddressRequest::Get {
-                index: Default::default(),
-            })
+            .address()
             .await
             .map_err(Error::SignerConnectionError)
-            .map(Vec::take_first)
     }
 
     /// Returns the latest public balances from the ledger.
@@ -482,8 +479,8 @@ where
 
     ///
     #[inline]
-    async fn addresses(&mut self, request: AddressRequest) -> Result<Vec<Address<C>>, S::Error> {
-        self.wallet.addresses(request).await
+    async fn address(&mut self) -> Result<Address<C>, S::Error> {
+        self.wallet.address().await
     }
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
@@ -891,11 +888,9 @@ where
                     }
                     Action::GenerateAddresses { count } => Event {
                         action: ActionType::GenerateAddresses,
-                        value: match actor.addresses(AddressRequest::New { count }).await {
-                            Ok(addresses) => {
-                                for address in addresses {
-                                    self.addresses.lock().insert(address);
-                                }
+                        value: match actor.address().await {
+                            Ok(address) => {
+                                self.addresses.lock().insert(address);
                                 Ok(true)
                             }
                             Err(err) => Err(Error::SignerConnectionError(err)),

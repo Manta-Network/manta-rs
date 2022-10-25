@@ -25,6 +25,8 @@ use core::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use crate::transfer::utxo::v1::Configuration;
+
 /// Base Index Type
 pub type IndexType = u32;
 
@@ -120,7 +122,7 @@ pub trait Account {
     fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey;
 }
 
-impl<A> Account for &mut A
+impl<A> Account for &A
 where
     A: Account,
 {
@@ -179,8 +181,8 @@ pub type VecAccountMap<A> = Vec<A>;
 
 impl<A> AccountMap for VecAccountMap<A>
 where
-    A: Account + std::default::Default {
-
+    A: Account + std::default::Default,
+{
     type Account = A;
 
     #[inline]
@@ -219,5 +221,16 @@ where
     fn get_mut(&mut self, account: AccountIndex) -> Option<&mut Self::Account> {
         self.as_mut_slice().get_mut(account.index() as usize)
     }
+}
 
+/// Derive Address Trait
+pub trait DeriveAddress {
+    /// Address Generation Parameters
+    type Parameters;
+
+    /// Address Type
+    type Address;
+
+    /// Returns the spending key associated to this account.
+    fn address(&self, parameters: &Self::Parameters) -> Self::Address;
 }

@@ -16,6 +16,8 @@
 
 //! Manta Pay Signer Configuration
 
+use crate::utxo::v3 as protocol_pay;
+use manta_accounting::transfer::utxo::v2 as protocol;
 use crate::{
     config::{utxo::v1::MerkleTreeConfiguration, Bn254_Edwards, Config, SecretKey},
     crypto::constraint::arkworks::Fp,
@@ -121,11 +123,11 @@ impl signer::Checkpoint<Config> for Checkpoint {
             return false;
         }
         let mut updated_origin = *origin;
-        for receiver in &data.receivers {
+        for receiver in &data.utxo_note_data {
             let key = MerkleTreeConfiguration::tree_index(&receiver.0);
             updated_origin.receiver_index[key as usize] += 1;
         }
-        updated_origin.sender_index += data.senders.len();
+        updated_origin.sender_index += data.nullifier_data.len();
         if signer_checkpoint > &updated_origin {
             *data = Default::default();
             return true;
@@ -136,7 +138,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
             .checked_sub(origin.sender_index)
         {
             Some(diff) => {
-                drop(data.senders.drain(0..diff));
+                drop(data.nullifier_data.drain(0..diff));
                 if diff > 0 {
                     has_pruned = true;
                 }
@@ -147,7 +149,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
             ),
         }
         let mut data_map = BTreeMap::<_, Vec<_>>::new();
-        for receiver in mem::take(&mut data.receivers) {
+        for receiver in mem::take(&mut data.utxo_note_data) {
             let key = MerkleTreeConfiguration::tree_index(&receiver.0);
             match data_map.get_mut(&key) {
                 Some(entry) => entry.push(receiver),
@@ -165,7 +167,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
             match index.checked_sub(origin_index) {
                 Some(diff) => {
                     if let Some(entries) = data_map.remove(&(i as u8)) {
-                        data.receivers.extend(entries.into_iter().skip(diff));
+                        data.utxo_note_data.extend(entries.into_iter().skip(diff));
                         if diff > 0 {
                             has_pruned = true;
                         }

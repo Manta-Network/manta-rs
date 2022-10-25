@@ -24,10 +24,21 @@
 //!
 //! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
+use crate::{config::utxo::v3 as protocol_pay, crypto::constraint::arkworks::Fp};
 use alloc::{format, string::String};
 use core::marker::PhantomData;
-use manta_accounting::key::{self, AccountIndex, VecAccountMap};
-use manta_crypto::rand::{CryptoRng, RngCore, Sample};
+use manta_accounting::{
+    key::{self, AccountIndex, DeriveAddress},
+    transfer::utxo::v2 as protocol,
+};
+use manta_crypto::{
+    algebra::{HasGenerator, ScalarMul},
+    arkworks::{
+        ed_on_bn254::FrParameters,
+        ff::{Fp256, PrimeField},
+    },
+    rand::{CryptoRng, RngCore, Sample},
+};
 use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
@@ -54,8 +65,6 @@ pub trait CoinType: sealed::Sealed {
     /// [`SLIP-0044`]: https://github.com/satoshilabs/slips/blob/master/slip-0044.md
     const COIN_TYPE_ID: CoinTypeId;
 }
-
-pub type VecAccountMap<C> = key::VecAccountMap<KeySecret<C>>;
 
 /// Implements the [`CoinType`] trait for `$coin` with coin type id given by `$id`.
 macro_rules! impl_coin_type {
@@ -127,6 +136,9 @@ impl_coin_type!(
 /// Seed Byte Array Type
 type SeedBytes = Array<u8, { Seed::SIZE }>;
 
+/// Vector Account Map Type
+type VecAccountMap<C> = key::VecAccountMap<KeySecret<C>>;
+
 /// Key Secret
 #[cfg_attr(
     feature = "serde",
@@ -173,19 +185,25 @@ where
     }
 }
 
-struct Account 
-where C: CoinType {
+/// Account
+pub struct Account<C>
+where
+    C: CoinType,
+{
     key_secret: KeySecret<C>,
-    index: AccountIndex
+    index: AccountIndex,
 }
 
-impl key::Account for Account<C> {
-    
+impl<C> key::Account for Account<C>
+where
+    C: CoinType,
+{
     type SpendingKey = SecretKey;
-    type Parameters = ();
+    type Parameters = protocol::Parameters<protocol_pay::Config>; // todo: double-check this
 
     #[inline]
     fn spending_key(&self, parameters: &Self::Parameters) -> SecretKey {
+        let _ = parameters;
         SecretKey::derive_from_path(
             self.key_secret.seed,
             &path_string::<C>(self.index)
@@ -210,6 +228,31 @@ where
         Self::build(seed)
     }
 }
+use protocol::ViewingKeyDerivationFunction;
+
+impl<C> DeriveAddress for Account<C>
+where
+    C: CoinType,
+{
+    type Address = protocol::Address<protocol_pay::Config>;
+    type Parameters = protocol::Parameters<protocol_pay::Config>;
+    #[inline]
+    fn address(&self, parameters: &Self::Parameters) -> Self::Address {
+        let generator = parameters.base.group_generator.generator();
+        let spending_key = Fp(Fp256::<FrParameters>::from_le_bytes_mod_order(
+            &key::Account::spending_key(&self, parameters).to_bytes(),
+        ));
+        protocol::Address::new(
+            generator.scalar_mul(
+                &parameters
+                    .base
+                    .viewing_key_derivation_function
+                    .viewing_key(&generator.scalar_mul(&spending_key, &mut ()), &mut ()),
+                &mut (),
+            ),
+        )
+    }
+}
 
 /// Computes the [`BIP-0044`] path string for the given coin settings.
 ///
@@ -222,7 +265,7 @@ where
 {
     const BIP_44_PURPOSE_ID: u8 = 44;
     format!(
-        "m/{}'/{}'/{}'/{}'/{}'",
+        "m/{}'/{}'/{}'",
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
         account.index()

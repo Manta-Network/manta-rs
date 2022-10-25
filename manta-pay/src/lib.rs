@@ -24,18 +24,16 @@
 extern crate alloc;
 
 pub mod crypto;
-//pub mod signer;
+pub mod signer;
 pub mod util;
 
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod config;
 
-
 #[cfg(feature = "bip32")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
 pub mod key;
-
 
 #[cfg(all(feature = "parameters",))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "parameters",))))]
@@ -51,9 +49,9 @@ pub mod signer;
 pub mod simulation;
 */
 
-#[cfg(any(test, feature = "test"))]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod test;
+// #[cfg(any(test, feature = "test"))]
+// #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+// pub mod test;
 
 #[doc(inline)]
 pub use manta_accounting;
