@@ -195,7 +195,7 @@ where
             Self::NotRegistered => write!(
                 f,
                 "Please make sure you have submitted your registration form. \
-                 Check whether the ceremony has begun at <ceremony.manta.network>.",
+                 Check whether the ceremony has begun at https://ceremony.manta.network.",
             ),
             Self::AlreadyContributed => {
                 write!(
