@@ -81,6 +81,7 @@ mod test {
     use crate::crypto::constraint::arkworks::Fp;
     use manta_crypto::arkworks::{bls12_381::Fr, ff::field_new};
 
+    #[allow(clippy::needless_borrow)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9710
     /// Checks if [`GrainLFSR`] matches hardcoded sage outputs.
     #[test]
     fn grain_lfsr_is_consistent() {
