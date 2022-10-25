@@ -493,7 +493,7 @@ where
     let tweet = style(format!(
         "I made contribution number {} to the #MantaNetworkTrustedSetup! \
          My contribution's hash is {contribution_hash}",
-         response.index
+        response.index
     ))
     .bold()
     .blue();
