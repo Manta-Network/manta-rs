@@ -503,19 +503,20 @@ pub fn register_link(
 
 /// Prompts the client information and get client keys.
 #[inline]
-pub fn get_client_keys() -> Result<(ed25519::SecretKey, ed25519::PublicKey), ClientKeyError> {
-    println!(
-        "Please enter the {} you received when you registered yourself using this tool.",
-        "Secret".italic()
-    );
-    let text = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Your Secret")
-        .validate_with(|input: &String| -> Result<(), &str> {
-            Mnemonic::validate(input.trim(), Language::English)
-                .map_err(|_| "This is not a valid secret.")
-        })
-        .interact_text()
-        .map_err(|_| ClientKeyError::InvalidSecret)?;
+pub fn get_client_keys(password: &String) -> Result<(ed25519::SecretKey, ed25519::PublicKey), ClientKeyError> {
+    let text = Mnemonic::validate(password.trim(), Language::English).map_err(|_| ClientKeyError::InvalidSecret)?;
+    // println!(
+    //     "Please enter the {} you received when you registered yourself using this tool.",
+    //     "Secret".italic()
+    // );
+    // let text = Input::with_theme(&ColorfulTheme::default())
+    //     .with_prompt("Your Secret")
+    //     .validate_with(|input: &String| -> Result<(), &str> {
+    //         Mnemonic::validate(input.trim(), Language::English)
+    //             .map_err(|_| "This is not a valid secret.")
+    //     })
+    //     .interact_text()
+    //     .map_err(|_| ClientKeyError::InvalidSecret)?;
     let mnemonic = Mnemonic::from_phrase(text.trim(), Language::English)
         .map_err(|_| ClientKeyError::MnemonicFailure)?;
     let seed_bytes = Seed::new(&mnemonic, "manta-trusted-setup")

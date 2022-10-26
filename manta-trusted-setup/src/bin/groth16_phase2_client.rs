@@ -65,6 +65,9 @@ pub struct Arguments {
     /// URL
     #[clap(default_value = "https://ceremony.manta.network")]
     url: String,
+
+    /// Password
+    password: String,
 }
 
 impl Arguments {
