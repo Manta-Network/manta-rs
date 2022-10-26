@@ -309,7 +309,7 @@ impl<'a> Sum<&'a AssetValue> for AssetValue {
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Display, Eq, From, Hash, Ord, PartialEq, PartialOrd)]
-#[display(fmt = "{{id: {id}, value: {value}}}")]
+#[display(fmt = "{{id: {}, value: {}}}", id, value)]
 pub struct Asset<I = AssetId, V = AssetValue> {
     /// Asset Id
     pub id: I,

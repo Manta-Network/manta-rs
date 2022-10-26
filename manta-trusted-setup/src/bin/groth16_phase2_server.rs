@@ -62,11 +62,11 @@ impl Arguments {
 
         println!("Network is running!");
         let mut api = tide::Server::with_state(server);
-        api.at("/")
-            .serve_file("/home/mobula/manta-rs/index.html")
-            .map_err(|_| CeremonyError::<Config>::Network {
-                message: "Cannot load landing page.".to_string(),
-            })?;
+        // api.at("/")
+        //     .serve_file("/home/mobula/manta-rs/index.html")
+        //     .map_err(|_| CeremonyError::<Config>::Network {
+        //         message: "Cannot load landing page.".to_string(),
+        //     })?;
         api.at("/start")
             .post(|r| execute(r, Server::start_endpoint));
         api.at("/query")
@@ -88,3 +88,5 @@ async fn main() {
         .await
         .expect("Server error occurred");
 }
+
+// cargo run --release --all-features --bin groth16_phase2_server /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data /Users/thomascnorton/Documents/Manta/manta-rs/dummy_register.csv
