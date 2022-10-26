@@ -91,7 +91,9 @@ impl Arguments {
                 Ok(())
             }
             Command::Contribute => {
-                let (sk, pk) = match get_client_keys() {
+                println!("url: {:?}", &self.url);
+                println!("password: {:?}", &self.password);
+                let (sk, pk) = match get_client_keys(&self.password) {
                     Ok(keys) => keys,
                     Err(e) => panic!("Error while extracting the client keys: {e}"),
                 };
@@ -110,7 +112,7 @@ impl Arguments {
                 }
             }
             Command::ContributeBadProof => {
-                let (sk, pk) = match get_client_keys() {
+                let (sk, pk) = match get_client_keys(&self.password) {
                     Ok(keys) => keys,
                     Err(e) => panic!("Error while extracting the client keys: {}", e),
                 };
