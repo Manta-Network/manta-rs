@@ -20,9 +20,11 @@ extern crate alloc;
 
 use clap::{Parser, Subcommand};
 use dialoguer::{theme::ColorfulTheme, Input};
-use manta_trusted_setup::groth16::ceremony::config::ppot::client_contribute_bad_proof;
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::{client_contribute, display_on_error, get_client_keys, register, Config},
+    config::ppot::{
+        client_contribute, client_contribute_bad_proof, display_on_error, get_client_keys,
+        register, Config,
+    },
     CeremonyError,
 };
 use manta_util::Array;
@@ -52,7 +54,7 @@ pub enum Command {
     Contribute,
 
     /// Contribute with an ill-formed proof
-    ContributeBadProof
+    ContributeBadProof,
 }
 
 /// Command Line Arguments
@@ -120,8 +122,9 @@ impl Arguments {
                 {
                     Ok(runtime) => {
                         let pk = Array::from_unchecked(*pk.as_bytes());
-                        runtime
-                            .block_on(async { client_contribute_bad_proof::<Config>(sk, pk, self.url).await })
+                        runtime.block_on(async {
+                            client_contribute_bad_proof::<Config>(sk, pk, self.url).await
+                        })
                     }
                     Err(e) => panic!("I/O Error while setting up the tokio Runtime: {:?}", e),
                 }

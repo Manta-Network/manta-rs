@@ -51,3 +51,5 @@ fn main() {
         .run()
         .expect("Preparation error occurred");
 }
+
+// cargo run --release --all-features --bin groth16_phase2_prepare /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data

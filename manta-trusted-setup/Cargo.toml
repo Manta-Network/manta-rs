@@ -25,6 +25,10 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [[bin]]
+name = "generate_dummy_register"
+required-features = ["ppot-client"]
+
+[[bin]]
 name = "groth16_phase2_client"
 required-features = ["clap", "ppot-client", "reqwest", "tokio"]
 

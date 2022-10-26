@@ -364,7 +364,7 @@ pub fn set_header(
     match reader.byte_headers() {
         Ok(headers) => {
             if headers != expected_headers {
-                println!("Actual headers were \n{:?}", headers);
+                println!("Actual headers were \n{headers:?}");
                 Err(RegistrationProcessingError::WrongHeaders)
             } else {
                 assert_eq!(expected_headers.len(), short_headers.len());
@@ -431,7 +431,7 @@ where
                     .map_err(|_| RegistrationProcessingError::WriteError)?
             }
             Err(e) => {
-                println!("Encountered error {:?} when reading entry {}", e, i + 2);
+                println!("Encountered error {e:?} when reading entry {}", i + 2);
                 num_malformed += 1;
                 writer_malformed
                     .serialize(record.into())
@@ -695,11 +695,8 @@ where
     let mut downloading_state = false;
 
     let response =
-        client::contribute_bad_proof(
-            signing_key,
-            identifier,
-            url.as_str(),
-            |metadata, state| match state {
+        client::contribute_bad_proof(signing_key, identifier, url.as_str(), |metadata, state| {
+            match state {
                 Continue::Started => {
                     println!("\n");
                 }
@@ -758,8 +755,8 @@ where
                         style("[WARN]").bold().yellow()
                     );
                 }
-            },
-        )
+            }
+        })
         .await?;
     let contribution_hash = hex::encode(C::contribution_hash(&response));
     let tweet = style(format!(
@@ -777,7 +774,6 @@ where
     );
     Ok(())
 }
-
 
 /// Configuration for the Groth16 Phase2 Server.
 #[derive(Clone, Default)]

@@ -222,7 +222,7 @@ where
     }
 
     /// Computes the state update for the ceremony and signs the update request message.
-    /// The proof created will be incorrect! 
+    /// The proof created will be incorrect!
     #[inline]
     fn compute_update_bad_proof(
         &mut self,
@@ -415,7 +415,10 @@ where
     .await?;
     process_continuation(&client.metadata, Continue::Started);
     loop {
-        match client.try_contribute_bad_proof(&mut process_continuation).await {
+        match client
+            .try_contribute_bad_proof(&mut process_continuation)
+            .await
+        {
             Ok(Update::Continue(update)) => process_continuation(&client.metadata, update),
             Ok(Update::Break(response)) => return Ok(response),
             Err(CeremonyError::InvalidSignature { expected_nonce }) => {
