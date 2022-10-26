@@ -39,7 +39,7 @@ use colored::Colorize;
 use console::{style, Term};
 use core::fmt::{self, Debug, Display};
 use csv::{Reader, StringRecord, WriterBuilder};
-use dialoguer::{theme::ColorfulTheme, Input};
+// use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     arkworks::{
         bn254::{self, Fr},
@@ -57,7 +57,11 @@ use manta_crypto::{
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     signature,
 };
-use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
+use manta_pay::{
+    config::{FullParameters, Mint, PrivateTransfer, Reclaim},
+    crypto::constraint::arkworks::{Fp, FpVar, R1CS},
+    parameters::load_parameters,
+};
 use manta_util::{
     into_array_unchecked,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
@@ -66,7 +70,7 @@ use manta_util::{
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 type Signature = Ed25519<RawMessage<u64>>;
@@ -995,7 +999,29 @@ impl Circuits<<Self as Pairing>::Scalar> for Config {
     #[inline]
     fn circuits() -> Vec<(R1CS<<Self as Pairing>::Scalar>, String)> {
         let mut circuits = Vec::new();
-        //
+
+        // TODO: manta_parameters needs to be updated to Bn254 parameters
+
+        // let path = Path::new("/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/src/tests"); // What directory can I use?
+        // let (_multi_proving_context, _multi_verifying_context, parameters, utxo_accumulator_model) =
+        //     load_parameters(path).expect("Error loading parameters");
+
+        // circuits.push((
+        //     Mint::unknown_constraints(FullParameters::new(&parameters, &utxo_accumulator_model)),
+        //     "mint".to_string(),
+        // ));
+        // circuits.push((
+        //     PrivateTransfer::unknown_constraints(FullParameters::new(
+        //         &parameters,
+        //         &utxo_accumulator_model,
+        //     )),
+        //     "transfer".to_string(),
+        // ));
+        // circuits.push((
+        //     Reclaim::unknown_constraints(FullParameters::new(&parameters, &utxo_accumulator_model)),
+        //     "reclaim".to_string(),
+        // ));
+
         // Placeholder:
         for i in 0..3 {
             let mut cs = R1CS::for_contexts();

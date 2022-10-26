@@ -22,13 +22,13 @@ use csv::WriterBuilder;
 use manta_crypto::dalek::ed25519::Ed25519;
 use manta_trusted_setup::{
     ceremony::signature::{sign, RawMessage},
-    groth16::ceremony::config::ppot::{self, extract_registry, generate_keys, Record},
+    groth16::ceremony::config::ppot::{extract_registry, generate_keys, Record},
 };
 use manta_util::serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::OpenOptions, path::PathBuf};
 
 /// Number of entries to generate
-const LENGTH: usize = 100;
+const LENGTH: usize = 2000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(

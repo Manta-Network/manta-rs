@@ -487,7 +487,7 @@ where
     state.0.vk.delta_g2 = state.0.vk.delta_g2.mul(delta).into_affine();
 
     let two_delta = delta + delta;
-    let mut bad_proof = RatioProof::prove(hasher, challenge, &two_delta, rng)?;
+    let bad_proof = RatioProof::prove(hasher, challenge, &two_delta, rng)?;
     // bad_proof.matching_point = bad_proof.matching_point + bad_proof.matching_point;
     Some(Proof(bad_proof))
 }

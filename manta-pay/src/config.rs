@@ -36,8 +36,8 @@ use manta_crypto::{
     accumulator,
     algebra::DiffieHellman,
     arkworks::{
-        bls12_381::{self, Bls12_381},
-        ed_on_bls12_381::{self, constraints::EdwardsVar as Bls12_381_EdwardsVar},
+        bn254::{self, Bn254},
+        ed_on_bn254::{self, constraints::EdwardsVar as Bn254_EdwardsVar},
         ff::ToConstraintField,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
@@ -66,28 +66,28 @@ use alloc::string::String;
 #[cfg(any(feature = "test", test))]
 use manta_crypto::rand::{Rand, RngCore, Sample};
 
-pub(crate) use ed_on_bls12_381::EdwardsProjective as Bls12_381_Edwards;
+pub(crate) use ed_on_bn254::EdwardsProjective as Bn254_Edwards;
 
 /// Pairing Curve Type
-pub type PairingCurve = Bls12_381;
+pub type PairingCurve = Bn254;
 
 /// Embedded Scalar Field Type
-pub type EmbeddedScalarField = ed_on_bls12_381::Fr;
+pub type EmbeddedScalarField = ed_on_bn254::Fr;
 
 /// Embedded Scalar Type
-pub type EmbeddedScalar = ecc::arkworks::Scalar<Bls12_381_Edwards>;
+pub type EmbeddedScalar = ecc::arkworks::Scalar<Bn254_Edwards>;
 
 /// Embedded Scalar Variable Type
-pub type EmbeddedScalarVar = ecc::arkworks::ScalarVar<Bls12_381_Edwards, Bls12_381_EdwardsVar>;
+pub type EmbeddedScalarVar = ecc::arkworks::ScalarVar<Bn254_Edwards, Bn254_EdwardsVar>;
 
 /// Embedded Group Type
-pub type Group = ecc::arkworks::Group<Bls12_381_Edwards>;
+pub type Group = ecc::arkworks::Group<Bn254_Edwards>;
 
 /// Embedded Group Variable Type
-pub type GroupVar = ecc::arkworks::GroupVar<Bls12_381_Edwards, Bls12_381_EdwardsVar>;
+pub type GroupVar = ecc::arkworks::GroupVar<Bn254_Edwards, Bn254_EdwardsVar>;
 
 /// Constraint Field
-pub type ConstraintField = bls12_381::Fr;
+pub type ConstraintField = bn254::Fr;
 
 /// Constraint Field Variable
 pub type ConstraintFieldVar = FpVar<ConstraintField>;
@@ -189,7 +189,7 @@ impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
             [
                 // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
                 // cases! We need a better abstraction for this.
-                &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(ephemeral_secret_key),
+                &ecc::arkworks::lift_embedded_scalar::<Bn254_Edwards>(ephemeral_secret_key),
                 &Fp(public_spend_key.0.x), // NOTE: Group is in affine form, so we can extract `x`.
                 &Fp(asset.id.0.into()),
                 &Fp(asset.value.0.into()),
@@ -296,7 +296,7 @@ impl transfer::VoidNumberCommitmentScheme for VoidNumberCommitmentScheme {
             [
                 // FIXME: This is the lift from inner scalar to outer scalar and only exists in some
                 // cases! We need a better abstraction for this.
-                &ecc::arkworks::lift_embedded_scalar::<Bls12_381_Edwards>(secret_spend_key),
+                &ecc::arkworks::lift_embedded_scalar::<Bn254_Edwards>(secret_spend_key),
                 utxo,
             ],
             compiler,
