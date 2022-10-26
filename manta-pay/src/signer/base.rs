@@ -21,15 +21,13 @@ use crate::{
         utxo::{v2 as protocol_pay, v2::MerkleTreeConfiguration},
         Config,
     },
-    crypto::constraint::arkworks::Fp,
-    key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
     signer::Checkpoint,
 };
 use alloc::collections::BTreeMap;
-use core::{cmp, marker::PhantomData, mem};
+use core::{cmp, mem};
 use manta_accounting::{
-    asset::{AssetMap, HashAssetMap},
-    transfer::{utxo::v2 as protocol, Identifier},
+    asset::HashAssetMap,
+    transfer::Identifier,
     wallet::{
         self,
         signer::{self, SyncData},
@@ -37,16 +35,12 @@ use manta_accounting::{
 };
 use manta_crypto::{
     accumulator::ItemHashFunction,
-    arkworks::{
-        ec::ProjectiveCurve, ed_on_bn254::EdwardsProjective as Bn254_Edwards, ff::PrimeField,
-    },
-    //key::kdf::KeyDerivationFunction,
     merkle_tree::{self, forest::Configuration},
     rand::ChaCha20Rng,
 };
 
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+// #[cfg(feature = "serde")]
+// use manta_util::serde::{Deserialize, Serialize};
 
 // /// Hierarchical Key Derivation Function
 // #[cfg_attr(
@@ -103,7 +97,7 @@ pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
 
 impl wallet::signer::Configuration for Config {
     type Account = crate::key::Account;
-    type AccountMap = manta_accounting::key::VecAccountMap<Self::Account>;
+    type AccountMap = crate::key::VecAccountMap;
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<

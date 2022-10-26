@@ -33,7 +33,7 @@ use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData, ops::Add
 use futures::StreamExt;
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample, SampleUniform};
-use manta_util::{future::LocalBoxFuture, iter::Iterable, num::CheckedSub, vec::VecExt};
+use manta_util::{future::LocalBoxFuture, iter::Iterable, num::CheckedSub};
 use parking_lot::Mutex;
 use statrs::{
     distribution::{Categorical, Poisson},
@@ -886,7 +886,7 @@ where
                             }
                         }
                     }
-                    Action::GenerateAddresses { count } => Event {
+                    Action::GenerateAddresses { count: _ } => Event {
                         action: ActionType::GenerateAddresses,
                         value: match actor.address().await {
                             Ok(address) => {

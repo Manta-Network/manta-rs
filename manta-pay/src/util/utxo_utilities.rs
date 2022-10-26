@@ -47,10 +47,10 @@ where
     U: ToBytesGadget<F>,
     F: Field,
 {
-    Ok(u.to_bytes()?
+    u.to_bytes()?
         .into_iter()
         .map(|x| x.value())
-        .collect::<Result<Vec<u8>, _>>()?)
+        .collect::<Result<Vec<u8>, _>>()
 }
 
 /// Extracts a vector of bytes from an [`UnsignedInteger`].
@@ -61,8 +61,8 @@ where
     T: ToBytesGadget<F>,
     F: Field,
 {
-    Ok(u.to_bytes()?
+    u.to_bytes()?
         .into_iter()
         .map(|x| x.value())
-        .collect::<Result<Vec<u8>, _>>()?)
+        .collect::<Result<Vec<u8>, _>>()
 }

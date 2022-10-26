@@ -16,11 +16,11 @@
 
 //! Manta Pay Signer Tools
 
-use crate::config::{utxo::v3::Checkpoint, Config};
+use crate::config::{utxo::v2::Checkpoint, Config};
 use manta_accounting::wallet::signer;
 
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+// #[cfg(feature = "serde")]
+// use manta_util::serde::{Deserialize, Serialize};
 
 //pub mod client;
 

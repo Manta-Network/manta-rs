@@ -1122,7 +1122,7 @@ impl ItemHashFunction<UtxoVar, Compiler> for UtxoAccumulatorItemHash<Compiler> {
     fn item_hash(&self, value: &UtxoVar, compiler: &mut Compiler) -> Self::Item {
         self.0.hash(
             [
-                &value.is_transparent.into(),
+                &value.is_transparent.clone().into(),
                 &value.public_asset.id,
                 value.public_asset.value.as_ref(),
                 &value.commitment,

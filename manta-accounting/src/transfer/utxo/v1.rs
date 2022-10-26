@@ -20,7 +20,7 @@ use crate::{
     asset,
     transfer::utxo::{
         self,
-        auth::{self, DeriveContext, SpendingKey},
+        auth::{self, DeriveContext},
     },
 };
 use alloc::vec::Vec;
@@ -556,7 +556,7 @@ where
 
     #[inline]
     fn item_hash(&self, utxo: &Utxo<C, COM>, compiler: &mut COM) -> Self::Item {
-        self.utxo_accumulator_item_hash.item_hash(&utxo, compiler)
+        self.utxo_accumulator_item_hash.item_hash(utxo, compiler)
     }
 }
 
@@ -1458,7 +1458,7 @@ where
         hasher: &C::UtxoAccumulatorItemHash,
         compiler: &mut COM,
     ) -> UtxoAccumulatorItem<C, COM> {
-        hasher.item_hash(&self, compiler)
+        hasher.item_hash(self, compiler)
     }
 }
 

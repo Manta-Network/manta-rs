@@ -37,10 +37,7 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{
-            auth::DeriveContext, v2::UtxoAccumulatorItemHash, DeriveDecryptionKey, DeriveSpend,
-            NoteOpen, Spend,
-        },
+        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, NoteOpen, Spend},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
@@ -681,7 +678,7 @@ where
             {
                 nullifiers.remove(index);
             } else {
-                utxo_accumulator.insert(&Self::item_hash(&parameters, &utxo));
+                utxo_accumulator.insert(&Self::item_hash(parameters, &utxo));
                 if !asset.is_zero() {
                     deposit.push(asset.clone());
                 }
@@ -689,7 +686,7 @@ where
                 return;
             }
         }
-        utxo_accumulator.insert_nonprovable(&Self::item_hash(&parameters, &utxo));
+        utxo_accumulator.insert_nonprovable(&Self::item_hash(parameters, &utxo));
     }
 
     /// Checks if `asset` matches with `nullifier`, removing it from the `utxo_accumulator` and
@@ -716,7 +713,7 @@ where
             .position(move |n| n.is_related(&nullifier))
         {
             nullifiers.remove(index);
-            utxo_accumulator.remove_proof(&Self::item_hash(&parameters, &utxo));
+            utxo_accumulator.remove_proof(&Self::item_hash(parameters, &utxo));
             if !asset.is_zero() {
                 withdraw.push(asset);
             }
@@ -758,7 +755,7 @@ where
                 );
             } else {
                 self.utxo_accumulator
-                    .insert_nonprovable(&Self::item_hash(&parameters, &utxo));
+                    .insert_nonprovable(&Self::item_hash(parameters, &utxo));
             }
         }
         self.assets.retain(|identifier, assets| {

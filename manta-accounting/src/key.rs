@@ -25,8 +25,6 @@ use core::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-use crate::transfer::utxo::v1::Configuration;
-
 /// Base Index Type
 pub type IndexType = u32;
 
@@ -58,7 +56,7 @@ impl<M> Index<M> {
 
     /// Increments the index of `self` by one unit.
     #[inline]
-    fn increment(&mut self) {
+    pub fn increment(&mut self) {
         self.index += 1;
     }
 
@@ -176,12 +174,21 @@ pub trait AccountMap {
     }
 }
 
+/// Create from Index Trait
+pub trait CreateFromIndex {
+    /// Index Type
+    type Index;
+
+    /// Creates `Self` from `parameters` and `index`.
+    fn create_from_index(index: &Self::Index) -> Self;
+}
+
 /// [`Vec`] Account Map Type
 pub type VecAccountMap<A> = Vec<A>;
 
 impl<A> AccountMap for VecAccountMap<A>
 where
-    A: Account + std::default::Default,
+    A: Account + CreateFromIndex<Index = AccountIndex>,
 {
     type Account = A;
 
@@ -208,7 +215,7 @@ where
                 .try_into()
                 .expect("AccountIndex is not allowed to exceed IndexType::MAX."),
         );
-        self.push(Default::default());
+        self.push(Self::Account::create_from_index(&index));
         index
     }
 

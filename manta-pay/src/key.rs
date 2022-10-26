@@ -37,7 +37,7 @@ use manta_crypto::{
         ed_on_bn254::FrParameters,
         ff::{Fp256, PrimeField},
     },
-    rand::{CryptoRng, RngCore, Sample},
+    rand::{CryptoRng, OsRng, Rand, RngCore, Sample},
 };
 use manta_util::{create_seal, seal, Array};
 
@@ -137,7 +137,7 @@ impl_coin_type!(
 type SeedBytes = Array<u8, { Seed::SIZE }>;
 
 /// Vector Account Map Type
-type VecAccountMap<C> = key::VecAccountMap<KeySecret<C>>;
+pub type VecAccountMap<C = Manta> = key::VecAccountMap<Account<C>>;
 
 /// Key Secret
 #[cfg_attr(
@@ -146,7 +146,7 @@ type VecAccountMap<C> = key::VecAccountMap<KeySecret<C>>;
     serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
+#[derivative(Clone(bound = ""), Default(bound = ""))]
 pub struct KeySecret<C>
 where
     C: CoinType,
@@ -194,6 +194,16 @@ where
     index: AccountIndex,
 }
 
+impl<C> Account<C>
+where
+    C: CoinType,
+{
+    /// Creates new
+    pub fn new(key_secret: KeySecret<C>, index: AccountIndex) -> Self {
+        Self { key_secret, index }
+    }
+}
+
 impl<C> key::Account for Account<C>
 where
     C: CoinType,
@@ -214,6 +224,23 @@ where
         Fp(Fp256::<FrParameters>::from_le_bytes_mod_order(
             &xpr_secret_key.to_bytes(),
         ))
+    }
+}
+
+impl<C> key::CreateFromIndex for Account<C>
+where
+    C: CoinType,
+{
+    type Index = AccountIndex;
+
+    #[inline]
+    fn create_from_index(index: &Self::Index) -> Self {
+        let mut rng = OsRng;
+        let key_secret = rng.gen();
+        Self {
+            key_secret,
+            index: *index,
+        }
     }
 }
 
@@ -248,7 +275,7 @@ where
                 &parameters
                     .base
                     .viewing_key_derivation_function
-                    .viewing_key(&generator.scalar_mul(&spending_key, &mut ()), &mut ()),
+                    .viewing_key(&generator.scalar_mul(spending_key, &mut ()), &mut ()),
                 &mut (),
             ),
         )
