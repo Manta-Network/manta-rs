@@ -41,7 +41,7 @@ use manta_crypto::{
         cmp::PartialEq,
         num::Zero,
         ops::{BitAnd, BitOr},
-        Has,
+        Has, NonNative,
     },
     encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage},
     rand::{Rand, RngCore, Sample},
@@ -1948,7 +1948,10 @@ where
 
 /// Identifier
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = "C::Bool: Clone, UtxoCommitmentRandomness<C, COM>: Clone"))]
+#[derivative(
+    Clone(bound = "C::Bool: Clone, UtxoCommitmentRandomness<C, COM>: Clone"),
+    Hash(bound = "C::Bool: Hash, UtxoCommitmentRandomness<C, COM>: Hash")
+)]
 pub struct Identifier<C, COM = ()>
 where
     C: BaseConfiguration<COM>,

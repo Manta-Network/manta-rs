@@ -100,6 +100,7 @@ impl transfer::Configuration for Config {
     type SpendSecret = protocol_pay::SpendSecret;
     type UtxoAccumulatorWitness = protocol_pay::UtxoAccumulatorWitness;
     type UtxoAccumulatorOutput = protocol_pay::UtxoAccumulatorOutput;
+    type UtxoAccumulatorItemHash = protocol_pay::UtxoAccumulatorItemHash;
     type Parameters = protocol_pay::Parameters;
     type AuthorizationContextVar = protocol_pay::AuthorizationContextVar;
     type AuthorizationProofVar = protocol_pay::AuthorizationProofVar;

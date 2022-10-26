@@ -42,6 +42,7 @@ use manta_accounting::{
     wallet::ledger,
 };
 use manta_crypto::{
+    accumulator::ItemHashFunction,
     algebra::HasGenerator,
     arkworks::{
         algebra::{affine_point_as_bytes, ScalarVar},
@@ -56,7 +57,7 @@ use manta_crypto::{
     encryption::{self, EmptyHeader},
     hash,
     hash::ArrayHashFunction,
-    merkle_tree,
+    merkle_tree::{self, partial::Partial},
     rand::{Rand, RngCore, Sample},
     signature::schnorr,
 };
@@ -287,7 +288,7 @@ type UtxoCommitmentSchemeType<COM = ()> = Hasher<Poseidon5, UtxoCommitmentScheme
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoCommitmentSchemeType<COM>: Clone"),
-    Debug(bound = "UtxoCommitmentSchemeType<COM>: Debug")
+    Debug(bound = "UtxoCommitmentSchemeType<COM>: Debug"),
 )]
 pub struct UtxoCommitmentScheme<COM = ()>(UtxoCommitmentSchemeType<COM>)
 where
@@ -1050,8 +1051,7 @@ type UtxoAccumulatorItemHashType<COM = ()> =
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoAccumulatorItemHashType<COM>: Clone"),
-    Debug(bound = "UtxoAccumulatorItemHashType<COM>: Debug"),
-    Default(bound = "")
+    Debug(bound = "UtxoAccumulatorItemHashType<COM>: Debug")
 )]
 pub struct UtxoAccumulatorItemHash<COM = ()>(UtxoAccumulatorItemHashType<COM>)
 where
@@ -1098,69 +1098,37 @@ impl Constant<Compiler> for UtxoAccumulatorItemHash<Compiler> {
     }
 }
 
-impl protocol::UtxoAccumulatorItemHash for UtxoAccumulatorItemHash {
-    type Bool = bool;
-    type AssetId = AssetId;
-    type AssetValue = AssetValue;
-    type Commitment = Fp<ConstraintField>;
+impl ItemHashFunction<Utxo> for UtxoAccumulatorItemHash {
     type Item = UtxoAccumulatorItem;
 
     #[inline]
-    fn hash(
-        &self,
-        is_transparent: &Self::Bool,
-        public_asset_id: &Self::AssetId,
-        public_asset_value: &Self::AssetValue,
-        commitment: &Self::Commitment,
-        compiler: &mut (),
-    ) -> Self::Item {
+    fn item_hash(&self, value: &Utxo, compiler: &mut ()) -> Self::Item {
         self.0.hash(
             [
-                &Fp((*is_transparent).into()),
-                public_asset_id,
-                &Fp((*public_asset_value).into()),
-                commitment,
+                &Fp(value.is_transparent.into()),
+                &value.public_asset.id,
+                &value.public_asset.value.into(),
+                &value.commitment,
             ],
             compiler,
         )
     }
 }
 
-impl protocol::UtxoAccumulatorItemHash<Compiler> for UtxoAccumulatorItemHash<Compiler> {
-    type Bool = Boolean<ConstraintField>;
-    type AssetId = AssetIdVar;
-    type AssetValue = AssetValueVar;
-    type Commitment = FpVar<ConstraintField>;
+impl ItemHashFunction<UtxoVar, Compiler> for UtxoAccumulatorItemHash<Compiler> {
     type Item = UtxoAccumulatorItemVar;
 
     #[inline]
-    fn hash(
-        &self,
-        is_transparent: &Self::Bool,
-        public_asset_id: &Self::AssetId,
-        public_asset_value: &Self::AssetValue,
-        commitment: &Self::Commitment,
-        compiler: &mut Compiler,
-    ) -> Self::Item {
-        /*
-        print_measurement(
-            "UTXO ACCUMULATOR ITEM HASH",
-            |compiler| {
-        */
+    fn item_hash(&self, value: &UtxoVar, compiler: &mut Compiler) -> Self::Item {
         self.0.hash(
             [
-                &(is_transparent.clone()).into(),
-                public_asset_id,
-                public_asset_value.as_ref(),
-                commitment,
+                &value.is_transparent.into(),
+                &value.public_asset.id,
+                value.public_asset.value.as_ref(),
+                &value.commitment,
             ],
             compiler,
         )
-        /*
-            },
-            compiler,
-        )
-        */
     }
 }
 

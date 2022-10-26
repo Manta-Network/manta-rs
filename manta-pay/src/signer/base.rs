@@ -19,7 +19,7 @@
 use crate::{
     config::{
         utxo::{v2 as protocol_pay, v2::MerkleTreeConfiguration},
-        Config, SecretKey,
+        Config,
     },
     crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
@@ -29,13 +29,14 @@ use alloc::collections::BTreeMap;
 use core::{cmp, marker::PhantomData, mem};
 use manta_accounting::{
     asset::{AssetMap, HashAssetMap},
-    transfer::utxo::v2 as protocol,
+    transfer::{utxo::v2 as protocol, Identifier},
     wallet::{
         self,
         signer::{self, AssetMapKey, SyncData},
     },
 };
 use manta_crypto::{
+    accumulator::ItemHashFunction,
     arkworks::{
         ec::ProjectiveCurve, ed_on_bn254::EdwardsProjective as Bn254_Edwards, ff::PrimeField,
     },
@@ -88,17 +89,30 @@ pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
     { MerkleTreeConfiguration::FOREST_WIDTH },
 >;
 
+// /// Account Type
+// type Account: Account<SpendingKey = SpendingKey<Self>, Parameters = Self::Parameters>
+// + DeriveAddress<Parameters = Self::Parameters, Address = Self::Address>;
+
+// /// Account Map Type
+// type AccountMap: AccountMap<Account = Self::Account>;
+
+// /// Asset Map Type
+// type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
+
+// AssetMapKey = (KeyIndex, SecretKey);
+
 impl wallet::signer::Configuration for Config {
     type Account = todo!();
     type AccountMap = todo!();
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
-    type AssetMap = HashAssetMap<AssetMapKey<Self>, Self::AssetId, Self::AssetValue>;
+    type AssetMap = HashAssetMap<Self::Identifier, Self::AssetId, Self::AssetValue>;
     type Rng = ChaCha20Rng;
 }
 
 impl signer::Checkpoint<Config> for Checkpoint {
     type UtxoAccumulator = UtxoAccumulator;
+    type UtxoAccumulatorItemHash = protocol_pay::UtxoAccumulatorItemHash;
 
     #[inline]
     fn update_from_nullifiers(&mut self, count: usize) {
@@ -121,18 +135,20 @@ impl signer::Checkpoint<Config> for Checkpoint {
     /// index or by global void number index until we reach some pruned data that is at least newer
     /// than `signer_checkpoint`.
     #[inline]
-    fn prune(data: &mut SyncData<Config>, origin: &Self, signer_checkpoint: &Self) -> bool {
+    fn prune(
+        parameters: &Self::UtxoAccumulatorItemHash,
+        data: &mut SyncData<Config>,
+        origin: &Self,
+        signer_checkpoint: &Self,
+    ) -> bool {
         const PRUNE_PANIC_MESSAGE: &str = "ERROR: Invalid pruning conditions";
         if signer_checkpoint <= origin {
             return false;
         }
         let mut updated_origin = *origin;
         for receiver in &data.utxo_note_data {
-            let key = MerkleTreeConfiguration::tree_index(
-                &receiver
-                    .0
-                    .item_hash(&protocol_pay::UtxoAccumulatorItemHash::default(), &mut ()),
-            );
+            let key =
+                MerkleTreeConfiguration::tree_index(&parameters.item_hash(&receiver.0, &mut ()));
             updated_origin.receiver_index[key as usize] += 1;
         }
         updated_origin.sender_index += data.nullifier_data.len();
@@ -158,11 +174,8 @@ impl signer::Checkpoint<Config> for Checkpoint {
         }
         let mut data_map = BTreeMap::<_, Vec<_>>::new();
         for receiver in mem::take(&mut data.utxo_note_data) {
-            let key = MerkleTreeConfiguration::tree_index(
-                &receiver
-                    .0
-                    .item_hash(&protocol_pay::UtxoAccumulatorItemHash::default(), &mut ()),
-            );
+            let key =
+                MerkleTreeConfiguration::tree_index(&parameters.item_hash(&receiver.0, &mut ()));
             match data_map.get_mut(&key) {
                 Some(entry) => entry.push(receiver),
                 _ => {
