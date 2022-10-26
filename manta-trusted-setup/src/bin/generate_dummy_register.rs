@@ -22,12 +22,10 @@ use csv::WriterBuilder;
 use manta_crypto::dalek::ed25519::Ed25519;
 use manta_trusted_setup::{
     ceremony::signature::{sign, RawMessage},
-    groth16::ceremony::config::ppot::{self, generate_keys, extract_registry, Record},
+    groth16::ceremony::config::ppot::{self, extract_registry, generate_keys, Record},
 };
-use manta_util::serde::{Serialize, Deserialize};
-use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::path::PathBuf;
+use manta_util::serde::{Deserialize, Serialize};
+use std::{collections::HashMap, fs::OpenOptions, path::PathBuf};
 
 /// Number of entries to generate
 const LENGTH: usize = 100;
@@ -95,28 +93,33 @@ impl Arguments {
     /// Runs a server.
     #[inline]
     pub fn run(self) {
-        {let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(self.path.clone())
-            .expect("Unable to create file at path");
-        let mut writer = WriterBuilder::new().from_writer(&mut file);
+        {
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(self.path.clone())
+                .expect("Unable to create file at path");
+            let mut writer = WriterBuilder::new().from_writer(&mut file);
 
-        for i in 0..LENGTH {
-            let credential = register(
-                format!("participant_{i}"),
-                format!("participant_{i}@email.com"),
-            );
-            writer.serialize(credential).expect("Serialization error");
-        }}
+            for i in 0..LENGTH {
+                let credential = register(
+                    format!("participant_{i}"),
+                    format!("participant_{i}@email.com"),
+                );
+                writer.serialize(credential).expect("Serialization error");
+            }
+        }
 
         let file = OpenOptions::new()
             .read(true)
             .open(self.path.clone())
             .expect("Unable to open file at path");
         let priority_list = HashMap::new();
-        let registry_path = PathBuf::from(self.path).parent().expect("Path should have parent").join("registry.csv");
+        let registry_path = PathBuf::from(self.path)
+            .parent()
+            .expect("Path should have parent")
+            .join("registry.csv");
         let (successful, malformed) = extract_registry::<Credentials>(
             &file,
             registry_path,

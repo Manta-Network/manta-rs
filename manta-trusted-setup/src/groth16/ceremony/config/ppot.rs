@@ -503,8 +503,11 @@ pub fn register_link(
 
 /// Prompts the client information and get client keys.
 #[inline]
-pub fn get_client_keys(text: &String) -> Result<(ed25519::SecretKey, ed25519::PublicKey), ClientKeyError> {
-    Mnemonic::validate(text.trim(), Language::English).map_err(|_| ClientKeyError::InvalidSecret)?;
+pub fn get_client_keys(
+    text: &String,
+) -> Result<(ed25519::SecretKey, ed25519::PublicKey), ClientKeyError> {
+    Mnemonic::validate(text.trim(), Language::English)
+        .map_err(|_| ClientKeyError::InvalidSecret)?;
     // println!(
     //     "Please enter the {} you received when you registered yourself using this tool.",
     //     "Secret".italic()
@@ -517,7 +520,6 @@ pub fn get_client_keys(text: &String) -> Result<(ed25519::SecretKey, ed25519::Pu
     //     })
     //     .interact_text()
     //     .map_err(|_| ClientKeyError::InvalidSecret)?;
-    println!("text: {:?}", &text);
     let mnemonic = Mnemonic::from_phrase(text.trim(), Language::English)
         .map_err(|_| ClientKeyError::MnemonicFailure)?;
     let seed_bytes = Seed::new(&mnemonic, "manta-trusted-setup")
