@@ -21,6 +21,8 @@
 //! [`Asset`] with a particular [`AssetId`] we use [`AssetMetadata`] to assign a symbol and decimals
 //! for human-readable display purposes.
 
+#![allow(clippy::uninlined_format_args)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9715 on Display implementation on Asset below
+
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     format,

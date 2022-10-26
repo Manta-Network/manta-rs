@@ -195,8 +195,8 @@ where
         match self {
             Self::NotRegistered => write!(
                 f,
-                "Registry update is taking longer than expected. \
-                 Please make sure you have submitted your registration form and try again later.",
+                "Please make sure you have submitted your registration form. \
+                 Check whether the ceremony has begun at https://ceremony.manta.network.",
             ),
             Self::AlreadyContributed => {
                 write!(
@@ -210,7 +210,7 @@ where
                 "Unable to connect to the ceremony server: timeout. Please try again later.",
             ),
             Self::Network { message } => {
-                write!(f, "Unable to connect to the ceremony server: {}", message)
+                write!(f, "Unable to connect to the ceremony server: {message}")
             }
             err => write!(
                 f,
