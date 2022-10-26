@@ -62,11 +62,11 @@ impl Arguments {
 
         println!("Network is running!");
         let mut api = tide::Server::with_state(server);
-        // api.at("/")
-        //     .serve_file("/home/mobula/manta-rs/index.html")
-        //     .map_err(|_| CeremonyError::<Config>::Network {
-        //         message: "Cannot load landing page.".to_string(),
-        //     })?;
+        api.at("/")
+            .serve_file("/home/mobula/manta-rs/index.html")
+            .map_err(|_| CeremonyError::<Config>::Network {
+                message: "Cannot load landing page.".to_string(),
+            })?;
         api.at("/start")
             .post(|r| execute(r, Server::start_endpoint));
         api.at("/query")
