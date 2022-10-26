@@ -523,12 +523,19 @@ where
     type Nullifier = Nullifier<C, COM>;
 }
 
-impl<C, COM> utxo::IdentifierType for BaseParameters<C, COM>
+// impl<C, COM> utxo::IdentifierType for BaseParameters<C, COM>
+// where
+//     C: BaseConfiguration<COM>,
+//     COM: Has<bool, Type = C::Bool>,
+// {
+//     type Identifier = Identifier<C, COM>;
+// }
+
+impl<C> utxo::IdentifierType for BaseParameters<C>
 where
-    C: BaseConfiguration<COM>,
-    COM: Has<bool, Type = C::Bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
-    type Identifier = Identifier<C, COM>;
+    type Identifier = Identifier<C>;
 }
 
 impl<C, COM> auth::AssertAuthorized<COM> for BaseParameters<C, COM>
@@ -1693,12 +1700,19 @@ where
     }
 }
 
-impl<C, COM> utxo::IdentifierType for MintSecret<C, COM>
+// impl<C, COM> utxo::IdentifierType for MintSecret<C, COM>
+// where
+//     C: BaseConfiguration<COM>,
+//     COM: Has<bool, Type = C::Bool>,
+// {
+//     type Identifier = Identifier<C, COM>;
+// }
+
+impl<C> utxo::IdentifierType for MintSecret<C>
 where
-    C: BaseConfiguration<COM>,
-    COM: Has<bool, Type = C::Bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
-    type Identifier = Identifier<C, COM>;
+    type Identifier = Identifier<C>;
 }
 
 impl<C, COM> utxo::UtxoType for MintSecret<C, COM>
@@ -1946,34 +1960,72 @@ where
     }
 }
 
+// /// Identifier
+// #[derive(derivative::Derivative)]
+// #[derivative(
+//     Clone(bound = "C::Bool: Clone, UtxoCommitmentRandomness<C, COM>: Clone"),
+//     Hash(bound = "C::Bool: Hash, UtxoCommitmentRandomness<C, COM>: Hash")
+// )]
+// pub struct Identifier<C, COM = ()>
+// where
+//     C: BaseConfiguration<COM>,
+//     COM: Has<bool, Type = C::Bool>,
+// {
+//     /// Transparency Flag
+//     pub is_transparent: C::Bool,
+
+//     /// UTXO Commitment Randomness
+//     pub utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
+// }
+
+// impl<C, COM> Identifier<C, COM>
+// where
+//     C: BaseConfiguration<COM>,
+//     COM: Has<bool, Type = C::Bool>,
+// {
+//     /// Builds a new [`Identifier`] from `is_transparent` and `utxo_commitment_randomness`.
+//     #[inline]
+//     pub fn new(
+//         is_transparent: C::Bool,
+//         utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
+//     ) -> Self {
+//         Self {
+//             is_transparent,
+//             utxo_commitment_randomness,
+//         }
+//     }
+// }
+
 /// Identifier
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "C::Bool: Clone, UtxoCommitmentRandomness<C, COM>: Clone"),
-    Hash(bound = "C::Bool: Hash, UtxoCommitmentRandomness<C, COM>: Hash")
+    Clone(bound = "UtxoCommitmentRandomness<C>: Clone"),
+    Eq(bound = "UtxoCommitmentRandomness<C>: Eq"),
+    Hash(bound = "UtxoCommitmentRandomness<C>: Hash"),
+    PartialEq(
+        bound = "UtxoCommitmentRandomness<C>: std::cmp::PartialEq<UtxoCommitmentRandomness<C>>"
+    )
 )]
-pub struct Identifier<C, COM = ()>
+pub struct Identifier<C>
 where
-    C: BaseConfiguration<COM>,
-    COM: Has<bool, Type = C::Bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
     /// Transparency Flag
-    pub is_transparent: C::Bool,
+    pub is_transparent: bool,
 
     /// UTXO Commitment Randomness
-    pub utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
+    pub utxo_commitment_randomness: UtxoCommitmentRandomness<C>,
 }
 
-impl<C, COM> Identifier<C, COM>
+impl<C> Identifier<C>
 where
-    C: BaseConfiguration<COM>,
-    COM: Has<bool, Type = C::Bool>,
+    C: BaseConfiguration<Bool = bool>,
 {
     /// Builds a new [`Identifier`] from `is_transparent` and `utxo_commitment_randomness`.
     #[inline]
     pub fn new(
-        is_transparent: C::Bool,
-        utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
+        is_transparent: bool,
+        utxo_commitment_randomness: UtxoCommitmentRandomness<C>,
     ) -> Self {
         Self {
             is_transparent,

@@ -32,7 +32,7 @@ use manta_accounting::{
     transfer::{utxo::v2 as protocol, Identifier},
     wallet::{
         self,
-        signer::{self, AssetMapKey, SyncData},
+        signer::{self, SyncData},
     },
 };
 use manta_crypto::{
@@ -102,11 +102,16 @@ pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
 // AssetMapKey = (KeyIndex, SecretKey);
 
 impl wallet::signer::Configuration for Config {
-    type Account = todo!();
-    type AccountMap = todo!();
+    type Account = crate::key::Account;
+    type AccountMap = manta_accounting::key::VecAccountMap<Self::Account>;
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
-    type AssetMap = HashAssetMap<Self::Identifier, Self::AssetId, Self::AssetValue>;
+    type AssetMap = HashAssetMap<
+        Identifier<Self>,
+        // <protocol_pay::Config as protocol::BaseConfiguration>::Group, // This is the proof authorisation key.
+        Self::AssetId,
+        Self::AssetValue,
+    >;
     type Rng = ChaCha20Rng;
 }
 

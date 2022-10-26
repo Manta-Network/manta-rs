@@ -288,7 +288,7 @@ type UtxoCommitmentSchemeType<COM = ()> = Hasher<Poseidon5, UtxoCommitmentScheme
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoCommitmentSchemeType<COM>: Clone"),
-    Debug(bound = "UtxoCommitmentSchemeType<COM>: Debug"),
+    Debug(bound = "UtxoCommitmentSchemeType<COM>: Debug")
 )]
 pub struct UtxoCommitmentScheme<COM = ()>(UtxoCommitmentSchemeType<COM>)
 where

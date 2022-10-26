@@ -24,12 +24,12 @@
 //!
 //! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
-use crate::{config::utxo::v3 as protocol_pay, crypto::constraint::arkworks::Fp};
+use crate::{config::utxo::v2 as protocol_pay, crypto::constraint::arkworks::Fp};
 use alloc::{format, string::String};
 use core::marker::PhantomData;
 use manta_accounting::{
     key::{self, AccountIndex, DeriveAddress},
-    transfer::utxo::v2 as protocol,
+    transfer::{self, utxo::v2 as protocol},
 };
 use manta_crypto::{
     algebra::{HasGenerator, ScalarMul},
@@ -186,7 +186,7 @@ where
 }
 
 /// Account
-pub struct Account<C>
+pub struct Account<C = Manta>
 where
     C: CoinType,
 {
@@ -198,19 +198,22 @@ impl<C> key::Account for Account<C>
 where
     C: CoinType,
 {
-    type SpendingKey = SecretKey;
+    type SpendingKey = transfer::SpendingKey<crate::config::Config>;
     type Parameters = protocol::Parameters<protocol_pay::Config>; // todo: double-check this
 
     #[inline]
-    fn spending_key(&self, parameters: &Self::Parameters) -> SecretKey {
+    fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey {
         let _ = parameters;
-        SecretKey::derive_from_path(
+        let xpr_secret_key = SecretKey::derive_from_path(
             self.key_secret.seed,
             &path_string::<C>(self.index)
                 .parse()
                 .expect("Path string is valid by construction."),
         )
-        .expect("Unable to generate secret key for valid seed and path string.")
+        .expect("Unable to generate secret key for valid seed and path string.");
+        Fp(Fp256::<FrParameters>::from_le_bytes_mod_order(
+            &xpr_secret_key.to_bytes(),
+        ))
     }
 }
 
@@ -239,9 +242,7 @@ where
     #[inline]
     fn address(&self, parameters: &Self::Parameters) -> Self::Address {
         let generator = parameters.base.group_generator.generator();
-        let spending_key = Fp(Fp256::<FrParameters>::from_le_bytes_mod_order(
-            &key::Account::spending_key(&self, parameters).to_bytes(),
-        ));
+        let spending_key = &key::Account::spending_key(&self, parameters);
         protocol::Address::new(
             generator.scalar_mul(
                 &parameters
