@@ -668,6 +668,116 @@ where
     Ok(())
 }
 
+/// Contributes to the server.
+#[inline]
+pub async fn client_contribute_bad_proof<C>(
+    signing_key: C::SigningKey,
+    identifier: C::Identifier,
+    url: String,
+) -> Result<(), CeremonyError<C>>
+where
+    C: Ceremony,
+    C::Challenge: Debug + DeserializeOwned,
+    C::ContributionHash: AsRef<[u8]> + Debug,
+    C::Identifier: Serialize,
+    C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
+    C::Signature: Serialize,
+    C::ContributionHash: AsRef<[u8]>,
+{
+    println!(
+        "{} Retrieving ceremony metadata from server.",
+        style("[0/6]").bold()
+    );
+
+    let term = Term::stdout();
+
+    let mut downloading_state = false;
+
+    let response =
+        client::contribute_bad_proof(
+            signing_key,
+            identifier,
+            url.as_str(),
+            |metadata, state| match state {
+                Continue::Started => {
+                    println!("\n");
+                }
+                Continue::Position(position) => {
+                    if !downloading_state {
+                        let _ = term.clear_last_lines(2);
+                        if position == 0 {
+                            println!("{} Waiting in queue...", style("[1/6]").bold());
+                            println!(
+                                "{} Receiving data from Server... \
+                             This may take a few minutes.",
+                                style("[2/6]").bold()
+                            );
+                            downloading_state = true;
+                        } else if position <= u32::MAX.into() {
+                            let minutes =
+                                metadata.contribution_time_limit.as_secs() * position / 60;
+                            println!(
+                                "{} Waiting in queue... There are {} people ahead of you.\n      \
+                             Estimated Waiting Time: {}.",
+                                style("[1/6]").bold(),
+                                style(position).bold().red(),
+                                style(format!("{:?} min", minutes)).bold().red(),
+                            );
+                        } else {
+                            println!(
+                                "{} Waiting in queue... There are many people ahead of you. \
+                             Estimated Waiting Time: forever.",
+                                style("[1/6]").bold(),
+                            );
+                        }
+                    }
+                }
+                Continue::ComputingUpdate => {
+                    downloading_state = false;
+                    println!(
+                        "{} Computing contributions. This may take up to 10 minutes.",
+                        style("[3/6]").bold()
+                    );
+                }
+                Continue::SendingUpdate => {
+                    println!(
+                        "{} Contribution Computed. Sending data to server.",
+                        style("[4/6]").bold()
+                    );
+                    println!(
+                        "{} Awaiting confirmation from server.",
+                        style("[5/6]").bold()
+                    );
+                }
+                Continue::Timeout => {
+                    downloading_state = false;
+                    let _ = term.clear_last_lines(1);
+                    println!(
+                        "{} You have timed out. Waiting in queue again ... \n\n",
+                        style("[WARN]").bold().yellow()
+                    );
+                }
+            },
+        )
+        .await?;
+    let contribution_hash = hex::encode(C::contribution_hash(&response));
+    let tweet = style(format!(
+        "I made contribution number {} to the #MantaNetworkTrustedSetup! \
+         My contribution's hash is {}",
+        response.index, contribution_hash
+    ))
+    .bold()
+    .blue();
+    println!(
+        "{} Success! You have contributed to the security of Manta Pay! \n\
+        Now set your contribution in stone! Tweet:\n{}",
+        style("[6/6]").bold(),
+        tweet,
+    );
+    Ok(())
+}
+
+
 /// Configuration for the Groth16 Phase2 Server.
 #[derive(Clone, Default)]
 pub struct Config(Ed25519<RawMessage<u64>>);
