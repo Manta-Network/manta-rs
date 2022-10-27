@@ -6,7 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#211](https://github.com/Manta-Network/manta-rs/pull/211) GLV scalar multiplication implementation
-- [\#267](https://github.com/Manta-Network/manta-rs/pull/267) Add trusted setup client downloader
 
 ### Changed
 
