@@ -36,7 +36,7 @@ use manta_util::{create_seal, seal};
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use bip32::{Error, XPrv as SecretKey};
-pub use bip39::{self};
+pub use bip39;
 
 create_seal! {}
 
