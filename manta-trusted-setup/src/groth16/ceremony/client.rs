@@ -253,6 +253,38 @@ where
         })
     }
 
+    /// Computes the state update for the ceremony and signs the update request message.
+    /// The proof created will be incorrect!
+    #[inline]
+    fn compute_update_bad_state(
+        &mut self,
+        hasher: &C::Hasher,
+        mut round: Round<C>,
+    ) -> Result<SignedMessage<C, C::Identifier, ContributeRequest<C>>, CeremonyError<C>>
+    where
+        ContributeRequest<C>: Serialize,
+    {
+        let mut rng = OsRng;
+        let mut proof = Vec::new();
+        for i in 0..round.state.len() {
+            proof.push(
+                mpc::contribute_bad_state(
+                    hasher,
+                    &round.challenge[i],
+                    &mut round.state[i],
+                    &mut rng,
+                )
+                .ok_or(CeremonyError::Unexpected(
+                    UnexpectedError::FailedContribution,
+                ))?,
+            );
+        }
+        self.sign(ContributeRequest {
+            state: round.state.into(),
+            proof,
+        })
+    }
+
     /// Sends the update `request` to the ceremony server.
     #[inline]
     async fn send_update(
@@ -346,6 +378,44 @@ where
             Err(err) => Err(err),
         }
     }
+
+    /// Tries to contribute to the ceremony if at the front of the queue. This method returns an
+    /// [`Update`] if the status of the unfinalized participant has changed. If the result
+    /// is `Ok(Response::Break)` then the ceremony contribution was successful and the success
+    /// response is returned
+    #[inline]
+    pub async fn try_contribute_bad_state<F>(
+        &mut self,
+        mut process_continuation: F,
+    ) -> Result<Update<C>, CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        C::Nonce: DeserializeOwned + Serialize,
+        C::Signature: Serialize,
+        QueryResponse<C>: DeserializeOwned,
+        ContributeRequest<C>: Serialize,
+        ContributeResponse<C>: DeserializeOwned,
+        F: FnMut(&Metadata, Continue),
+    {
+        let state = match self.query().await {
+            Ok(QueryResponse::State(state)) => state,
+            Ok(QueryResponse::QueuePosition(position)) => {
+                return Ok(Update::Continue(Continue::Position(position)))
+            }
+            Err(CeremonyError::Timeout) => return Ok(Update::Continue(Continue::Timeout)),
+            Err(err) => return Err(err),
+        };
+        process_continuation(&self.metadata, Continue::ComputingUpdate);
+        let update = self.compute_update_bad_state(&C::Hasher::default(), state)?;
+        process_continuation(&self.metadata, Continue::SendingUpdate);
+        match self.send_update(&update).await {
+            Ok(response) => Ok(Update::Break(response)),
+            Err(CeremonyError::Timeout) | Err(CeremonyError::NotYourTurn) => {
+                Ok(Update::Continue(Continue::Timeout))
+            }
+            Err(err) => Err(err),
+        }
+    }
 }
 
 /// Runs the contribution protocol for `signing_key`, `identifier`, and `server_url`, using
@@ -417,6 +487,48 @@ where
     loop {
         match client
             .try_contribute_bad_proof(&mut process_continuation)
+            .await
+        {
+            Ok(Update::Continue(update)) => process_continuation(&client.metadata, update),
+            Ok(Update::Break(response)) => return Ok(response),
+            Err(CeremonyError::InvalidSignature { expected_nonce }) => {
+                client.update_nonce(expected_nonce)?;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+/// Runs the contribution protocol for `signing_key`, `identifier`, and `server_url`, using
+/// `process_continuation` as the callback for processing [`Continue`] messages from the client.
+#[inline]
+pub async fn contribute_bad_state<C, U, F>(
+    signing_key: C::SigningKey,
+    identifier: C::Identifier,
+    server_url: U,
+    mut process_continuation: F,
+) -> Result<ContributeResponse<C>, CeremonyError<C>>
+where
+    C: Ceremony,
+    C::Identifier: Serialize,
+    C::Nonce: DeserializeOwned + Serialize,
+    C::Signature: Serialize,
+    QueryResponse<C>: DeserializeOwned,
+    ContributeRequest<C>: Serialize,
+    ContributeResponse<C>: DeserializeOwned,
+    U: IntoUrl,
+    F: FnMut(&Metadata, Continue),
+{
+    let mut client = Client::build(
+        signing_key,
+        identifier,
+        KnownUrlClient::new(server_url).map_err(into_ceremony_error)?,
+    )
+    .await?;
+    process_continuation(&client.metadata, Continue::Started);
+    loop {
+        match client
+            .try_contribute_bad_state(&mut process_continuation)
             .await
         {
             Ok(Update::Continue(update)) => process_continuation(&client.metadata, update),

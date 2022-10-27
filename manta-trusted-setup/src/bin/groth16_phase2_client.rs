@@ -55,6 +55,9 @@ pub enum Command {
 
     /// Contribute with an ill-formed proof
     ContributeBadProof,
+
+    /// Contribute with an ill-formed state
+    ContributeBadState,
 }
 
 /// Command Line Arguments
@@ -91,8 +94,6 @@ impl Arguments {
                 Ok(())
             }
             Command::Contribute => {
-                println!("url: {:?}", &self.url);
-                println!("password: {:?}", &self.password);
                 let (sk, pk) = match get_client_keys(&self.password) {
                     Ok(keys) => keys,
                     Err(e) => panic!("Error while extracting the client keys: {e}"),
@@ -108,13 +109,13 @@ impl Arguments {
                         runtime
                             .block_on(async { client_contribute::<Config>(sk, pk, self.url).await })
                     }
-                    Err(e) => panic!("I/O Error while setting up the tokio Runtime: {e:?}"),
+                    Err(e) => panic!("I/O Error while setting up the tokio Runtime: {e}"),
                 }
             }
             Command::ContributeBadProof => {
                 let (sk, pk) = match get_client_keys(&self.password) {
                     Ok(keys) => keys,
-                    Err(e) => panic!("Error while extracting the client keys: {}", e),
+                    Err(e) => panic!("Error while extracting the client keys: {e}"),
                 };
                 match tokio::runtime::Builder::new_multi_thread()
                     .worker_threads(4)
@@ -128,7 +129,27 @@ impl Arguments {
                             client_contribute_bad_proof::<Config>(sk, pk, self.url).await
                         })
                     }
-                    Err(e) => panic!("I/O Error while setting up the tokio Runtime: {:?}", e),
+                    Err(e) => panic!("I/O Error while setting up the tokio Runtime: {e}"),
+                }
+            }
+            Command::ContributeBadState => {
+                let (sk, pk) = match get_client_keys(&self.password) {
+                    Ok(keys) => keys,
+                    Err(e) => panic!("Error while extracting the client keys: {e}"),
+                };
+                match tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(4)
+                    .enable_io()
+                    .enable_time()
+                    .build()
+                {
+                    Ok(runtime) => {
+                        let pk = Array::from_unchecked(*pk.as_bytes());
+                        runtime.block_on(async {
+                            client_contribute_bad_proof::<Config>(sk, pk, self.url).await
+                        })
+                    }
+                    Err(e) => panic!("I/O Error while setting up the tokio Runtime: {e}"),
                 }
             }
         }
@@ -138,3 +159,5 @@ impl Arguments {
 fn main() {
     display_on_error(Arguments::parse().run());
 }
+
+// cargo run --release --all-features --bin groth16_phase2_client https://ceremony.manta.network "option month error image word grape ski chair meat grid like spoil" contribute-bad-proof

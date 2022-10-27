@@ -492,6 +492,32 @@ where
     Some(Proof(bad_proof))
 }
 
+/// Contributes to `state` with `hasher`, `challenge`, and `rng`, returning a [`proof`](Proof).
+#[inline]
+pub fn contribute_bad_state<C, R>(
+    hasher: &C::Hasher,
+    challenge: &C::Challenge,
+    state: &mut State<C>,
+    rng: &mut R,
+) -> Option<Proof<C>>
+where
+    C: Configuration,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    let delta = C::Scalar::rand(rng);
+    let delta_inverse = delta.inverse()?;
+    batch_mul_fixed_scalar(&mut state.0.l_query, delta_inverse);
+    batch_mul_fixed_scalar(&mut state.0.h_query, delta_inverse);
+    state.0.delta_g1 = state.0.delta_g1.mul(delta).into_affine();
+    state.0.vk.delta_g2 = state.0.vk.delta_g2.mul(delta).into_affine();
+
+    // this makes the state invalid:
+    state.0.delta_g1 = state.0.delta_g1.mul(delta).into_affine();
+
+    let proof = RatioProof::prove(hasher, challenge, &delta, rng)?;
+    Some(Proof(proof))
+}
+
 /// Verifies transforming from `prev` to `next` is correct given `challenge` and `proof`.
 #[inline]
 pub fn verify_transform<C>(
