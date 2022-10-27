@@ -64,11 +64,7 @@ use manta_util::{
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     Array,
 };
-use std::{
-    collections::HashMap,
-    fs::{File},
-    path::PathBuf,
-};
+use std::{collections::HashMap, fs::File, path::PathBuf};
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = signature::VerifyingKey<Signature>;
