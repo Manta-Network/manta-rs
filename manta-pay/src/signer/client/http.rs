@@ -17,9 +17,9 @@
 //! Signer HTTP Client Implementation
 
 use crate::{
-    config::{Config, ReceivingKey},
+    config::{Config, utxo::v2::ReceivingKey},
     signer::{
-        Checkpoint, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError,
+        Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError,
         SyncRequest, SyncResponse,
     },
 };
@@ -71,10 +71,9 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn receiving_keys(
+    fn address(
         &mut self,
-        request: ReceivingKeyRequest,
-    ) -> LocalBoxFutureResult<Vec<ReceivingKey>, Self::Error> {
-        Box::pin(async move { self.0.post("receivingKeys", &request).await })
+    ) -> LocalBoxFutureResult<ReceivingKey, Self::Error> {
+        Box::pin(async move { self.0.post("address", &GetRequest::Get).await })
     }
 }

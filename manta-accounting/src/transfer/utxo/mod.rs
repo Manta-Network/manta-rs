@@ -32,6 +32,9 @@ use manta_util::cmp::IndependenceContext;
 
 pub mod auth;
 pub mod v1;
+
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod v2;
 
 #[doc(inline)]

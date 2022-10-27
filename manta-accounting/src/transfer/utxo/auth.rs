@@ -24,6 +24,7 @@ use manta_crypto::{
 use manta_util::{
     codec::{Encode, Write},
     convert::Field,
+    serde::{Serialize, Deserialize},
 };
 
 /// Spending Key
@@ -304,6 +305,18 @@ where
 }
 
 /// Authorization Signature
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "T::AuthorizationKey: Deserialize<'de>, T::Signature: Deserialize<'de>",
+            serialize = "T::AuthorizationKey: Serialize, T::Signature: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "T::AuthorizationKey: Clone, T::Signature: Clone"),

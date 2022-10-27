@@ -19,18 +19,19 @@
 // TODO: Make this code work on WASM and non-WASM by choosing the correct dependency library.
 
 use crate::{
-    config::{Config, 
-        utxo::v2::ReceivingKey,
-},
+    config::{Config, utxo::v2::ReceivingKey},
     signer::{
-        Checkpoint, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError,
+        Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError,
         SyncRequest, SyncResponse,
     },
 };
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::Unpin;
 use futures::{SinkExt, StreamExt};
-use manta_accounting::wallet::{self, signer};
+use manta_accounting::{
+    wallet::{self, signer},
+    transfer,
+};
 use manta_util::{
     from_variant,
     future::LocalBoxFutureResult,
@@ -143,10 +144,16 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn receiving_keys(
+    fn address(
         &mut self,
-        request: ReceivingKeyRequest,
-    ) -> LocalBoxFutureResult<Vec<ReceivingKey>, Self::Error> {
-        Box::pin(async move { self.send("receivingKeys", request).await })
+    ) -> LocalBoxFutureResult<ReceivingKey, Self::Error> {
+        Box::pin(async move {
+            match self.send("address", GetRequest::Get).await {
+                    Ok(res) => Ok(<Config as transfer::Configuration>::Address::new(res)),
+                    Err(e) => Err(e),
+             }
+        })
     }
 }
+
+

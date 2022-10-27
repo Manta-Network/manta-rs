@@ -51,6 +51,7 @@ use manta_util::{
     cmp::Independence,
     codec::{Encode, Write},
     convert::Field,
+    serde::{Deserialize, Serialize},
 };
 
 /// UTXO Version Number
@@ -726,6 +727,18 @@ where
 }
 
 /// UTXO Model Parameters
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "BaseParameters<C>: Deserialize<'de>, C::AddressPartitionFunction: Deserialize<'de>, C::SchnorrHashFunction: Deserialize<'de>",
+            serialize = "BaseParameters<C>: Serialize, C::AddressPartitionFunction: Serialize, C::SchnorrHashFunction: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(
@@ -1270,11 +1283,23 @@ where
 }
 
 /// Address
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::Group: Deserialize<'de>",
+            serialize = "C::Group: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "C::Scalar: Clone, C::Group: Clone"),
-    Copy(bound = "C::Scalar: Copy, C::Group: Copy"),
-    Debug(bound = "C::Scalar: Debug, C::Group: Debug")
+    Clone(bound = "C::Group: Clone"),
+    Copy(bound = "C::Group: Copy"),
+    Debug(bound = "C::Group: Debug")
 )]
 pub struct Address<C, COM = ()>
 where
@@ -1371,6 +1396,18 @@ where
 }
 
 /// Full Incoming Note
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "AddressPartition<C>: Deserialize<'de>, IncomingNote<C>: Deserialize<'de>",
+            serialize = "AddressPartition<C>: Serialize, IncomingNote<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "AddressPartition<C>: Clone, IncomingNote<C>: Clone"),
@@ -1450,6 +1487,18 @@ where
 }
 
 /// Unspent Transaction Output
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::Bool: Deserialize<'de>, Asset<C, COM>: Deserialize<'de>, UtxoCommitment<C, COM>: Deserialize<'de>",
+            serialize = "C::Bool: Serialize, Asset<C, COM>: Serialize, UtxoCommitment<C, COM>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "C::Bool: Clone, Asset<C, COM>: Clone, UtxoCommitment<C, COM>: Clone"),
@@ -2236,6 +2285,18 @@ where
 }
 
 /// Nullifier
+#[cfg_attr(
+feature = "serde",
+derive(Deserialize, Serialize),
+serde(
+    bound(
+        deserialize = "NullifierCommitment<C, COM>: Deserialize<'de>, OutgoingNote<C, COM>: Deserialize<'de>",
+        serialize = "NullifierCommitment<C, COM>: Serialize, OutgoingNote<C, COM>: Serialize"
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "NullifierCommitment<C, COM>: Clone, OutgoingNote<C, COM>: Clone"),

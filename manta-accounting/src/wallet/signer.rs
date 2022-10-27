@@ -215,14 +215,19 @@ where
 ///
 /// This `struct` is created by the [`sync`](Connection::sync) method on [`Connection`].
 /// See its documentation for more.
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = "T: Deserialize<'de>, BalanceUpdate<C>: Deserialize<'de>",
+            serialize = "T: Serialize, BalanceUpdate<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-*/
+#[derive(Clone)]
 pub struct SyncResponse<C, T>
 where
     C: transfer::Configuration,
@@ -236,14 +241,19 @@ where
 }
 
 /// Balance Update
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = "Asset<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-*/
+#[derive(Clone)]
 pub enum BalanceUpdate<C>
 where
     C: transfer::Configuration,
@@ -1266,26 +1276,3 @@ where
         Box::pin(async move { Ok(self.address()) })
     }
 }
-
-/// Receiving Key Request
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum ReceivingKeyRequest {
-    /// Get Address
-    ///
-    /// Requests the public key. 
-    Get,
-
-    /// New Keys
-    ///
-    /// Requests a new public key from the account. The signer
-    /// should always respond with one key. 
-    New,
-}
-
-  // @TODO: Update this for new key system
-    

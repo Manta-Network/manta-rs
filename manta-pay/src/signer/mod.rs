@@ -19,8 +19,8 @@
 use crate::config::{utxo::v2::Checkpoint, Config};
 use manta_accounting::wallet::signer;
 
-// #[cfg(feature = "serde")]
-// use manta_util::serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 pub mod client;
 
@@ -54,3 +54,14 @@ pub type SignResult = signer::SignResult<Config>;
 
 // Receiving Key Request
 // pub type ReceivingKeyRequest = signer::ReceivingKeyRequest;
+/// Receiving Key Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone)]
+pub enum GetRequest{
+    /// GET
+    Get,
+}

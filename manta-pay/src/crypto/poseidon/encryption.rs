@@ -232,7 +232,6 @@ where
 }
 
 /// Ciphertext Block
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -245,7 +244,6 @@ where
         deny_unknown_fields
     )
 )]
-*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -344,8 +342,19 @@ where
         }
     }
 }
-
 /// Block Array
+#[cfg_attr(
+feature = "serde",
+derive(Deserialize, Serialize),
+serde(
+    bound(
+        deserialize = "B: Deserialize<'de>",
+        serialize = "B: Serialize"
+    ),
+    crate = "manta_util::serde",
+    deny_unknown_fields
+)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "B: Clone"),
@@ -353,6 +362,7 @@ where
     Eq(bound = "B: Eq"),
     Hash(bound = "B: Hash"),
     PartialEq(bound = "B: PartialEq")
+
 )]
 pub struct BlockArray<B, const N: usize>(pub BoxArray<B, N>);
 
@@ -454,7 +464,6 @@ pub type FixedPlaintext<const N: usize, S, COM = ()> = BlockArray<PlaintextBlock
 pub type FixedCiphertext<const N: usize, S, COM = ()> = BlockArray<CiphertextBlock<S, COM>, N>;
 
 /// Authentication Tag
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -467,7 +476,6 @@ pub type FixedCiphertext<const N: usize, S, COM = ()> = BlockArray<CiphertextBlo
         deny_unknown_fields
     )
 )]
-*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),

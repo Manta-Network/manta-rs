@@ -318,6 +318,18 @@ pub mod schnorr {
     pub type Message<H, COM = ()> = <H as HashFunction<COM>>::Message;
 
     /// Schnorr Signature
+    #[cfg_attr(
+        feature = "serde",
+        derive(Deserialize, Serialize),
+        serde(
+            bound(
+                deserialize = "S: Deserialize<'de>, G: Deserialize<'de>",
+                serialize = "S: Serialize, G: Serialize",
+            ),
+            crate = "manta_util::serde",
+            deny_unknown_fields
+        )
+    )]
     #[derive(derivative::Derivative)]
     #[derivative(
         Clone(bound = "S: Clone, G: Clone"),
