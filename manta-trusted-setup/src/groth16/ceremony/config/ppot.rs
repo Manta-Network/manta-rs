@@ -19,6 +19,7 @@
 use crate::{
     ceremony::{
         participant, registry,
+        registry::csv::append_only_csv_writer,
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
     groth16::{
@@ -38,7 +39,7 @@ use blake2::Digest;
 use colored::Colorize;
 use console::{style, Term};
 use core::fmt::{self, Debug, Display};
-use csv::{Reader, StringRecord, WriterBuilder};
+use csv::{Reader, StringRecord};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     arkworks::{
@@ -65,7 +66,7 @@ use manta_util::{
 };
 use std::{
     collections::HashMap,
-    fs::{File, OpenOptions},
+    fs::{File},
     path::PathBuf,
 };
 
@@ -352,6 +353,15 @@ pub enum RegistrationProcessingError {
 
     /// Error when writing processed data
     WriteError,
+
+    /// Standard IO Error
+    StdIoError(std::io::Error),
+}
+
+impl From<std::io::Error> for RegistrationProcessingError {
+    fn from(e: std::io::Error) -> Self {
+        Self::StdIoError(e)
+    }
 }
 
 /// Sets the header (column names) of this CSV Reader. Error if
@@ -377,15 +387,16 @@ pub fn set_header(
 }
 
 /// Extracts all [`Record`]s from a CSV file of raw registration
-/// data and creates new CSV file containing only these `Record`s
+/// data and appends these to a CSV file containing only these `Record`s
 /// at the specified path. A [`Registry`] can be loaded from the
-/// resulting file. Creates another CSV file of malformed registry entries
+/// output file. Appends to another CSV file of malformed registry entries
 /// in case ceremony coordinators wish to examine these.
-/// Returns the pair (number successfully parsed, number malformed)
-/// Participants are given default priority
+/// Returns the pair (number successfully parsed, number malformed).
+/// Participants are given default priority.
+/// NOTE: This function does not truncate the output files, it appends.
 pub fn extract_registry<R>(
-    file: &File,
-    path: PathBuf,
+    path_to_in: PathBuf,
+    path_to_out: PathBuf,
     expected_headers: Vec<&str>,
     short_headers: Vec<&str>,
     priority_list: HashMap<Array<u8, 32>, Priority>,
@@ -393,26 +404,19 @@ pub fn extract_registry<R>(
 where
     R: DeserializeOwned + Into<Record> + Clone,
 {
-    let mut reader = Reader::from_reader(file);
+    let file_in = File::open(path_to_in).expect("Unable to open raw registry data");
+    let mut reader = Reader::from_reader(&file_in);
     set_header(&mut reader, expected_headers, short_headers)?;
-    let mut file_out = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&path)
-        .map_err(|_| RegistrationProcessingError::WriteError)?;
-    let mut file_malformed = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(
-            path.parent()
-                .expect("Path should have a parent")
-                .join("malformed_registry_submissions.csv"),
-        )
-        .map_err(|_| RegistrationProcessingError::WriteError)?;
-    let mut writer = WriterBuilder::new().from_writer(&mut file_out);
-    let mut writer_malformed = WriterBuilder::new().from_writer(&mut file_malformed);
+
+    let mut writer = append_only_csv_writer::<RegistrationProcessingError, _>(path_to_out.clone())
+        .expect("Error opening output file");
+    let mut writer_malformed = append_only_csv_writer::<RegistrationProcessingError, _>(
+        path_to_out
+            .parent()
+            .expect("Path should have a parent")
+            .join("malformed_registry_submissions.csv"),
+    )
+    .expect("Error opening output file");
 
     let mut num_successful = 0;
     let mut num_malformed = 0;

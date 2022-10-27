@@ -19,7 +19,11 @@
 use crate::ceremony::registry::Registry;
 use core::fmt::Debug;
 use manta_util::serde::de::DeserializeOwned;
-use std::{fs::File, path::Path};
+use std::{
+    fs::{File, OpenOptions},
+    io::{Seek, SeekFrom},
+    path::Path,
+};
 
 /// CSV Record
 pub trait Record<I, V>: DeserializeOwned {
@@ -94,4 +98,21 @@ where
         };
     }
     Ok(registry.len() - length)
+}
+
+/// Build an append-only CSV writer from a file path.
+/// Missing files are created.
+pub fn append_only_csv_writer<E, P>(path: P) -> Result<csv::Writer<File>, E>
+where
+    P: AsRef<Path>,
+    E: From<std::io::Error>,
+{
+    let mut file = OpenOptions::new().write(true).create(true).open(&path)?;
+    let mut file_is_empty = false;
+    if file.seek(SeekFrom::End(0))? == 0 {
+        file_is_empty = true;
+    }
+    Ok(csv::WriterBuilder::new()
+        .has_headers(file_is_empty)
+        .from_writer(file))
 }
