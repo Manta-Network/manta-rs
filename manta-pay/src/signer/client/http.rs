@@ -23,7 +23,7 @@ use crate::{
         SyncResponse,
     },
 };
-use alloc::{boxed::Box};
+use alloc::boxed::Box;
 use manta_accounting::wallet::{self, signer};
 use manta_util::{
     future::LocalBoxFutureResult,
