@@ -2052,7 +2052,7 @@ where
     Eq(bound = "UtxoCommitmentRandomness<C>: Eq"),
     Hash(bound = "UtxoCommitmentRandomness<C>: Hash"),
     PartialEq(
-        bound = "UtxoCommitmentRandomness<C>: std::cmp::PartialEq<UtxoCommitmentRandomness<C>>"
+        bound = "UtxoCommitmentRandomness<C>: core::cmp::PartialEq<UtxoCommitmentRandomness<C>>"
     )
 )]
 pub struct Identifier<C>
@@ -2286,16 +2286,16 @@ where
 
 /// Nullifier
 #[cfg_attr(
-feature = "serde",
-derive(Deserialize, Serialize),
-serde(
-    bound(
-        deserialize = "NullifierCommitment<C, COM>: Deserialize<'de>, OutgoingNote<C, COM>: Deserialize<'de>",
-        serialize = "NullifierCommitment<C, COM>: Serialize, OutgoingNote<C, COM>: Serialize"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "NullifierCommitment<C, COM>: Deserialize<'de>, OutgoingNote<C, COM>: Deserialize<'de>",
+            serialize = "NullifierCommitment<C, COM>: Serialize, OutgoingNote<C, COM>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
 #[derive(derivative::Derivative)]
 #[derivative(

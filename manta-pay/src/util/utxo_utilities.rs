@@ -16,6 +16,7 @@
 
 //! UTXO Utilities
 
+use alloc::vec::Vec;
 use manta_crypto::{
     arkworks::{
         constraint::SynthesisError,

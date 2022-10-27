@@ -26,7 +26,7 @@ maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "generate_parameters"
-required-features = ["groth16", "manta-util/std", "parameters"]
+required-features = ["groth16", "manta-util/std", "parameters", "serde"]
 
 [[bin]]
 name = "simulation"

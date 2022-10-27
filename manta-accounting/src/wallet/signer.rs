@@ -45,8 +45,8 @@ use crate::{
     },
     wallet::ledger::{self, Data},
 };
-use alloc::{vec, vec::Vec};
-use core::{fmt::Debug, hash::Hash, convert::Infallible};
+use alloc::{boxed::Box, vec, vec::Vec};
+use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
@@ -1270,9 +1270,7 @@ where
     }
 
     #[inline]
-    fn address(
-        &mut self,
-    ) -> LocalBoxFutureResult<Address<C>, Self::Error> {
+    fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error> {
         Box::pin(async move { Ok(self.address()) })
     }
 }

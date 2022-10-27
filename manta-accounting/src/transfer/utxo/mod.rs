@@ -37,8 +37,10 @@ pub mod v1;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod v2;
 
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 #[doc(inline)]
-pub use v1 as protocol;
+pub use v2 as protocol;
 
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;

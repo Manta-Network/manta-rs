@@ -69,6 +69,8 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub use manta_accounting::transfer::{
     self,
     utxo::{self, v2 as protocol},

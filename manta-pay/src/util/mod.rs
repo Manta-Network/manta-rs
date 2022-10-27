@@ -16,6 +16,8 @@
 
 //! Manta Pay Utilities
 
+#[cfg(feature = "arkworks")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod utxo_utilities;
 
 #[cfg(feature = "scale")]

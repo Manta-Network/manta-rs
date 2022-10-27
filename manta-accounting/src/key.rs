@@ -16,6 +16,7 @@
 
 //! Key Accounting
 
+use alloc::vec::Vec;
 use core::{
     fmt::{self, Debug},
     hash::Hash,

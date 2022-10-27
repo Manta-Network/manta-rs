@@ -17,13 +17,13 @@
 //! Signer HTTP Client Implementation
 
 use crate::{
-    config::{Config, utxo::v2::ReceivingKey},
+    config::{utxo::v2 as protocol_pay, Config},
     signer::{
-        Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError,
-        SyncRequest, SyncResponse,
+        Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
+        SyncResponse,
     },
 };
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box};
 use manta_accounting::wallet::{self, signer};
 use manta_util::{
     future::LocalBoxFutureResult,
@@ -71,9 +71,7 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn address(
-        &mut self,
-    ) -> LocalBoxFutureResult<ReceivingKey, Self::Error> {
+    fn address(&mut self) -> LocalBoxFutureResult<protocol_pay::Address, Self::Error> {
         Box::pin(async move { self.0.post("address", &GetRequest::Get).await })
     }
 }

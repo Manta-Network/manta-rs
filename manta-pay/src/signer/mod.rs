@@ -16,8 +16,11 @@
 
 //! Manta Pay Signer Tools
 
-use crate::config::{utxo::v2::Checkpoint, Config};
+#[cfg(feature = "serde")]
 use manta_accounting::wallet::signer;
+
+#[cfg(feature = "groth16")]
+use crate::config::{utxo::v2::Checkpoint, Config};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -61,7 +64,7 @@ pub type SignResult = signer::SignResult<Config>;
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone)]
-pub enum GetRequest{
+pub enum GetRequest {
     /// GET
     Get,
 }

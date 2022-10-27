@@ -344,16 +344,13 @@ where
 }
 /// Block Array
 #[cfg_attr(
-feature = "serde",
-derive(Deserialize, Serialize),
-serde(
-    bound(
-        deserialize = "B: Deserialize<'de>",
-        serialize = "B: Serialize"
-    ),
-    crate = "manta_util::serde",
-    deny_unknown_fields
-)
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "B: Deserialize<'de>", serialize = "B: Serialize"),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
@@ -362,7 +359,6 @@ serde(
     Eq(bound = "B: Eq"),
     Hash(bound = "B: Hash"),
     PartialEq(bound = "B: PartialEq")
-
 )]
 pub struct BlockArray<B, const N: usize>(pub BoxArray<B, N>);
 

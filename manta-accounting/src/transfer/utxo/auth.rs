@@ -24,8 +24,10 @@ use manta_crypto::{
 use manta_util::{
     codec::{Encode, Write},
     convert::Field,
-    serde::{Serialize, Deserialize},
 };
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Spending Key
 pub trait SpendingKeyType {
