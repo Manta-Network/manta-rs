@@ -43,7 +43,10 @@ use manta_crypto::arkworks::{
     relations::r1cs::ConstraintSynthesizer,
 };
 use manta_util::{time::lock::Timed, Array, BoxArray};
-use std::{fs::OpenOptions, path::PathBuf};
+use std::{
+    fs::OpenOptions,
+    path::{Path, PathBuf},
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -482,7 +485,7 @@ where
     let round_number = 0u64;
     let mut names = Vec::new();
     for (circuit, name) in C::circuits().into_iter() {
-        println!("Creating proving key for {}", name);
+        println!("Creating proving key for {name}");
         names.push(name.clone());
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             initialize(&powers, circuit);
@@ -537,7 +540,7 @@ where
 
 /// Saves registry
 #[inline]
-pub fn save_registry<R, C>(registry: &R, recovery_directory: &PathBuf, round: u64)
+pub fn save_registry<R, C>(registry: &R, recovery_directory: &Path, round: u64)
 where
     R: Registry<C::Identifier, C::Participant> + Serialize,
     C: Ceremony,

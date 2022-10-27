@@ -126,7 +126,7 @@ where
     {
         let signed_message = self.signer.sign(message).map_err(|e| {
             CeremonyError::Unexpected(UnexpectedError::Serialization {
-                message: format!("{:?}", e),
+                message: format!("{e:?}"),
             })
         })?;
         self.signer.increment_nonce();

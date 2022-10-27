@@ -44,7 +44,10 @@ use manta_util::{
     BoxArray,
 };
 use parking_lot::Mutex;
-use std::{io::Error, path::PathBuf};
+use std::{
+    io::Error,
+    path::{Path, PathBuf},
+};
 use tokio::task;
 
 #[cfg(feature = "csv")]
@@ -127,14 +130,14 @@ where
     {
         let round_number: u64 = deserialize_from_file(path.join(r"round_number")).map_err(|e| {
             CeremonyError::Unexpected(UnexpectedError::Serialization {
-                message: format!("{:?}", e),
+                message: format!("{e:?}"),
             })
         })?;
-        println!("Recovering a ceremony at round {:?}", round_number);
+        println!("Recovering a ceremony at round {round_number:?}");
         let names: Vec<String> =
             deserialize_from_file(path.join(r"circuit_names")).map_err(|e| {
                 CeremonyError::Unexpected(UnexpectedError::Serialization {
-                    message: format!("{:?}", e),
+                    message: format!("{e:?}"),
                 })
             })?;
         if names.len() != CIRCUIT_COUNT {
@@ -154,7 +157,7 @@ where
             ))
             .map_err(|e| {
                 CeremonyError::Unexpected(UnexpectedError::Serialization {
-                    message: format!("{:?}", e),
+                    message: format!("{e:?}"),
                 })
             })?;
             states.push(state);
@@ -166,7 +169,7 @@ where
             ))
             .map_err(|e| {
                 CeremonyError::Unexpected(UnexpectedError::Serialization {
-                    message: format!("{:?}", e),
+                    message: format!("{e:?}"),
                 })
             })?;
             challenges.push(challenge);
@@ -179,7 +182,7 @@ where
                 ))
                 .map_err(|e| {
                     CeremonyError::Unexpected(UnexpectedError::Serialization {
-                        message: format!("{:?}", e),
+                        message: format!("{e:?}"),
                     })
                 })?;
                 proofs.push(latest_proof);
@@ -197,7 +200,7 @@ where
         ))
         .map_err(|e| {
             CeremonyError::Unexpected(UnexpectedError::Serialization {
-                message: format!("{:?}", e),
+                message: format!("{e:?}"),
             })
         })?;
         let metadata: Metadata = compute_metadata(contribution_time_limit, &states);
@@ -339,7 +342,7 @@ where
                 load_append_entries::<_, _, R::Record, _, _>(&registry_path, &mut *registry.lock())
                     .map_err(|e| {
                         CeremonyError::<C>::Unexpected(UnexpectedError::Serialization {
-                            message: format!("{:?}", e),
+                            message: format!("{e:?}"),
                         })
                     })
             })
@@ -505,10 +508,10 @@ where
 /// `state`, `challenge`, `proof`, `registry`. For `registry` the `name`
 /// should be "".
 pub fn filename_format(
-    folder_path: &PathBuf,
+    folder_path: &Path,
     name: String,
     kind: String,
     round_number: u64,
 ) -> PathBuf {
-    folder_path.join(format!("{}_{}_{}", name, kind, round_number))
+    folder_path.join(format!("{name}_{kind}_{round_number}"))
 }

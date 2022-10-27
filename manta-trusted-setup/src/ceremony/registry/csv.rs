@@ -89,7 +89,7 @@ where
                 registry.insert(identifier, participant);
             }
             Err(e) => {
-                println!("Line: {} Parsing error {:?}", number + 2, e);
+                println!("Line: {} Parsing error {e:?}", number + 2);
             }
         };
     }

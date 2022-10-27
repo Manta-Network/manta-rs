@@ -293,12 +293,12 @@ impl registry::csv::Record<VerifyingKey, Participant> for Record {
             bs58::decode(self.verifying_key)
                 .into_vec()
                 .map_err(|e| {
-                    println!("Error decoding verifying key {:?}", e);
+                    println!("Error decoding verifying key {e:?}");
                     "Cannot decode signature.".to_string()
                 })?
                 .try_into()
                 .map_err(|e| {
-                    println!("Array conversion failed on verifying key {:?}", e);
+                    println!("Array conversion failed on verifying key {e:?}");
                     "Cannot decode to array.".to_string()
                 })?,
         )
@@ -308,12 +308,12 @@ impl registry::csv::Record<VerifyingKey, Participant> for Record {
             bs58::decode(self.signature)
                 .into_vec()
                 .map_err(|e| {
-                    println!("Error decoding signature {:?}", e);
+                    println!("Error decoding signature {e:?}");
                     "Cannot decode signature.".to_string()
                 })?
                 .try_into()
                 .map_err(|e| {
-                    println!("Array conversion failed on signature {:?}", e);
+                    println!("Array conversion failed on signature {e:?}");
                     "Cannot decode to array.".to_string()
                 })?,
         )
@@ -364,7 +364,7 @@ pub fn set_header(
     match reader.byte_headers() {
         Ok(headers) => {
             if headers != expected_headers {
-                println!("Actual headers were \n{:?}", headers);
+                println!("Actual headers were \n{headers:?}");
                 Err(RegistrationProcessingError::WrongHeaders)
             } else {
                 assert_eq!(expected_headers.len(), short_headers.len());
@@ -431,7 +431,7 @@ where
                     .map_err(|_| RegistrationProcessingError::WriteError)?
             }
             Err(e) => {
-                println!("Encountered error {:?} when reading entry {}", e, i + 2);
+                println!("Encountered error {e:?} when reading entry {}", i + 2);
                 num_malformed += 1;
                 writer_malformed
                     .serialize(record.into())
