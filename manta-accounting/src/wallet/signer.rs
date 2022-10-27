@@ -46,7 +46,7 @@ use crate::{
     wallet::ledger::{self, Data},
 };
 use alloc::{vec, vec::Vec};
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, convert::Infallible};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
@@ -1223,28 +1223,16 @@ where
         result
     }
 
-    // @TODO: Update this for new key system
-    /*
-    // Returns addresses according to the `request`.
+    /// Returns address according to the `request`.
     #[inline]
-    pub fn addresses(&mut self, request: AddressRequest) -> Vec<Address<C>> {
+    pub fn address(&mut self) -> Address<C> {
         let account = self.state.accounts.get_mut_default();
-        match request {
-            AddressRequest::Get { index } => {
-                vec![account.address(&self.parameters.parameters, index.into())]
-            }
-            AddressRequest::GetAll => account.iter_observed(&self.parameters.parameters).collect(),
-            AddressRequest::New { count } => account
-                .iter_new(&self.parameters.parameters)
-                .take(count)
-                .collect(),
-        }
+        account.address(&self.parameters.parameters)
     }
-    */
 }
 
 // @TODO: Update addresses() for new key system
-/*
+
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
@@ -1272,11 +1260,32 @@ where
     }
 
     #[inline]
-    fn addresses(
+    fn address(
         &mut self,
-        request: AddressRequest,
-    ) -> LocalBoxFutureResult<Vec<Address<C>>, Self::Error> {
-        Box::pin(async move { Ok(self.addresses(request)) })
+    ) -> LocalBoxFutureResult<Address<C>, Self::Error> {
+        Box::pin(async move { Ok(self.address()) })
     }
 }
-*/
+
+/// Receiving Key Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ReceivingKeyRequest {
+    /// Get Address
+    ///
+    /// Requests the public key. 
+    Get,
+
+    /// New Keys
+    ///
+    /// Requests a new public key from the account. The signer
+    /// should always respond with one key. 
+    New,
+}
+
+  // @TODO: Update this for new key system
+    

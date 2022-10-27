@@ -19,7 +19,9 @@
 // TODO: Make this code work on WASM and non-WASM by choosing the correct dependency library.
 
 use crate::{
-    config::{Config, ReceivingKey},
+    config::{Config, 
+        utxo::v2::ReceivingKey,
+},
     signer::{
         Checkpoint, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncError,
         SyncRequest, SyncResponse,
