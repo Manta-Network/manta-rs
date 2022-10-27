@@ -5,10 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#267](https://github.com/Manta-Network/manta-rs/pull/267) Add trusted setup client downloader
 
 ### Changed
-- [\#268](https://github.com/Manta-Network/manta-rs/pull/268) Trusted Setup Client v2
 
 ### Deprecated
 
@@ -17,6 +15,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 ### Security
+
+## [0.5.6] - 2022-10-27
+### Added
+- [\#267](https://github.com/Manta-Network/manta-rs/pull/267) Add trusted setup client downloader
+
+### Changed
+- [\#268](https://github.com/Manta-Network/manta-rs/pull/268) Trusted Setup Client v2
 
 ## [0.5.5] - 2022-10-09
 ### Added
