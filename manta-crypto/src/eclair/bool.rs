@@ -20,7 +20,7 @@
 //! types. In this module, we define the access interfaces needed to simulate the [`bool`] type with
 //! [`Bool`].
 
-use crate::eclair::{cmp::PartialEq, Has, Type};
+use crate::eclair::{cmp::PartialEq, ops::Not, Has, Type};
 use alloc::vec::Vec;
 use manta_util::{iter::IteratorExt, vec::VecExt};
 
@@ -60,6 +60,16 @@ pub trait AssertEq: Assert {
         T: PartialEq<Rhs, Self>,
     {
         T::assert_equal(lhs, rhs, self);
+    }
+
+    /// Asserts that `lhs` and `rhs` are not equal.
+    #[inline]
+    fn assert_ne<T, Rhs>(&mut self, lhs: &T, rhs: &Rhs)
+    where
+        T: PartialEq<Rhs, Self>,
+        Bool<Self>: Not<Self, Output = Bool<Self>>,
+    {
+        T::assert_ne(lhs, rhs, self);
     }
 
     /// Asserts that all the elements in `iter` are equal to some `base` element.

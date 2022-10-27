@@ -146,7 +146,7 @@ pub mod security {
     ///
     /// ```text
     /// fn is_preimage(x: H::Input, y: H::Output) -> bool {
-    ///     H(x) == h
+    ///     H(x) == y
     /// }
     /// ```
     pub trait PreimageResistance {}
@@ -180,4 +180,33 @@ pub mod security {
     /// requiring that the attacker find a second preimage of a given input `x_1`, they only need to
     /// find any collision for any input to break this assumption.
     pub trait CollisionResistance: SecondPreimageResistance {}
+}
+
+/// Testing Framework
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test {
+    use super::*;
+    use crate::eclair::{
+        bool::{AssertEq, Bool},
+        cmp::PartialEq,
+        ops::Not,
+    };
+
+    /// Preimage resistance test. Asserts that `y` is not the image of `x` under `hash`.
+    #[inline]
+    pub fn is_not_preimage<const ARITY: usize, H, COM>(
+        hash: &H,
+        x: [&H::Input; ARITY],
+        y: &H::Output,
+        compiler: &mut COM,
+    ) where
+        H: ArrayHashFunction<ARITY, COM>,
+        H::Output: PartialEq<H::Output, COM>,
+        COM: AssertEq,
+        Bool<COM>: Not<COM, Output = Bool<COM>>,
+    {
+        let image = hash.hash(x, compiler);
+        compiler.assert_ne(&image, y);
+    }
 }

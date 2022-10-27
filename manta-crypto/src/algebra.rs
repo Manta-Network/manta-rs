@@ -452,7 +452,103 @@ pub mod security {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
-    use crate::eclair::{bool::Assert, cmp::PartialEq};
+    use crate::eclair::{
+        bool::Assert,
+        cmp::PartialEq,
+        num::{One, Zero},
+    };
+
+    /// Tests if the group `G` is associative.
+    #[inline]
+    pub fn group_associativity<G, F, COM>(
+        g1: &G,
+        g2: &G,
+        g3: &G,
+        assert_same: F,
+        compiler: &mut COM,
+    ) where
+        G: Group<COM>,
+        F: FnOnce(&G, &G, &mut COM),
+    {
+        assert_same(
+            &g1.add(g2, compiler).add(g3, compiler),
+            &g1.add(&g2.add(g3, compiler), compiler),
+            compiler,
+        )
+    }
+
+    /// Tests if the group `G` is commutative.
+    #[inline]
+    pub fn group_commutativity<G, F, COM>(g1: &G, g2: &G, assert_same: F, compiler: &mut COM)
+    where
+        G: Group<COM>,
+        F: FnOnce(&G, &G, &mut COM),
+    {
+        assert_same(&g1.add(g2, compiler), &g2.add(g1, compiler), compiler)
+    }
+
+    /// Tests if `G::zero()` is the identity element.
+    #[inline]
+    pub fn zero_is_group_identity<G, F, COM>(g: &G, assert_same: F, compiler: &mut COM)
+    where
+        G: Group<COM> + Zero<COM>,
+        F: FnOnce(&G, &G, &mut COM),
+    {
+        assert_same(g, &g.add(&G::zero(compiler), compiler), compiler)
+    }
+
+    /// Tests if the group `R` is associative.
+    #[inline]
+    pub fn ring_associativity<R, F, COM>(r1: &R, r2: &R, r3: &R, assert_same: F, compiler: &mut COM)
+    where
+        R: Ring<COM>,
+        F: FnOnce(&R, &R, &mut COM),
+    {
+        assert_same(
+            &r1.mul(r2, compiler).mul(r3, compiler),
+            &r1.mul(&r2.mul(r3, compiler), compiler),
+            compiler,
+        )
+    }
+
+    /// Tests if the ring `R` is commutative.
+    #[inline]
+    pub fn ring_commutativity<R, F, COM>(r1: &R, r2: &R, assert_same: F, compiler: &mut COM)
+    where
+        R: Ring<COM>,
+        F: FnOnce(&R, &R, &mut COM),
+    {
+        assert_same(&r1.mul(r2, compiler), &r2.mul(r1, compiler), compiler)
+    }
+
+    /// Tests if the ring `R` satisfies the distributive property.
+    #[inline]
+    pub fn ring_distributivity<R, F, COM>(
+        r1: &R,
+        r2: &R,
+        r3: &R,
+        assert_same: F,
+        compiler: &mut COM,
+    ) where
+        R: Ring<COM>,
+        F: FnOnce(&R, &R, &mut COM),
+    {
+        assert_same(
+            &r1.mul(&r2.add(r3, compiler), compiler),
+            &r1.mul(r2, compiler).add(&r1.mul(r3, compiler), compiler),
+            compiler,
+        )
+    }
+
+    /// Tests if `R::one()` is the identity element.
+    #[inline]
+    pub fn one_is_ring_identity<R, F, COM>(r: &R, assert_same: F, compiler: &mut COM)
+    where
+        R: Ring<COM> + One<COM>,
+        F: FnOnce(&R, &R, &mut COM),
+    {
+        assert_same(r, &r.mul(&R::one(compiler), compiler), compiler)
+    }
 
     /// Tests if windowed scalar multiplication of the bit decomposition of `scalar` with `point` returns the
     /// product `scalar` * `point`

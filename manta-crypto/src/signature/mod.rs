@@ -540,6 +540,7 @@ pub mod schnorr {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
+    use crate::signature::schnorr::HashFunction;
 
     /// Verifies that `scheme` produces self-consistent results on the given `signing_key`,
     /// `randomness`, and `message`.
@@ -560,5 +561,23 @@ pub mod test {
             &scheme.sign(signing_key, randomness, message, compiler),
             compiler,
         )
+    }
+
+    /// Preimage resistance test. Asserts that `scalar` is not the image of `message` under `hash` using `key` and `nonce`.
+    #[inline]
+    pub fn is_not_preimage<H, F, COM>(
+        hash: &H,
+        key: &H::Group,
+        nonce: &H::Group,
+        message: &H::Message,
+        scalar: &H::Scalar,
+        assert_different: F,
+        compiler: &mut COM,
+    ) where
+        H: HashFunction<COM>,
+        F: FnOnce(&H::Scalar, &H::Scalar, &mut COM),
+    {
+        let image = &hash.hash(key, nonce, message, compiler);
+        assert_different(image, scalar, compiler)
     }
 }

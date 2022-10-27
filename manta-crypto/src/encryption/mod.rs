@@ -749,4 +749,19 @@ pub mod test {
             assert_same,
         )
     }
+
+    /// Tests if given `ciphertext` is valid or invalid.
+    #[inline]
+    pub fn ciphertext_check<E, F>(
+        cipher: &E,
+        decryption_key: &E::DecryptionKey,
+        header: &E::Header,
+        ciphertext: &E::Ciphertext,
+        assert_valid: F,
+    ) where
+        E: Decrypt,
+        F: FnOnce(&E::DecryptedPlaintext),
+    {
+        assert_valid(&cipher.decrypt(decryption_key, header, ciphertext, &mut ()))
+    }
 }
