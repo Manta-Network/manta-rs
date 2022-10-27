@@ -82,7 +82,7 @@ std = ["manta-accounting/std", "manta-util/std"]
 test = ["manta-accounting/test", "manta-crypto/test", "manta-parameters", "tempfile"]
 
 # Wallet
-wallet = ["bip32", "manta-crypto/getrandom", "std"]
+wallet = ["bip32", "tiny-bip39", "manta-crypto/getrandom", "std"]
 
 # Enable WebSocket Signer Client
 websocket = [
