@@ -36,7 +36,7 @@ use manta_util::{create_seal, seal};
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use bip32::{Error, XPrv as SecretKey};
-pub use bip39;
+pub use bip39::{self};
 
 create_seal! {}
 
@@ -186,7 +186,7 @@ where
         where
             R: CryptoRng + RngCore + ?Sized,
     {
-        Self::new(Mnemonic::sample(rng, Default::default()), "")
+        Self::new(Mnemonic::sample(rng), "")
     }
 }
 
@@ -259,13 +259,13 @@ impl Mnemonic {
 
     /// Samples a random 12 word [`Mnemonic`] using the entropy returned from `rng`.
     #[inline]
-    pub fn sample<R>(rng: &mut R, language: bip39::Language) -> Self
+    pub fn sample<R>(rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
         let mut entropy: [u8;16] = [0; 16];
         rng.fill_bytes(&mut entropy);
-        Self(bip39::Mnemonic::from_entropy(&entropy, language).unwrap())
+        Self(bip39::Mnemonic::from_entropy(&entropy, Default::default()).unwrap())
     }
 
     /// Convert this mnemonic phrase into the BIP39 seed value.
