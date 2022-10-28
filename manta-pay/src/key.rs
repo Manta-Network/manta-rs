@@ -30,7 +30,7 @@ use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
 use manta_crypto::rand::{CryptoRng, RngCore};
-use manta_util::{create_seal, seal, Array};
+use manta_util::{create_seal, seal};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
@@ -226,7 +226,7 @@ where
         let vec_len = self.seed.clone().len();
         let mut i = 0;
 
-        while i < vec_len {
+        while i < vec_len-1 {
             seed_bytes_array[i] = seed_clone[i];
             i = i + 1;
         }
