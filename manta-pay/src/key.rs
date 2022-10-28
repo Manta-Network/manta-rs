@@ -220,19 +220,8 @@ where
 
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
-
-        let seed_clone = self.seed.clone();
-        let mut seed_bytes_array: [u8;32] = [0;32];
-        let vec_len = self.seed.clone().len();
-        let mut i = 0;
-
-        while i < vec_len-1 {
-            seed_bytes_array[i] = seed_clone[i];
-            i = i + 1;
-        }
-
         SecretKey::derive_from_path(
-            seed_bytes_array,
+            &self.seed.clone()[0..33],
             &path_string::<C>(account, kind, index)
                 .parse()
                 .expect("Path string is valid by construction."),
