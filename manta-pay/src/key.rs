@@ -28,7 +28,7 @@ use crate::{config::utxo::v2 as protocol_pay, crypto::constraint::arkworks::Fp};
 use alloc::{format, string::String};
 use core::marker::PhantomData;
 use manta_accounting::{
-    key::{self, AccountIndex, DeriveAddress},
+    key::{self, AccountIndex, DeriveAddresses},
     transfer::{self, utxo::v2 as protocol},
 };
 use manta_crypto::{
@@ -37,7 +37,7 @@ use manta_crypto::{
         ed_on_bn254::FrParameters,
         ff::{Fp256, PrimeField},
     },
-    rand::{CryptoRng, OsRng, Rand, RngCore, Sample},
+    rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::{create_seal, seal, Array};
 
@@ -136,9 +136,6 @@ impl_coin_type!(
 /// Seed Byte Array Type
 type SeedBytes = Array<u8, { Seed::SIZE }>;
 
-/// Vector Account Map Type
-pub type VecAccountMap<C = Manta> = key::VecAccountMap<Account<C>>;
-
 /// Key Secret
 #[cfg_attr(
     feature = "serde",
@@ -185,38 +182,16 @@ where
     }
 }
 
-/// Account
-pub struct Account<C = Manta>
-where
-    C: CoinType,
-{
-    key_secret: KeySecret<C>,
-    index: AccountIndex,
-}
-
-impl<C> Account<C>
-where
-    C: CoinType,
-{
-    /// Creates new
-    pub fn new(key_secret: KeySecret<C>, index: AccountIndex) -> Self {
-        Self { key_secret, index }
-    }
-}
-
-impl<C> key::Account for Account<C>
+impl<C> key::AccountCollection for KeySecret<C>
 where
     C: CoinType,
 {
     type SpendingKey = transfer::SpendingKey<crate::config::Config>;
-    type Parameters = protocol::Parameters<protocol_pay::Config>; // todo: double-check this
-
     #[inline]
-    fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey {
-        let _ = parameters;
+    fn spending_key(&self, index: &AccountIndex) -> Self::SpendingKey {
         let xpr_secret_key = SecretKey::derive_from_path(
-            self.key_secret.seed,
-            &path_string::<C>(self.index)
+            self.seed,
+            &path_string::<C>(*index)
                 .parse()
                 .expect("Path string is valid by construction."),
         )
@@ -227,22 +202,11 @@ where
     }
 }
 
-impl<C> key::CreateFromIndex for Account<C>
-where
-    C: CoinType,
-{
-    type Index = AccountIndex;
+/// Account type
+pub type Account<C = Manta> = key::Account<KeySecret<C>>;
 
-    #[inline]
-    fn create_from_index(index: &Self::Index) -> Self {
-        let mut rng = OsRng;
-        let key_secret = rng.gen();
-        Self {
-            key_secret,
-            index: *index,
-        }
-    }
-}
+/// Vec Account type
+pub type VecAccountMap<C> = Vec<Account<C>>;
 
 impl<C> Sample for KeySecret<C>
 where
@@ -260,16 +224,16 @@ where
 }
 use protocol::ViewingKeyDerivationFunction;
 
-impl<C> DeriveAddress for Account<C>
+impl<C> DeriveAddresses for KeySecret<C>
 where
     C: CoinType,
 {
     type Address = protocol::Address<protocol_pay::Config>;
     type Parameters = protocol::Parameters<protocol_pay::Config>;
     #[inline]
-    fn address(&self, parameters: &Self::Parameters) -> Self::Address {
+    fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address {
         let generator = parameters.base.group_generator.generator();
-        let spending_key = &key::Account::spending_key(&self, parameters);
+        let spending_key = &key::AccountCollection::spending_key(&self, &index);
         protocol::Address::new(
             generator.scalar_mul(
                 &parameters

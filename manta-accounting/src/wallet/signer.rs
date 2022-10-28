@@ -28,7 +28,7 @@
 
 use crate::{
     asset::{AssetMap, AssetMetadata},
-    key::{Account, AccountMap, DeriveAddress},
+    key::{self, AccountCollection, DeriveAddress, DeriveAddresses},
     transfer::{
         self,
         batch::Join,
@@ -475,11 +475,9 @@ pub trait Configuration: transfer::Configuration {
     >;
 
     /// Account Type
-    type Account: Account<SpendingKey = SpendingKey<Self>, Parameters = Self::Parameters>
-        + DeriveAddress<Parameters = Self::Parameters, Address = Self::Address>;
-
-    /// Account Map Type
-    type AccountMap: AccountMap<Account = Self::Account>;
+    type Account: AccountCollection<SpendingKey = SpendingKey<Self>>
+        + Clone
+        + DeriveAddresses<Parameters = Self::Parameters, Address = Self::Address>;
 
     /// [`Utxo`] Accumulator Type
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
@@ -493,6 +491,9 @@ pub trait Configuration: transfer::Configuration {
     /// Random Number Generator Type
     type Rng: CryptoRng + FromEntropy + RngCore;
 }
+
+/// Account Table Type
+pub type AccountTable<C> = key::AccountTable<<C as Configuration>::Account>;
 
 /// Signer Parameters
 #[derive(derivative::Derivative)]
@@ -535,13 +536,13 @@ where
     serde(
         bound(
             deserialize = r"
-                C::AccountMap: Deserialize<'de>,
+            AccountTable<C>: Deserialize<'de>,
                 C::UtxoAccumulator: Deserialize<'de>,
                 C::AssetMap: Deserialize<'de>,
                 C::Checkpoint: Deserialize<'de>
             ",
             serialize = r"
-                C::AccountMap: Serialize,
+            AccountTable<C>: Serialize,
                 C::UtxoAccumulator: Serialize,
                 C::AssetMap: Serialize,
                 C::Checkpoint: Serialize
@@ -562,7 +563,7 @@ where
     /// For now, we only use the default account, and the rest of the storage data is related to
     /// this account. Eventually, we want to have a global `utxo_accumulator` for all accounts and
     /// a local `assets` map for each account.
-    accounts: C::AccountMap,
+    accounts: AccountTable<C>,
 
     /// UTXO Accumulator
     utxo_accumulator: C::UtxoAccumulator,
@@ -589,7 +590,7 @@ where
     /// Builds a new [`SignerState`] from `accounts`, `utxo_accumulator`, `assets`, and `rng`.
     #[inline]
     fn build(
-        accounts: C::AccountMap,
+        accounts: AccountTable<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
         rng: C::Rng,
@@ -605,25 +606,26 @@ where
 
     /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator`.
     #[inline]
-    pub fn new(utxo_accumulator: C::UtxoAccumulator) -> Self {
+    pub fn new(keys: C::Account, utxo_accumulator: C::UtxoAccumulator) -> Self {
         Self::build(
-            C::AccountMap::new(),
+            AccountTable::<C>::new(keys),
             utxo_accumulator,
             Default::default(),
             FromEntropy::from_entropy(),
         )
     }
 
-    /// Returns the default account for `self`.
-    #[inline]
-    fn default_account(&self) -> &C::Account {
-        self.accounts.get_default()
-    }
+    // /// Returns the default account for `self`.
+    // #[inline]
+    // fn default_account(&self) -> &C::Account {
+    //     self.accounts.get_default()
+    // }
 
     /// Returns the default spending key for `self`.
     #[inline]
     fn default_spending_key(&self, parameters: &C::Parameters) -> SpendingKey<C> {
-        self.default_account().spending_key(parameters)
+        let _ = parameters;
+        self.accounts.get_default().spending_key()
     }
 
     ///
@@ -648,7 +650,7 @@ where
     /// Returns the address for the default account of `self`.
     #[inline]
     fn default_address(&mut self, parameters: &C::Parameters) -> Address<C> {
-        self.accounts.get_mut_default().address(parameters)
+        self.accounts.get_default().address(parameters)
     }
 
     ///
@@ -1026,7 +1028,7 @@ where
 impl<C> Clone for SignerState<C>
 where
     C: Configuration,
-    C::AccountMap: Clone,
+    AccountTable<C>: Clone,
     C::UtxoAccumulator: Clone,
     C::AssetMap: Clone,
 {
@@ -1066,7 +1068,7 @@ where
     /// Builds a new [`Signer`].
     #[inline]
     fn new_inner(
-        accounts: C::AccountMap,
+        accounts: AccountTable<C>,
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
@@ -1090,7 +1092,7 @@ where
     /// to perform wallet recovery on this table.
     #[inline]
     pub fn new(
-        accounts: C::AccountMap,
+        accounts: AccountTable<C>,
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
@@ -1236,7 +1238,7 @@ where
     /// Returns address according to the `request`.
     #[inline]
     pub fn address(&mut self) -> Address<C> {
-        let account = self.state.accounts.get_mut_default();
+        let account = self.state.accounts.get_default();
         account.address(&self.parameters.parameters)
     }
 }

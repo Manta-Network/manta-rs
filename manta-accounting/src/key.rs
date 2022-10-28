@@ -109,41 +109,34 @@ impl_index_type!(
     AccountIndex
 );
 
-/// Account
-pub trait Account {
+/// Account Collection
+pub trait AccountCollection {
     /// Spending Key Type
     type SpendingKey;
 
-    /// Account Key-Generation Parameters
-    type Parameters;
-
     /// Returns the spending key associated to this account.
-    fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey;
+    fn spending_key(&self, index: &AccountIndex) -> Self::SpendingKey;
 }
 
-impl<A> Account for &A
+impl<A> AccountCollection for &A
 where
-    A: Account,
+    A: AccountCollection,
 {
     type SpendingKey = A::SpendingKey;
-    type Parameters = A::Parameters;
 
     #[inline]
-    fn spending_key(&self, parameters: &Self::Parameters) -> Self::SpendingKey {
-        (**self).spending_key(parameters)
+    fn spending_key(&self, index: &AccountIndex) -> Self::SpendingKey {
+        (**self).spending_key(index)
     }
 }
 
 /// Spending Key Type
-pub type SpendingKey<A> = <A as Account>::SpendingKey;
-
-/// Parameters Type
-pub type Parameters<A> = <A as Account>::Parameters;
+pub type SpendingKey<A> = <A as AccountCollection>::SpendingKey;
 
 /// Account Map
 pub trait AccountMap {
     /// Account Type
-    type Account: Account;
+    type Account;
 
     /// Builds a new [`AccountMap`] with a starting account.
     fn new() -> Self;
@@ -175,23 +168,11 @@ pub trait AccountMap {
     }
 }
 
-/// Create from Index Trait
-pub trait CreateFromIndex {
-    /// Index Type
-    type Index;
-
-    /// Creates `Self` from `parameters` and `index`.
-    fn create_from_index(index: &Self::Index) -> Self;
-}
-
 /// [`Vec`] Account Map Type
-pub type VecAccountMap<A> = Vec<A>;
+pub type VecAccountMap = Vec<AccountIndex>;
 
-impl<A> AccountMap for VecAccountMap<A>
-where
-    A: Account + CreateFromIndex<Index = AccountIndex>,
-{
-    type Account = A;
+impl AccountMap for VecAccountMap {
+    type Account = AccountIndex;
 
     #[inline]
     fn new() -> Self {
@@ -216,7 +197,7 @@ where
                 .try_into()
                 .expect("AccountIndex is not allowed to exceed IndexType::MAX."),
         );
-        self.push(Self::Account::create_from_index(&index));
+        self.push(Default::default());
         index
     }
 
@@ -241,4 +222,145 @@ pub trait DeriveAddress {
 
     /// Returns the spending key associated to this account.
     fn address(&self, parameters: &Self::Parameters) -> Self::Address;
+}
+
+/// Derive Addresses Trait
+pub trait DeriveAddresses {
+    /// Address Generation Parameters
+    type Parameters;
+
+    /// Address Type
+    type Address;
+
+    /// Returns the spending key associated to this account.
+    fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address;
+}
+
+/// Account Struct
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "H: Clone"),
+    Copy(bound = "H: Copy"),
+    Debug(bound = "H: Debug"),
+    Eq(bound = "H: Eq"),
+    Hash(bound = "H: Hash"),
+    PartialEq(bound = "H: PartialEq")
+)]
+pub struct Account<H>
+where
+    H: AccountCollection,
+{
+    key: H,
+    index: AccountIndex,
+}
+
+impl<H> Account<H>
+where
+    H: AccountCollection,
+{
+    ///
+    pub fn new(key: H, index: AccountIndex) -> Self {
+        Self { key, index }
+    }
+    ///
+    pub fn spending_key(&self) -> SpendingKey<H> {
+        self.key.spending_key(&self.index)
+    }
+}
+
+impl<H> DeriveAddress for Account<H>
+where
+    H: AccountCollection + DeriveAddresses,
+{
+    type Address = H::Address;
+    type Parameters = H::Parameters;
+
+    fn address(&self, parameters: &Self::Parameters) -> Self::Address {
+        self.key.address(parameters, self.index)
+    }
+}
+
+/// Account Table
+///
+/// The account table stores an underlying [`AccountCollection`] for key generation
+/// and a set of accounts defined by an [`AccountMap`] which can be queried to get the set of
+/// existing keys and for generating new keys.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "H: Clone, M: Clone"),
+    Copy(bound = "H: Copy, M: Copy"),
+    Debug(bound = "H: Debug, M: Debug"),
+    Eq(bound = "H: Eq, M: Eq"),
+    Hash(bound = "H: Hash, M: Hash"),
+    PartialEq(bound = "H: PartialEq, M: PartialEq")
+)]
+pub struct AccountTable<H, M = VecAccountMap>
+where
+    H: AccountCollection,
+    M: AccountMap<Account = AccountIndex>,
+{
+    /// AccountCollection
+    keys: H,
+
+    /// Account Map
+    accounts: M,
+}
+
+impl<H, M> AccountTable<H, M>
+where
+    H: AccountCollection,
+    M: AccountMap<Account = AccountIndex>,
+{
+    /// Builds a new [`AccountTable`] using `keys` and the default account map.
+    #[inline]
+    pub fn new(keys: H) -> Self {
+        Self::with_accounts(keys, M::new())
+    }
+
+    /// Builds a new [`AccountTable`] using `keys` and `accounts`.
+    #[inline]
+    pub fn with_accounts(keys: H, accounts: M) -> Self {
+        Self { keys, accounts }
+    }
+
+    /// Returns the account keys for `account` if it exists.
+    #[inline]
+    pub fn get(&self, account: AccountIndex) -> Option<Account<H>>
+    where
+        H: Clone,
+    {
+        let index = self.accounts.get(account).copied()?;
+        Some(Account::new(self.keys.clone(), index))
+    }
+
+    /// Returns the account keys for the default account.
+    #[inline]
+    pub fn get_default(&self) -> Account<H>
+    where
+        H: Clone,
+    {
+        self.get(Default::default()).unwrap()
+    }
+
+    /// Adds a new account to the map, returning the new account parameter.
+    #[inline]
+    pub fn create_account(&mut self) -> AccountIndex {
+        self.accounts.create_account()
+    }
+}
+
+impl<H, M> Default for AccountTable<H, M>
+where
+    H: Default + AccountCollection,
+    M: AccountMap<Account = AccountIndex>,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new(Default::default())
+    }
 }

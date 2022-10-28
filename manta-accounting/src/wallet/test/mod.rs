@@ -67,7 +67,7 @@ where
         transaction: Transaction<C>,
     },
 
-    /// Generate Addresse
+    /// Generate Addresses. FIXME: this makes no sense anymore.
     GenerateAddresses {
         /// Number of Addresses to Generate
         count: usize,
@@ -205,7 +205,7 @@ pub enum ActionType {
     /// Flush-to-Public Transfer Action
     FlushToPublic,
 
-    /// Generate Addresses Action
+    /// Generate Addresses Action. FIXME
     GenerateAddresses,
 
     /// Restart Wallet Action
