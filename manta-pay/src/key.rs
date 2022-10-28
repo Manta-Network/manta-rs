@@ -30,12 +30,12 @@ use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
 use manta_crypto::rand::{CryptoRng, RngCore};
-use manta_util::{create_seal, seal};
+use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
-pub use bip32::{Error, XPrv as SecretKey};
+pub use bip32::{self, Error, XPrv as SecretKey};
 pub use bip39;
 
 create_seal! {}
@@ -129,7 +129,7 @@ impl_coin_type!(
 pub type AccountTable<C> = key::AccountTable<KeySecret<C>>;
 
 /// Seed Bytes
-pub type SeedBytes = Vec<u8>;
+pub type SeedBytes = Array<u8, { bip32::Seed::SIZE }>;
 
 /// Key Secret
 #[cfg_attr(
@@ -159,9 +159,9 @@ where
 {
     /// Builds a [`KeySecret`] from `seed` and `mnemonic`.
     #[inline]
-    fn new_unchecked(seed: SeedBytes, mnemonic: Mnemonic) -> Self {
+    fn new_unchecked(seed: [u8; bip32::Seed::SIZE], mnemonic: Mnemonic) -> Self {
         Self {
-            seed,
+            seed: seed.into(),
             mnemonic,
             __: PhantomData,
         }
@@ -171,7 +171,7 @@ where
     #[inline]
     #[must_use]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
-        Self::new_unchecked(mnemonic.to_seed(password).as_bytes().to_vec(), mnemonic)
+        Self::new_unchecked(mnemonic.to_seed(password).as_bytes().try_into().expect("Unable to convert to SeedBytes array."), mnemonic)
     }
 
     /// Exposes a shared reference to the [`Mnemonic`] for `self`.
@@ -221,7 +221,7 @@ where
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
         SecretKey::derive_from_path(
-            &self.seed.clone()[0..33],
+            self.seed,
             &path_string::<C>(account, kind, index)
                 .parse()
                 .expect("Path string is valid by construction."),
