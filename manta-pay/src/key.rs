@@ -30,7 +30,7 @@ use manta_accounting::key::{
     self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
 };
 use manta_crypto::rand::{CryptoRng, RngCore};
-use manta_util::{create_seal, seal};
+use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
@@ -220,8 +220,19 @@ where
 
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
+
+        let seed_clone = self.seed.clone();
+        let mut seed_bytes_array: [u8;32] = [0;32];
+        let vec_len = self.seed.clone().len();
+        let mut i = 0;
+
+        while i < vec_len {
+            seed_bytes_array[i] = seed_clone[i];
+            i = i + 1;
+        }
+
         SecretKey::derive_from_path(
-            self.seed.clone(),
+            seed_bytes_array,
             &path_string::<C>(account, kind, index)
                 .parse()
                 .expect("Path string is valid by construction."),
