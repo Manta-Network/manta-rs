@@ -143,7 +143,7 @@ impl Simulation {
         assert!(
             self.config()
                 .run(ledger, signer, ChaCha20Rng::from_entropy, |event| {
-                    let event = format!("{:?}\n", event);
+                    let event = format!("{event:?}\n");
                     async move {
                         let _ = write_stdout(event.as_bytes()).await;
                     }

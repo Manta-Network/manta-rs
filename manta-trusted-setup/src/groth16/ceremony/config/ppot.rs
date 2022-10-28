@@ -306,24 +306,9 @@ pub fn generate_keys(bytes: &[u8]) -> Option<(ed25519::SecretKey, ed25519::Publi
 /// Registers a participant.
 #[inline]
 pub fn register(twitter_account: String, email: String) {
-    println!(
-        "Your {}: \nCopy the following text to the \"Twitter\" Section in Registration Form:\n {}\n",
-        "Twitter Account".italic(),
-        twitter_account.green(),
-    );
-    println!(
-        "Your {}: \nCopy the following text to the \"Email\" Section in Registration Form:\n {}\n",
-        "Email".italic(),
-        email.green(),
-    );
     let mnemonic = Mnemonic::new(MnemonicType::Words12, Language::English);
     let seed = Seed::new(&mnemonic, "manta-trusted-setup");
     let keypair = generate_keys(seed.as_bytes()).expect("Should generate a key pair.");
-    println!(
-        "Your {}: \nCopy the following text to the \"Public Key\" Section in Registration Form:\n {}\n",
-        "Public Key".italic(),
-        bs58::encode(keypair.1).into_string().green(),
-    );
     let signature = sign::<Ed25519<RawMessage<u64>>, _>(
         &keypair.0,
         Default::default(),
@@ -334,17 +319,25 @@ pub fn register(twitter_account: String, email: String) {
     )
     .expect("Signing message should succeed.");
     println!(
-        "Your {}: \nCopy the following text to the \"Signature\" Section in Registration Form: \n {}\n",
-        "Signature".italic(),
-        bs58::encode(signature).into_string().green()
-    );
-    println!(
         "Your {}: \nThe following text stores your secret for the trusted setup. \
          Save the following text somewhere safe. \n DO NOT share this with anyone else! \
-         Please discard this data after the trusted setup ceremony.\n {}",
+         Please discard this data after the trusted setup ceremony.\n {} \n",
         "Secret".italic(),
         mnemonic.phrase().red().bold(),
     );
+
+    println!("Your registration is not complete until you submit the following form: \nCopy this link to your browser and complete registration there \n \n{}\nBe sure to copy this link exactly! Do not leave out any characters!", register_link(twitter_account, email, bs58::encode(keypair.1).into_string(), bs58::encode(signature).into_string()).green());
+}
+
+/// Generates link to registration form with Twitter, Email, Public Key,
+/// Signature fields pre-filled.
+pub fn register_link(
+    twitter: String,
+    email: String,
+    public_key: String,
+    signature: String,
+) -> String {
+    format!("https://mantanetwork.typeform.com/trustedsetup2#twitter={twitter}&email={email}&verifying_key={public_key}&signature={signature} \n")
 }
 
 /// Prompts the client information and get client keys.
@@ -457,7 +450,7 @@ where
                              Estimated Waiting Time: {}.",
                                 style("[1/6]").bold(),
                                 style(position).bold().red(),
-                                style(format!("{:?} min", minutes)).bold().red(),
+                                style(format!("{minutes:?} min")).bold().red(),
                             );
                         } else {
                             println!(
@@ -499,8 +492,8 @@ where
     let contribution_hash = hex::encode(C::contribution_hash(&response));
     let tweet = style(format!(
         "I made contribution number {} to the #MantaNetworkTrustedSetup! \
-         My contribution's hash is {}",
-        response.index, contribution_hash
+         My contribution's hash is {contribution_hash}",
+        response.index
     ))
     .bold()
     .blue();
@@ -735,7 +728,7 @@ impl Circuits<Self> for Config {
         for i in 0..3 {
             let mut cs = R1CS::for_contexts();
             dummy_circuit(&mut cs);
-            circuits.push((cs, format!("{}_{}", "dummy", i)));
+            circuits.push((cs, format!("dummy_{i}")));
         }
         circuits
     }
@@ -759,7 +752,7 @@ where
     E: Display,
 {
     if let Err(e) = result {
-        println!("{} {}", style("[ERROR]").bold().red(), e);
+        println!("{} {e}", style("[ERROR]").bold().red());
     }
 }
 
