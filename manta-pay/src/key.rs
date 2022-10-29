@@ -141,7 +141,7 @@ pub type SeedBytes = Array<u8, { bip32::Seed::SIZE }>;
 #[derivative(Clone(bound = ""))]
 pub struct KeySecret<C>
 where
-    C: CoinType
+    C: CoinType,
 {
     /// Key Seed
     seed: SeedBytes,
@@ -171,7 +171,14 @@ where
     #[inline]
     #[must_use]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
-        Self::new_unchecked(mnemonic.to_seed(password).as_bytes().try_into().expect("Unable to convert to SeedBytes array."), mnemonic)
+        Self::new_unchecked(
+            mnemonic
+                .to_seed(password)
+                .as_bytes()
+                .try_into()
+                .expect("Unable to convert to SeedBytes array."),
+            mnemonic,
+        )
     }
 
     /// Exposes a shared reference to the [`Mnemonic`] for `self`.
@@ -183,8 +190,8 @@ where
     /// Samples a random [`KeySecret`] from `rng` with no password.
     #[inline]
     pub fn sample<R>(rng: &mut R) -> Self
-        where
-            R: CryptoRng + RngCore + ?Sized,
+    where
+        R: CryptoRng + RngCore + ?Sized,
     {
         Self::new(Mnemonic::sample(rng), "")
     }
@@ -240,7 +247,7 @@ where
 pub struct Mnemonic(
     /// Underlying BIP39 Mnemonic
     #[cfg_attr(feature = "serde", serde(serialize_with = "Mnemonic::serialize"))]
-    bip39::Mnemonic
+    bip39::Mnemonic,
 );
 
 /// Mnemonic Type
@@ -252,9 +259,10 @@ pub type Seed = bip39::Seed;
 impl Mnemonic {
     /// Create a new BIP39 mnemonic phrase from the given phrase.
     #[inline]
-    pub fn new(phrase: &str) -> Result<Self, Error>
-    {
-        Ok(Self(bip39::Mnemonic::from_phrase(phrase, Default::default()).unwrap()))
+    pub fn new(phrase: &str) -> Result<Self, Error> {
+        Ok(Self(
+            bip39::Mnemonic::from_phrase(phrase, Default::default()).unwrap(),
+        ))
     }
 
     /// Samples a random 12 word [`Mnemonic`] using the entropy returned from `rng`.
@@ -263,16 +271,15 @@ impl Mnemonic {
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let mut entropy: [u8;16] = [0; 16];
+        let mut entropy: [u8; 16] = [0; 16];
         rng.fill_bytes(&mut entropy);
         Self(bip39::Mnemonic::from_entropy(&entropy, Default::default()).unwrap())
     }
 
     /// Convert this mnemonic phrase into the BIP39 seed value.
     #[inline]
-    pub fn to_seed(&self, password: &str) -> Seed
-    {
-        Seed::new(&self.0,password)
+    pub fn to_seed(&self, password: &str) -> Seed {
+        Seed::new(&self.0, password)
     }
 
     /// Serializes the underlying `mnemonic` phrase.
