@@ -21,6 +21,8 @@
 //! with a particular `AssetId` we use [`AssetMetadata`] to assign a symbol and decimals for
 //! human-readable display purposes.
 
+#![allow(clippy::uninlined_format_args)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9715 on Display implementation on Asset below
+
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     format,
@@ -1021,7 +1023,7 @@ impl AssetMetadata {
         let value_base_units = &value / (10u128.pow(self.decimals));
         let fractional_digits = &value / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
             % (10u128.pow(FRACTIONAL_DIGITS));
-        format!("{}.{:0>3}", value_base_units, fractional_digits)
+        format!("{value_base_units}.{fractional_digits:0>3}")
     }
 
     /// Returns a string formatting of `value` interpreted using `self` as the metadata including

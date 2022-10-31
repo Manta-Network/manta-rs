@@ -486,14 +486,14 @@ mod test {
     fn download_all_data() -> Result<()> {
         let current_branch = super::git::current_branch()?;
         let directory = tempfile::tempdir()?;
-        println!("[INFO] Temporary Directory: {:?}", directory);
+        println!("[INFO] Temporary Directory: {directory:?}");
         let checksums = parse_checkfile("data.checkfile")?;
         let directory_path = directory.path();
         for file in walkdir::WalkDir::new("data") {
             let file = file?;
             let path = file.path();
             if !path.is_dir() {
-                println!("[INFO] Checking path: {:?}", path);
+                println!("[INFO] Checking path: {path:?}");
                 let target = directory_path.join(path);
                 fs::create_dir_all(target.parent().unwrap())?;
                 github::download(
