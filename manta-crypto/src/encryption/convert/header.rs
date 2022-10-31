@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Encryption and Decryption Key Conversion Primitives and Adapters
+//! Encryption Header Conversion Primitives and Adapters
 
 use crate::{
     eclair::alloc::Constant,
@@ -30,38 +30,16 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-/// Encryption Key Conversion
-pub trait Encryption<COM = ()>: EncryptionKeyType {
-    /// Target Encryption Key Type
-    type TargetEncryptionKey;
+/// Header Conversion
+pub trait Header<COM = ()>: HeaderType {
+    /// Target Header Type
+    type TargetHeader;
 
-    /// Converts `source` into the [`TargetEncryptionKey`](Self::TargetEncryptionKey) type.
-    fn as_target(source: &Self::EncryptionKey, compiler: &mut COM) -> Self::TargetEncryptionKey;
+    /// Converts `source` into the [`TargetHeader`](Self::TargetHeader) type.
+    fn as_target(source: &Self::Header, compiler: &mut COM) -> Self::TargetHeader;
 }
 
-/// Decryption Key Conversion
-pub trait Decryption<COM = ()>: DecryptionKeyType {
-    /// Target Decryption Key Type
-    type TargetDecryptionKey;
-
-    /// Converts `source` into the [`TargetDecryptionKey`](Self::TargetDecryptionKey) type.
-    fn as_target(source: &Self::DecryptionKey, compiler: &mut COM) -> Self::TargetDecryptionKey;
-}
-
-/// Key-Converting Encryption Scheme Adapter
-///
-/// In many applications we may have some encryption schemes that are layered on top of each other
-/// where one cipher generates a key for a base cipher. If the key spaces are not exactly equal, we
-/// need some mechanism to convert between them.
-///
-/// For example, instantiations of a [`hybrid`] encryption scheme will use the key-agreement scheme
-/// to generate a shared secret between the encryptor and the decryptor, which should be the
-/// underlying key for the base encryption scheme. However, in most cases, the key-agreement scheme
-/// has the wrong key-size for the base encryption (i.e. ECDH + AES), so we need a key-derivation
-/// function to convert the keys. This [`Converter`] type facilitates the conversion between these
-/// key spaces.
-///
-/// [`hybrid`]: crate::encryption::hybrid
+/// Header-Converting Encryption Scheme Adapter
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -96,9 +74,9 @@ impl<E, C> Converter<E, C> {
 
 impl<E, C> HeaderType for Converter<E, C>
 where
-    E: HeaderType,
+    C: HeaderType,
 {
-    type Header = E::Header;
+    type Header = C::Header;
 }
 
 impl<E, C> CiphertextType for Converter<E, C>
@@ -110,16 +88,16 @@ where
 
 impl<E, C> EncryptionKeyType for Converter<E, C>
 where
-    C: EncryptionKeyType,
+    E: EncryptionKeyType,
 {
-    type EncryptionKey = C::EncryptionKey;
+    type EncryptionKey = E::EncryptionKey;
 }
 
 impl<E, C> DecryptionKeyType for Converter<E, C>
 where
-    C: DecryptionKeyType,
+    E: DecryptionKeyType,
 {
-    type DecryptionKey = C::DecryptionKey;
+    type DecryptionKey = E::DecryptionKey;
 }
 
 impl<E, C> PlaintextType for Converter<E, C>
@@ -145,12 +123,8 @@ where
 
 impl<E, C, COM> Derive<COM> for Converter<E, C>
 where
-    E: Derive<COM, DecryptionKey = C::DecryptionKey, EncryptionKey = C::EncryptionKey>,
-    C: DecryptionKeyType + EncryptionKeyType,
+    E: Derive<COM>,
 {
-    /// For key-derivation, we don't assume any structure on the underlying keys that would allow
-    /// derivation, so we use the trivial structure where the converter's decryption key and
-    /// encryption key are the same as those as the base encryption scheme.
     #[inline]
     fn derive(
         &self,
@@ -164,7 +138,7 @@ where
 impl<E, C, COM> Encrypt<COM> for Converter<E, C>
 where
     E: Encrypt<COM>,
-    C: Encryption<COM, TargetEncryptionKey = E::EncryptionKey>,
+    C: Header<COM, TargetHeader = E::Header>,
 {
     #[inline]
     fn encrypt(
@@ -176,9 +150,9 @@ where
         compiler: &mut COM,
     ) -> Self::Ciphertext {
         self.base.encrypt(
-            &C::as_target(encryption_key, compiler),
+            encryption_key,
             randomness,
-            header,
+            &C::as_target(header, compiler),
             plaintext,
             compiler,
         )
@@ -188,7 +162,7 @@ where
 impl<E, C, COM> Decrypt<COM> for Converter<E, C>
 where
     E: Decrypt<COM>,
-    C: Decryption<COM, TargetDecryptionKey = E::DecryptionKey>,
+    C: Header<COM, TargetHeader = E::Header>,
 {
     #[inline]
     fn decrypt(
@@ -199,8 +173,8 @@ where
         compiler: &mut COM,
     ) -> Self::DecryptedPlaintext {
         self.base.decrypt(
-            &C::as_target(decryption_key, compiler),
-            header,
+            decryption_key,
+            &C::as_target(header, compiler),
             ciphertext,
             compiler,
         )

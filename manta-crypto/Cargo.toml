@@ -60,6 +60,7 @@ std = [
     "ark-relations?/std",
     "ark-serialize?/std",
     "manta-util/std",
+    "rand?/std",
     "rand_chacha?/std",
 ]
 

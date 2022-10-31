@@ -34,7 +34,7 @@ use manta_accounting::{
 };
 use manta_crypto::{
     accumulator,
-    algebra::DiffieHellman,
+    algebra::diffie_hellman::DiffieHellman,
     arkworks::{
         bls12_381::{self, Bls12_381},
         ed_on_bls12_381::{self, constraints::EdwardsVar as Bls12_381_EdwardsVar},
@@ -52,7 +52,7 @@ use manta_crypto::{
     },
     encryption,
     hash::ArrayHashFunction,
-    key::{self, kdf::KeyDerivationFunction},
+    key::{self, agreement::Derive},
     merkle_tree,
 };
 use manta_util::{
@@ -147,22 +147,22 @@ impl poseidon::arkworks::Specification for PoseidonSpec<4> {
 pub type KeyAgreementScheme = DiffieHellman<EmbeddedScalar, Group>;
 
 /// Secret Key Type
-pub type SecretKey = <KeyAgreementScheme as key::agreement::Types>::SecretKey;
+pub type SecretKey = <KeyAgreementScheme as key::agreement::SecretKeyType>::SecretKey;
 
 /// Public Key Type
-pub type PublicKey = <KeyAgreementScheme as key::agreement::Types>::PublicKey;
+pub type PublicKey = <KeyAgreementScheme as key::agreement::PublicKeyType>::PublicKey;
 
 /// Shared Secret Type
-pub type SharedSecret = <KeyAgreementScheme as key::agreement::Types>::SharedSecret;
+pub type SharedSecret = <KeyAgreementScheme as key::agreement::SharedSecretType>::SharedSecret;
 
 /// Key Agreement Scheme Variable Type
 pub type KeyAgreementSchemeVar = DiffieHellman<EmbeddedScalarVar, GroupVar>;
 
 /// Secret Key Variable Type
-pub type SecretKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::SecretKey;
+pub type SecretKeyVar = <KeyAgreementSchemeVar as key::agreement::SecretKeyType>::SecretKey;
 
 /// Public Key Variable Type
-pub type PublicKeyVar = <KeyAgreementSchemeVar as key::agreement::Types>::PublicKey;
+pub type PublicKeyVar = <KeyAgreementSchemeVar as key::agreement::PublicKeyType>::PublicKey;
 
 /// Unspent Transaction Output Type
 pub type Utxo = Fp<ConstraintField>;
@@ -687,6 +687,7 @@ impl encryption::convert::plaintext::Reverse for NotePlaintextMapping {
 }
 
 /// Note Encryption KDF
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NoteEncryptionKDF;
 
 impl encryption::EncryptionKeyType for NoteEncryptionKDF {
