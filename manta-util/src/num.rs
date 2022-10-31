@@ -84,7 +84,6 @@ pub trait CheckedDecrement {
 macro_rules! impl_checked {
     ($($type:tt),* $(,)?) => {
         $(
-
             impl CheckedAdd for $type {
                 type Output = Self;
 

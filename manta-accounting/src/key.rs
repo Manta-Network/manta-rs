@@ -30,7 +30,7 @@ use core::{
     marker::PhantomData,
 };
 use manta_crypto::{
-    key::agreement::Derive,
+    key::kdf::KeyDerivationFunction,
     rand::{RngCore, Sample},
 };
 use manta_util::collections::btree_map::{self, BTreeMap};
@@ -168,7 +168,7 @@ pub trait HierarchicalKeyDerivationScheme {
     fn map<F>(self, key_derivation_function: F) -> Map<Self, F>
     where
         Self: Sized,
-        F: Derive<SecretKey = Self::SecretKey>,
+        F: KeyDerivationFunction<Key = Self::SecretKey>,
     {
         Map::new(self, key_derivation_function)
     }
@@ -209,7 +209,7 @@ where
 pub struct Map<H, F>
 where
     H: HierarchicalKeyDerivationScheme,
-    F: Derive<SecretKey = H::SecretKey>,
+    F: KeyDerivationFunction<Key = H::SecretKey>,
 {
     /// Base Derivation Scheme
     base: H,
@@ -221,7 +221,7 @@ where
 impl<H, F> Map<H, F>
 where
     H: HierarchicalKeyDerivationScheme,
-    F: Derive<SecretKey = H::SecretKey>,
+    F: KeyDerivationFunction<Key = H::SecretKey>,
 {
     /// Builds a new [`Map`] from `base` and `key_derivation_function`.
     #[inline]
@@ -236,11 +236,11 @@ where
 impl<H, F> HierarchicalKeyDerivationScheme for Map<H, F>
 where
     H: HierarchicalKeyDerivationScheme,
-    F: Derive<SecretKey = H::SecretKey>,
+    F: KeyDerivationFunction<Key = H::SecretKey>,
 {
     const GAP_LIMIT: IndexType = H::GAP_LIMIT;
 
-    type SecretKey = F::PublicKey;
+    type SecretKey = F::Output;
 
     #[inline]
     fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
@@ -264,7 +264,7 @@ where
 impl<H, F, D> Sample<(D, F)> for Map<H, F>
 where
     H: HierarchicalKeyDerivationScheme + Sample<D>,
-    F: Derive<SecretKey = H::SecretKey>,
+    F: KeyDerivationFunction<Key = H::SecretKey>,
 {
     #[inline]
     fn sample<R>(distribution: (D, F), rng: &mut R) -> Self

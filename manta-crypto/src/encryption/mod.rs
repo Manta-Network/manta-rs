@@ -153,7 +153,10 @@ where
     }
 }
 
-/// Empty Encryption Output.
+/// Unsafe Empty Output
+///
+/// For protocols that need some unconstrained behavior in-circuit, we can use this
+/// type to return from the computation.
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UnsafeOutput<T, COM = ()>(PhantomData<(T, COM)>);

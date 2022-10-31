@@ -34,7 +34,7 @@ use manta_accounting::{
 };
 use manta_crypto::{
     arkworks::{ec::ProjectiveCurve, ff::PrimeField},
-    key::agreement::{Derive, PublicKeyType, SecretKeyType},
+    key::kdf::KeyDerivationFunction,
     merkle_tree::{self, forest::Configuration},
     rand::ChaCha20Rng,
 };
@@ -54,26 +54,15 @@ pub struct HierarchicalKeyDerivationFunction<C = Testnet>(PhantomData<C>)
 where
     C: CoinType;
 
-impl<C> SecretKeyType for HierarchicalKeyDerivationFunction<C>
+impl<C> KeyDerivationFunction for HierarchicalKeyDerivationFunction<C>
 where
     C: CoinType,
 {
-    type SecretKey = <KeySecret<C> as HierarchicalKeyDerivationScheme>::SecretKey;
-}
+    type Key = <KeySecret<C> as HierarchicalKeyDerivationScheme>::SecretKey;
+    type Output = SecretKey;
 
-impl<C> PublicKeyType for HierarchicalKeyDerivationFunction<C>
-where
-    C: CoinType,
-{
-    type PublicKey = SecretKey;
-}
-
-impl<C> Derive for HierarchicalKeyDerivationFunction<C>
-where
-    C: CoinType,
-{
     #[inline]
-    fn derive(&self, key: &Self::SecretKey, _: &mut ()) -> Self::PublicKey {
+    fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         // FIXME: Check that this conversion is logical/safe.
         let bytes: [u8; 32] = key
             .private_key()

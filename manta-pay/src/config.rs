@@ -52,7 +52,7 @@ use manta_crypto::{
     },
     encryption,
     hash::ArrayHashFunction,
-    key::{self, agreement::Derive},
+    key::{self, kdf::KeyDerivationFunction},
     merkle_tree,
 };
 use manta_util::{

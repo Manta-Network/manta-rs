@@ -227,31 +227,22 @@ where
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
     use super::*;
-    use crate::{
-        constraint::Satisfied,
-        eclair::{
-            bool::{Assert, AssertEq},
-            cmp::PartialEq,
-        },
+    use crate::eclair::{
+        bool::{Assert, AssertEq},
+        cmp::PartialEq,
     };
 
     /// Tests if the `agreement` property is satisfied for `K`.
     #[inline]
     pub fn agreement<K, COM>(scheme: &K, lhs: &K::SecretKey, rhs: &K::SecretKey, compiler: &mut COM)
     where
-        COM: Assert + Satisfied,
+        COM: Assert,
         K: Agree<COM> + Derive<COM>,
         K::SharedSecret: PartialEq<K::SharedSecret, COM>,
     {
         let fst = scheme.agree(&scheme.derive(rhs, compiler), lhs, compiler);
         let snd = scheme.agree(&scheme.derive(lhs, compiler), rhs, compiler);
         compiler.assert_eq(&fst, &snd);
-        /*
-        assert!(
-            compiler.is_satisfied(),
-            "Compiler does not have all its constraints satisfied."
-        );
-        */
     }
 
     /// Tests if the `agreement` property with ephemeral keys is satisfied for `K`.
@@ -262,7 +253,7 @@ pub mod test {
         ephemeral_secret_key: &K::EphemeralSecretKey,
         compiler: &mut COM,
     ) where
-        COM: Assert + Satisfied,
+        COM: Assert,
         K: Derive<COM> + DeriveEphemeral<COM> + GenerateSecret<COM> + ReconstructSecret<COM>,
         K::SharedSecret: PartialEq<K::SharedSecret, COM>,
     {
@@ -272,11 +263,5 @@ pub mod test {
         let reconstructed_secret =
             scheme.reconstruct_secret(&ephemeral_public_key, secret_key, compiler);
         compiler.assert_eq(&generated_secret, &reconstructed_secret);
-        /*
-        assert!(
-            compiler.is_satisfied(),
-            "Compiler does not have all its constraints satisfied."
-        );
-        */
     }
 }

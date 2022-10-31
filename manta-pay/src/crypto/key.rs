@@ -16,10 +16,9 @@
 
 //! Cryptographic Key Primitive Implementations
 
-use alloc::vec::Vec;
 use blake2::{Blake2s, Digest};
 use manta_crypto::{
-    key::agreement::{Derive, PublicKeyType, SecretKeyType},
+    key::kdf::KeyDerivationFunction,
     rand::{RngCore, Sample},
 };
 use manta_util::{impl_empty_codec, into_array_unchecked};
@@ -28,17 +27,11 @@ use manta_util::{impl_empty_codec, into_array_unchecked};
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Blake2sKdf;
 
-impl SecretKeyType for Blake2sKdf {
-    type SecretKey = Vec<u8>;
-}
-
-impl PublicKeyType for Blake2sKdf {
-    type PublicKey = [u8; 32];
-}
-
-impl Derive for Blake2sKdf {
+impl KeyDerivationFunction for Blake2sKdf {
+    type Key = [u8];
+    type Output = [u8; 32];
     #[inline]
-    fn derive(&self, key: &Self::SecretKey, _: &mut ()) -> Self::PublicKey {
+    fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         let mut hasher = Blake2s::new();
         hasher.update(key);
         hasher.update(b"manta kdf instantiated with blake2s hash function");
