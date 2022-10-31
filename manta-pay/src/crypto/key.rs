@@ -16,6 +16,7 @@
 
 //! Cryptographic Key Primitive Implementations
 
+use alloc::vec::Vec;
 use blake2::{Blake2s, Digest};
 use manta_crypto::{
     key::agreement::{Derive, PublicKeyType, SecretKeyType},

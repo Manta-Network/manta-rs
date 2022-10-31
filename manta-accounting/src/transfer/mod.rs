@@ -45,10 +45,7 @@ use manta_crypto::{
         ops::Add,
     },
     encryption::{self, hybrid::Hybrid, EncryptedMessage},
-    key::{
-        self,
-        agreement::{Derive},
-    },
+    key::{self, agreement::Derive},
     rand::{CryptoRng, RngCore, Sample},
 };
 use manta_util::SizeLimit;

@@ -184,7 +184,9 @@ where
     Copy(bound = "K::EphemeralPublicKey: Copy, E::Ciphertext: Copy"),
     Debug(bound = "K::EphemeralPublicKey: Debug, E::Ciphertext: Debug"),
     Default(bound = "K::EphemeralPublicKey: Default, E::Ciphertext: Default"),
-    Hash(bound = "K::EphemeralPublicKey: Hash, E::Ciphertext: Hash")
+    Eq(bound = "K::EphemeralPublicKey: Eq, E::Ciphertext: Eq"),
+    Hash(bound = "K::EphemeralPublicKey: Hash, E::Ciphertext: Hash"),
+    PartialEq(bound = "K::EphemeralPublicKey: PartialEq, E::Ciphertext: PartialEq")
 )]
 pub struct Ciphertext<K, E>
 where
