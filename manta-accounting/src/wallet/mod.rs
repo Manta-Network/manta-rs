@@ -72,7 +72,7 @@ where
     checkpoint: S::Checkpoint,
 
     /// Signer Connection
-    signer: S,
+    pub signer: S,
 
     /// Balance State
     assets: B,
@@ -169,12 +169,6 @@ where
     #[inline]
     pub fn ledger(&self) -> &L {
         &self.ledger
-    }
-
-    /// Returns a shared reference to the signer connection associated to `self`.
-    #[inline]
-    pub fn signer(&mut self) -> &mut S {
-        &mut self.signer
     }
 
     /// Returns the [`Checkpoint`](ledger::Checkpoint) representing the current state of this

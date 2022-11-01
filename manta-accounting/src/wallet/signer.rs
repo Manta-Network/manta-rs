@@ -406,9 +406,6 @@ where
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
-
-    /// Signer Busy
-    SignerBusy,
 }
 
 /// Signing Result
