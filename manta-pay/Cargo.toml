@@ -95,6 +95,9 @@ websocket = [
     "ws_stream_wasm",
 ]
 
+# Enable Multiple Network Support
+network = ["manta-util"]
+
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
 ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
