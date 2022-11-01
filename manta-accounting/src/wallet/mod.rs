@@ -173,7 +173,9 @@ where
 
     /// Returns a shared reference to the signer connection associated to `self`.
     #[inline]
-    pub fn signer(&mut self) -> &mut S { &mut self.signer }
+    pub fn signer(&mut self) -> &mut S {
+        &mut self.signer
+    }
 
     /// Returns the [`Checkpoint`](ledger::Checkpoint) representing the current state of this
     /// wallet.

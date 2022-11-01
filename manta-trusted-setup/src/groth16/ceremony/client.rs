@@ -45,7 +45,7 @@ where
         CeremonyError::Timeout
     } else {
         CeremonyError::Network {
-            message: format!("{}", err),
+            message: format!("{err}"),
         }
     }
 }

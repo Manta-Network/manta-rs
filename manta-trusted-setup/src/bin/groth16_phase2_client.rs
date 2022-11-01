@@ -67,7 +67,7 @@ impl Arguments {
     /// Takes command line arguments and executes the corresponding operations.
     #[inline]
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
-        println!("{}", TITLE);
+        println!("{TITLE}");
         match self.command {
             Command::Register => {
                 let twitter_account = Input::with_theme(&ColorfulTheme::default())
@@ -84,7 +84,7 @@ impl Arguments {
             Command::Contribute => {
                 let (sk, pk) = match get_client_keys() {
                     Ok(keys) => keys,
-                    Err(e) => panic!("Error while extracting the client keys: {}", e),
+                    Err(e) => panic!("Error while extracting the client keys: {e}"),
                 };
                 match tokio::runtime::Builder::new_multi_thread()
                     .worker_threads(4)
@@ -97,7 +97,7 @@ impl Arguments {
                         runtime
                             .block_on(async { client_contribute::<Config>(sk, pk, self.url).await })
                     }
-                    Err(e) => panic!("I/O Error while setting up the tokio Runtime: {:?}", e),
+                    Err(e) => panic!("I/O Error while setting up the tokio Runtime: {e:?}"),
                 }
             }
         }

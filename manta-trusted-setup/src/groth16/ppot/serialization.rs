@@ -814,7 +814,7 @@ mod tests {
             match <PpotCeremony as Deserializer<G1Affine, G1>>::deserialize_compressed(&mut temp) {
                 Ok(point) => g1_deser.push(point),
                 Err(e) => {
-                    println!("Error {:?} occurred on point {:?}", e, i);
+                    println!("Error {e:?} occurred on point {i:?}");
                 }
             }
         }
@@ -844,7 +844,7 @@ mod tests {
             {
                 Ok(point) => g1_deser.push(point),
                 Err(e) => {
-                    println!("Error {:?} occurred on point {:?}", e, i);
+                    println!("Error {e:?} occurred on point {i:?}");
                 }
             }
         }
@@ -873,7 +873,7 @@ mod tests {
             match <PpotCeremony as Deserializer<G2Affine, G2>>::deserialize_compressed(&mut temp) {
                 Ok(point) => g2_deser.push(point),
                 Err(e) => {
-                    println!("Error {:?} occurred on point {:?}", e, i);
+                    println!("Error {e:?} occurred on point {i:?}");
                 }
             }
         }
@@ -903,7 +903,7 @@ mod tests {
             {
                 Ok(point) => g2_deser.push(point),
                 Err(e) => {
-                    println!("Error {:?} occurred on point {:?}", e, i);
+                    println!("Error {e:?} occurred on point {i:?}");
                 }
             }
         }
