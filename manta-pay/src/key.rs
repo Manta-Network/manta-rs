@@ -36,7 +36,7 @@ use manta_util::{create_seal, seal, Array};
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use bip32::{self, Error, XPrv as SecretKey};
-pub use bip39;
+pub use bip0039;
 
 create_seal! {}
 
@@ -174,7 +174,6 @@ where
         Self::new_unchecked(
             mnemonic
                 .to_seed(password)
-                .as_bytes()
                 .try_into()
                 .expect("Unable to convert to SeedBytes array."),
             mnemonic,
@@ -247,21 +246,18 @@ where
 pub struct Mnemonic(
     /// Underlying BIP39 Mnemonic
     #[cfg_attr(feature = "serde", serde(serialize_with = "Mnemonic::serialize"))]
-    bip39::Mnemonic,
+    bip0039::Mnemonic,
 );
 
-/// Mnemonic Type
-pub type MnemonicType = bip39::MnemonicType;
-
 /// Seed Type
-pub type Seed = bip39::Seed;
+pub type Seed = [u8;64];
 
 impl Mnemonic {
     /// Create a new BIP39 mnemonic phrase from the given phrase.
     #[inline]
     pub fn new(phrase: &str) -> Result<Self, Error> {
         Ok(Self(
-            bip39::Mnemonic::from_phrase(phrase, Default::default()).unwrap(),
+            bip0039::Mnemonic::from_phrase(phrase).unwrap(),
         ))
     }
 
@@ -273,19 +269,19 @@ impl Mnemonic {
     {
         let mut entropy: [u8; 16] = [0; 16];
         rng.fill_bytes(&mut entropy);
-        Self(bip39::Mnemonic::from_entropy(&entropy, Default::default()).unwrap())
+        Self(bip0039::Mnemonic::from_entropy(entropy.to_vec()).unwrap())
     }
 
     /// Convert this mnemonic phrase into the BIP39 seed value.
     #[inline]
     pub fn to_seed(&self, password: &str) -> Seed {
-        Seed::new(&self.0, password)
+        self.0.to_seed(password)
     }
 
     /// Serializes the underlying `mnemonic` phrase.
     #[cfg(feature = "serde")]
     #[inline]
-    fn serialize<S>(mnemonic: &bip39::Mnemonic, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(mnemonic: &bip0039::Mnemonic, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
