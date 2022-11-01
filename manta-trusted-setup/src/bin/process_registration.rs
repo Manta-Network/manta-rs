@@ -321,6 +321,7 @@ impl From<RegistrationInfoV2> for Record {
 fn test_set_headers() {
     use csv::Reader;
     use manta_trusted_setup::groth16::ceremony::config::ppot::set_header;
+    use std::fs::File;
 
     let file = File::open("/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/registry_buffer.csv").expect("Cannot open file");
     let mut reader = Reader::from_reader(&file);
