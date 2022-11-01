@@ -76,7 +76,7 @@ pub trait CheckedIncrement {
 
 /// Checked Decrement
 pub trait CheckedDecrement {
-    /// Decrements `self` returning `None` if it would underflow.
+    /// Decrements `self` returning `None` if it would overflow.
     fn checked_decrement(&mut self) -> Option<&mut Self>;
 }
 

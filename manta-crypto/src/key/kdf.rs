@@ -142,8 +142,7 @@ where
     where
         W: Write,
     {
-        self.key_derivation_function.encode(&mut writer)?;
-        Ok(())
+        self.key_derivation_function.encode(&mut writer)
     }
 }
 
