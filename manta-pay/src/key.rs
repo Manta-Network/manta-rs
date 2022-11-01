@@ -35,8 +35,8 @@ use manta_util::{create_seal, seal, Array};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
-pub use bip32::{self, Error, XPrv as SecretKey};
 pub use bip0039;
+pub use bip32::{self, Error, XPrv as SecretKey};
 
 create_seal! {}
 
@@ -171,11 +171,7 @@ where
     #[inline]
     #[must_use]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
-        Self::new_unchecked(
-            mnemonic
-                .to_seed(password),
-            mnemonic,
-        )
+        Self::new_unchecked(mnemonic.to_seed(password), mnemonic)
     }
 
     /// Exposes a shared reference to the [`Mnemonic`] for `self`.
@@ -248,15 +244,13 @@ pub struct Mnemonic(
 );
 
 /// Seed Type
-pub type Seed = [u8;64];
+pub type Seed = [u8; 64];
 
 impl Mnemonic {
     /// Create a new BIP39 mnemonic phrase from the given phrase.
     #[inline]
     pub fn new(phrase: &str) -> Result<Self, Error> {
-        Ok(Self(
-            bip0039::Mnemonic::from_phrase(phrase).unwrap(),
-        ))
+        Ok(Self(bip0039::Mnemonic::from_phrase(phrase).unwrap()))
     }
 
     /// Samples a random 12 word [`Mnemonic`] using the entropy returned from `rng`.

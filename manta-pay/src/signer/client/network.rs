@@ -17,8 +17,8 @@
 //! Manta Signer Multi-Network Support
 
 use core::{
-  fmt::{self, Display},
-  ops::{Index, IndexMut},
+    fmt::{self, Display},
+    ops::{Index, IndexMut},
 };
 use manta_util::serde::{Deserialize, Serialize};
 
@@ -26,72 +26,72 @@ use manta_util::serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, crate = "manta_util::serde")]
 pub enum Network {
-  /// Dolphin Testnet
-  Dolphin,
+    /// Dolphin Testnet
+    Dolphin,
 
-  /// Calamari Network
-  Calamari,
+    /// Calamari Network
+    Calamari,
 
-  /// Manta Network
-  Manta,
+    /// Manta Network
+    Manta,
 }
 
 impl Display for Network {
-  #[inline]
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-      match self {
-          Network::Dolphin => "Dolphin".fmt(f),
-          Network::Calamari => "Calamari".fmt(f),
-          Network::Manta => "Manta".fmt(f),
-      }
-  }
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Network::Dolphin => "Dolphin".fmt(f),
+            Network::Calamari => "Calamari".fmt(f),
+            Network::Manta => "Manta".fmt(f),
+        }
+    }
 }
 
 /// Network-Specific Data
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, crate = "manta_util::serde")]
 pub struct NetworkSpecific<T> {
-  /// Dolphin Data
-  pub dolphin: T,
+    /// Dolphin Data
+    pub dolphin: T,
 
-  /// Calamari Data
-  pub calamari: T,
+    /// Calamari Data
+    pub calamari: T,
 
-  /// Manta Data
-  pub manta: T,
+    /// Manta Data
+    pub manta: T,
 }
 
 impl<T> Index<Network> for NetworkSpecific<T> {
-  type Output = T;
+    type Output = T;
 
-  #[inline]
-  fn index(&self, network: Network) -> &Self::Output {
-      match network {
-          Network::Dolphin => &self.dolphin,
-          Network::Calamari => &self.calamari,
-          Network::Manta => &self.manta,
-      }
-  }
+    #[inline]
+    fn index(&self, network: Network) -> &Self::Output {
+        match network {
+            Network::Dolphin => &self.dolphin,
+            Network::Calamari => &self.calamari,
+            Network::Manta => &self.manta,
+        }
+    }
 }
 
 impl<T> IndexMut<Network> for NetworkSpecific<T> {
-  #[inline]
-  fn index_mut(&mut self, network: Network) -> &mut Self::Output {
-      match network {
-          Network::Dolphin => &mut self.dolphin,
-          Network::Calamari => &mut self.calamari,
-          Network::Manta => &mut self.manta,
-      }
-  }
+    #[inline]
+    fn index_mut(&mut self, network: Network) -> &mut Self::Output {
+        match network {
+            Network::Dolphin => &mut self.dolphin,
+            Network::Calamari => &mut self.calamari,
+            Network::Manta => &mut self.manta,
+        }
+    }
 }
 
 /// Network-Specific Message
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, crate = "manta_util::serde")]
 pub struct Message<T> {
-  /// Network Type
-  pub network: Network,
+    /// Network Type
+    pub network: Network,
 
-  /// Message Content
-  pub message: T,
+    /// Message Content
+    pub message: T,
 }
