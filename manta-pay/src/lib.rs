@@ -62,9 +62,17 @@ pub mod parameters;
 pub mod simulation;
 */
 
-// #[cfg(any(test, feature = "test"))]
-// #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-// pub mod test;
+#[cfg(any(test, feature = "test"))]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+#[cfg(feature = "groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
+#[cfg(feature = "bip32")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
+#[cfg(feature = "serde")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
+#[cfg(feature = "arkworks")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
+pub mod test;
 
 #[doc(inline)]
 pub use manta_accounting;

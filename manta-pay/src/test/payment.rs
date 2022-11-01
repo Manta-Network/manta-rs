@@ -18,8 +18,8 @@
 
 use crate::config::{
     self,
-    utxo::v1::{MerkleTreeConfiguration, UtxoAccumulatorItem, UtxoAccumulatorModel},
-    Asset, AssetId, AssetValue, Authorization, AuthorizationContext, FullParametersRef,
+    utxo::v2::{MerkleTreeConfiguration, UtxoAccumulatorItem, UtxoAccumulatorModel},
+    Asset, AssetId, AssetValue, Authorization, AuthorizationContext, Config, FullParametersRef,
     MultiProvingContext, Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate,
     ToPublic, TransferPost,
 };
@@ -29,8 +29,9 @@ use manta_crypto::{
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
-use manta_accounting::key::DeriveAddress;
-use crate::key::SecretKey;
+
+/// Spending Key Type
+pub type SpendingKey = transfer::SpendingKey<Config>;
 
 /// UTXO Accumulator for Building Test Circuits
 pub type UtxoAccumulator =
@@ -106,11 +107,58 @@ pub mod to_private {
     }
 }
 
+/// Utility Module for [`ToPrivate`]
+pub mod unsafe_to_private {
+    use super::*;
+
+    /// Generates a proof for a [`ToPrivate`] transaction.
+    #[inline]
+    pub fn unsafe_no_prove<R>(
+        proving_context: &ProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        rng: &mut R,
+    ) -> TransferPost
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        unsafe_no_prove_full(
+            proving_context,
+            parameters,
+            utxo_accumulator_model,
+            rng.gen(),
+            rng,
+        )
+    }
+
+    /// Generates a proof for a [`ToPrivate`] transaction with custom `asset` as input.
+    #[inline]
+    pub fn unsafe_no_prove_full<R>(
+        proving_context: &ProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        asset: Asset,
+        rng: &mut R,
+    ) -> TransferPost
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        ToPrivate::from_address(parameters, rng.gen(), asset, Default::default(), rng)
+            .into_unsafe_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                proving_context,
+                None,
+                rng,
+            )
+            .expect("Unable to build TO_PRIVATE proof.")
+            .expect("")
+            .into()
+    }
+}
+
 /// Utility Module for [`PrivateTransfer`]
 pub mod private_transfer {
-    use manta_crypto::arkworks::{ed_on_bn254::FrParameters, ff::Fp256};
-
-    use crate::crypto::constraint::arkworks::Fp;
+    use crate::key::address_from_spending_key;
 
     use super::*;
 
@@ -131,9 +179,8 @@ pub mod private_transfer {
     {
         let asset_0 = Asset::new(asset_id, values[0]);
         let asset_1 = Asset::new(asset_id, values[1]);
-        let spending_key: SecretKey = rng.gen();
-        //let address = parameters.derive_address(&spending_key);
-        let address = spending_key.address(parameters);
+        let spending_key = rng.gen();
+        let address = address_from_spending_key(&spending_key, parameters);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
 
         let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(
@@ -245,6 +292,8 @@ pub mod private_transfer {
 
 /// Utility Module for [`ToPublic`]
 pub mod to_public {
+    use crate::key::address_from_spending_key;
+
     use super::*;
 
     /// Generates a proof for a [`ToPublic`] transaction including pre-requisite [`ToPrivate`]
@@ -265,8 +314,7 @@ pub mod to_public {
         let asset_0 = Asset::new(asset_id, values[0]);
         let asset_1 = Asset::new(asset_id, values[1]);
         let spending_key = rng.gen();
-        //let address = parameters.derive_address(&spending_key);
-        let address = spending_key.address(parameters);
+        let address = address_from_spending_key(&spending_key, parameters);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
 
         let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(

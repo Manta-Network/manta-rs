@@ -232,18 +232,30 @@ where
     type Parameters = protocol::Parameters<protocol_pay::Config>;
     #[inline]
     fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address {
-        let generator = parameters.base.group_generator.generator();
         let spending_key = &key::AccountCollection::spending_key(&self, &index);
-        protocol::Address::new(
-            generator.scalar_mul(
-                &parameters
-                    .base
-                    .viewing_key_derivation_function
-                    .viewing_key(&generator.scalar_mul(spending_key, &mut ()), &mut ()),
-                &mut (),
-            ),
-        )
+        address_from_spending_key(spending_key, parameters)
     }
+}
+
+/// Computes the address corresponding to `spending_key`.
+#[inline]
+pub fn address_from_spending_key<C>(
+    spending_key: &C::Scalar,
+    parameters: &protocol::Parameters<C>,
+) -> protocol::Address<C>
+where
+    C: protocol::Configuration,
+{
+    let generator = parameters.base.group_generator.generator();
+    protocol::Address::new(
+        generator.scalar_mul(
+            &parameters
+                .base
+                .viewing_key_derivation_function
+                .viewing_key(&generator.scalar_mul(spending_key, &mut ()), &mut ()),
+            &mut (),
+        ),
+    )
 }
 
 /// Computes the [`BIP-0044`] path string for the given coin settings.

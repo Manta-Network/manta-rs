@@ -65,7 +65,7 @@ pub struct Error;
     )
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Debug, Default, Eq, PartialEq)]
+#[derivative(Clone, Debug, Eq, PartialEq)]
 pub struct Proof<E>(
     /// Groth16 Proof
     #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_proof::<E, _>"))]
@@ -73,6 +73,17 @@ pub struct Proof<E>(
 )
 where
     E: PairingEngine;
+
+impl<E> Default for Proof<E>
+where
+    E: PairingEngine,
+{
+    fn default() -> Self {
+        Self {
+            0: Default::default(),
+        }
+    }
+}
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
