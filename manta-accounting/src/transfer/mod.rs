@@ -126,9 +126,15 @@ pub trait Configuration {
     type PublicKey: Clone;
 
     /// Key Agreement Scheme Type
-    type KeyAgreementScheme: key::agreement::Types<SecretKey = SecretKey<Self>, PublicKey = PublicKey<Self>>
+    type KeyAgreementScheme: key::agreement::SecretKeyType<SecretKey = SecretKey<Self>>
+        + key::agreement::PublicKeyType<PublicKey = PublicKey<Self>>
+        + key::agreement::EphemeralPublicKeyType<EphemeralPublicKey = PublicKey<Self>>
+        + key::agreement::EphemeralSecretKeyType<EphemeralSecretKey = SecretKey<Self>>
+        + key::agreement::ReconstructSecret
         + key::agreement::Agree
-        + key::agreement::Derive;
+        + key::agreement::Derive
+        + key::agreement::DeriveEphemeral
+        + key::agreement::GenerateSecret;
 
     /// Secret Key Variable Type
     type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
@@ -139,7 +145,8 @@ pub trait Configuration {
 
     /// Key Agreement Scheme Variable Type
     type KeyAgreementSchemeVar: Constant<Self::Compiler, Type = Self::KeyAgreementScheme>
-        + key::agreement::Types<SecretKey = SecretKeyVar<Self>, PublicKey = PublicKeyVar<Self>>
+        + key::agreement::SecretKeyType<SecretKey = SecretKeyVar<Self>>
+        + key::agreement::PublicKeyType<PublicKey = PublicKeyVar<Self>>
         + key::agreement::Agree<Self::Compiler>
         + key::agreement::Derive<Self::Compiler>;
 

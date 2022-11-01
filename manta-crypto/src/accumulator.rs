@@ -22,7 +22,7 @@ use core::{fmt::Debug, hash::Hash};
 /// Accumulator Membership Model Types
 pub trait Types {
     /// Item Type
-    type Item: ?Sized;
+    type Item;
 
     /// Secret Witness Type
     type Witness;

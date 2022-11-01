@@ -21,7 +21,10 @@
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "alloc")]
-use crate::{into_array_unchecked, vec::Vec};
+use {
+    crate::{into_array_unchecked, vec::Vec},
+    alloc::boxed::Box,
+};
 
 /// Implements [`Decode`] and [`Encode`] for a type with no data that implements [`Default`].
 #[macro_export]
@@ -669,6 +672,25 @@ where
     }
 }
 
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+impl<T> Encode for Box<[T]>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        (self.len() as u64).encode(&mut writer)?;
+        for item in self.iter() {
+            item.encode(&mut writer)?;
+        }
+        Ok(())
+    }
+}
+
 impl<T> Encode for Option<T>
 where
     T: Encode,
@@ -863,6 +885,23 @@ where
             results.push(T::decode(&mut reader).map_err(|err| err.map_decode(Some))?);
         }
         Ok(results)
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+impl<T> Decode for Box<[T]>
+where
+    T: Decode,
+{
+    type Error = Option<T::Error>;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Vec::decode(reader)?.into())
     }
 }
 
