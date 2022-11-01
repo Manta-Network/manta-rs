@@ -96,7 +96,7 @@ websocket = [
 ]
 
 # Enable Multiple Network Support
-network = ["manta-util"]
+network = []
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
