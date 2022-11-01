@@ -30,7 +30,6 @@ pub struct Blake2sKdf;
 impl KeyDerivationFunction for Blake2sKdf {
     type Key = [u8];
     type Output = [u8; 32];
-
     #[inline]
     fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
         let mut hasher = Blake2s::new();

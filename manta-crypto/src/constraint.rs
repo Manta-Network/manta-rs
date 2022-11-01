@@ -24,6 +24,25 @@
 
 use crate::rand::{CryptoRng, RngCore};
 
+/// Constraint System Satisfaction
+pub trait Satisfied {
+    /// Returns `true` if all the constraints in `self` are satisfied.
+    fn is_satisfied(&self) -> bool;
+}
+
+impl Satisfied for () {
+    /// Returns `true` because the native compiler is always satisfied at runtime.
+    ///
+    /// Assertions in the native compiler are runtime `panic!`s so there is no state that can be
+    /// accessed at runtime where the native compiler does not have all its constraints satisfied.
+    /// It is the fact that the runtime has not already `panic!`-ed that indicates that no
+    /// constraint violations have occured yet.
+    #[inline]
+    fn is_satisfied(&self) -> bool {
+        true
+    }
+}
+
 /// Proof System
 pub trait ProofSystem {
     /// Context Compiler

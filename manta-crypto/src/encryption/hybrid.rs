@@ -26,17 +26,20 @@ use crate::{
         self,
         alloc::{
             mode::{Derived, Public, Secret},
-            Allocate, Allocator, Constant, Var, Variable,
+            Allocate, Allocator, Constant, Variable,
         },
         bool::{Assert, AssertEq, Bool},
         ops::BitAnd,
         Has,
     },
     encryption::{
-        CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
+        self, CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
         EncryptedMessage, EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
     },
-    key,
+    key::agreement::{
+        self, EphemeralPublicKey, EphemeralPublicKeyType, EphemeralSecretKey,
+        EphemeralSecretKeyType, PublicKeyType, SecretKeyType,
+    },
     rand::{Rand, RngCore, Sample},
 };
 use core::{fmt::Debug, hash::Hash};
@@ -46,10 +49,10 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Encryption Key
-pub type EncryptionKey<K> = <K as key::agreement::Types>::PublicKey;
+pub type EncryptionKey<K> = <K as PublicKeyType>::PublicKey;
 
 /// Decryption Key
-pub type DecryptionKey<K> = <K as key::agreement::Types>::SecretKey;
+pub type DecryptionKey<K> = <K as SecretKeyType>::SecretKey;
 
 /// Encryption Randomness
 #[cfg_attr(
@@ -59,21 +62,21 @@ pub type DecryptionKey<K> = <K as key::agreement::Types>::SecretKey;
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "K::SecretKey: Clone, E::Randomness: Clone"),
-    Copy(bound = "K::SecretKey: Copy, E::Randomness: Copy"),
-    Debug(bound = "K::SecretKey: Debug, E::Randomness: Debug"),
-    Default(bound = "K::SecretKey: Default, E::Randomness: Default"),
-    Eq(bound = "K::SecretKey: Eq, E::Randomness: Eq"),
-    Hash(bound = "K::SecretKey: Hash, E::Randomness: Hash"),
-    PartialEq(bound = "K::SecretKey: PartialEq, E::Randomness: PartialEq")
+    Clone(bound = "K::EphemeralSecretKey: Clone, E::Randomness: Clone"),
+    Copy(bound = "K::EphemeralSecretKey: Copy, E::Randomness: Copy"),
+    Debug(bound = "K::EphemeralSecretKey: Debug, E::Randomness: Debug"),
+    Default(bound = "K::EphemeralSecretKey: Default, E::Randomness: Default"),
+    Eq(bound = "K::EphemeralSecretKey: Eq, E::Randomness: Eq"),
+    Hash(bound = "K::EphemeralSecretKey: Hash, E::Randomness: Hash"),
+    PartialEq(bound = "K::EphemeralSecretKey: PartialEq, E::Randomness: PartialEq")
 )]
 pub struct Randomness<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralSecretKeyType,
     E: RandomnessType,
 {
     /// Ephemeral Secret Key
-    pub ephemeral_secret_key: K::SecretKey,
+    pub ephemeral_secret_key: K::EphemeralSecretKey,
 
     /// Base Encryption Randomness
     pub randomness: E::Randomness,
@@ -81,12 +84,12 @@ where
 
 impl<K, E> Randomness<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralSecretKeyType,
     E: RandomnessType,
 {
     /// Builds a new [`Randomness`] from `ephemeral_secret_key` and `randomness`.
     #[inline]
-    pub fn new(ephemeral_secret_key: K::SecretKey, randomness: E::Randomness) -> Self {
+    pub fn new(ephemeral_secret_key: K::EphemeralSecretKey, randomness: E::Randomness) -> Self {
         Self {
             ephemeral_secret_key,
             randomness,
@@ -98,7 +101,7 @@ where
     ///
     /// [`Randomness`]: RandomnessType::Randomness
     #[inline]
-    pub fn from_key(ephemeral_secret_key: K::SecretKey) -> Self
+    pub fn from_key(ephemeral_secret_key: K::EphemeralSecretKey) -> Self
     where
         E: RandomnessType<Randomness = ()>,
     {
@@ -106,15 +109,15 @@ where
     }
 }
 
-impl<K, E, DS, DR> Sample<(DS, DR)> for Randomness<K, E>
+impl<K, E, DESK, DR> Sample<(DESK, DR)> for Randomness<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralSecretKeyType,
     E: RandomnessType,
-    K::SecretKey: Sample<DS>,
+    K::EphemeralSecretKey: Sample<DESK>,
     E::Randomness: Sample<DR>,
 {
     #[inline]
-    fn sample<R>(distribution: (DS, DR), rng: &mut R) -> Self
+    fn sample<R>(distribution: (DESK, DR), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
@@ -124,12 +127,12 @@ where
 
 impl<K, E, COM> Variable<Secret, COM> for Randomness<K, E>
 where
-    K: key::agreement::Types + Constant<COM>,
-    E: Constant<COM> + RandomnessType,
-    K::SecretKey: Variable<Secret, COM>,
-    E::Randomness: Variable<Secret, COM>,
-    K::Type: key::agreement::Types<SecretKey = Var<K::SecretKey, Secret, COM>>,
-    E::Type: RandomnessType<Randomness = Var<E::Randomness, Secret, COM>>,
+    K: EphemeralSecretKeyType + Constant<COM>,
+    E: RandomnessType + Constant<COM>,
+    K::EphemeralSecretKey: Variable<Secret, COM, Type = EphemeralSecretKey<K::Type>>,
+    E::Randomness: Variable<Secret, COM, Type = encryption::Randomness<E::Type>>,
+    K::Type: EphemeralSecretKeyType,
+    E::Type: RandomnessType,
 {
     type Type = Randomness<K::Type, E::Type>;
 
@@ -144,14 +147,14 @@ where
     }
 }
 
-impl<K, E, S, R, COM> Variable<Derived<(S, R)>, COM> for Randomness<K, E>
+impl<K, E, ESK, R, COM> Variable<Derived<(ESK, R)>, COM> for Randomness<K, E>
 where
-    K: key::agreement::Types + Constant<COM>,
+    K: EphemeralSecretKeyType + Constant<COM>,
     E: RandomnessType + Constant<COM>,
-    K::SecretKey: Variable<S, COM>,
-    E::Randomness: Variable<R, COM>,
-    K::Type: key::agreement::Types<SecretKey = Var<K::SecretKey, S, COM>>,
-    E::Type: RandomnessType<Randomness = Var<E::Randomness, R, COM>>,
+    K::EphemeralSecretKey: Variable<ESK, COM, Type = EphemeralSecretKey<K::Type>>,
+    E::Randomness: Variable<R, COM, Type = encryption::Randomness<E::Type>>,
+    K::Type: EphemeralSecretKeyType,
+    E::Type: RandomnessType,
 {
     type Type = Randomness<K::Type, E::Type>;
 
@@ -177,21 +180,21 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "K::PublicKey: Clone, E::Ciphertext: Clone"),
-    Copy(bound = "K::PublicKey: Copy, E::Ciphertext: Copy"),
-    Debug(bound = "K::PublicKey: Debug, E::Ciphertext: Debug"),
-    Default(bound = "K::PublicKey: Default, E::Ciphertext: Default"),
-    Eq(bound = "K::PublicKey: Eq, E::Ciphertext: Eq"),
-    Hash(bound = "K::PublicKey: Hash, E::Ciphertext: Hash"),
-    PartialEq(bound = "K::PublicKey: PartialEq, E::Ciphertext: PartialEq")
+    Clone(bound = "K::EphemeralPublicKey: Clone, E::Ciphertext: Clone"),
+    Copy(bound = "K::EphemeralPublicKey: Copy, E::Ciphertext: Copy"),
+    Debug(bound = "K::EphemeralPublicKey: Debug, E::Ciphertext: Debug"),
+    Default(bound = "K::EphemeralPublicKey: Default, E::Ciphertext: Default"),
+    Eq(bound = "K::EphemeralPublicKey: Eq, E::Ciphertext: Eq"),
+    Hash(bound = "K::EphemeralPublicKey: Hash, E::Ciphertext: Hash"),
+    PartialEq(bound = "K::EphemeralPublicKey: PartialEq, E::Ciphertext: PartialEq")
 )]
 pub struct Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralPublicKeyType,
     E: CiphertextType,
 {
     /// Ephemeral Public Key
-    pub ephemeral_public_key: K::PublicKey,
+    pub ephemeral_public_key: K::EphemeralPublicKey,
 
     /// Base Encryption Ciphertext
     pub ciphertext: E::Ciphertext,
@@ -199,12 +202,12 @@ where
 
 impl<K, E> Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralPublicKeyType,
     E: CiphertextType,
 {
     /// Builds a new [`Ciphertext`] from `ephemeral_public_key` and `ciphertext`.
     #[inline]
-    pub fn new(ephemeral_public_key: K::PublicKey, ciphertext: E::Ciphertext) -> Self {
+    pub fn new(ephemeral_public_key: K::EphemeralPublicKey, ciphertext: E::Ciphertext) -> Self {
         Self {
             ephemeral_public_key,
             ciphertext,
@@ -212,15 +215,15 @@ where
     }
 }
 
-impl<K, E, DP, DC> Sample<(DP, DC)> for Ciphertext<K, E>
+impl<K, E, DEPK, DC> Sample<(DEPK, DC)> for Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralPublicKeyType,
     E: CiphertextType,
-    K::PublicKey: Sample<DP>,
+    K::EphemeralPublicKey: Sample<DEPK>,
     E::Ciphertext: Sample<DC>,
 {
     #[inline]
-    fn sample<R>(distribution: (DP, DC), rng: &mut R) -> Self
+    fn sample<R>(distribution: (DEPK, DC), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
@@ -232,9 +235,9 @@ impl<K, E, COM> eclair::cmp::PartialEq<Self, COM> for Ciphertext<K, E>
 where
     COM: Has<bool>,
     Bool<COM>: BitAnd<Bool<COM>, COM, Output = Bool<COM>>,
-    K: key::agreement::Types,
+    K: EphemeralPublicKeyType,
     E: CiphertextType,
-    K::PublicKey: eclair::cmp::PartialEq<K::PublicKey, COM>,
+    K::EphemeralPublicKey: eclair::cmp::PartialEq<K::EphemeralPublicKey, COM>,
     E::Ciphertext: eclair::cmp::PartialEq<E::Ciphertext, COM>,
 {
     #[inline]
@@ -256,12 +259,12 @@ where
 
 impl<K, E, COM> Variable<Public, COM> for Ciphertext<K, E>
 where
-    K: key::agreement::Types + Constant<COM>,
+    K: EphemeralPublicKeyType + Constant<COM>,
     E: CiphertextType + Constant<COM>,
-    K::PublicKey: Variable<Public, COM>,
-    E::Ciphertext: Variable<Public, COM>,
-    K::Type: key::agreement::Types<PublicKey = Var<K::PublicKey, Public, COM>>,
-    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, Public, COM>>,
+    K::EphemeralPublicKey: Variable<Public, COM, Type = EphemeralPublicKey<K::Type>>,
+    E::Ciphertext: Variable<Public, COM, Type = encryption::Ciphertext<E::Type>>,
+    K::Type: EphemeralPublicKeyType,
+    E::Type: CiphertextType,
 {
     type Type = Ciphertext<K::Type, E::Type>;
 
@@ -276,14 +279,14 @@ where
     }
 }
 
-impl<K, E, P, C, COM> Variable<Derived<(P, C)>, COM> for Ciphertext<K, E>
+impl<K, E, EPK, C, COM> Variable<Derived<(EPK, C)>, COM> for Ciphertext<K, E>
 where
-    K: key::agreement::Types + Constant<COM>,
+    K: EphemeralPublicKeyType + Constant<COM>,
     E: CiphertextType + Constant<COM>,
-    K::PublicKey: Variable<P, COM>,
-    E::Ciphertext: Variable<C, COM>,
-    K::Type: key::agreement::Types<PublicKey = Var<K::PublicKey, P, COM>>,
-    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, C, COM>>,
+    K::EphemeralPublicKey: Variable<EPK, COM, Type = EphemeralPublicKey<K::Type>>,
+    E::Ciphertext: Variable<C, COM, Type = encryption::Ciphertext<E::Type>>,
+    K::Type: EphemeralPublicKeyType,
+    E::Type: CiphertextType,
 {
     type Type = Ciphertext<K::Type, E::Type>;
 
@@ -303,8 +306,8 @@ where
 
 impl<K, E> Encode for Ciphertext<K, E>
 where
-    K: key::agreement::Types,
-    K::PublicKey: Encode,
+    K: EphemeralPublicKeyType,
+    K::EphemeralPublicKey: Encode,
     E: CiphertextType,
     E::Ciphertext: Encode,
 {
@@ -321,9 +324,9 @@ where
 
 impl<K, E, P> Input<P> for Ciphertext<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralPublicKeyType,
     E: CiphertextType,
-    P: HasInput<K::PublicKey> + HasInput<E::Ciphertext> + ?Sized,
+    P: HasInput<K::EphemeralPublicKey> + HasInput<E::Ciphertext> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
@@ -361,12 +364,12 @@ impl<K, E> Hybrid<K, E> {
 
 impl<K, E> EncryptedMessage<Hybrid<K, E>>
 where
-    K: key::agreement::Types,
+    K: EphemeralPublicKeyType,
     E: CiphertextType + HeaderType,
 {
     /// Returns the ephemeral public key associated to `self`, stored in its ciphertext.
     #[inline]
-    pub fn ephemeral_public_key(&self) -> &K::PublicKey {
+    pub fn ephemeral_public_key(&self) -> &K::EphemeralPublicKey {
         &self.ciphertext.ephemeral_public_key
     }
 }
@@ -380,7 +383,7 @@ where
 
 impl<K, E> CiphertextType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralPublicKeyType,
     E: CiphertextType,
 {
     type Ciphertext = Ciphertext<K, E>;
@@ -388,14 +391,14 @@ where
 
 impl<K, E> EncryptionKeyType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
+    K: PublicKeyType,
 {
     type EncryptionKey = EncryptionKey<K>;
 }
 
 impl<K, E> DecryptionKeyType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
+    K: SecretKeyType,
 {
     type DecryptionKey = DecryptionKey<K>;
 }
@@ -409,7 +412,7 @@ where
 
 impl<K, E> RandomnessType for Hybrid<K, E>
 where
-    K: key::agreement::Types,
+    K: EphemeralSecretKeyType,
     E: RandomnessType,
 {
     type Randomness = Randomness<K, E>;
@@ -424,7 +427,7 @@ where
 
 impl<K, E, COM> Derive<COM> for Hybrid<K, E>
 where
-    K: key::agreement::Derive<COM>,
+    K: agreement::Derive<COM>,
 {
     #[inline]
     fn derive(
@@ -438,7 +441,7 @@ where
 
 impl<K, E, COM> Encrypt<COM> for Hybrid<K, E>
 where
-    K: key::agreement::Derive<COM> + key::agreement::Agree<COM>,
+    K: agreement::DeriveEphemeral<COM> + agreement::GenerateSecret<COM>,
     E: Encrypt<COM, EncryptionKey = K::SharedSecret>,
 {
     #[inline]
@@ -453,9 +456,9 @@ where
         Ciphertext {
             ephemeral_public_key: self
                 .key_agreement_scheme
-                .derive(&randomness.ephemeral_secret_key, compiler),
+                .derive_ephemeral(&randomness.ephemeral_secret_key, compiler),
             ciphertext: self.encryption_scheme.encrypt(
-                &self.key_agreement_scheme.agree(
+                &self.key_agreement_scheme.generate_secret(
                     encryption_key,
                     &randomness.ephemeral_secret_key,
                     compiler,
@@ -471,7 +474,7 @@ where
 
 impl<K, E, COM> Decrypt<COM> for Hybrid<K, E>
 where
-    K: key::agreement::Agree<COM>,
+    K: agreement::ReconstructSecret<COM>,
     E: Decrypt<COM, DecryptionKey = K::SharedSecret>,
 {
     #[inline]
@@ -483,7 +486,7 @@ where
         compiler: &mut COM,
     ) -> Self::DecryptedPlaintext {
         self.encryption_scheme.decrypt(
-            &self.key_agreement_scheme.agree(
+            &self.key_agreement_scheme.reconstruct_secret(
                 &ciphertext.ephemeral_public_key,
                 decryption_key,
                 compiler,
