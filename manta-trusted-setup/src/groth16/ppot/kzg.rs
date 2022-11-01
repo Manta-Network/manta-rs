@@ -200,17 +200,29 @@ pub type PpotCeremony = PerpetualPowersOfTauCeremony<PpotSerializer, PPOT_POWERS
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-/// Tools for decompressing the `response` files of PPoT
-pub mod decompression {
+/// Tools for working with the large PPoT files.
+pub mod batched {
     use super::*;
     use crate::{
-        groth16::ppot::serialization::{
-            read_all_g2_powers, read_g1_powers, read_g2_powers, Compressed, ElementType,
-            PointDeserializeError,
+        groth16::{
+            kzg::Contribution,
+            ppot::serialization::{
+                read_all_g2_powers, read_g1_powers, read_g2_powers, Compressed, ElementType,
+                PointDeserializeError,
+            },
         },
-        util::Serializer,
+        util::{scalar_mul, Serializer},
     };
+    use core::{iter, ops::Mul};
+    use manta_crypto::{
+        arkworks::ff::One,
+        rand::{OsRng, Sample},
+    };
+    use manta_util::{cfg_iter, cfg_iter_mut};
     use std::{cmp::min, fs::OpenOptions, path::PathBuf};
+
+    #[cfg(feature = "rayon")]
+    use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
     /// Decompresses a `response` file to a `challenge` file, assuming its hash
     /// has been pre-computed and passed as argument. This creates challenge file
@@ -379,7 +391,7 @@ pub mod decompression {
                 )
                 .expect("Unable to serialize");
             }
-            println!("Have serialized {} tau_g1 powers", powers_read);
+            println!("Have serialized {powers_read} tau_g1 powers");
             powers_read += chunk_size;
         }
         powers_read = 0;
@@ -402,7 +414,7 @@ pub mod decompression {
                 )
                 .expect("Unable to serialize");
             }
-            println!("Have serialized {} tau_g2 powers", powers_read);
+            println!("Have serialized {powers_read} tau_g2 powers");
             powers_read += chunk_size;
         }
         powers_read = 0;
@@ -505,5 +517,111 @@ pub mod decompression {
                 .expect("Deserialization error");
             assert_eq!(point, *element);
         }
+    }
+
+    /// Samples a contribution randomly and applies it to
+    /// the PPoT challenge file underlying `reader`, writing
+    /// the result in a response file at `path` beginning with
+    /// the provided `hash`. Uses approx. 1 GB chunks in case files
+    /// are large.
+    pub fn contribute_batched<S>(
+        reader: &[u8],
+        hash: [u8; 64],
+        path: PathBuf,
+    ) -> Result<(), PointDeserializeError>
+    where
+        S: Size,
+    {
+        // Sample contribution
+        let mut rng = OsRng::default();
+        let contribution = Contribution::<PpotCeremony>::sample((), &mut rng);
+        let mut last_tau = <<PpotCeremony as Pairing>::Scalar>::one();
+        let mut powers_transformed = 0;
+        // Choose this number to have chunks of desired size
+        let chunk_size: usize = 1 << 18;
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .expect("Failed to open target file at given path");
+
+        // First write the 64-byte hash to file
+        file.write_all(&hash).expect("Failed to write hash to file");
+
+        while powers_transformed < ElementType::TauG2.num_powers::<S>() {
+            let num_transformed = min(
+                chunk_size,
+                ElementType::TauG2.num_powers::<S>() - powers_transformed,
+            );
+            // transform all parts of accumulator
+            let mut tau_powers_g1 = read_g1_powers(
+                reader,
+                ElementType::TauG1,
+                Compressed::No,
+                num_transformed,
+                powers_transformed,
+            )?;
+            let mut tau_powers_g2 = read_g1_powers(
+                reader,
+                ElementType::TauG2,
+                Compressed::No,
+                num_transformed,
+                powers_transformed,
+            )?;
+            let mut alpha_tau_powers_g1 = read_g1_powers(
+                reader,
+                ElementType::AlphaG1,
+                Compressed::No,
+                num_transformed,
+                powers_transformed,
+            )?;
+            let mut beta_tau_powers_g1 = read_g1_powers(
+                reader,
+                ElementType::BetaG1,
+                Compressed::No,
+                num_transformed,
+                powers_transformed,
+            )?;
+
+            // Compute next chunk of tau powers
+            let tau_powers = iter::successors(Some(last_tau), |x| Some(x.mul(contribution.tau)))
+                .take(num_transformed)
+                .collect::<Vec<_>>();
+            // Transform
+            cfg_iter_mut!(tau_powers_g1)
+                .zip(cfg_iter_mut!(tau_powers_g2))
+                .zip(cfg_iter_mut!(alpha_tau_powers_g1))
+                .zip(cfg_iter_mut!(beta_tau_powers_g1))
+                .zip(tau_powers)
+                .for_each(
+                    |((((tau_g1, tau_g2), alpha_tau_g1), beta_tau_g1), tau_power)| {
+                        scalar_mul(tau_g1, tau_power);
+                        scalar_mul(tau_g2, tau_power);
+                        scalar_mul(alpha_tau_g1, tau_power.mul(contribution.alpha));
+                        scalar_mul(beta_tau_g1, tau_power.mul(contribution.beta));
+                    },
+                );
+            // Write to output file
+            todo!()
+            powers_transformed += num_transformed;
+        }
+
+        while powers_transformed < ElementType::TauG1.num_powers::<S>() {
+            let num_transformed = min(
+                chunk_size,
+                ElementType::TauG1.num_powers::<S>() - powers_transformed,
+            );
+            // transform only tau_g1_powers
+            todo!()
+            powers_transformed += num_transformed;
+        }
+
+        // Transform BetaG2
+        let element =
+            read_all_g2_powers::<PpotCeremony>(reader, ElementType::BetaG2, Compressed::No)?[0];
+
+        Ok(())
     }
 }

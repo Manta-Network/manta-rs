@@ -72,7 +72,7 @@ fn hash_file(target: PathBuf, path: PathBuf) -> Result<(), std::io::Error> {
             .expect("unable to create a memory map for input")
     };
     let hash = calculate_hash(&reader);
-    println!("Computed hash {:?}", hash);
+    println!("Computed hash {hash:?}");
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -83,6 +83,7 @@ fn hash_file(target: PathBuf, path: PathBuf) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn pretty_print(bytes: &[u8]) {
     for line in bytes.chunks(16) {
         print!("\t");

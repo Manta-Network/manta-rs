@@ -143,13 +143,13 @@ where
     C: Pairing,
 {
     /// Tau Scalar
-    tau: C::Scalar,
+    pub tau: C::Scalar,
 
     /// Alpha Scalar
-    alpha: C::Scalar,
+    pub alpha: C::Scalar,
 
     /// Beta Scalar
-    beta: C::Scalar,
+    pub beta: C::Scalar,
 }
 
 impl<C> Contribution<C>

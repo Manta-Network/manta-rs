@@ -20,7 +20,7 @@
 // nohup cargo run --release --bin decompress_response --all-features 0073 /home/mobula/ppot-verifier &> ./decompress_response_0073.log &
 
 use clap::Parser;
-use manta_trusted_setup::groth16::ppot::kzg::{decompression::decompress_response, PpotCeremony};
+use manta_trusted_setup::groth16::ppot::kzg::{batched::decompress_response, PpotCeremony};
 use memmap::MmapOptions;
 use std::{fs::OpenOptions, io::Read, path::PathBuf, time::Instant};
 

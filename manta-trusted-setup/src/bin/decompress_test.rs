@@ -1,4 +1,4 @@
-use manta_trusted_setup::groth16::ppot::kzg::{decompression::decompress_response, PpotCeremony};
+use manta_trusted_setup::groth16::ppot::kzg::{batched::decompress_response, PpotCeremony};
 use manta_util::into_array_unchecked;
 use memmap::{Mmap, MmapOptions};
 use std::{
