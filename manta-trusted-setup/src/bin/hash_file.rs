@@ -82,3 +82,27 @@ fn hash_file(target: PathBuf, path: PathBuf) -> Result<(), std::io::Error> {
     file.write_all(&hash)?;
     Ok(())
 }
+
+fn pretty_print(bytes: &[u8]) {
+    for line in bytes.chunks(16) {
+        print!("\t");
+        for section in line.chunks(4) {
+            for b in section {
+                print!("{b:02x}");
+            }
+            print!(" ");
+        }
+        println!();
+    }
+}
+
+#[test]
+fn pretty_print_test() {
+    let bytes: [u8; 64] = [
+        220, 248, 105, 124, 232, 227, 221, 85, 193, 241, 139, 77, 12, 246, 118, 0, 46, 13, 226, 42,
+        38, 70, 243, 207, 223, 13, 247, 152, 201, 220, 59, 135, 207, 150, 232, 113, 213, 128, 122,
+        129, 156, 150, 223, 86, 61, 238, 118, 186, 148, 55, 59, 247, 38, 229, 155, 13, 32, 213,
+        104, 174, 167, 1, 224, 26,
+    ];
+    pretty_print(&bytes);
+}
