@@ -315,35 +315,3 @@ impl From<RegistrationInfoV2> for Record {
         )
     }
 }
-
-#[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
-#[test]
-fn test_set_headers() {
-    use csv::Reader;
-    use manta_trusted_setup::groth16::ceremony::config::ppot::set_header;
-    use std::fs::File;
-
-    let file = File::open("/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/registry_buffer.csv").expect("Cannot open file");
-    let mut reader = Reader::from_reader(&file);
-    assert!(set_header(&mut reader, EXPECTED_HEADERS.into(), SHORT_HEADERS.into()).is_ok());
-    assert!(
-        reader.byte_headers().unwrap()
-            == vec![
-                "name",
-                "email",
-                "signature",
-                "verifying_key_null",
-                "twitter_null",
-                "why_privacy",
-                "wallet",
-                "score",
-                "twitter",
-                "verifying_key",
-                "discord",
-                "motivation",
-                "where_from",
-                "submission_time",
-                "submission_token",
-            ]
-    );
-}
