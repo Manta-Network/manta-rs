@@ -237,7 +237,7 @@ impl From<RegistrationInfoV1> for Record {
         Self::new(
             value.twitter,
             value.email,
-            "false".to_string(),
+            "true".to_string(),
             value.verifying_key,
             value.signature,
         )
@@ -309,7 +309,7 @@ impl From<RegistrationInfoV2> for Record {
         Self::new(
             value.twitter,
             value.email,
-            "false".to_string(),
+            "true".to_string(),
             value.verifying_key,
             value.signature,
         )

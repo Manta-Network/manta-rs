@@ -33,7 +33,6 @@ use std::path::PathBuf;
 pub struct Arguments {
     phase_one_param_path: PathBuf,
 
-    #[clap(default_value = "manta-trusted-setup/data/")]
     recovery_directory: PathBuf,
 }
 
