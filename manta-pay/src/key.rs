@@ -173,9 +173,7 @@ where
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
         Self::new_unchecked(
             mnemonic
-                .to_seed(password)
-                .try_into()
-                .expect("Unable to convert to SeedBytes array."),
+                .to_seed(password),
             mnemonic,
         )
     }
