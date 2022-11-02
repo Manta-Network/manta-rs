@@ -417,7 +417,9 @@ pub mod unsafe_to_private {
             .expect("Unable to build TO_PRIVATE proof.")
             .expect("");
         println!("unsafe_no_prove_full: 2");
-        expect2.into()
+        let expect3 = expect2.into();
+        println!("unsafe_no_prove_full: 2");
+        expect3
     }
 }
 
