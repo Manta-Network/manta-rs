@@ -35,10 +35,7 @@ use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample, SampleUniform};
 use manta_util::{future::LocalBoxFuture, iter::Iterable, num::CheckedSub};
 use parking_lot::Mutex;
-use statrs::{
-    distribution::Categorical,
-    StatsError,
-};
+use statrs::{distribution::Categorical, StatsError};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -594,7 +591,7 @@ where
         match self.sample_withdraw(rng).await {
             Ok(Some(asset)) => match address(rng) {
                 Ok(Some(address)) => Ok(Action::private_transfer(is_self, asset, address)),
-                Ok(_) => Ok(Action::Skip), // Ok(Action::GenerateAddresses { count: 1 }), // todo: Is this a good replacement?
+                Ok(_) => Ok(Action::Skip),
                 Err(err) => Err(action.label(err)),
             },
             Ok(_) => self.sample_to_private(rng).await,
@@ -633,7 +630,7 @@ where
                     Asset::<C>::zero(asset.id),
                     address,
                 )),
-                Ok(_) => Ok(Action::Skip), // Ok(Action::GenerateAddresses { count: 1 }), // todo: Is this a good replacement?
+                Ok(_) => Ok(Action::Skip),
                 Err(err) => Err(action.label(err)),
             },
             Ok(_) => Ok(self.sample_zero_to_private(rng).await?),
@@ -938,6 +935,7 @@ impl Config {
         for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
         L: Ledger<C> + PublicBalanceOracle<C>,
         S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+        S::Error: Debug,
         B: BalanceState<C::AssetId, C::AssetValue>,
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
@@ -950,7 +948,7 @@ impl Config {
     {
         let action_distribution = ActionDistribution::try_from(self.action_distribution)
             .expect("Unable to sample from action distribution.");
-        let actors = (0..self.actor_count)
+        let mut actors: Vec<_> = (0..self.actor_count)
             .map(|i| {
                 Actor::new(
                     Wallet::new(ledger(i), signer(i)),
@@ -959,7 +957,18 @@ impl Config {
                 )
             })
             .collect();
-        let mut simulator = sim::Simulator::new(sim::ActionSim(Simulation::default()), actors);
+
+        let simulation = Simulation::default();
+        for actor in actors.iter_mut() {
+            let address = actor
+                .wallet
+                .address()
+                .await
+                .expect("Wallet should have address");
+            simulation.addresses.lock().insert(address);
+        }
+
+        let mut simulator = sim::Simulator::new(sim::ActionSim(simulation), actors);
         let initial_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
         simulator

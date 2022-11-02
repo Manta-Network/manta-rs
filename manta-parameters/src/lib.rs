@@ -171,7 +171,12 @@ pub mod github {
     /// Downloads data from `data_path` relative to the given `branch` to a file at `path` without verifying
     /// that the data matches the `checksum`.
     #[inline]
-    pub fn unsafe_download<P>(branch: &str, data_path: &str, path: P, checksum: &[u8; 32]) -> Result<()>
+    pub fn unsafe_download<P>(
+        branch: &str,
+        data_path: &str,
+        path: P,
+        checksum: &[u8; 32],
+    ) -> Result<()>
     where
         P: AsRef<Path>,
     {
@@ -293,7 +298,8 @@ pub trait Download: HasChecksum {
     /// Unsafe download
     #[inline]
     fn unsafe_download<P>(path: P) -> Result<()>
-    where P: AsRef<Path>
+    where
+        P: AsRef<Path>,
     {
         Self::download(path)
     }
