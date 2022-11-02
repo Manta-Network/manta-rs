@@ -406,15 +406,17 @@ pub mod unsafe_to_private {
             rng,
         );
         println!("unsafe_no_prove_full: 1");
-        test.into_unsafe_post(
+        let expect1 = test.into_unsafe_post(
             FullParametersRef::new(parameters, utxo_accumulator_model),
             proving_context,
             None,
             rng,
-        )
-        .expect("Unable to build TO_PRIVATE proof.")
-        .expect("")
-        .into()
+        );
+        println!("unsafe_no_prove_full: 2");
+        expect1
+            .expect("Unable to build TO_PRIVATE proof.")
+            .expect("")
+            .into()
     }
 }
 
