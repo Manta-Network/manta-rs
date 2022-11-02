@@ -31,6 +31,8 @@ use std::{
     path::PathBuf,
 };
 
+// cargo run --release --all-features --package manta-pay --bin generate_parameters /Users/thomascnorton/Documents/Manta/manta-rs/fresh_parameters
+
 /// Generates the parameters using the [`SEED`](manta_pay::parameters::SEED) and saves them to the
 /// filesystem.
 #[inline]

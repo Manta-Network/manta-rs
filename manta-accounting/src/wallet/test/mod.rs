@@ -36,7 +36,7 @@ use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample, SampleU
 use manta_util::{future::LocalBoxFuture, iter::Iterable, num::CheckedSub};
 use parking_lot::Mutex;
 use statrs::{
-    distribution::{Categorical, Poisson},
+    distribution::Categorical,
     StatsError,
 };
 
@@ -65,12 +65,6 @@ where
 
         /// Transaction Data
         transaction: Transaction<C>,
-    },
-
-    /// Generate Addresses. FIXME: this makes no sense anymore.
-    GenerateAddresses {
-        /// Number of Addresses to Generate
-        count: usize,
     },
 
     /// Restart Wallet
@@ -150,7 +144,6 @@ where
                 is_maximal,
                 transaction,
             } => Self::as_post_type(*is_self, *is_maximal, transaction),
-            Self::GenerateAddresses { .. } => ActionType::GenerateAddresses,
             Self::Restart => ActionType::Restart,
         }
     }
@@ -205,9 +198,6 @@ pub enum ActionType {
     /// Flush-to-Public Transfer Action
     FlushToPublic,
 
-    /// Generate Addresses Action. FIXME
-    GenerateAddresses,
-
     /// Restart Wallet Action
     Restart,
 }
@@ -261,9 +251,6 @@ pub struct ActionDistributionPMF<T = u64> {
     /// Flush-to-Public Transfer Action Weight
     pub flush_to_public: T,
 
-    /// Generate Addresses Action Weight
-    pub generate_addresses: T,
-
     /// Restart Wallet Action Weight
     pub restart: T,
 }
@@ -282,7 +269,6 @@ impl Default for ActionDistributionPMF {
             self_transfer: 2,
             self_transfer_zero: 1,
             flush_to_public: 1,
-            generate_addresses: 3,
             restart: 4,
         }
     }
@@ -320,7 +306,6 @@ impl TryFrom<ActionDistributionPMF> for ActionDistribution {
                 pmf.self_transfer as f64,
                 pmf.self_transfer_zero as f64,
                 pmf.flush_to_public as f64,
-                pmf.generate_addresses as f64,
                 pmf.restart as f64,
             ])?,
         })
@@ -344,8 +329,7 @@ impl Distribution<ActionType> for ActionDistribution {
             7 => ActionType::SelfTransfer,
             8 => ActionType::SelfTransferZero,
             9 => ActionType::FlushToPublic,
-            10 => ActionType::GenerateAddresses,
-            11 => ActionType::Restart,
+            10 => ActionType::Restart,
             _ => unreachable!(),
         }
     }
@@ -477,11 +461,11 @@ where
         self.wallet.post(transaction, metadata).await
     }
 
-    ///
-    #[inline]
-    async fn address(&mut self) -> Result<Address<C>, S::Error> {
-        self.wallet.address().await
-    }
+    // ///
+    // #[inline]
+    // async fn address(&mut self) -> Result<Address<C>, S::Error> {
+    //     self.wallet.address().await
+    // }
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
     #[inline]
@@ -610,7 +594,7 @@ where
         match self.sample_withdraw(rng).await {
             Ok(Some(asset)) => match address(rng) {
                 Ok(Some(address)) => Ok(Action::private_transfer(is_self, asset, address)),
-                Ok(_) => Ok(Action::GenerateAddresses { count: 1 }),
+                Ok(_) => Ok(Action::Skip), // Ok(Action::GenerateAddresses { count: 1 }), // todo: Is this a good replacement?
                 Err(err) => Err(action.label(err)),
             },
             Ok(_) => self.sample_to_private(rng).await,
@@ -649,7 +633,7 @@ where
                     Asset::<C>::zero(asset.id),
                     address,
                 )),
-                Ok(_) => Ok(Action::GenerateAddresses { count: 1 }),
+                Ok(_) => Ok(Action::Skip), // Ok(Action::GenerateAddresses { count: 1 }), // todo: Is this a good replacement?
                 Err(err) => Err(action.label(err)),
             },
             Ok(_) => Ok(self.sample_zero_to_private(rng).await?),
@@ -838,12 +822,6 @@ where
                         .await
                 }
                 ActionType::FlushToPublic => actor.flush_to_public(rng).await,
-                ActionType::GenerateAddresses => Ok(Action::GenerateAddresses {
-                    count: Poisson::new(1.0)
-                        .expect("The Poisson parameter is greater than zero.")
-                        .sample(rng)
-                        .ceil() as usize,
-                }),
                 ActionType::Restart => Ok(Action::Restart),
             })
         })
@@ -886,16 +864,6 @@ where
                             }
                         }
                     }
-                    Action::GenerateAddresses { count: _ } => Event {
-                        action: ActionType::GenerateAddresses,
-                        value: match actor.address().await {
-                            Ok(address) => {
-                                self.addresses.lock().insert(address);
-                                Ok(true)
-                            }
-                            Err(err) => Err(Error::SignerConnectionError(err)),
-                        },
-                    },
                     Action::Restart => Event {
                         action: ActionType::Restart,
                         value: actor.restart().await,

@@ -141,6 +141,55 @@ pub mod test {
         );
     }
 
+    #[test]
+    fn curve_point_sizes() {
+        use crate::arkworks::{
+            bls12_381::Bls12_381, bn254::Bn254, ec::AffineCurve, serialize::CanonicalSerialize,
+        };
+
+        let bls_point_g1 =
+            <<Bls12_381 as PairingEngine>::G1Affine as AffineCurve>::prime_subgroup_generator();
+        let bls_point_g2 =
+            <<Bls12_381 as PairingEngine>::G2Affine as AffineCurve>::prime_subgroup_generator();
+        let bn_point_g1 =
+            <<Bn254 as PairingEngine>::G1Affine as AffineCurve>::prime_subgroup_generator();
+        let bn_point_g2 =
+            <<Bn254 as PairingEngine>::G2Affine as AffineCurve>::prime_subgroup_generator();
+
+        println!(
+            "BLS12-381: The compressed G1 size is {}",
+            CanonicalSerialize::serialized_size(&bls_point_g1)
+        );
+        println!(
+            "BLS12-381: The uncompressed G1 size is {}",
+            CanonicalSerialize::uncompressed_size(&bls_point_g1)
+        );
+        println!(
+            "BLS12-381: The compressed G2 size is {}",
+            CanonicalSerialize::serialized_size(&bls_point_g2)
+        );
+        println!(
+            "BLS12-381: The uncompressed G2 size is {}",
+            CanonicalSerialize::uncompressed_size(&bls_point_g2)
+        );
+        println!(
+            "BN254: The compressed G1 size is {}",
+            CanonicalSerialize::serialized_size(&bn_point_g1)
+        );
+        println!(
+            "BN254: The uncompressed G1 size is {}",
+            CanonicalSerialize::uncompressed_size(&bn_point_g1)
+        );
+        println!(
+            "BN254: The compressed G2 size is {}",
+            CanonicalSerialize::serialized_size(&bn_point_g2)
+        );
+        println!(
+            "BN254: The uncompressed G2 size is {}",
+            CanonicalSerialize::uncompressed_size(&bn_point_g2)
+        );
+    }
+
     /// Checks that BN254 has a valid pairing ratio.
     #[cfg(feature = "ark-bn254")]
     #[test]
