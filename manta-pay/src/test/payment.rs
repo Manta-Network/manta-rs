@@ -394,7 +394,7 @@ pub mod unsafe_to_private {
         parameters: &Parameters,
         utxo_accumulator_model: &UtxoAccumulatorModel,
         asset_id: AssetId,
-        values: [AssetValue; 2],
+        value: AssetValue,
         rng: &mut R,
     ) -> TransferPost
     where
