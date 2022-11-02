@@ -109,7 +109,7 @@ pub mod to_private {
 
 /// Utility Module for [`PrivateTransfer`]
 pub mod private_transfer {
-    use crate::key::address_from_spending_key;
+    use manta_accounting::transfer::utxo::address_from_spending_key;
 
     use super::*;
 
@@ -243,7 +243,7 @@ pub mod private_transfer {
 
 /// Utility Module for [`ToPublic`]
 pub mod to_public {
-    use crate::key::address_from_spending_key;
+    use manta_accounting::transfer::utxo::address_from_spending_key;
 
     use super::*;
 
@@ -405,27 +405,23 @@ pub mod unsafe_to_private {
             Default::default(),
             rng,
         );
-        println!("unsafe_no_prove_full: 1");
         let expect1 = test.into_unsafe_post(
             FullParametersRef::new(parameters, utxo_accumulator_model),
             proving_context,
             None,
             rng,
         );
-        println!("unsafe_no_prove_full: 2");
         let expect2 = expect1
             .expect("Unable to build TO_PRIVATE proof.")
             .expect("");
-        println!("unsafe_no_prove_full: 2");
         let expect3 = expect2.into();
-        println!("unsafe_no_prove_full: 2");
         expect3
     }
 }
 
 /// Utility Module for unsafe [`PrivateTransfer`]
 pub mod unsafe_private_transfer {
-    use crate::key::address_from_spending_key;
+    use manta_accounting::transfer::utxo::address_from_spending_key;
 
     use super::*;
 
@@ -563,7 +559,7 @@ pub mod unsafe_private_transfer {
 
 /// Utility Module for unsafe [`ToPublic`]
 pub mod unsafe_to_public {
-    use crate::key::address_from_spending_key;
+    use manta_accounting::transfer::utxo::address_from_spending_key;
 
     use super::*;
 

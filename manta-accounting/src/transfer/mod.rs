@@ -67,9 +67,6 @@ pub mod canonical;
 pub mod receiver;
 pub mod sender;
 pub mod unverified_transfers;
-
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod utxo;
 
 #[cfg(feature = "test")]

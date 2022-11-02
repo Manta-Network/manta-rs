@@ -51,8 +51,10 @@ use manta_util::{
     cmp::Independence,
     codec::{Encode, Write},
     convert::Field,
-    serde::{Deserialize, Serialize},
 };
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 /// UTXO Version Number
 pub const VERSION: u8 = 2;

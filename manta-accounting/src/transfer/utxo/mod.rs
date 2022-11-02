@@ -25,6 +25,7 @@ use crate::transfer::utxo::auth::AuthorizationContextType;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
+    algebra::{HasGenerator, ScalarMul},
     eclair::alloc::{Allocate, Constant},
     rand::RngCore,
 };
@@ -32,15 +33,12 @@ use manta_util::cmp::IndependenceContext;
 
 pub mod auth;
 pub mod v1;
-
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod v2;
 
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 #[doc(inline)]
 pub use v2 as protocol;
+
+use self::v2::ViewingKeyDerivationFunction;
 
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
@@ -472,4 +470,25 @@ where
     fn deref(&self) -> &Self::Target {
         self.base
     }
+}
+
+/// Computes the address corresponding to `spending_key`.
+#[inline]
+pub fn address_from_spending_key<C>(
+    spending_key: &C::Scalar,
+    parameters: &protocol::Parameters<C>,
+) -> protocol::Address<C>
+where
+    C: protocol::Configuration,
+{
+    let generator = parameters.base.group_generator.generator();
+    protocol::Address::new(
+        generator.scalar_mul(
+            &parameters
+                .base
+                .viewing_key_derivation_function
+                .viewing_key(&generator.scalar_mul(spending_key, &mut ()), &mut ()),
+            &mut (),
+        ),
+    )
 }

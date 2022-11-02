@@ -16,7 +16,6 @@
 
 //! Manta Pay Signer Tools
 
-#[cfg(feature = "serde")]
 use manta_accounting::wallet::signer;
 
 #[cfg(feature = "groth16")]

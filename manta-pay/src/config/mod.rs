@@ -23,7 +23,6 @@ use crate::{
         ecc,
     },
 };
-#[cfg(feature = "serde")]
 use manta_accounting::transfer;
 
 use manta_crypto::arkworks::{
@@ -38,9 +37,6 @@ use manta_crypto::arkworks::{
 use {alloc::string::String, manta_util::codec::Encode};
 
 pub mod poseidon;
-
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod utxo;
 
 /// Pairing Curve Type

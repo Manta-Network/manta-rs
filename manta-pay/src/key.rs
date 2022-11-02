@@ -29,10 +29,12 @@ use alloc::{format, string::String};
 use core::marker::PhantomData;
 use manta_accounting::{
     key::{self, AccountIndex, DeriveAddresses},
-    transfer::{self, utxo::v2 as protocol},
+    transfer::{
+        self,
+        utxo::{address_from_spending_key, v2 as protocol},
+    },
 };
 use manta_crypto::{
-    algebra::{HasGenerator, ScalarMul},
     arkworks::{
         ed_on_bn254::FrParameters,
         ff::{Fp256, PrimeField},
@@ -222,7 +224,6 @@ where
         Self::build(seed)
     }
 }
-use protocol::ViewingKeyDerivationFunction;
 
 impl<C> DeriveAddresses for KeySecret<C>
 where
@@ -235,27 +236,6 @@ where
         let spending_key = &key::AccountCollection::spending_key(&self, &index);
         address_from_spending_key(spending_key, parameters)
     }
-}
-
-/// Computes the address corresponding to `spending_key`.
-#[inline]
-pub fn address_from_spending_key<C>(
-    spending_key: &C::Scalar,
-    parameters: &protocol::Parameters<C>,
-) -> protocol::Address<C>
-where
-    C: protocol::Configuration,
-{
-    let generator = parameters.base.group_generator.generator();
-    protocol::Address::new(
-        generator.scalar_mul(
-            &parameters
-                .base
-                .viewing_key_derivation_function
-                .viewing_key(&generator.scalar_mul(spending_key, &mut ()), &mut ()),
-            &mut (),
-        ),
-    )
 }
 
 /// Computes the [`BIP-0044`] path string for the given coin settings.

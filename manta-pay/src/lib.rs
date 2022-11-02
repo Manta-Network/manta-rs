@@ -28,32 +28,18 @@ pub mod util;
 
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod config;
 
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod signer;
 
-#[cfg(feature = "groth16")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 #[cfg(feature = "bip32")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
-#[cfg(feature = "arkworks")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod key;
 
 #[cfg(all(feature = "parameters",))]
 #[cfg_attr(doc_cfg, doc(cfg(all(feature = "parameters",))))]
-#[cfg(feature = "groth16")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
 pub mod parameters;
 
 /*
@@ -64,14 +50,6 @@ pub mod simulation;
 
 #[cfg(any(test, feature = "test"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-#[cfg(feature = "groth16")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
-#[cfg(feature = "bip32")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
-#[cfg(feature = "serde")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "serde")))]
-#[cfg(feature = "arkworks")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "arkworks")))]
 pub mod test;
 
 #[doc(inline)]
