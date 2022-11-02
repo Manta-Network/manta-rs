@@ -168,6 +168,18 @@ pub mod github {
         );
         Ok(())
     }
+    /// Downloads data from `data_path` relative to the given `branch` to a file at `path` without verifying
+    /// that the data matches the `checksum`.
+    #[inline]
+    pub fn unsafe_download<P>(branch: &str, data_path: &str, path: P, checksum: &[u8; 32]) -> Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        let _ = checksum;
+        let path = path.as_ref();
+        download_unchecked(branch, data_path, path)?;
+        Ok(())
+    }
 }
 
 /// Verifies the `data` against the `checksum`.
@@ -277,6 +289,14 @@ pub trait Download: HasChecksum {
             _ => Self::download(path),
         }
     }
+
+    /// Unsafe download
+    #[inline]
+    fn unsafe_download<P>(path: P) -> Result<()>
+    where P: AsRef<Path>
+    {
+        Self::download(path)
+    }
 }
 
 /// Defines a data marker type for download-required data from GitHub LFS and checksum from disk.
@@ -300,6 +320,18 @@ macro_rules! define_lfs {
                 P: AsRef<$crate::Path>,
             {
                 $crate::github::download(
+                    $crate::github::DEFAULT_BRANCH,
+                    concat!("/data/", $path, ".lfs"),
+                    path,
+                    <Self as $crate::HasChecksum>::CHECKSUM,
+                )
+            }
+            #[inline]
+            fn unsafe_download<P>(path: P) -> $crate::Result<()>
+            where
+                P: AsRef<$crate::Path>,
+            {
+                $crate::github::unsafe_download(
                     $crate::github::DEFAULT_BRANCH,
                     concat!("/data/", $path, ".lfs"),
                     path,
@@ -497,6 +529,40 @@ mod test {
                 let target = directory_path.join(path);
                 fs::create_dir_all(target.parent().unwrap())?;
                 github::download(
+                    &current_branch,
+                    path.to_str().unwrap(),
+                    &target,
+                    get_checksum(&checksums, path)?,
+                )?;
+                assert!(
+                    equal_files(&mut File::open(path)?, &mut File::open(&target)?)?,
+                    "The files at {:?} and {:?} are not equal.",
+                    path,
+                    target
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Downloads all data from GitHub and checks if they are the same as the data known locally to
+    /// this Rust crate.
+    #[ignore] // NOTE: We use this so that CI doesn't run this test while still allowing developers to test.
+    #[test]
+    fn unsafe_download_all_data() -> Result<()> {
+        let current_branch = super::git::current_branch()?;
+        let directory = tempfile::tempdir()?;
+        println!("[INFO] Temporary Directory: {directory:?}");
+        let checksums = parse_checkfile("data.checkfile")?;
+        let directory_path = directory.path();
+        for file in walkdir::WalkDir::new("data") {
+            let file = file?;
+            let path = file.path();
+            if !path.is_dir() {
+                println!("[INFO] Checking path: {path:?}");
+                let target = directory_path.join(path);
+                fs::create_dir_all(target.parent().unwrap())?;
+                github::unsafe_download(
                     &current_branch,
                     path.to_str().unwrap(),
                     &target,
