@@ -76,7 +76,7 @@ pub trait CheckedIncrement {
 
 /// Checked Decrement
 pub trait CheckedDecrement {
-    /// Decrements `self` returning `None` if it would underflow.
+    /// Decrements `self` returning `None` if it would overflow.
     fn checked_decrement(&mut self) -> Option<&mut Self>;
 }
 
@@ -84,7 +84,6 @@ pub trait CheckedDecrement {
 macro_rules! impl_checked {
     ($($type:tt),* $(,)?) => {
         $(
-
             impl CheckedAdd for $type {
                 type Output = Self;
 

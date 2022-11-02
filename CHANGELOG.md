@@ -5,8 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [#276](https://github.com/Manta-Network/manta-rs/pull/276) New circuits part 1: manta-crypto abstractions
 
 ### Changed
+- [\#274](https://github.com/Manta-Network/manta-rs/pull/274) Update TS client installer script to use release 0.5.6.
 
 ### Deprecated
 

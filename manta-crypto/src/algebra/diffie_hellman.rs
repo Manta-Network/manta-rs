@@ -123,8 +123,7 @@ where
     where
         W: Write,
     {
-        self.generator.encode(&mut writer)?;
-        Ok(())
+        self.generator.encode(&mut writer)
     }
 }
 
