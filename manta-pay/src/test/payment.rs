@@ -370,8 +370,6 @@ pub mod unsafe_to_private {
         proving_context: &ProvingContext,
         parameters: &Parameters,
         utxo_accumulator_model: &UtxoAccumulatorModel,
-        asset_id: AssetId,
-        value: AssetValue,
         rng: &mut R,
     ) -> TransferPost
     where
@@ -381,8 +379,8 @@ pub mod unsafe_to_private {
             proving_context,
             parameters,
             utxo_accumulator_model,
-            asset_id,
-            value,
+            rng.gen(),
+            rng.gen(),
             rng,
         )
     }
@@ -400,14 +398,15 @@ pub mod unsafe_to_private {
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        ToPrivate::from_address(
+        let test = ToPrivate::from_address(
             parameters,
             rng.gen(),
             Asset::new(asset_id, value),
             Default::default(),
             rng,
-        )
-        .into_unsafe_post(
+        );
+        println!("unsafe_no_prove_full: 1");
+        test.into_unsafe_post(
             FullParametersRef::new(parameters, utxo_accumulator_model),
             proving_context,
             None,
