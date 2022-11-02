@@ -413,10 +413,11 @@ pub mod unsafe_to_private {
             rng,
         );
         println!("unsafe_no_prove_full: 2");
-        expect1
+        let expect2 = expect1
             .expect("Unable to build TO_PRIVATE proof.")
-            .expect("")
-            .into()
+            .expect("");
+        println!("unsafe_no_prove_full: 2");
+        expect2.into()
     }
 }
 
