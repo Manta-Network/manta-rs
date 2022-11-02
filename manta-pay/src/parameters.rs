@@ -141,10 +141,8 @@ pub fn load_proving_context(directory: &Path) -> MultiProvingContext {
     manta_parameters::pay::testnet::proving::ToPrivate::download(&to_private_path)
         .expect("Unable to download ToPrivate proving context.");
     let private_transfer_path = directory.join("private-transfer.dat");
-    manta_parameters::pay::testnet::proving::PrivateTransfer::download(
-        &private_transfer_path,
-    )
-    .expect("Unable to download PrivateTransfer proving context.");
+    manta_parameters::pay::testnet::proving::PrivateTransfer::download(&private_transfer_path)
+        .expect("Unable to download PrivateTransfer proving context.");
     let to_public_path = directory.join("to-public.dat");
     manta_parameters::pay::testnet::proving::ToPublic::download(&to_public_path)
         .expect("Unable to download ToPublic proving context.");

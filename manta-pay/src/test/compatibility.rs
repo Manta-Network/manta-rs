@@ -20,12 +20,13 @@
 
 use crate::{
     parameters::load_parameters,
+    signer::base::UtxoAccumulator,
     test::payment::{
-        private_transfer::prove as prove_private_transfer, to_private::prove as prove_to_private,
-        to_public::prove as prove_to_public,
+        private_transfer::prove_full as prove_private_transfer,
+        to_private::prove_full as prove_to_private, to_public::prove_full as prove_to_public,
     },
 };
-use manta_crypto::rand::OsRng;
+use manta_crypto::rand::{OsRng, Rand};
 
 /// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
 #[test]
@@ -38,23 +39,28 @@ fn compatibility() {
         &proving_context.to_private,
         &parameters,
         &utxo_accumulator_model,
+        rng.gen(),
         &mut rng,
     )
     .assert_valid_proof(&verifying_context.to_private);
-    println!("I made it here");
     let _ = &prove_private_transfer(
-        &proving_context.private_transfer,
+        &proving_context,
         &parameters,
-        &utxo_accumulator_model,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        rng.gen(),
+        rng.gen(),
         &mut rng,
     )
+    .1
     .assert_valid_proof(&verifying_context.private_transfer);
-    println!("Point number 2");
     let _ = &prove_to_public(
-        &proving_context.to_public,
+        &proving_context,
         &parameters,
-        &utxo_accumulator_model,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        rng.gen(),
+        rng.gen(),
         &mut rng,
     )
+    .1
     .assert_valid_proof(&verifying_context.to_public);
 }
