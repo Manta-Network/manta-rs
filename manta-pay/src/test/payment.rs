@@ -380,6 +380,7 @@ pub mod unsafe_to_private {
             parameters,
             utxo_accumulator_model,
             rng.gen(),
+            rng.gen(),
             rng,
         )
     }
@@ -390,22 +391,35 @@ pub mod unsafe_to_private {
         proving_context: &ProvingContext,
         parameters: &Parameters,
         utxo_accumulator_model: &UtxoAccumulatorModel,
-        asset: Asset,
+        asset_id: AssetId,
+        value: AssetValue,
         rng: &mut R,
     ) -> TransferPost
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        ToPrivate::from_address(parameters, rng.gen(), asset, Default::default(), rng)
-            .into_unsafe_post(
-                FullParametersRef::new(parameters, utxo_accumulator_model),
-                proving_context,
-                None,
-                rng,
-            )
+        let test = ToPrivate::from_address(
+            parameters,
+            rng.gen(),
+            Asset::new(asset_id, value),
+            Default::default(),
+            rng,
+        );
+        println!("unsafe_no_prove_full: 1");
+        let expect1 = test.into_unsafe_post(
+            FullParametersRef::new(parameters, utxo_accumulator_model),
+            proving_context,
+            None,
+            rng,
+        );
+        println!("unsafe_no_prove_full: 2");
+        let expect2 = expect1
             .expect("Unable to build TO_PRIVATE proof.")
-            .expect("")
-            .into()
+            .expect("");
+        println!("unsafe_no_prove_full: 2");
+        let expect3 = expect2.into();
+        println!("unsafe_no_prove_full: 2");
+        expect3
     }
 }
 

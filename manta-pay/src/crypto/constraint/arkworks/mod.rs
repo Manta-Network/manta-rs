@@ -88,7 +88,8 @@ pub mod groth16;
         try_from = "Vec<u8>"
     )
 )]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Fp<F>(
     /// Field Element
     #[cfg_attr(

@@ -17,3 +17,4 @@
 //! Cryptographic Key Primitives
 
 pub mod agreement;
+pub mod kdf;

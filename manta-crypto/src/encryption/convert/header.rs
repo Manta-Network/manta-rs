@@ -218,8 +218,7 @@ where
     where
         W: Write,
     {
-        self.base.encode(&mut writer)?;
-        Ok(())
+        self.base.encode(&mut writer)
     }
 }
 

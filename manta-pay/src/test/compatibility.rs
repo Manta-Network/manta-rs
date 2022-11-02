@@ -20,10 +20,12 @@
 
 use crate::{
     parameters::load_parameters,
-    test::payment::{prove_mint, prove_private_transfer, prove_reclaim},
+    test::payment::{
+        private_transfer::prove as prove_private_transfer, to_private::prove as prove_to_private,
+        to_public::prove as prove_to_public,
+    },
 };
-use manta_accounting::transfer::test::assert_valid_proof;
-use manta_crypto::rand::{OsRng, Rand};
+use manta_crypto::rand::OsRng;
 
 /// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
 #[test]
@@ -32,32 +34,27 @@ fn compatibility() {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         load_parameters(directory.path()).expect("Failed to load parameters");
-    assert_valid_proof(
-        &verifying_context.mint,
-        &prove_mint(
-            &proving_context.mint,
-            &parameters,
-            &utxo_accumulator_model,
-            rng.gen(),
-            &mut rng,
-        ),
-    );
-    assert_valid_proof(
-        &verifying_context.private_transfer,
-        &prove_private_transfer(
-            &proving_context,
-            &parameters,
-            &utxo_accumulator_model,
-            &mut rng,
-        ),
-    );
-    assert_valid_proof(
-        &verifying_context.reclaim,
-        &prove_reclaim(
-            &proving_context,
-            &parameters,
-            &utxo_accumulator_model,
-            &mut rng,
-        ),
-    );
+    let _ = &prove_to_private(
+        &proving_context.to_private,
+        &parameters,
+        &utxo_accumulator_model,
+        &mut rng,
+    )
+    .assert_valid_proof(&verifying_context.to_private);
+    println!("I made it here");
+    let _ = &prove_private_transfer(
+        &proving_context.private_transfer,
+        &parameters,
+        &utxo_accumulator_model,
+        &mut rng,
+    )
+    .assert_valid_proof(&verifying_context.private_transfer);
+    println!("Point number 2");
+    let _ = &prove_to_public(
+        &proving_context.to_public,
+        &parameters,
+        &utxo_accumulator_model,
+        &mut rng,
+    )
+    .assert_valid_proof(&verifying_context.to_public);
 }
