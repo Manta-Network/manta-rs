@@ -16,25 +16,16 @@
 
 //! Algebraic Constructions
 
-use crate::{
-    eclair::{
-        alloc::Constant,
-        bool::{Bool, ConditionalSelect},
-        num::Zero,
-        Has,
-    },
-    key,
-    rand::{RngCore, Sample},
+use crate::eclair::{
+    bool::{Bool, ConditionalSelect},
+    num::Zero,
+    Has,
 };
 use alloc::vec::Vec;
-use core::{borrow::Borrow, marker::PhantomData};
-use manta_util::{
-    codec::{Decode, DecodeError, Encode, Read, Write},
-    into_array_unchecked,
-};
+use core::borrow::Borrow;
+use manta_util::into_array_unchecked;
 
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+pub mod diffie_hellman;
 
 /// Group
 pub trait Group<COM = ()>: Sized {
@@ -65,6 +56,18 @@ pub trait Group<COM = ()>: Sized {
     }
 }
 
+/// Group Generator
+pub trait HasGenerator<G, COM = ()>
+where
+    G: Group<COM>,
+{
+    /// Generator Type
+    type Generator;
+
+    /// Returns a generator of `G`.
+    fn generator(&self) -> &Self::Generator;
+}
+
 /// Ring
 pub trait Ring<COM = ()>: Group<COM> {
     /// Multiplies `self` by `rhs` in the ring.
@@ -85,19 +88,7 @@ pub trait ScalarMulGroup<S, COM = ()>: Group<COM> + ScalarMul<S, COM> {}
 
 impl<G, S, COM> ScalarMulGroup<S, COM> for G where G: Group<COM> + ScalarMul<S, COM> {}
 
-/// Group Generator
-pub trait HasGenerator<G, COM = ()>
-where
-    G: Group<COM>,
-{
-    /// Generator Type
-    type Generator;
-
-    /// Returns a generator of `G`.
-    fn generator(&self) -> &Self::Generator;
-}
-
-/// Fixed Base Scalar Multiplication using precomputed base points
+/// Fixed Base Scalar Multiplication using Precomputed Base Points
 pub trait FixedBaseScalarMul<S, COM = ()>: Group<COM> {
     /// Fixed Base Point
     type Base;
@@ -248,138 +239,6 @@ impl<G> Window<G> {
         let subtable = &self.table[0..1 << last_window_size];
         Self::scalar_mul_round(last_window_size, subtable, remainder, &mut result, compiler);
         result
-    }
-}
-
-/// Diffie-Hellman Key Agreement Scheme
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct DiffieHellman<S, G, GEN = G> {
-    /// Group Generator
-    pub generator: GEN,
-
-    /// Type Parameter Marker
-    __: PhantomData<(S, G)>,
-}
-
-impl<S, G, GEN> DiffieHellman<S, G, GEN> {
-    /// Builds a new [`DiffieHellman`] key agreement scheme from the given `generator`.
-    #[inline]
-    pub fn new(generator: GEN) -> Self {
-        Self {
-            generator,
-            __: PhantomData,
-        }
-    }
-
-    /// Converts `self` into the group generator.
-    #[inline]
-    pub fn into_inner(self) -> GEN {
-        self.generator
-    }
-}
-
-impl<S, G, GEN, COM> HasGenerator<G, COM> for DiffieHellman<S, G, GEN>
-where
-    G: Group<COM>,
-{
-    type Generator = GEN;
-
-    #[inline]
-    fn generator(&self) -> &Self::Generator {
-        &self.generator
-    }
-}
-
-impl<S, G, GEN, COM> Constant<COM> for DiffieHellman<S, G, GEN>
-where
-    S: Constant<COM>,
-    G: Constant<COM>,
-    GEN: Constant<COM>,
-{
-    type Type = DiffieHellman<S::Type, G::Type, GEN::Type>;
-
-    #[inline]
-    fn new_constant(value: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(Constant::new_constant(&value.generator, compiler))
-    }
-}
-
-impl<S, G, GEN> key::agreement::Types for DiffieHellman<S, G, GEN> {
-    type SecretKey = S;
-    type PublicKey = G;
-    type SharedSecret = G;
-}
-
-impl<S, G, GEN, COM> key::agreement::Derive<COM> for DiffieHellman<S, G, GEN>
-where
-    GEN: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
-{
-    #[inline]
-    fn derive(&self, secret_key: &Self::SecretKey, compiler: &mut COM) -> Self::PublicKey {
-        self.generator.scalar_mul(secret_key, compiler)
-    }
-}
-
-impl<S, G, GEN, COM> key::agreement::Agree<COM> for DiffieHellman<S, G, GEN>
-where
-    G: ScalarMul<S, COM, Output = G> + security::ComputationalDiffieHellmanHardness,
-{
-    #[inline]
-    fn agree(
-        &self,
-        public_key: &Self::PublicKey,
-        secret_key: &Self::SecretKey,
-        compiler: &mut COM,
-    ) -> Self::SharedSecret {
-        public_key.scalar_mul(secret_key, compiler)
-    }
-}
-
-impl<S, G, GEN> Decode for DiffieHellman<S, G, GEN>
-where
-    GEN: Decode,
-{
-    type Error = GEN::Error;
-
-    #[inline]
-    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
-    where
-        R: Read,
-    {
-        Ok(Self::new(Decode::decode(&mut reader)?))
-    }
-}
-
-impl<S, G, GEN> Encode for DiffieHellman<S, G, GEN>
-where
-    GEN: Encode,
-{
-    #[inline]
-    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-    where
-        W: Write,
-    {
-        self.generator.encode(&mut writer)?;
-        Ok(())
-    }
-}
-
-impl<S, G, GEN, D> Sample<D> for DiffieHellman<S, G, GEN>
-where
-    GEN: Sample<D>,
-{
-    #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(Sample::sample(distribution, rng))
     }
 }
 
