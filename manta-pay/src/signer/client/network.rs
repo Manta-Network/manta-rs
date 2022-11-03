@@ -54,8 +54,12 @@ impl Display for Network {
 }
 
 /// Network-Specific Data
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, crate = "manta_util::serde")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct NetworkSpecific<T> {
     /// Dolphin Data
     pub dolphin: T,
