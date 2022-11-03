@@ -25,8 +25,12 @@ use core::{
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Network Type
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(deny_unknown_fields, crate = "manta_util::serde")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Network {
     /// Dolphin Testnet
     Dolphin,
