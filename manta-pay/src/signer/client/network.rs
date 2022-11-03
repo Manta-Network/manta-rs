@@ -20,6 +20,8 @@ use core::{
     fmt::{self, Display},
     ops::{Index, IndexMut},
 };
+
+#[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Network Type
