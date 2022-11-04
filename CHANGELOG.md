@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#262](https://github.com/Manta-Network/manta-rs/pull/262) Added exporting seed phrase and multiple networks support for signer.
 - [#276](https://github.com/Manta-Network/manta-rs/pull/276) New circuits part 1: manta-crypto abstractions
 
 ### Changed

@@ -51,9 +51,6 @@ download = ["manta-parameters/download", "std"]
 # Enable Groth16 ZKP System
 groth16 = ["ark-groth16", "ark-snark", "arkworks"]
 
-# Enable HTTP Signer Client
-http = ["manta-util/reqwest", "serde"]
-
 # SCALE Codec and Type Info
 scale = ["scale-codec", "scale-info"]
 
@@ -85,7 +82,7 @@ std = ["manta-accounting/std", "manta-util/std"]
 test = ["manta-accounting/test", "manta-crypto/test", "manta-parameters", "tempfile"]
 
 # Wallet
-wallet = ["bip32", "manta-crypto/getrandom", "std"]
+wallet = ["bip32", "bip0039", "manta-crypto/getrandom", "std"]
 
 # Enable WebSocket Signer Client
 websocket = [
@@ -98,11 +95,15 @@ websocket = [
     "ws_stream_wasm",
 ]
 
+# Enable Multiple Network Support
+network = []
+
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
 ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
 ark-snark = { version = "0.3.0", optional = true, default-features = false }
 ark-std = { version = "0.3.0", optional = true, default-features = false }
+bip0039 = { version = "0.10.1", optional = true, default-features = false }
 bip32 = { version = "0.3.0", optional = true, default-features = false, features = ["bip39", "secp256k1"] }
 blake2 = { version = "0.10.4", default-features = false }
 bs58 = { version = "0.4.0", optional = true, default-features = false, features = ["alloc"] }

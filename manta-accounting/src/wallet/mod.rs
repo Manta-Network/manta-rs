@@ -72,7 +72,7 @@ where
     checkpoint: S::Checkpoint,
 
     /// Signer Connection
-    signer: S,
+    pub signer: S,
 
     /// Balance State
     assets: B,
