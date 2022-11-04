@@ -173,6 +173,12 @@ pub type TransferPostBody = transfer::TransferPostBody<Config>;
 /// Transfer Post Type
 pub type TransferPost = transfer::TransferPost<Config>;
 
+/// Unsafe Transfer Post Body Type
+pub type UnsafeTransferPostBody = transfer::unverified_transfers::UnsafeTransferPostBody<Config>;
+
+/// Transfer Post Type
+pub type UnsafeTransferPost = transfer::unverified_transfers::UnsafeTransferPost<Config>;
+
 /// To-Private Transfer Type
 pub type ToPrivate = transfer::canonical::ToPrivate<Config>;
 
