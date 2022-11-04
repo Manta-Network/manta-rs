@@ -51,8 +51,6 @@ use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
 use manta_util::{
     array_map,
     future::LocalBoxFutureResult,
@@ -60,6 +58,9 @@ use manta_util::{
     iter::{Finder, IteratorExt},
     persistence::Rollback,
 };
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Signer Connection
 pub trait Connection<C>
