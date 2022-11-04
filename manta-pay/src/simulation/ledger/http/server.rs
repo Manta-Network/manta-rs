@@ -17,7 +17,10 @@
 //! Ledger Simulation Server
 
 use crate::{
-    config::{Config, TransferPost},
+    config::{
+        utxo::v2::{AssetId, AssetValue},
+        Config, TransferPost,
+    },
     simulation::ledger::{http::Request, AccountId, Checkpoint, Ledger, SharedLedger},
 };
 use alloc::sync::Arc;
@@ -62,7 +65,7 @@ impl State {
 
     /// Returns the public balances associated to `account` if they exist.
     #[inline]
-    async fn public_balances(self, account: AccountId) -> Option<AssetList> {
+    async fn public_balances(self, account: AccountId) -> Option<AssetList<AssetId, AssetValue>> {
         self.0.read().await.public_balances(account)
     }
 }

@@ -1356,7 +1356,9 @@ type NullifierCommitmentSchemeType<COM = ()> =
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "NullifierCommitmentSchemeType<COM>: Clone"),
-    Debug(bound = "NullifierCommitmentSchemeType<COM>: Debug")
+    Debug(bound = "NullifierCommitmentSchemeType<COM>: Debug"),
+    Eq(bound = "NullifierCommitmentSchemeType<COM>: Eq"),
+    PartialEq(bound = "NullifierCommitmentSchemeType<COM>: PartialEq")
 )]
 pub struct NullifierCommitmentScheme<COM = ()>(NullifierCommitmentSchemeType<COM>)
 where

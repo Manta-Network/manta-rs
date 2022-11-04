@@ -695,14 +695,17 @@ where
     #[inline]
     async fn restart(&mut self) -> Result<bool, Error<C, L, S>> {
         self.sync().await?;
-        /*
-        let assets = AssetList::from_iter(self.wallet.assets().convert_iter().map(|a| a.clone()));
+
+        let assets = AssetList::from_iter(
+            self.wallet
+                .assets()
+                .convert_iter()
+                .map(|(i, v)| (i.clone(), v.clone())),
+        );
         self.wallet
             .restart()
             .await
             .map(move |_| self.wallet.contains_all(assets))
-        */
-        todo!()
     }
 }
 
@@ -882,8 +885,8 @@ pub async fn measure_balances<'w, C, L, S, B, I>(
 ) -> Result<AssetList<C::AssetId, C::AssetValue>, Error<C, L, S>>
 where
     C: 'w + Configuration,
-    C::AssetId: Ord,
-    C::AssetValue: AddAssign,
+    C::AssetId: Debug + Ord,
+    C::AssetValue: AddAssign + Debug,
     for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
     L: 'w + Ledger<C> + PublicBalanceOracle<C>,
     S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
@@ -895,10 +898,14 @@ where
         wallet.sync().await?;
         balances.deposit_all(wallet.ledger().public_balances().await.expect(""));
         balances.deposit_all({
-            wallet
-                .assets()
-                .convert_iter()
-                .map(|(id, value)| Asset::<C>::new(id.clone(), value.clone()))
+            wallet.assets().convert_iter().map(|(id, value)| {
+                println!(
+                    "Wallet asset id: {:?}, value: {:?}",
+                    id.clone(),
+                    value.clone()
+                );
+                Asset::<C>::new(id.clone(), value.clone())
+            })
         });
     }
     Ok(balances)
@@ -930,8 +937,8 @@ impl Config {
     ) -> Result<bool, Error<C, L, S>>
     where
         C: Configuration,
-        C::AssetId: Ord,
-        C::AssetValue: AddAssign + SampleUniform,
+        C::AssetId: Debug,
+        C::AssetValue: AddAssign + Debug + SampleUniform,
         for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
         L: Ledger<C> + PublicBalanceOracle<C>,
         S: signer::Connection<C, Checkpoint = L::Checkpoint>,
@@ -979,6 +986,8 @@ impl Config {
             .await;
         let final_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
+        println!("Initial balances: {initial_balances:#?}");
+        println!("Final balances: {final_balances:#?}");
         Ok(initial_balances == final_balances)
     }
 }

@@ -433,6 +433,16 @@ pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHash
         C::UtxoAccumulatorItemHash: Debug,
         C::NullifierCommitmentScheme: Debug,
         C::OutgoingBaseEncryptionScheme: Debug,
+    "),
+    Default(bound = r"
+        C::GroupGenerator: Default,
+        C::UtxoCommitmentScheme: Default,
+        C::IncomingBaseEncryptionScheme: Default,
+        C::LightIncomingBaseEncryptionScheme: Default,
+        C::ViewingKeyDerivationFunction: Default,
+        C::UtxoAccumulatorItemHash: Default,
+        C::NullifierCommitmentScheme: Default,
+        C::OutgoingBaseEncryptionScheme: Default,
     ")
 )]
 pub struct BaseParameters<C, COM = ()>
@@ -1039,6 +1049,9 @@ where
     C::Scalar: Sample,
     encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
     UtxoCommitmentRandomness<C>: Sample,
+    C::Group: Debug,
+    C::Scalar: Debug,
+    C::IncomingCiphertext: Debug,
 {
     #[inline]
     fn derive_mint<R>(
@@ -1074,7 +1087,18 @@ where
             C::IncomingHeader::default(),
             &secret.plaintext,
             &mut (),
-        );
+        ); // investigate 
+        // println!(
+        //     "I encrypted a note with ephemeral secret key {:?}",
+        //     secret.incoming_randomness.ephemeral_secret_key
+        // );
+        // println!(
+        //     "The product of the with the secret receiving key is {:?}",
+        //     secret
+        //         .receiving_key
+        //         .scalar_mul(&secret.incoming_randomness.ephemeral_secret_key, &mut ())
+        // );
+        println!("Just encrypted the ciphertext {:?}", incoming_note.ciphertext.ciphertext);
         (
             secret,
             Utxo::new(
@@ -1239,24 +1263,39 @@ where
     C: Configuration<Bool = bool>,
     C::IncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
+    C::Group: Debug,
+    C::IncomingCiphertext: Debug,
 {
     #[inline]
-    fn open(
+    fn open( //investigate 
         &self,
         decryption_key: &Self::DecryptionKey,
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
+        println!("Decrypting a note");
         // TODO: Decrypt only if address paritition matches
-        let plaintext = self.base.incoming_base_encryption_scheme.decrypt(
-            &note
-                .incoming_note
-                .ephemeral_public_key()
-                .scalar_mul(decryption_key, &mut ()),
-            &C::IncomingHeader::default(),
-            &note.incoming_note.ciphertext.ciphertext,
-            &mut (),
-        )?;
+        let temp = &note
+            .incoming_note
+            .ephemeral_public_key()
+            .scalar_mul(decryption_key, &mut ());
+        // println!("The key we give decrpt is {temp:?}");
+        println!("The ciphertext we decrypt is {:?}", &note.incoming_note.ciphertext.ciphertext);
+        
+        // let plaintext = self.base.incoming_base_encryption_scheme.decrypt(
+        //     temp,
+        //     &C::IncomingHeader::default(),
+        //     &note.incoming_note.ciphertext.ciphertext,
+        //     &mut (),
+        // )?;
+
+        let plaintext = Hybrid::new(
+            StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
+            self.base.incoming_base_encryption_scheme.clone(),
+        )
+        .decrypt(
+            decryption_key, &C::IncomingHeader::default(), &note.incoming_note.ciphertext, &mut ())?;
+        println!("We decrypted");
         Some((
             Identifier::new(utxo.is_transparent, plaintext.utxo_commitment_randomness),
             plaintext.asset,
@@ -1301,7 +1340,10 @@ where
 #[derivative(
     Clone(bound = "C::Group: Clone"),
     Copy(bound = "C::Group: Copy"),
-    Debug(bound = "C::Group: Debug")
+    Debug(bound = "C::Group: Debug"),
+    Eq(bound = "C::Group: Eq"),
+    Hash(bound = "C::Group: Hash"),
+    PartialEq(bound = "C::Group: cmp::PartialEq")
 )]
 pub struct Address<C, COM = ()>
 where
@@ -1413,7 +1455,10 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "AddressPartition<C>: Clone, IncomingNote<C>: Clone"),
-    Debug(bound = "AddressPartition<C>: Debug, IncomingNote<C>: Debug")
+    Debug(bound = "AddressPartition<C>: Debug, IncomingNote<C>: Debug"),
+    Eq(bound = "AddressPartition<C>: Eq, IncomingNote<C>: Eq"),
+    Hash(bound = "AddressPartition<C>: Hash, IncomingNote<C>: Hash"),
+    PartialEq(bound = "AddressPartition<C>: cmp::PartialEq, IncomingNote<C>: cmp::PartialEq")
 )]
 pub struct FullIncomingNote<C>
 where
@@ -1505,7 +1550,12 @@ where
 #[derivative(
     Clone(bound = "C::Bool: Clone, Asset<C, COM>: Clone, UtxoCommitment<C, COM>: Clone"),
     Copy(bound = "C::Bool: Copy, Asset<C, COM>: Copy, UtxoCommitment<C, COM>: Copy"),
-    Debug(bound = "C::Bool: Debug, Asset<C, COM>: Debug, UtxoCommitment<C, COM>: Debug")
+    Debug(bound = "C::Bool: Debug, Asset<C, COM>: Debug, UtxoCommitment<C, COM>: Debug"),
+    Eq(bound = "C::Bool: Eq, Asset<C, COM>: Eq, UtxoCommitment<C, COM>: Eq"),
+    Hash(bound = "C::Bool: Hash, Asset<C, COM>: Hash, UtxoCommitment<C, COM>: Hash"),
+    PartialEq(
+        bound = "C::Bool: cmp::PartialEq, Asset<C, COM>: cmp::PartialEq, UtxoCommitment<C, COM>: cmp::PartialEq"
+    )
 )]
 pub struct Utxo<C, COM = ()>
 where
@@ -2302,7 +2352,12 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "NullifierCommitment<C, COM>: Clone, OutgoingNote<C, COM>: Clone"),
-    Debug(bound = "NullifierCommitment<C, COM>: Debug, OutgoingNote<C, COM>: Debug")
+    Debug(bound = "NullifierCommitment<C, COM>: Debug, OutgoingNote<C, COM>: Debug"),
+    Eq(bound = "NullifierCommitment<C, COM>: cmp::Eq, OutgoingNote<C, COM>: cmp::Eq"),
+    Hash(bound = "NullifierCommitment<C, COM>: Hash, OutgoingNote<C, COM>: Hash"),
+    PartialEq(
+        bound = "NullifierCommitment<C, COM>: cmp::PartialEq, OutgoingNote<C, COM>: cmp::PartialEq"
+    )
 )]
 pub struct Nullifier<C, COM = ()>
 where

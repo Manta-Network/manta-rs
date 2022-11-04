@@ -475,6 +475,7 @@ pub type FixedCiphertext<const N: usize, S, COM = ()> = BlockArray<CiphertextBlo
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
+    Copy(bound = "S::Field: Copy"),
     Debug(bound = "S::Field: Debug"),
     Eq(bound = "S::Field: Eq"),
     Hash(bound = "S::Field: Hash"),

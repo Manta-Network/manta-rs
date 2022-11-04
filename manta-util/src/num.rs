@@ -122,3 +122,13 @@ macro_rules! impl_checked {
 }
 
 impl_checked!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
+
+// TODO: This seems unnecessary
+impl<'v> CheckedSub for &'v u128 {
+    type Output = u128;
+
+    fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
+        let result = self.clone().checked_sub(rhs.clone());
+        result
+    }
+}

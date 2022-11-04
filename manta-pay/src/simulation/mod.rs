@@ -18,6 +18,7 @@
 
 use crate::{
     config::{
+        utxo::v2::{AssetId, AssetValue},
         Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
     },
     signer::base::{Signer, UtxoAccumulator},
@@ -25,9 +26,9 @@ use crate::{
 };
 use alloc::{format, sync::Arc};
 use core::fmt::Debug;
+use manta_accounting::asset::AssetList;
 use manta_accounting::{
     self,
-    asset::{AssetId, AssetValue, AssetValueType},
     key::AccountTable,
     wallet::{
         self,
@@ -56,8 +57,8 @@ where
 {
     Signer::new(
         AccountTable::new(rng.gen()),
-        proving_context.clone(),
         parameters.clone(),
+        proving_context.clone(),
         UtxoAccumulator::new(utxo_accumulator_model.clone()),
         rng.seed_rng().expect("Failed to sample PRNG for signer."),
     )
@@ -77,7 +78,7 @@ pub struct Simulation {
     pub asset_id_count: usize,
 
     /// Starting Balance
-    pub starting_balance: AssetValueType,
+    pub starting_balance: AssetValue,
 }
 
 impl Simulation {
@@ -94,11 +95,11 @@ impl Simulation {
     /// Sets the correct public balances for `ledger` to set up the simulation.
     #[inline]
     pub fn setup(&self, ledger: &mut Ledger) {
-        let starting_balance = AssetValue(self.starting_balance);
+        let starting_balance = self.starting_balance;
         for i in 0..self.actor_count {
             let account = AccountId(i as u64);
             for id in 0..self.asset_id_count {
-                ledger.set_public_balance(account, AssetId(id as u32), starting_balance);
+                ledger.set_public_balance(account, AssetId::from(id as u128), starting_balance);
             }
         }
     }
@@ -115,7 +116,11 @@ impl Simulation {
     ) where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let mut ledger = Ledger::new(utxo_accumulator_model.clone(), verifying_context);
+        let mut ledger = Ledger::new(
+            utxo_accumulator_model.clone(),
+            verifying_context,
+            parameters.clone(),
+        );
         self.setup(&mut ledger);
         let ledger = Arc::new(RwLock::new(ledger));
         self.run_with(
@@ -134,15 +139,16 @@ impl Simulation {
     #[inline]
     pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
     where
-        L: wallet::test::Ledger<Config> + PublicBalanceOracle,
+        L: wallet::test::Ledger<Config> + PublicBalanceOracle<Config>,
         S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
+        S::Error: Debug,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         Error<Config, L, S>: Debug,
     {
         assert!(
             self.config()
-                .run(ledger, signer, ChaCha20Rng::from_entropy, |event| {
+                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, ChaCha20Rng::from_entropy, |event| {
                     let event = format!("{event:?}\n");
                     async move {
                         let _ = write_stdout(event.as_bytes()).await;
@@ -159,4 +165,81 @@ impl Simulation {
 #[inline]
 async fn write_stdout(bytes: &[u8]) -> io::Result<()> {
     tokio::io::stdout().write_all(bytes).await
+}
+
+#[tokio::test]
+async fn test_to_private() {
+    // cargo test --release --all-features test_to_private -- --nocapture
+    use crate::config::{Asset, FullParametersRef};
+    use manta_accounting::{
+        transfer::canonical::{generate_context, Transaction},
+        wallet::{test::measure_balances, Wallet},
+    };
+    use manta_crypto::rand::OsRng;
+
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let utxo_accumulator_model = rng.gen();
+    let (proving_context, verifying_context) = generate_context(
+        &(),
+        FullParametersRef::new(&parameters, &utxo_accumulator_model),
+        &mut rng,
+    )
+    .expect("Failed to generate contexts.");
+
+    let simulation = Simulation {
+        actor_count: 1,
+        actor_lifetime: 1,
+        asset_id_count: 1,
+        starting_balance: 10,
+    };
+    let mut ledger = Ledger::new(
+        utxo_accumulator_model.clone(),
+        verifying_context,
+        parameters.clone(),
+    );
+    simulation.setup(&mut ledger);
+    let signer = sample_signer(
+        &proving_context,
+        &parameters,
+        &utxo_accumulator_model,
+        &mut rng,
+    );
+
+    let ledger = Arc::new(RwLock::new(ledger));
+    let ledger_connection = LedgerConnection::new(AccountId(0u64), ledger.clone());
+    let mut wallet =
+        Wallet::<_, _, _, AssetList<AssetId, AssetValue>>::new(ledger_connection, signer);
+    let asset = Asset {
+        id: 0.into(),
+        value: 4,
+    };
+
+    // Is wallet.assets() empty?
+    println!(
+        "The wallet contains {} assets before syncing",
+        wallet.assets().len()
+    );
+    wallet.sync().await.expect("wallet sync error");
+    // Is wallet.assets() empty?
+    println!(
+        "The wallet contains {} assets after syncing, before transfers",
+        wallet.assets().len()
+    );
+
+    let initial_balance = measure_balances([&mut wallet]).await;
+    let _temp = wallet.post(Transaction::ToPrivate(asset), None).await;
+    let intermediate_balance = measure_balances([&mut wallet]).await;
+    let _temp = wallet.post(Transaction::ToPrivate(asset), None).await;
+    let final_balance = measure_balances([&mut wallet]).await;
+
+    // Is wallet.assets() empty?
+    println!(
+        "The wallet contains {} assets after transfers",
+        wallet.assets().len()
+    );
+
+    println!("Initial balance: {initial_balance:?}");
+    println!("Intermed. balance: {intermediate_balance:?}");
+    println!("Final balance: {final_balance:?}");
 }

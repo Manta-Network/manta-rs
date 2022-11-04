@@ -40,6 +40,7 @@ fn compatibility() {
         &parameters,
         &utxo_accumulator_model,
         rng.gen(),
+        rng.gen(),
         &mut rng,
     )
     .assert_valid_proof(&verifying_context.to_private);
