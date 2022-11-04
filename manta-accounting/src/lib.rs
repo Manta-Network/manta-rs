@@ -33,10 +33,10 @@ extern crate alloc;
 extern crate derive_more;
 
 pub mod asset;
-pub mod key;
+// pub mod key;
 pub mod transfer;
-pub mod wallet;
+// pub mod wallet;
 
-#[cfg(feature = "fs")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "fs")))]
-pub mod fs;
+// #[cfg(feature = "fs")]
+// #[cfg_attr(doc_cfg, doc(cfg(feature = "fs")))]
+// pub mod fs;

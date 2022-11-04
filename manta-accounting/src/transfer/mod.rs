@@ -29,7 +29,7 @@
 //! See the [`crate::wallet`] module for more on how this transfer protocol is used in a wallet
 //! protocol for the keeping of accounts for private assets.
 
-use crate::asset::{Asset, AssetId, AssetValue};
+//use crate::asset::{Asset, AssetId, AssetValue};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
@@ -53,20 +53,20 @@ use manta_util::SizeLimit;
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-mod receiver;
-mod sender;
+// pub mod batch;
+// pub mod canonical;
+// pub mod receiver;
+// pub mod sender;
+pub mod utxo;
 
-pub mod batch;
-pub mod canonical;
+// #[cfg(feature = "test")]
+// #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+// pub mod test;
 
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod test;
+// #[doc(inline)]
+// pub use canonical::Shape;
 
-pub use canonical::Shape;
-pub use receiver::*;
-pub use sender::*;
-
+/*
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
 pub const fn has_public_participants(sources: usize, sinks: usize) -> bool {
@@ -1712,3 +1712,4 @@ where
         Ok(self.event)
     }
 }
+*/

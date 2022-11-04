@@ -356,8 +356,8 @@ impl<I, V> AssetList<I, V> {
         self.map.binary_search_by(move |a| a.id.cmp(id))
     }
 
-    /// Returns the value of the [`Asset`] with the given `id` in `self`, returning `None`
-    /// if `self` doesn't contain an [`Asset`] with `id`.
+    /// Returns the value of the [`Asset`] with the given `id`, returning `None` if `self` doesn't contain
+    /// any [`Asset`] with `id`.
     #[inline]
     fn get_value(&self, id: &I) -> Option<&V>
     where
@@ -527,14 +527,22 @@ impl<I, V> From<AssetList<I, V>> for Vec<Asset<I, V>> {
     }
 }
 
-impl<I, V> From<Vec<Asset<I, V>>> for AssetList<I, V> {
+impl<I, V> From<Vec<Asset<I, V>>> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
     fn from(vector: Vec<Asset<I, V>>) -> Self {
         Self::from_iter(iter::once(vector))
     }
 }
 
-impl<I, V> FromIterator<(I, V)> for AssetList<I, V> {
+impl<I, V> FromIterator<(I, V)> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
     fn from_iter<A>(iter: A) -> Self
     where
@@ -546,7 +554,11 @@ impl<I, V> FromIterator<(I, V)> for AssetList<I, V> {
     }
 }
 
-impl<I, V> FromIterator<Asset<I, V>> for AssetList<I, V> {
+impl<I, V> FromIterator<Asset<I, V>> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
     fn from_iter<A>(iter: A) -> Self
     where
@@ -558,7 +570,11 @@ impl<I, V> FromIterator<Asset<I, V>> for AssetList<I, V> {
     }
 }
 
-impl<I, V> FromIterator<AssetList<I, V>> for AssetList<I, V> {
+impl<I, V> FromIterator<AssetList<I, V>> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
     fn from_iter<A>(iter: A) -> Self
     where
@@ -568,7 +584,11 @@ impl<I, V> FromIterator<AssetList<I, V>> for AssetList<I, V> {
     }
 }
 
-impl<I, V> FromIterator<Vec<Asset<I, V>>> for AssetList<I, V> {
+impl<I, V> FromIterator<Vec<Asset<I, V>>> for AssetList<I, V>
+where
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
+{
     #[inline]
     fn from_iter<A>(iter: A) -> Self
     where
@@ -1064,257 +1084,4 @@ where
     S: BuildHasher + Default,
 {
     impl_asset_manager_for_maps_body! { I }
-}
-
-pub use deprecated_asset::*;
-
-/// Deprecated Asset Types. These will dissappear in the next new-circuits PRs.
-pub mod deprecated_asset {
-
-    use derive_more::{SubAssign, Sum, Add, Sub, AddAssign};
-    use core::iter::Sum;
-
-    use super::*;
-
-    /// Deprecated AssetIdType
-    pub type AssetIdType = u128;
-
-    /// Deprecated AssetId
-    #[cfg_attr(
-        feature = "serde",
-        derive(Deserialize, Serialize),
-        serde(crate = "manta_util::serde", deny_unknown_fields)
-    )]
-    #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct AssetId(pub AssetIdType);
-
-    impl AssetId {
-        /// The size of this type in bits.
-        pub const BITS: u32 = AssetIdType::BITS;
-    
-        /// The size of this type in bytes.
-        pub const SIZE: usize = (Self::BITS / 8) as usize;
-    
-        /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the [`AssetValue`].
-        #[inline]
-        pub const fn with(self, value: AssetValue) -> DeprecatedAsset {
-            Asset::new(self, value)
-        }
-    
-        /// Constructs a new [`Asset`] with `self` as the [`AssetId`] and `value` as the [`AssetValue`].
-        #[inline]
-        pub const fn value(self, value: AssetValueType) -> DeprecatedAsset {
-            self.with(AssetValue(value))
-        }
-    
-        /// Converts a byte array into `self`.
-        #[inline]
-        pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
-            Self(AssetIdType::from_le_bytes(bytes))
-        }
-    
-        /// Converts `self` into a byte array.
-        #[inline]
-        pub const fn into_bytes(self) -> [u8; Self::SIZE] {
-            self.0.to_le_bytes()
-        }
-    
-        /// Samples an [`Asset`] by uniformly choosing between zero and `maximum` when selecting coins.
-        #[cfg(feature = "test")]
-        #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-        #[inline]
-        pub fn sample_up_to<R>(self, maximum: AssetValue, rng: &mut R) -> DeprecatedAsset
-        where
-            R: RngCore + ?Sized,
-        {
-            self.value(rng.gen_range(0..maximum.0))
-        }
-    }
-    
-    impl From<AssetId> for [u8; AssetId::SIZE] {
-        #[inline]
-        fn from(id: AssetId) -> Self {
-            id.into_bytes()
-        }
-    }
-    
-    impl PartialEq<AssetIdType> for AssetId {
-        #[inline]
-        fn eq(&self, rhs: &AssetIdType) -> bool {
-            self.0 == *rhs
-        }
-    }
-    
-    impl<D> Sample<D> for AssetId
-    where
-        AssetIdType: Sample<D>,
-    {
-        #[inline]
-        fn sample<R>(distribution: D, rng: &mut R) -> Self
-        where
-            R: RngCore + ?Sized,
-        {
-            Self(rng.sample(distribution))
-        }
-    }
-    
-    /// Deprecated AssetValueType
-    pub type AssetValueType = u32;
-
-    /// Deprecated AssetValue
-    #[cfg_attr(
-        feature = "serde",
-        derive(Deserialize, Serialize),
-        serde(crate = "manta_util::serde", deny_unknown_fields)
-    )]
-    #[derive(
-        Add,
-        AddAssign,
-        Clone,
-        Copy,
-        Debug,
-        Default,
-        Display,
-        Eq,
-        From,
-        Hash,
-        Ord,
-        PartialEq,
-        PartialOrd,
-        Sub,
-        SubAssign,
-        Sum,
-    )]
-    #[from(forward)]
-    pub struct AssetValue(pub AssetValueType);
-
-    impl AssetValue {
-        /// The size of this type in bits.
-        pub const BITS: u32 = AssetValueType::BITS;
-    
-        /// The size of this type in bytes.
-        pub const SIZE: usize = (Self::BITS / 8) as usize;
-    
-        /// Constructs a new [`Asset`] with `self` as the [`AssetValue`] and `id` as the [`AssetId`].
-        #[inline]
-        pub const fn with(self, id: AssetId) -> DeprecatedAsset {
-            Asset::new(id, self)
-        }
-    
-        /// Constructs a new [`Asset`] with `self` as the [`AssetValue`] and `id` as the [`AssetId`].
-        #[inline]
-        pub const fn id(self, id: AssetIdType) -> DeprecatedAsset {
-            self.with(AssetId(id))
-        }
-    
-        /// Converts a byte array into `self`.
-        #[inline]
-        pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
-            Self(AssetValueType::from_le_bytes(bytes))
-        }
-    
-        /// Converts `self` into a byte array.
-        #[inline]
-        pub const fn into_bytes(self) -> [u8; Self::SIZE] {
-            self.0.to_le_bytes()
-        }
-    
-        /// Checked integer addition. Computes `self + rhs`, returning `None` if overflow occurred.
-        #[inline]
-        pub const fn checked_add(self, rhs: Self) -> Option<Self> {
-            match self.0.checked_add(rhs.0) {
-                Some(result) => Some(Self(result)),
-                _ => None,
-            }
-        }
-    
-        /// Checked integer subtraction. Computes `self - rhs`, returning `None` if overflow occurred.
-        #[inline]
-        pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
-            match self.0.checked_sub(rhs.0) {
-                Some(result) => Some(Self(result)),
-                _ => None,
-            }
-        }
-    }
-    
-    impl Add<AssetValueType> for AssetValue {
-        type Output = Self;
-    
-        #[inline]
-        fn add(mut self, rhs: AssetValueType) -> Self {
-            self.add_assign(rhs);
-            self
-        }
-    }
-    
-    impl AddAssign<AssetValueType> for AssetValue {
-        #[inline]
-        fn add_assign(&mut self, rhs: AssetValueType) {
-            self.0 += rhs;
-        }
-    }
-    
-    impl From<AssetValue> for [u8; AssetValue::SIZE] {
-        #[inline]
-        fn from(value: AssetValue) -> Self {
-            value.into_bytes()
-        }
-    }
-    
-    impl PartialEq<AssetValueType> for AssetValue {
-        #[inline]
-        fn eq(&self, rhs: &AssetValueType) -> bool {
-            self.0 == *rhs
-        }
-    }
-    
-    impl<D> Sample<D> for AssetValue
-    where
-        AssetValueType: Sample<D>,
-    {
-        #[inline]
-        fn sample<R>(distribution: D, rng: &mut R) -> Self
-        where
-            R: RngCore + ?Sized,
-        {
-            Self(rng.sample(distribution))
-        }
-    }
-    
-    impl Sub<AssetValueType> for AssetValue {
-        type Output = Self;
-    
-        #[inline]
-        fn sub(mut self, rhs: AssetValueType) -> Self {
-            self.sub_assign(rhs);
-            self
-        }
-    }
-    
-    impl SubAssign<AssetValueType> for AssetValue {
-        #[inline]
-        fn sub_assign(&mut self, rhs: AssetValueType) {
-            self.0 -= rhs;
-        }
-    }
-    
-    impl<'a> Sum<&'a AssetValue> for AssetValue {
-        #[inline]
-        fn sum<I>(iter: I) -> Self
-        where
-            I: Iterator<Item = &'a AssetValue>,
-        {
-            iter.copied().sum()
-        }
-    }
-
-    /// Deprecated Asset
-    pub type DeprecatedAsset = Asset<AssetId, AssetValue>;
-
-    /// Deprecated AssetList
-    pub type DeprecatedAssetList = AssetList<AssetId, AssetValue>;
-
-    /// Deprecated Selection
-    pub type DeprecatedSelection<M> = Selection<AssetId, AssetValue, M>;
 }
