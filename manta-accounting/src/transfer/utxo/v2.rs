@@ -1267,20 +1267,21 @@ where
     C::IncomingCiphertext: Debug,
 {
     #[inline]
-    fn open( //investigate 
+    fn open(
+        //investigate
         &self,
         decryption_key: &Self::DecryptionKey,
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
-        //println!("Decrypting a note");
+        println!("Decrypting a note");
         // TODO: Decrypt only if address paritition matches
         let temp = &note
             .incoming_note
             .ephemeral_public_key()
             .scalar_mul(decryption_key, &mut ());
         // println!("The key we give decrpt is {temp:?}");
-        //println!("The ciphertext we decrypt is {:?}", &note.incoming_note.ciphertext.ciphertext);
+        println!("The ciphertext we decrypt is {:?}", &note.incoming_note.ciphertext.ciphertext);
         
         // let plaintext = self.base.incoming_base_encryption_scheme.decrypt(
         //     temp,
@@ -1295,6 +1296,7 @@ where
         )
         .decrypt(
             decryption_key, &C::IncomingHeader::default(), &note.incoming_note.ciphertext, &mut ())?;
+        println!("We decrypted");
         Some((
             Identifier::new(utxo.is_transparent, plaintext.utxo_commitment_randomness),
             plaintext.asset,
