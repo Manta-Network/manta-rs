@@ -753,9 +753,7 @@ where
         let mut authorization_context = self.default_authorization_context(parameters);
         let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
         for (utxo, note) in inserts {
-            println!("There is a utxo in inserts");
             if let Some(identified_asset) = parameters.open_into(&decryption_key, &utxo, note) {
-                println!("We decrypted a note");
                 Self::insert_next_item(
                     &mut authorization_context,
                     &mut self.utxo_accumulator,
