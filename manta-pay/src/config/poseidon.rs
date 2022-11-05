@@ -77,3 +77,51 @@ pub type Spec4 = Spec<4>;
 
 ///
 pub type Spec5 = Spec<5>;
+
+
+///
+#[cfg(test)]
+pub mod test {
+    use manta_crypto::{rand::{OsRng, Sample}, permutation::PseudorandomPermutation, encryption::{Encrypt, Decrypt}};
+    use manta_util::{BoxArray, rayon::vec};
+
+    use crate::{crypto::poseidon::{Permutation, State, Constants, encryption::{FixedDuplexer, BlockArray, PlaintextBlock}}, config::{ConstraintField}};
+    use alloc::boxed::Box;
+    use crate::crypto::constraint::arkworks::Fp;
+
+    use super::{Spec4, Spec};
+
+    #[test]
+    fn poseidon_permutation_is_correct() {
+        let mut rng = OsRng;
+        let permutation = Permutation::<Spec4>::gen(&mut rng);
+        let field_elements = <[Fp<ConstraintField>; Spec4::WIDTH]>::gen(&mut rng);
+        let mut state = State::new(Box::new(field_elements));
+        println!("I made it here");
+        let result = permutation.permute(&mut state, &mut ());
+        println!("And here");
+        println!("{result:?}");
+    }
+
+    #[test]
+    fn poseidon_duplexer_is_wrong() {
+        // it seems the tags computed with our duplexer construction are wrong.
+        const N: usize = 3;
+        let mut rng = OsRng;
+        let duplexer = FixedDuplexer::<1, Spec<N>>::gen(&mut rng);
+        let field_elements = <[Fp<ConstraintField>; Spec::<N>::WIDTH-1]>::gen(&mut rng);
+        let plaintext_block = PlaintextBlock(Box::new(field_elements));
+        let plaintext = BlockArray::<_,1>([plaintext_block].into());
+        let mut key = Vec::new();
+        let key_element_1 = Fp::<ConstraintField>::gen(&mut rng);
+        let key_element_2 = Fp::<ConstraintField>::gen(&mut rng);
+        key.push(key_element_1);
+        key.push(key_element_2);
+        let randomness = ();
+        let header = vec![];
+        let ciphertext = duplexer.encrypt(&key, &randomness, &header, &plaintext, &mut ());
+        let (tag,decrypted_plaintext) = duplexer.duplex_decryption(&key, &header, &ciphertext.message, &mut ());
+        assert_eq!(plaintext, decrypted_plaintext);
+        assert_eq!(ciphertext.tag, tag, "\nThe tags are not equal! Big problems with the duplexer!");
+    }
+}

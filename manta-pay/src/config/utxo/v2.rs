@@ -1995,10 +1995,10 @@ impl From<Checkpoint> for RawCheckpoint {
 pub mod test {
     use crate::{
         config::{
-            utxo::v2::{
+            utxo::{v2::{
                 Config, IncomingAESConverter, IncomingBaseAES, AES_CIPHERTEXT_SIZE,
                 AES_PLAINTEXT_SIZE,
-            },
+            }, v2::IncomingBaseEncryptionScheme},
             Compiler, ConstraintField, Group, GroupVar,
         },
         crypto::constraint::arkworks::Fp,
@@ -2135,6 +2135,50 @@ pub mod test {
             ciphertext.len()
         );
         let decrypted_ciphertext = base_aes
+            .decrypt(&encryption_key, &header, &ciphertext, &mut ())
+            .expect("Decryption returned None.");
+        let new_randomness = decrypted_ciphertext.utxo_commitment_randomness;
+        let (new_asset_id, new_asset_value) = (
+            decrypted_ciphertext.asset.id,
+            decrypted_ciphertext.asset.value,
+        );
+        assert_eq!(
+            new_randomness, utxo_commitment_randomness,
+            "Randomness is not the same"
+        );
+        assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
+        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
+    }
+
+     /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
+    /// decryption is the inverse of encryption.
+    #[test]
+    fn check_encryption_poseidon() {
+        let mut rng = OsRng;
+        let encryption_key = Group::gen(&mut rng);
+        let header = EmptyHeader::default();
+        let base_poseidon = IncomingBaseEncryptionScheme::gen(&mut rng);
+        let randomness = ();
+        let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
+        let asset_id = Fp::<ConstraintField>::gen(&mut rng);
+        let asset_value = u128::gen(&mut rng);
+        let plaintext = protocol::IncomingPlaintext::<Config>::new(
+            utxo_commitment_randomness,
+            asset::Asset {
+                id: asset_id,
+                value: asset_value,
+            },
+        );
+        let ciphertext =
+            base_poseidon.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
+        // assert_eq!(
+        //     AES_CIPHERTEXT_SIZE,
+        //     ciphertext.len(),
+        //     "Ciphertext length doesn't match, should be {} but is {}",
+        //     AES_CIPHERTEXT_SIZE,
+        //     ciphertext.len()
+        // );
+        let decrypted_ciphertext = base_poseidon
             .decrypt(&encryption_key, &header, &ciphertext, &mut ())
             .expect("Decryption returned None.");
         let new_randomness = decrypted_ciphertext.utxo_commitment_randomness;

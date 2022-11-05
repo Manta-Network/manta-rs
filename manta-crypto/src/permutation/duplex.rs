@@ -285,7 +285,8 @@ where
     /// Performs duplex decryption by absorbing the initial state with `key` and `header`, and
     /// then duplexing `ciphertext`, outputting the decryption tag and the plaintext blocks.
     #[inline]
-    fn duplex_decryption(
+    pub fn duplex_decryption(
+    // This function shouldn't be public
         &self,
         key: &C::Key,
         header: &C::Header,
