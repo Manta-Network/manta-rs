@@ -1995,10 +1995,10 @@ impl From<Checkpoint> for RawCheckpoint {
 pub mod test {
     use crate::{
         config::{
-            utxo::{v2::{
-                Config, IncomingAESConverter, IncomingBaseAES, AES_CIPHERTEXT_SIZE,
-                AES_PLAINTEXT_SIZE,
-            }, v2::IncomingBaseEncryptionScheme},
+            utxo::v2::{
+                Config, IncomingAESConverter, IncomingBaseAES, IncomingBaseEncryptionScheme,
+                AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE,
+            },
             Compiler, ConstraintField, Group, GroupVar,
         },
         crypto::constraint::arkworks::Fp,
@@ -2150,7 +2150,7 @@ pub mod test {
         assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
     }
 
-     /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
+    /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
     /// decryption is the inverse of encryption.
     #[test]
     fn check_encryption_poseidon() {
@@ -2171,13 +2171,6 @@ pub mod test {
         );
         let ciphertext =
             base_poseidon.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
-        // assert_eq!(
-        //     AES_CIPHERTEXT_SIZE,
-        //     ciphertext.len(),
-        //     "Ciphertext length doesn't match, should be {} but is {}",
-        //     AES_CIPHERTEXT_SIZE,
-        //     ciphertext.len()
-        // );
         let decrypted_ciphertext = base_poseidon
             .decrypt(&encryption_key, &header, &ciphertext, &mut ())
             .expect("Decryption returned None.");

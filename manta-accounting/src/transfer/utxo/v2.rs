@@ -1087,18 +1087,18 @@ where
             C::IncomingHeader::default(),
             &secret.plaintext,
             &mut (),
-        ); // investigate 
-        // println!(
-        //     "I encrypted a note with ephemeral secret key {:?}",
-        //     secret.incoming_randomness.ephemeral_secret_key
-        // );
-        // println!(
-        //     "The product of the with the secret receiving key is {:?}",
-        //     secret
-        //         .receiving_key
-        //         .scalar_mul(&secret.incoming_randomness.ephemeral_secret_key, &mut ())
-        // );
-        //println!("Just encrypted the ciphertext {:?}", incoming_note.ciphertext.ciphertext);
+        ); // investigate
+           // println!(
+           //     "I encrypted a note with ephemeral secret key {:?}",
+           //     secret.incoming_randomness.ephemeral_secret_key
+           // );
+           // println!(
+           //     "The product of the with the secret receiving key is {:?}",
+           //     secret
+           //         .receiving_key
+           //         .scalar_mul(&secret.incoming_randomness.ephemeral_secret_key, &mut ())
+           // );
+           //println!("Just encrypted the ciphertext {:?}", incoming_note.ciphertext.ciphertext);
         (
             secret,
             Utxo::new(
@@ -1268,35 +1268,22 @@ where
 {
     #[inline]
     fn open(
-        //investigate
         &self,
         decryption_key: &Self::DecryptionKey,
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
-        println!("Decrypting a note");
         // TODO: Decrypt only if address paritition matches
-        let temp = &note
-            .incoming_note
-            .ephemeral_public_key()
-            .scalar_mul(decryption_key, &mut ());
-        // println!("The key we give decrpt is {temp:?}");
-        println!("The ciphertext we decrypt is {:?}", &note.incoming_note.ciphertext.ciphertext);
-        
-        // let plaintext = self.base.incoming_base_encryption_scheme.decrypt(
-        //     temp,
-        //     &C::IncomingHeader::default(),
-        //     &note.incoming_note.ciphertext.ciphertext,
-        //     &mut (),
-        // )?;
-
         let plaintext = Hybrid::new(
             StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
             self.base.incoming_base_encryption_scheme.clone(),
         )
         .decrypt(
-            decryption_key, &C::IncomingHeader::default(), &note.incoming_note.ciphertext, &mut ())?;
-        println!("We decrypted");
+            decryption_key,
+            &C::IncomingHeader::default(),
+            &note.incoming_note.ciphertext,
+            &mut (),
+        )?;
         Some((
             Identifier::new(utxo.is_transparent, plaintext.utxo_commitment_randomness),
             plaintext.asset,

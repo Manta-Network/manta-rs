@@ -26,9 +26,9 @@ use crate::{
 };
 use alloc::{format, sync::Arc};
 use core::fmt::Debug;
-use manta_accounting::asset::AssetList;
 use manta_accounting::{
     self,
+    asset::AssetList,
     key::AccountTable,
     wallet::{
         self,

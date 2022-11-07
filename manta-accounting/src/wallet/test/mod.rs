@@ -894,13 +894,16 @@ where
     I: IntoIterator<Item = &'w mut Wallet<C, L, S, B>>,
 {
     let mut balances = AssetList::<C::AssetId, C::AssetValue>::new();
-    for wallet in wallets {
+    for (i, wallet) in wallets.into_iter().enumerate() {
         wallet.sync().await?;
-        balances.deposit_all(wallet.ledger().public_balances().await.expect(""));
+        let public_balance = wallet.ledger().public_balances().await.expect("");
+        for asset in &public_balance {
+        println!("Actor: {i} public asset id: {:?}, value: {:?}", asset.id, asset.value); }
+        balances.deposit_all(public_balance);
         balances.deposit_all({
             wallet.assets().convert_iter().map(|(id, value)| {
                 println!(
-                    "Wallet asset id: {:?}, value: {:?}",
+                    "Actor: {i} private asset id: {:?}, value: {:?}",
                     id.clone(),
                     value.clone()
                 );
@@ -986,8 +989,7 @@ impl Config {
             .await;
         let final_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
-        println!("Initial balances: {initial_balances:#?}");
-        println!("Final balances: {final_balances:#?}");
+        println!("Conservation of funds: {}", initial_balances == final_balances);
         Ok(initial_balances == final_balances)
     }
 }
