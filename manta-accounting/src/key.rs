@@ -231,6 +231,12 @@ where
             key_derivation_function,
         }
     }
+
+    /// Returns the base [`HierarchicalKeyDerivationScheme`] for `self`.
+    #[inline]
+    pub fn base(&self) -> &H {
+        &self.base
+    }
 }
 
 impl<H, F> HierarchicalKeyDerivationScheme for Map<H, F>
@@ -817,6 +823,12 @@ where
     #[inline]
     pub fn with_accounts(keys: H, accounts: M) -> Self {
         Self { keys, accounts }
+    }
+
+    /// Returns the underlying [`HierarchicalKeyDerivationScheme`] of `self`.
+    #[inline]
+    pub fn keys(&self) -> &H {
+        &self.keys
     }
 
     /// Returns the secret key pair associated to `account` if it exists, using `index` if it does

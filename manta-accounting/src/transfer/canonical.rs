@@ -19,14 +19,14 @@
 // TODO: Add typing for `ProvingContext` and `VerifyingContext` against the canonical shapes.
 
 use crate::{
-    asset::{self, Asset, AssetMap, AssetMetadata, AssetValue},
+    asset::{self, Asset, AssetMap, AssetValue},
     transfer::{
         has_public_participants, Configuration, FullParameters, Parameters, PreSender,
         ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, ReceivingKey,
         Sender, SpendingKey, Transfer, TransferPost, VerifyingContext,
     },
 };
-use alloc::{format, string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::rand::{CryptoRng, Rand, RngCore};
 use manta_util::{create_seal, seal};
@@ -353,21 +353,6 @@ where
             Self::Mint(asset) => asset.is_zero(),
             Self::PrivateTransfer(asset, _) => asset.is_zero(),
             Self::Reclaim(asset) => asset.is_zero(),
-        }
-    }
-
-    /// Returns a transaction summary given the asset `metadata`.
-    #[inline]
-    pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> String
-    where
-        F: FnOnce(&ReceivingKey<C>) -> String,
-    {
-        match self {
-            Self::Mint(Asset { value, .. }) => format!("Deposit {}", metadata.display(*value)),
-            Self::PrivateTransfer(Asset { value, .. }, receiving_key) => {
-                format!("Send {} to {}", metadata.display(*value), f(receiving_key))
-            }
-            Self::Reclaim(Asset { value, .. }) => format!("Withdraw {}", metadata.display(*value)),
         }
     }
 }
