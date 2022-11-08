@@ -420,6 +420,7 @@ pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHash
         C::GroupGenerator: Clone,
         C::UtxoCommitmentScheme: Clone,
         C::IncomingBaseEncryptionScheme: Clone,
+        C::LightIncomingBaseEncryptionScheme: Clone,
         C::ViewingKeyDerivationFunction: Clone,
         C::UtxoAccumulatorItemHash: Clone,
         C::NullifierCommitmentScheme: Clone,
@@ -429,6 +430,7 @@ pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHash
         C::GroupGenerator: Debug,
         C::UtxoCommitmentScheme: Debug,
         C::IncomingBaseEncryptionScheme: Debug,
+        C::LightIncomingBaseEncryptionScheme: Debug,
         C::ViewingKeyDerivationFunction: Debug,
         C::UtxoAccumulatorItemHash: Debug,
         C::NullifierCommitmentScheme: Debug,
@@ -458,6 +460,9 @@ where
 
     /// Incoming Base Encryption Scheme
     pub incoming_base_encryption_scheme: C::IncomingBaseEncryptionScheme,
+
+    /// Light Incoming Base Encryption Scheme
+    pub light_incoming_base_encryption_scheme: C::LightIncomingBaseEncryptionScheme,
 
     /// Viewing Key Derivation Function
     pub viewing_key_derivation_function: C::ViewingKeyDerivationFunction,
@@ -668,6 +673,7 @@ where
         GroupGenerator = Const<C::GroupGenerator, COM>,
         UtxoCommitmentScheme = Const<C::UtxoCommitmentScheme, COM>,
         IncomingBaseEncryptionScheme = Const<C::IncomingBaseEncryptionScheme, COM>,
+        LightIncomingBaseEncryptionScheme = Const<C::LightIncomingBaseEncryptionScheme, COM>,
         ViewingKeyDerivationFunction = Const<C::ViewingKeyDerivationFunction, COM>,
         UtxoAccumulatorItemHash = Const<C::UtxoAccumulatorItemHash, COM>,
         NullifierCommitmentScheme = Const<C::NullifierCommitmentScheme, COM>,
@@ -676,6 +682,7 @@ where
     C::GroupGenerator: Constant<COM>,
     C::UtxoCommitmentScheme: Constant<COM>,
     C::IncomingBaseEncryptionScheme: Constant<COM>,
+    C::LightIncomingBaseEncryptionScheme: Constant<COM>,
     C::ViewingKeyDerivationFunction: Constant<COM>,
     C::UtxoAccumulatorItemHash: Constant<COM>,
     C::NullifierCommitmentScheme: Constant<COM>,
@@ -691,6 +698,10 @@ where
             incoming_base_encryption_scheme: this
                 .base
                 .incoming_base_encryption_scheme
+                .as_constant(compiler),
+            light_incoming_base_encryption_scheme: this
+                .base
+                .light_incoming_base_encryption_scheme
                 .as_constant(compiler),
             viewing_key_derivation_function: this
                 .base
@@ -709,20 +720,21 @@ where
     }
 }
 
-impl<C, DGG, DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES>
-    Sample<(DGG, DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES)> for BaseParameters<C>
+impl<C, DGG, DUCS, DIBES, DLIBES, DVKDF, DUAIH, DNCS, DOBES>
+    Sample<(DGG, DUCS, DIBES, DLIBES, DVKDF, DUAIH, DNCS, DOBES)> for BaseParameters<C>
 where
     C: BaseConfiguration<Bool = bool>,
     C::GroupGenerator: Sample<DGG>,
     C::UtxoCommitmentScheme: Sample<DUCS>,
     C::IncomingBaseEncryptionScheme: Sample<DIBES>,
+    C::LightIncomingBaseEncryptionScheme: Sample<DLIBES>,
     C::ViewingKeyDerivationFunction: Sample<DVKDF>,
     C::UtxoAccumulatorItemHash: Sample<DUAIH>,
     C::NullifierCommitmentScheme: Sample<DNCS>,
     C::OutgoingBaseEncryptionScheme: Sample<DOBES>,
 {
     #[inline]
-    fn sample<R>(distribution: (DGG, DUCS, DIBES, DVKDF, DUAIH, DNCS, DOBES), rng: &mut R) -> Self
+    fn sample<R>(distribution: (DGG, DUCS, DIBES, DLIBES, DVKDF, DUAIH, DNCS, DOBES), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
@@ -730,10 +742,11 @@ where
             group_generator: rng.sample(distribution.0),
             utxo_commitment_scheme: rng.sample(distribution.1),
             incoming_base_encryption_scheme: rng.sample(distribution.2),
-            viewing_key_derivation_function: rng.sample(distribution.3),
-            utxo_accumulator_item_hash: rng.sample(distribution.4),
-            nullifier_commitment_scheme: rng.sample(distribution.5),
-            outgoing_base_encryption_scheme: rng.sample(distribution.6),
+            light_incoming_base_encryption_scheme: rng.sample(distribution.3),
+            viewing_key_derivation_function: rng.sample(distribution.4),
+            utxo_accumulator_item_hash: rng.sample(distribution.5),
+            nullifier_commitment_scheme: rng.sample(distribution.6),
+            outgoing_base_encryption_scheme: rng.sample(distribution.7),
         }
     }
 }
@@ -1048,10 +1061,12 @@ where
     C::AssetValue: Clone + Default,
     C::Scalar: Sample,
     encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
+    encryption::Randomness<C::LightIncomingBaseEncryptionScheme>: Sample,
     UtxoCommitmentRandomness<C>: Sample,
     C::Group: Debug,
     C::Scalar: Debug,
     C::IncomingCiphertext: Debug,
+    C::LightIncomingCiphertext: Debug
 {
     #[inline]
     fn derive_mint<R>(
@@ -1087,7 +1102,21 @@ where
             C::IncomingHeader::default(),
             &secret.plaintext,
             &mut (),
-        ); // investigate
+        );
+        
+        let light_incoming_note = Hybrid::new(
+            StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
+            self.base.light_incoming_base_encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &secret.receiving_key,
+            &secret.incoming_randomness,
+            C::LightIncomingHeader::default(),
+            &secret.plaintext,
+            &mut (),
+        );
+        
+        // investigate
            // println!(
            //     "I encrypted a note with ephemeral secret key {:?}",
            //     secret.incoming_randomness.ephemeral_secret_key
@@ -1106,7 +1135,7 @@ where
                 associated_data.public(&asset),
                 utxo_commitment,
             ),
-            FullIncomingNote::new(address_partition, incoming_note),
+            FullIncomingNote::new(address_partition, incoming_note, light_incoming_note),
         )
     }
 }
@@ -1433,8 +1462,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "AddressPartition<C>: Deserialize<'de>, IncomingNote<C>: Deserialize<'de>",
-            serialize = "AddressPartition<C>: Serialize, IncomingNote<C>: Serialize",
+            deserialize = "AddressPartition<C>: Deserialize<'de>, IncomingNote<C>: Deserialize<'de>, LightIncomingNote<C>: Deserialize<'de>",
+            serialize = "AddressPartition<C>: Serialize, IncomingNote<C>: Serialize, LightIncomingNote<C>: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -1442,11 +1471,11 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "AddressPartition<C>: Clone, IncomingNote<C>: Clone"),
-    Debug(bound = "AddressPartition<C>: Debug, IncomingNote<C>: Debug"),
-    Eq(bound = "AddressPartition<C>: Eq, IncomingNote<C>: Eq"),
-    Hash(bound = "AddressPartition<C>: Hash, IncomingNote<C>: Hash"),
-    PartialEq(bound = "AddressPartition<C>: cmp::PartialEq, IncomingNote<C>: cmp::PartialEq")
+    Clone(bound = "AddressPartition<C>: Clone, IncomingNote<C>: Clone, LightIncomingNote<C>: Clone"),
+    Debug(bound = "AddressPartition<C>: Debug, IncomingNote<C>: Debug, LightIncomingNote<C>: Debug"),
+    Eq(bound = "AddressPartition<C>: Eq, IncomingNote<C>: Eq, LightIncomingNote<C>: Eq"),
+    Hash(bound = "AddressPartition<C>: Hash, IncomingNote<C>: Hash, LightIncomingNote<C>: Hash"),
+    PartialEq(bound = "AddressPartition<C>: cmp::PartialEq, IncomingNote<C>: cmp::PartialEq, LightIncomingNote<C>: cmp::PartialEq")
 )]
 pub struct FullIncomingNote<C>
 where
@@ -1457,18 +1486,22 @@ where
 
     /// Incoming Note
     pub incoming_note: IncomingNote<C>,
+
+    /// Light Incoming Note
+    pub light_incoming_note: LightIncomingNote<C>
 }
 
 impl<C> FullIncomingNote<C>
 where
     C: Configuration<Bool = bool> + ?Sized,
 {
-    /// Builds a new [`FullIncomingNote`] from `address_partition` and `incoming_note`.
+    /// Builds a new [`FullIncomingNote`] from `address_partition`, `incoming_note` and `light_incoming_note`.
     #[inline]
-    pub fn new(address_partition: AddressPartition<C>, incoming_note: IncomingNote<C>) -> Self {
+    pub fn new(address_partition: AddressPartition<C>, incoming_note: IncomingNote<C>, light_incoming_note: LightIncomingNote<C>) -> Self {
         Self {
             address_partition,
             incoming_note,
+            light_incoming_note
         }
     }
 }
@@ -1478,6 +1511,7 @@ where
     C: Configuration<Bool = bool> + ?Sized,
     AddressPartition<C>: Encode,
     IncomingNote<C>: Encode,
+    LightIncomingNote<C>: Encode
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -1486,6 +1520,7 @@ where
     {
         self.address_partition.encode(&mut writer)?;
         self.incoming_note.encode(&mut writer)?;
+        self.light_incoming_note.encode(&mut writer)?;
         Ok(())
     }
 }
