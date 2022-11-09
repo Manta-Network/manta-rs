@@ -37,7 +37,7 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, NoteOpen, Spend},
+        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, DeriveMint, NoteOpen, Spend},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
@@ -756,6 +756,17 @@ where
             //println!("There is a utxo in inserts");
             if let Some(identified_asset) = parameters.open_into(&decryption_key, &utxo, note) {
                 //println!("We decrypted a note");
+
+
+                // @TODO: check that asset & randomness contianed in LightIncomingNote are consistent with UTXO.
+
+                // use randomness, asset, public key and utxocommitmentscheme to create new utxo
+
+                // let utxo_randomness = identified_asset.identifier;
+                // let utxo_asset = identified_asset.asset;
+
+                //let mint_secret = parameters.derive_mint(address, utxo_asset, associated_data, utxo_randomness);
+
                 Self::insert_next_item(
                     &mut authorization_context,
                     &mut self.utxo_accumulator,

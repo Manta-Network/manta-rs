@@ -266,7 +266,6 @@ pub struct UtxoCommitmentSchemeDomainTag;
 
 impl poseidon::hash::DomainTag<Poseidon5> for UtxoCommitmentSchemeDomainTag {
     #[inline]
-    fn domain_tag() -> <Poseidon5 as ParameterFieldType>::ParameterField {
         Fp(0u8.into()) // FIXME: Use a real domain tag
     }
 }

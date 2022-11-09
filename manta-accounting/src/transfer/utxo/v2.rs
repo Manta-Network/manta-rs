@@ -255,6 +255,7 @@ where
             Header = Self::LightIncomingHeader,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::LightIncomingCiphertext,
+            Randomness = IncomingRandomness<Self,COM>
         >;
 
     /// Incoming Ciphertext Type
@@ -271,6 +272,8 @@ where
             Header = Self::IncomingHeader,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::IncomingCiphertext,
+            //Randomness = IncomingRandomness<Self,COM>
+            //Randomness = encryption::Randomness<Hybrid<DiffieHellman<Self::Scalar, Self::Group>, Self::IncomingBaseEncryptionScheme>>
         >;
 
     /// UTXO Accumulator Item Hash
@@ -1061,7 +1064,6 @@ where
     C::AssetValue: Clone + Default,
     C::Scalar: Sample,
     encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
-    encryption::Randomness<C::LightIncomingBaseEncryptionScheme>: Sample,
     UtxoCommitmentRandomness<C>: Sample,
     C::Group: Debug,
     C::Scalar: Debug,
@@ -1103,7 +1105,8 @@ where
             &secret.plaintext,
             &mut (),
         );
-        
+
+        //@TODO: Fix this Randomness issue.
         let light_incoming_note = Hybrid::new(
             StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
             self.base.light_incoming_base_encryption_scheme.clone(),
@@ -1290,10 +1293,10 @@ where
 impl<C> utxo::NoteOpen for Parameters<C>
 where
     C: Configuration<Bool = bool>,
-    C::IncomingBaseEncryptionScheme:
+    C::LightIncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
     C::Group: Debug,
-    C::IncomingCiphertext: Debug,
+    C::LightIncomingCiphertext: Debug,
 {
     #[inline]
     fn open(
@@ -1305,12 +1308,12 @@ where
         // TODO: Decrypt only if address paritition matches
         let plaintext = Hybrid::new(
             StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
-            self.base.incoming_base_encryption_scheme.clone(),
+            self.base.light_incoming_base_encryption_scheme.clone(),
         )
         .decrypt(
             decryption_key,
-            &C::IncomingHeader::default(),
-            &note.incoming_note.ciphertext,
+            &C::LightIncomingHeader::default(),
+            &note.light_incoming_note.ciphertext,
             &mut (),
         )?;
         Some((
