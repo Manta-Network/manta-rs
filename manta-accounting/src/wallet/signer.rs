@@ -756,16 +756,19 @@ where
             //println!("There is a utxo in inserts");
             if let Some(identified_asset) = parameters.open_into(&decryption_key, &utxo, note) {
                 //println!("We decrypted a note");
-
+                //let res = identified_asset.identifier.
 
                 // @TODO: check that asset & randomness contianed in LightIncomingNote are consistent with UTXO.
 
                 // use randomness, asset, public key and utxocommitmentscheme to create new utxo
 
-                // let utxo_randomness = identified_asset.identifier;
-                // let utxo_asset = identified_asset.asset;
+                //let utxo_randomness = identified_asset.identifier;
+                //let utxo_asset = identified_asset.asset;
+                //let address = self.accounts.get_default().address(parameters);
+                
 
                 //let mint_secret = parameters.derive_mint(address, utxo_asset, associated_data, utxo_randomness);
+
 
                 Self::insert_next_item(
                     &mut authorization_context,

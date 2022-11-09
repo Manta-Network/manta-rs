@@ -255,7 +255,7 @@ where
             Header = Self::LightIncomingHeader,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::LightIncomingCiphertext,
-            Randomness = IncomingRandomness<Self,COM>
+            Randomness = encryption::Randomness<Self::IncomingBaseEncryptionScheme>
         >;
 
     /// Incoming Ciphertext Type
@@ -272,8 +272,6 @@ where
             Header = Self::IncomingHeader,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::IncomingCiphertext,
-            //Randomness = IncomingRandomness<Self,COM>
-            //Randomness = encryption::Randomness<Hybrid<DiffieHellman<Self::Scalar, Self::Group>, Self::IncomingBaseEncryptionScheme>>
         >;
 
     /// UTXO Accumulator Item Hash
@@ -368,9 +366,29 @@ pub type LightIncomingEncryptionScheme<C, COM = ()> = Hybrid<
     <C as BaseConfiguration<COM>>::LightIncomingBaseEncryptionScheme,
 >;
 
+/// Incoming Base Randomness
+pub type IncomingBaseRandomness<C, COM = ()> =
+    <<C as BaseConfiguration<COM>>::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness;
+
 /// Light Incoming Randomness
 pub type LightIncomingRandomness<C, COM = ()> =
     encryption::Randomness<LightIncomingEncryptionScheme<C, COM>>;
+
+struct LightIncomingRandomnessWrapper<C, COM = ()>
+(pub LightIncomingRandomness<C, COM>) 
+where C: BaseConfiguration<COM>, COM: Has<bool, Type = C::Bool>;
+
+struct IncomingRandomnessWrapper<C, COM = ()>
+(pub IncomingRandomness<C, COM>) 
+where C: BaseConfiguration<COM>, COM: Has<bool, Type = C::Bool>;
+
+impl<C,COM> From<LightIncomingRandomnessWrapper<C,COM>> for IncomingRandomnessWrapper<C,COM> where
+C: BaseConfiguration<COM>, COM: Has<bool, Type = C::Bool> {
+    fn from(light_incoming_randomness_wrapper: LightIncomingRandomnessWrapper<C,COM>) -> Self {
+        Self(light_incoming_randomness_wrapper.0.into())
+    }
+}
+
 
 /// Light Incoming Encrypted Note
 pub type LightIncomingNote<C, COM = ()> = EncryptedMessage<LightIncomingEncryptionScheme<C, COM>>;
