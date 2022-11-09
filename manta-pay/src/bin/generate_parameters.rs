@@ -55,6 +55,7 @@ pub fn main() -> io::Result<()> {
                 group_generator,
                 utxo_commitment_scheme,
                 incoming_base_encryption_scheme,
+                light_incoming_base_encryption_scheme,
                 viewing_key_derivation_function,
                 utxo_accumulator_item_hash,
                 nullifier_commitment_scheme,
@@ -88,6 +89,11 @@ pub fn main() -> io::Result<()> {
     incoming_base_encryption_scheme
         .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
             parameters_dir.join("incoming-base-encryption-scheme.dat"),
+        )?))
+        .unwrap();
+    light_incoming_base_encryption_scheme
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("light-incoming-base-encryption-scheme.dat"),
         )?))
         .unwrap();
 

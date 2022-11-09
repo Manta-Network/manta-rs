@@ -36,7 +36,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2s256, Blake2sVar, Digest,
 };
-use core::{fmt::Debug, marker::PhantomData};
+use core::{convert::Infallible, fmt::Debug, marker::PhantomData};
 use manta_accounting::{
     asset::{self, Asset},
     wallet::ledger,
@@ -732,8 +732,52 @@ pub type AES = aes::FixedNonceAesGcm<AES_PLAINTEXT_SIZE, AES_CIPHERTEXT_SIZE>;
 
 ///
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Default)]
+#[derivative(Clone, Default, Debug)]
 pub struct IncomingAESEncryptionScheme<COM = ()>(PhantomData<COM>);
+
+impl<COM> Constant<COM> for IncomingAESEncryptionScheme<COM> {
+    type Type = IncomingAESEncryptionScheme;
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Default::default()
+    }
+}
+
+impl<COM> Sample for IncomingAESEncryptionScheme<COM> {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+        Default::default()
+    }
+}
+
+impl<COM> Decode for IncomingAESEncryptionScheme<COM> {
+    type Error = Infallible;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let _ = reader;
+        Ok(Default::default())
+    }
+}
+
+impl<COM> Encode for IncomingAESEncryptionScheme<COM> {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
+    }
+}
 
 impl<COM> encryption::HeaderType for IncomingAESEncryptionScheme<COM> {
     type Header = <AES as encryption::HeaderType>::Header;
