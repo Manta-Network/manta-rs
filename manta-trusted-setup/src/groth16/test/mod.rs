@@ -221,7 +221,7 @@ pub fn dummy_circuit(cs: &mut R1CS<Fr>) {
 pub fn dummy_prover_key() -> ProvingKey<Bn254> {
     let mut cs = R1CS::for_contexts();
     dummy_circuit(&mut cs);
-    initialize(dummy_phase_one_trusted_setup(), cs).unwrap().0
+    initialize(&dummy_phase_one_trusted_setup(), cs).unwrap().0
 }
 
 /// Proves and verifies a R1CS circuit with proving key `pk` and a random number generator `rng`.
