@@ -265,7 +265,7 @@ where
 
     #[inline]
     fn write(&self, state: &mut State<S, COM>, compiler: &mut COM) -> Self::Output {
-        let mut plaintext = vec![];
+        let mut plaintext = Vec::new();
         for (i, elem) in state.iter_mut().skip(1).enumerate() {
             plaintext.push(self.0[i].sub(elem, compiler));
             *elem = self.0[i].clone();
