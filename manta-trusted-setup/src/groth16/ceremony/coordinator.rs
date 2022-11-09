@@ -46,6 +46,7 @@ use manta_util::{time::lock::Timed, Array, BoxArray};
 use std::{
     fs::OpenOptions,
     path::{Path, PathBuf},
+    time::Instant,
 };
 
 #[cfg(feature = "serde")]
@@ -486,6 +487,7 @@ where
     let mut names = Vec::new();
     for (circuit, name) in C::circuits().into_iter() {
         println!("Creating proving key for {name}");
+        let now = Instant::now();
         names.push(name.clone());
         let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
             initialize(&powers, circuit);
@@ -504,10 +506,16 @@ where
 
         serialize_into_file(
             OpenOptions::new().write(true).truncate(true).create(true),
-            &filename_format(&target_path, name, "challenge".to_string(), round_number),
+            &filename_format(
+                &target_path,
+                name.clone(),
+                "challenge".to_string(),
+                round_number,
+            ),
             &challenge,
         )
         .expect("Writing challenge to disk should succeed.");
+        println!("Computed proving key for {name} in {:?}", now.elapsed());
     }
 
     serialize_into_file(

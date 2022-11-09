@@ -888,12 +888,19 @@ impl Circuits<<Self as Pairing>::Scalar> for Config {
     #[inline]
     fn circuits() -> Vec<(R1CS<<Self as Pairing>::Scalar>, String)> {
         let mut circuits = Vec::new();
-        let mut rng = OsRng;
-
-        let cs: R1CS<_> =
-            ToPrivate::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
-        circuits.push((cs, "to_private".to_string()));
-
+        let mut rng = OsRng; // TODO: Are you sure rng.gen() is a good way to get FullParameters?
+        circuits.push((
+            ToPrivate::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen())),
+            "to_private".to_string(),
+        ));
+        circuits.push((
+            ToPublic::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen())),
+            "to_public".to_string(),
+        ));
+        circuits.push((
+            PrivateTransfer::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen())),
+            "private_transfer".to_string(),
+        ));
         circuits
     }
 }

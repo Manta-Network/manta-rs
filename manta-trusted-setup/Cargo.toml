@@ -48,7 +48,11 @@ bincode = ["dep:bincode", "serde"]
 csv = ["dep:csv", "serde", "std"]
 
 # Perpetual Powers of Tau Ceremony
-ppot = ["manta-crypto/ark-bn254"]
+ppot = [
+    "manta-crypto/ark-bn254",
+    "manta-pay/groth16",
+    "manta-pay/parameters",
+]
 
 # PPoT Client Features
 ppot-client = [
