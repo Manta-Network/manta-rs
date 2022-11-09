@@ -170,17 +170,20 @@ impl<T, const N: usize> MultiVecDeque<T, N> {
     }
 
     /// Pushes back `item` at `level` if `item` is missing. Returns the position
-    /// of `item` in both cases.
+    /// of `item` in both cases. Returns `true` if the item was missing and `false` otherwise.
     #[inline]
-    pub fn push_back_if_missing(&mut self, level: usize, item: T) -> usize
+    pub fn push_back_if_missing(&mut self, level: usize, item: T) -> (bool, usize)
     where
         T: PartialEq,
     {
         match self.position(level, &item) {
-            Some(position) => position,
+            Some(position) => (false, position),
             None => {
                 self.push_back(level, item);
-                self.leading_element_count(level) + self.0[level].len() - 1
+                (
+                    true,
+                    self.leading_element_count(level) + self.0[level].len() - 1,
+                )
             }
         }
     }
