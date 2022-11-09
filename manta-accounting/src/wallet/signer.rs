@@ -37,7 +37,9 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, DeriveMint, NoteOpen, Spend},
+        utxo::{
+            auth::DeriveContext, DeriveDecryptionKey, DeriveMint, DeriveSpend, NoteOpen, Spend,
+        },
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
@@ -765,10 +767,8 @@ where
                 //let utxo_randomness = identified_asset.identifier;
                 //let utxo_asset = identified_asset.asset;
                 //let address = self.accounts.get_default().address(parameters);
-                
 
                 //let mint_secret = parameters.derive_mint(address, utxo_asset, associated_data, utxo_randomness);
-
 
                 Self::insert_next_item(
                     &mut authorization_context,

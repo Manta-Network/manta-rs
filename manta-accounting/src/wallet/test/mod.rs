@@ -898,7 +898,11 @@ where
         wallet.sync().await?;
         let public_balance = wallet.ledger().public_balances().await.expect("");
         for asset in &public_balance {
-        println!("Actor: {i} public asset id: {:?}, value: {:?}", asset.id, asset.value); }
+            println!(
+                "Actor: {i} public asset id: {:?}, value: {:?}",
+                asset.id, asset.value
+            );
+        }
         balances.deposit_all(public_balance);
         balances.deposit_all({
             wallet.assets().convert_iter().map(|(id, value)| {
@@ -989,7 +993,10 @@ impl Config {
             .await;
         let final_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
-        println!("Conservation of funds: {}", initial_balances == final_balances);
+        println!(
+            "Conservation of funds: {}",
+            initial_balances == final_balances
+        );
         Ok(initial_balances == final_balances)
     }
 }

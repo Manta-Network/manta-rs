@@ -43,7 +43,11 @@ use manta_crypto::{
         ops::{BitAnd, BitOr},
         Has,
     },
-    encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage},
+    encryption::{
+        self,
+        hybrid::{Hybrid, Randomness},
+        Decrypt, Encrypt, EncryptedMessage,
+    },
     rand::{Rand, RngCore, Sample},
     signature::{self, schnorr, Sign, Verify},
 };
@@ -255,7 +259,7 @@ where
             Header = Self::LightIncomingHeader,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::LightIncomingCiphertext,
-            Randomness = encryption::Randomness<Self::IncomingBaseEncryptionScheme>
+            Randomness = encryption::Randomness<Self::IncomingBaseEncryptionScheme>,
         >;
 
     /// Incoming Ciphertext Type
@@ -373,22 +377,6 @@ pub type IncomingBaseRandomness<C, COM = ()> =
 /// Light Incoming Randomness
 pub type LightIncomingRandomness<C, COM = ()> =
     encryption::Randomness<LightIncomingEncryptionScheme<C, COM>>;
-
-struct LightIncomingRandomnessWrapper<C, COM = ()>
-(pub LightIncomingRandomness<C, COM>) 
-where C: BaseConfiguration<COM>, COM: Has<bool, Type = C::Bool>;
-
-struct IncomingRandomnessWrapper<C, COM = ()>
-(pub IncomingRandomness<C, COM>) 
-where C: BaseConfiguration<COM>, COM: Has<bool, Type = C::Bool>;
-
-impl<C,COM> From<LightIncomingRandomnessWrapper<C,COM>> for IncomingRandomnessWrapper<C,COM> where
-C: BaseConfiguration<COM>, COM: Has<bool, Type = C::Bool> {
-    fn from(light_incoming_randomness_wrapper: LightIncomingRandomnessWrapper<C,COM>) -> Self {
-        Self(light_incoming_randomness_wrapper.0.into())
-    }
-}
-
 
 /// Light Incoming Encrypted Note
 pub type LightIncomingNote<C, COM = ()> = EncryptedMessage<LightIncomingEncryptionScheme<C, COM>>;
@@ -755,7 +743,10 @@ where
     C::OutgoingBaseEncryptionScheme: Sample<DOBES>,
 {
     #[inline]
-    fn sample<R>(distribution: (DGG, DUCS, DIBES, DLIBES, DVKDF, DUAIH, DNCS, DOBES), rng: &mut R) -> Self
+    fn sample<R>(
+        distribution: (DGG, DUCS, DIBES, DLIBES, DVKDF, DUAIH, DNCS, DOBES),
+        rng: &mut R,
+    ) -> Self
     where
         R: RngCore + ?Sized,
     {
@@ -1086,7 +1077,8 @@ where
     C::Group: Debug,
     C::Scalar: Debug,
     C::IncomingCiphertext: Debug,
-    C::LightIncomingCiphertext: Debug
+    C::LightIncomingCiphertext: Debug,
+    <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone,
 {
     #[inline]
     fn derive_mint<R>(
@@ -1124,31 +1116,17 @@ where
             &mut (),
         );
 
-        //@TODO: Fix this Randomness issue.
         let light_incoming_note = Hybrid::new(
             StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
             self.base.light_incoming_base_encryption_scheme.clone(),
         )
         .encrypt_into(
             &secret.receiving_key,
-            &secret.incoming_randomness,
+            &secret.light_incoming_randomness(),
             C::LightIncomingHeader::default(),
             &secret.plaintext,
             &mut (),
         );
-        
-        // investigate
-           // println!(
-           //     "I encrypted a note with ephemeral secret key {:?}",
-           //     secret.incoming_randomness.ephemeral_secret_key
-           // );
-           // println!(
-           //     "The product of the with the secret receiving key is {:?}",
-           //     secret
-           //         .receiving_key
-           //         .scalar_mul(&secret.incoming_randomness.ephemeral_secret_key, &mut ())
-           // );
-           //println!("Just encrypted the ciphertext {:?}", incoming_note.ciphertext.ciphertext);
         (
             secret,
             Utxo::new(
@@ -1492,11 +1470,17 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "AddressPartition<C>: Clone, IncomingNote<C>: Clone, LightIncomingNote<C>: Clone"),
-    Debug(bound = "AddressPartition<C>: Debug, IncomingNote<C>: Debug, LightIncomingNote<C>: Debug"),
+    Clone(
+        bound = "AddressPartition<C>: Clone, IncomingNote<C>: Clone, LightIncomingNote<C>: Clone"
+    ),
+    Debug(
+        bound = "AddressPartition<C>: Debug, IncomingNote<C>: Debug, LightIncomingNote<C>: Debug"
+    ),
     Eq(bound = "AddressPartition<C>: Eq, IncomingNote<C>: Eq, LightIncomingNote<C>: Eq"),
     Hash(bound = "AddressPartition<C>: Hash, IncomingNote<C>: Hash, LightIncomingNote<C>: Hash"),
-    PartialEq(bound = "AddressPartition<C>: cmp::PartialEq, IncomingNote<C>: cmp::PartialEq, LightIncomingNote<C>: cmp::PartialEq")
+    PartialEq(
+        bound = "AddressPartition<C>: cmp::PartialEq, IncomingNote<C>: cmp::PartialEq, LightIncomingNote<C>: cmp::PartialEq"
+    )
 )]
 pub struct FullIncomingNote<C>
 where
@@ -1509,7 +1493,7 @@ where
     pub incoming_note: IncomingNote<C>,
 
     /// Light Incoming Note
-    pub light_incoming_note: LightIncomingNote<C>
+    pub light_incoming_note: LightIncomingNote<C>,
 }
 
 impl<C> FullIncomingNote<C>
@@ -1518,11 +1502,15 @@ where
 {
     /// Builds a new [`FullIncomingNote`] from `address_partition`, `incoming_note` and `light_incoming_note`.
     #[inline]
-    pub fn new(address_partition: AddressPartition<C>, incoming_note: IncomingNote<C>, light_incoming_note: LightIncomingNote<C>) -> Self {
+    pub fn new(
+        address_partition: AddressPartition<C>,
+        incoming_note: IncomingNote<C>,
+        light_incoming_note: LightIncomingNote<C>,
+    ) -> Self {
         Self {
             address_partition,
             incoming_note,
-            light_incoming_note
+            light_incoming_note,
         }
     }
 }
@@ -1532,7 +1520,7 @@ where
     C: Configuration<Bool = bool> + ?Sized,
     AddressPartition<C>: Encode,
     IncomingNote<C>: Encode,
-    LightIncomingNote<C>: Encode
+    LightIncomingNote<C>: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -1842,6 +1830,18 @@ where
         let incoming_note = self.incoming_note(group_generator, encryption_scheme, compiler);
         compiler.assert_eq(note, &incoming_note);
         asset
+    }
+
+    ///
+    #[inline]
+    fn light_incoming_randomness(&self) -> LightIncomingRandomness<C, COM>
+    where
+        <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone,
+    {
+        Randomness {
+            ephemeral_secret_key: self.incoming_randomness.ephemeral_secret_key.clone(),
+            randomness: self.incoming_randomness.randomness.clone(),
+        }
     }
 }
 

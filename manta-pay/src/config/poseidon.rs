@@ -85,7 +85,7 @@ pub mod test {
         encryption::{Decrypt, Encrypt},
         rand::{OsRng, Sample},
     };
-    use manta_util::{BoxArray};
+    use manta_util::BoxArray;
 
     use crate::{
         config::ConstraintField,
@@ -118,8 +118,12 @@ pub mod test {
         let randomness = ();
         let header = vec![];
         let ciphertext = duplexer.encrypt(&key, &randomness, &header, &plaintext, &mut ());
-        let (tag_matches, decrypted_plaintext) = duplexer.decrypt(&key, &header, &ciphertext, &mut ());
+        let (tag_matches, decrypted_plaintext) =
+            duplexer.decrypt(&key, &header, &ciphertext, &mut ());
         assert!(tag_matches, "Tag doesn't match");
-        assert_eq!(plaintext, decrypted_plaintext, "Decrypted plaintext is not equal to original one.");
+        assert_eq!(
+            plaintext, decrypted_plaintext,
+            "Decrypted plaintext is not equal to original one."
+        );
     }
 }
