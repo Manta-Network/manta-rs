@@ -1325,17 +1325,24 @@ where
     C::LightIncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
     C::Group: Debug,
-    C::LightIncomingCiphertext: Debug
+    C::LightIncomingCiphertext: Debug,
+    Asset<C>: Clone + Default
 {
 
     #[inline]
-    fn utxo_check (&self, utxo: &Self::Utxo, asset: Self::Asset, identifier: &Self::Identifier, address: &Self::Address) -> bool {
+    fn utxo_check (&self, utxo: &Self::Utxo, asset: &Self::Asset, identifier: &Self::Identifier, address: &Self::Address) -> bool {
 
         let new_utxo_commitment =
             self.base.utxo_commitment_scheme.commit(&identifier.utxo_commitment_randomness, 
             &asset.id, &asset.value, &address.receiving_key, &mut ());
 
-        let new_utxo = Self::Utxo::new(identifier.is_transparent,asset, new_utxo_commitment);
+        let associated_data = if identifier.is_transparent {
+            Visibility::Transparent
+        } else {
+            Visibility::Opaque
+        };
+
+        let new_utxo = Self::Utxo::new(identifier.is_transparent,associated_data.public(&asset), new_utxo_commitment);
 
         if new_utxo.eq( &utxo,&mut ()) {
             true

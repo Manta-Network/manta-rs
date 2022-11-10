@@ -37,7 +37,7 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, NoteOpen, Spend, UtxoReconstruct},
+        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, Spend, UtxoReconstruct},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
@@ -757,30 +757,24 @@ where
         for (utxo, note) in inserts {
             //println!("There is a utxo in inserts");
             
-            if let Some((identifier,asset)) = parameters.open(&decryption_key, &utxo, note) {
+            if let Some((identifier,asset)) = parameters.open_with_check(&decryption_key, &utxo, note, &receiving_key) {
                 //println!("We decrypted a note");
 
-                if parameters.utxo_check(&utxo, asset.clone(), &identifier, &receiving_key) {
-
-                    let identified_asset = transfer::utxo::IdentifiedAsset::new(identifier, asset);
-
-                    Self::insert_next_item(
-                        &mut authorization_context,
-                        &mut self.utxo_accumulator,
-                        &mut self.assets,
-                        parameters,
-                        utxo,
-                        identified_asset,
-                        &mut nullifiers,
-                        &mut deposit,
-                        &mut self.rng,
-                    );
-                    continue;
-                }
-            }
-
-            self.utxo_accumulator
+                Self::insert_next_item(
+                    &mut authorization_context,
+                    &mut self.utxo_accumulator,
+                    &mut self.assets,
+                    parameters,
+                    utxo,
+                    transfer::utxo::IdentifiedAsset::new(identifier, asset),
+                    &mut nullifiers,
+                    &mut deposit,
+                    &mut self.rng,
+                );
+            } else {
+                self.utxo_accumulator
                 .insert_nonprovable(&Self::item_hash(parameters, &utxo));
+            }
             
         }
         self.assets.retain(|identifier, assets| {
