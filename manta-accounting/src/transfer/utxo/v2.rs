@@ -1319,6 +1319,49 @@ where
     }
 }
 
+/// Utxo Reconstruction
+pub trait UtxoReconstruct: utxo::NoteOpen + utxo::AddressType {
+
+    /// Check if `utxo` is consistent with `asset` and `identifier`, which come from
+    /// decrypting a Note.
+    fn utxo_check (&self, utxo: &Self::Utxo, asset: Self::Asset, identifier: &Self::Identifier, address: &Self::Address) -> bool;
+
+    /// Check if `utxo` is consistent with a `note`. Mainly used when `note`
+    /// is of type LightIncomingNote which is computed off-circuit.
+    fn utxo_check_decrypt(&self, decryption_key: &Self::DecryptionKey, utxo: &Self::Utxo, note: Self::Note, address: &Self::Address) -> bool {
+        
+        // @TODO: handle this unwrap?
+        let (identifier, asset) = self.open(decryption_key, utxo, note).unwrap();
+        self.utxo_check(utxo, asset, &identifier, &address)
+    }
+}
+
+impl<C> UtxoReconstruct for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    C::LightIncomingBaseEncryptionScheme:
+        Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
+    C::Group: Debug,
+    C::LightIncomingCiphertext: Debug
+{
+
+    #[inline]
+    fn utxo_check (&self, utxo: &Self::Utxo, asset: Self::Asset, identifier: &Self::Identifier, address: &Self::Address) -> bool {
+
+        let new_utxo_commitment =
+            self.base.utxo_commitment_scheme.commit(&identifier.utxo_commitment_randomness, 
+            &asset.id, &asset.value, &address.receiving_key, &mut ());
+
+        let new_utxo = Self::Utxo::new(identifier.is_transparent,asset, new_utxo_commitment);
+
+        if new_utxo.eq( &utxo,&mut ()) {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 impl<C, DBP, DAPF, DSHF> Sample<(DBP, DAPF, DSHF)> for Parameters<C>
 where
     C: Configuration<Bool = bool>,

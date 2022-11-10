@@ -37,7 +37,7 @@ use crate::{
             ToPublic, Transaction,
         },
         requires_authorization,
-        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, NoteOpen, Spend},
+        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, NoteOpen, Spend, v2::UtxoReconstruct},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
@@ -752,37 +752,36 @@ where
         let mut withdraw = Vec::new();
         let mut authorization_context = self.default_authorization_context(parameters);
         let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
+        let receiving_key = self.accounts.get_default().address(parameters);
+
         for (utxo, note) in inserts {
             //println!("There is a utxo in inserts");
-            if let Some(identified_asset) = parameters.open_into(&decryption_key, &utxo, note) {
+            
+            if let Some((identifier,asset)) = parameters.open(&decryption_key, &utxo, note) {
                 //println!("We decrypted a note");
-                //let res = identified_asset.identifier.
 
-                // @TODO: check that asset & randomness contianed in LightIncomingNote are consistent with UTXO.
+                if parameters.utxo_check(&utxo, asset.clone(), &identifier, &receiving_key) {
 
-                // use randomness, asset, public key and utxocommitmentscheme to create new utxo
+                    let identified_asset = transfer::utxo::IdentifiedAsset::new(identifier, asset);
 
-                //let utxo_randomness = identified_asset.identifier;
-                //let utxo_asset = identified_asset.asset;
-                //let address = self.accounts.get_default().address(parameters);
-
-                //let mint_secret = parameters.derive_mint(address, utxo_asset, associated_data, utxo_randomness);
-
-                Self::insert_next_item(
-                    &mut authorization_context,
-                    &mut self.utxo_accumulator,
-                    &mut self.assets,
-                    parameters,
-                    utxo,
-                    identified_asset,
-                    &mut nullifiers,
-                    &mut deposit,
-                    &mut self.rng,
-                );
-            } else {
-                self.utxo_accumulator
-                    .insert_nonprovable(&Self::item_hash(parameters, &utxo));
+                    Self::insert_next_item(
+                        &mut authorization_context,
+                        &mut self.utxo_accumulator,
+                        &mut self.assets,
+                        parameters,
+                        utxo,
+                        identified_asset,
+                        &mut nullifiers,
+                        &mut deposit,
+                        &mut self.rng,
+                    );
+                    continue;
+                }
             }
+
+            self.utxo_accumulator
+                .insert_nonprovable(&Self::item_hash(parameters, &utxo));
+            
         }
         self.assets.retain(|identifier, assets| {
             assets.retain(|asset| {
