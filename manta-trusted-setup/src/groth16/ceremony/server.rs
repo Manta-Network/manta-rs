@@ -335,7 +335,7 @@ where
     {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(5)).await; // TODO: Increase this duration for the actual ceremony
-            let _ = info!("[ACTION] Updating participant registry.");
+                                                                         // let _ = info!("[ACTION] Updating participant registry.");
             let registry_path = self.registry_path.clone();
             let registry = self.registry.clone();
             match task::spawn_blocking(move || {
@@ -350,10 +350,12 @@ where
             .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::TaskError))
             {
                 Ok(Ok(added)) => {
-                    let _ = info!(
-                        "[ACTION] Registry successfully updated. {} New entries added",
-                        added
-                    );
+                    if added > 0 {
+                        let _ = info!(
+                            "[ACTION] Registry successfully updated. {} New entries added",
+                            added
+                        );
+                    }
                 }
                 Ok(Err(CeremonyError::Unexpected(UnexpectedError::Serialization {
                     message: _,

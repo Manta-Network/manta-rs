@@ -16,6 +16,9 @@
 
 //! Trusted Setup Ceremony Client
 
+// for local server test:
+// cargo run --release --all-features --package manta-trusted-setup --bin groth16_phase2_client -- http://localhost:8080 contribute
+
 extern crate alloc;
 
 use clap::{Parser, Subcommand};
@@ -82,6 +85,7 @@ impl Arguments {
                 Ok(())
             }
             Command::Contribute => {
+                println!("I'm going to connect to the url {:?}", self.url);
                 let (sk, pk) = match get_client_keys() {
                     Ok(keys) => keys,
                     Err(e) => panic!("Error while extracting the client keys: {e}"),

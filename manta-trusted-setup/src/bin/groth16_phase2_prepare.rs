@@ -28,6 +28,8 @@ use manta_trusted_setup::groth16::ceremony::{
 };
 use std::path::PathBuf;
 
+// for local server test:
+// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_prepare /Users/thomascnorton/Documents/Manta/trusted-setup/challenge_0072 /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data
 /// Preparer CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
