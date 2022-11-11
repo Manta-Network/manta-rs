@@ -20,7 +20,8 @@
 //! protocol. Applications which define balances beyond fungible assets should extend these
 //! abstractions.
 
-use crate::asset::{Asset, AssetId, AssetList, AssetValue};
+use crate::{asset::AssetList, 
+transfer::{Asset, AssetId, AssetValue, Configuration}};
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 
 #[cfg(feature = "std")]
@@ -30,38 +31,39 @@ use std::{
 };
 
 /// Balance State
-pub trait BalanceState: Default {
+pub trait BalanceState<C>: Default 
+where C:Configuration{
     /// Returns the current balance associated with this `id`.
-    fn balance(&self, id: AssetId) -> AssetValue;
+    fn balance(&self, id: AssetId<C>) -> AssetValue<C>;
 
     /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
     #[inline]
-    fn contains(&self, asset: Asset) -> bool {
+    fn contains(&self, asset: Asset<C>) -> bool {
         self.balance(asset.id) >= asset.value
     }
 
     /// Deposits `asset` into the balance state, increasing the balance of the asset stored at
     /// `asset.id` by an amount equal to `asset.value`.
-    fn deposit(&mut self, asset: Asset);
+    fn deposit(&mut self, asset: Asset<C>);
 
     /// Deposits every asset in `assets` into the balance state.
     #[inline]
     fn deposit_all<I>(&mut self, assets: I)
     where
-        I: IntoIterator<Item = Asset>,
+        I: IntoIterator<Item = Asset<C>>,
     {
         assets.into_iter().for_each(move |a| self.deposit(a));
     }
 
     /// Withdraws `asset` from the balance state returning `false` if it would overdraw the balance.
-    fn withdraw(&mut self, asset: Asset) -> bool;
+    fn withdraw(&mut self, asset: Asset<C>) -> bool;
 
     /// Withdraws every asset in `assets` from the balance state, returning `false` if it would
     /// overdraw the balance.
     #[inline]
     fn withdraw_all<I>(&mut self, assets: I) -> bool
     where
-        I: IntoIterator<Item = Asset>,
+        I: IntoIterator<Item = Asset<C>>,
     {
         for asset in AssetList::from_iter(assets) {
             if !self.withdraw(asset) {
@@ -75,19 +77,20 @@ pub trait BalanceState: Default {
     fn clear(&mut self);
 }
 
-impl BalanceState for AssetList {
+impl<C> BalanceState<C> for AssetList<AssetId<C>, AssetValue<C>> 
+where C: Configuration{
     #[inline]
-    fn balance(&self, id: AssetId) -> AssetValue {
+    fn balance(&self, id: AssetId<C>) -> AssetValue<C> {
         self.value(id)
     }
 
     #[inline]
-    fn deposit(&mut self, asset: Asset) {
+    fn deposit(&mut self, asset: Asset<C>) {
         self.deposit(asset);
     }
 
     #[inline]
-    fn withdraw(&mut self, asset: Asset) -> bool {
+    fn withdraw(&mut self, asset: Asset<C>) -> bool {
         self.withdraw(asset)
     }
 
@@ -101,12 +104,12 @@ impl BalanceState for AssetList {
 macro_rules! impl_balance_state_map_body {
     ($entry:tt) => {
         #[inline]
-        fn balance(&self, id: AssetId) -> AssetValue {
+        fn balance(&self, id: AssetId<C>) -> AssetValue<C> {
             self.get(&id).copied().unwrap_or_default()
         }
 
         #[inline]
-        fn deposit(&mut self, asset: Asset) {
+        fn deposit(&mut self, asset: Asset<C>) {
             if asset.is_zero() {
                 return;
             }
@@ -119,7 +122,7 @@ macro_rules! impl_balance_state_map_body {
         }
 
         #[inline]
-        fn withdraw(&mut self, asset: Asset) -> bool {
+        fn withdraw(&mut self, asset: Asset<C>) -> bool {
             if !asset.is_zero() {
                 if let $entry::Occupied(mut entry) = self.entry(asset.id) {
                     let balance = entry.get_mut();
@@ -146,21 +149,23 @@ macro_rules! impl_balance_state_map_body {
 }
 
 /// B-Tree Map [`BalanceState`] Implementation
-pub type BTreeMapBalanceState = BTreeMap<AssetId, AssetValue>;
+pub type BTreeMapBalanceState<C> = BTreeMap<AssetId<C>, AssetValue<C>>;
 
-impl BalanceState for BTreeMapBalanceState {
+impl<C> BalanceState<C> for BTreeMapBalanceState<C> 
+where C:Configuration{
     impl_balance_state_map_body! { BTreeMapEntry }
 }
 
 /// Hash Map [`BalanceState`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashMapBalanceState<S = RandomState> = HashMap<AssetId, AssetValue, S>;
+pub type HashMapBalanceState<C, S = RandomState> = HashMap<AssetId<C>, AssetValue<C>, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<S> BalanceState for HashMapBalanceState<S>
+impl<C, S> BalanceState<C> for HashMapBalanceState<C, S>
 where
+    C: Configuration,
     S: BuildHasher + Default,
 {
     impl_balance_state_map_body! { HashMapEntry }
@@ -178,9 +183,10 @@ pub mod test {
 
     /// Asserts that a random deposit and withdraw is always valid.
     #[inline]
-    pub fn assert_valid_withdraw<S, R>(state: &mut S, rng: &mut R)
+    pub fn assert_valid_withdraw<C, S, R>(state: &mut S, rng: &mut R)
     where
-        S: BalanceState,
+        C: Configuration,
+        S: BalanceState<C>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let asset = Asset::gen(rng);
@@ -202,9 +208,10 @@ pub mod test {
     /// Asserts that a maximal withdraw that leaves the state with no value should delete its memory
     /// for this process.
     #[inline]
-    pub fn assert_full_withdraw_should_remove_entry<S, R>(rng: &mut R)
+    pub fn assert_full_withdraw_should_remove_entry<C, S, R>(rng: &mut R)
     where
-        S: BalanceState,
+        C: Configuration,
+        S: BalanceState<C>,
         for<'s> &'s S: IntoIterator,
         for<'s> <&'s S as IntoIterator>::IntoIter: ExactSizeIterator,
         R: CryptoRng + RngCore + ?Sized,
