@@ -35,7 +35,7 @@ type Registry = HashMap<Array<u8, 32>, Participant>;
 type S = Server<Config, Registry, 2, 3>;
 
 /// Contribution time limit in seconds
-const TIME_LIMIT: u64 = 60;
+const TIME_LIMIT: u64 = 2000; // TODO: What's correct?
 
 /// Server CLI
 #[derive(Debug, Parser)]
@@ -59,7 +59,7 @@ impl Arguments {
         println!("Network is running!");
         let mut api = tide::Server::with_state(server);
         api.at("/")
-            .serve_file("/home/mobula/manta-rs/index.html")
+            .serve_file("/home/mobula/manta-rs/manta-trusted-setup/index.html")
             .map_err(|_| CeremonyError::<Config>::Network {
                 message: "Cannot load landing page.".to_string(),
             })?;
