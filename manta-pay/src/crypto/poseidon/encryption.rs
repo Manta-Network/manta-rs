@@ -267,10 +267,13 @@ where
 
     #[inline]
     fn write(&self, state: &mut State<S, COM>, compiler: &mut COM) -> Self::Output {
+        let mut plaintext = Vec::new();
         for (i, elem) in state.iter_mut().skip(1).enumerate() {
             *elem = self.0[i].sub(elem, compiler);
+            plaintext.push(self.0[i].sub(elem, compiler));
+            *elem = self.0[i].clone();
         }
-        PlaintextBlock(state.iter().skip(1).cloned().collect())
+        PlaintextBlock(plaintext.into())
     }
 }
 

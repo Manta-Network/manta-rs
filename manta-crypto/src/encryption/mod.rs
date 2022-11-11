@@ -236,8 +236,11 @@ where
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UnsafeNoEncrypt<E, COM = ()>(PhantomData<(E, COM)>);
 
-impl<E, COM> Constant<COM> for UnsafeNoEncrypt<E, COM> {
-    type Type = E;
+impl<E, COM> Constant<COM> for UnsafeNoEncrypt<E, COM>
+where
+    E: Constant<COM>,
+{
+    type Type = E::Type;
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {

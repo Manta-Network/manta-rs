@@ -25,7 +25,6 @@ use crate::transfer::utxo::auth::AuthorizationContextType;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
-    algebra::{HasGenerator, ScalarMul},
     eclair::alloc::{Allocate, Constant},
     rand::RngCore,
 };
@@ -230,6 +229,36 @@ pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType 
     ) -> Option<IdentifiedAsset<Self>> {
         self.open(decryption_key, utxo, note)
             .map(|(identifier, asset)| IdentifiedAsset::new(identifier, asset))
+    }
+}
+
+/// Utxo Reconstruction
+pub trait UtxoReconstruct: NoteOpen {
+    /// Checks if `utxo` is consistent with `asset` and `identifier`.
+    fn utxo_check(
+        &self,
+        utxo: &Self::Utxo,
+        asset: &Self::Asset,
+        identifier: &Self::Identifier,
+        decryption_key: &Self::DecryptionKey,
+    ) -> bool;
+
+    /// Tries to open `note` with `decryption_key`, returning a note [`Identifier`] and its stored
+    /// [`Asset`], and checking them for consistency against `utxo`. If the consistency check fails,
+    /// returns `None`.
+    #[inline]
+    fn open_with_check(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        utxo: &Self::Utxo,
+        note: Self::Note,
+    ) -> Option<(Self::Identifier, Self::Asset)> {
+        let (identifier, asset) = self.open(decryption_key, utxo, note)?;
+        if self.utxo_check(utxo, &asset, &identifier, &decryption_key) {
+            Some((identifier, asset))
+        } else {
+            None
+        }
     }
 }
 

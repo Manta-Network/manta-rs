@@ -43,7 +43,11 @@ use manta_crypto::{
         ops::{BitAnd, BitOr},
         Has,
     },
-    encryption::{self, hybrid::Hybrid, Decrypt, Encrypt, EncryptedMessage},
+    encryption::{
+        self,
+        hybrid::{self, Hybrid},
+        Decrypt, Encrypt, EncryptedMessage,
+    },
     rand::{Rand, RngCore, Sample},
     signature::{self, schnorr, Sign, Verify},
 };
@@ -255,6 +259,8 @@ where
             Header = Self::LightIncomingHeader,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::LightIncomingCiphertext,
+            Randomness = <Self::IncomingBaseEncryptionScheme 
+            as encryption::RandomnessType>::Randomness,
         >;
 
     /// Incoming Ciphertext Type
@@ -1028,6 +1034,7 @@ where
     C::Scalar: Sample,
     encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
     UtxoCommitmentRandomness<C>: Sample,
+    <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone,
 {
     #[inline]
     fn derive_mint<R>(
@@ -1064,6 +1071,17 @@ where
             &secret.plaintext,
             &mut (),
         );
+        let light_incoming_note = Hybrid::new(
+            StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
+            self.base.light_incoming_base_encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &secret.receiving_key,
+            &secret.light_incoming_randomness(),
+            C::LightIncomingHeader::default(),
+            &secret.plaintext,
+            &mut (),
+        );
         (
             secret,
             Utxo::new(
@@ -1071,7 +1089,7 @@ where
                 associated_data.public(&asset),
                 utxo_commitment,
             ),
-            FullIncomingNote::new(address_partition, incoming_note),
+            FullIncomingNote::new(address_partition, incoming_note, light_incoming_note),
         )
     }
 }
@@ -1262,6 +1280,50 @@ where
     }
 }
 
+impl<C> utxo::UtxoReconstruct for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    C::LightIncomingBaseEncryptionScheme:
+        Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
+    Asset<C>: Clone + Default,
+{
+    #[inline]
+    fn utxo_check(
+        &self,
+        utxo: &Self::Utxo,
+        asset: &Self::Asset,
+        identifier: &Self::Identifier,
+        decryption_key: &Self::DecryptionKey,
+    ) -> bool {
+        let new_utxo_commitment = self.base.utxo_commitment_scheme.commit(
+            &identifier.utxo_commitment_randomness,
+            &asset.id,
+            &asset.value,
+            &self
+                .base
+                .group_generator
+                .generator()
+                .scalar_mul(decryption_key, &mut ()),
+            &mut (),
+        );
+        let associated_data = if identifier.is_transparent {
+            Visibility::Transparent
+        } else {
+            Visibility::Opaque
+        };
+        let new_utxo = Self::Utxo::new(
+            identifier.is_transparent,
+            associated_data.public(&asset),
+            new_utxo_commitment,
+        );
+        if new_utxo.eq(utxo, &mut ()) {
+            true
+        } else {
+            false
+        }
+    }
+}
+
 impl<C, DBP, DAPF, DSHF> Sample<(DBP, DAPF, DSHF)> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
@@ -1435,7 +1497,7 @@ impl<C> FullIncomingNote<C>
 where
     C: Configuration<Bool = bool> + ?Sized,
 {
-    /// Builds a new [`FullIncomingNote`] from `address_partition` and `incoming_note`.
+    /// Builds a new [`FullIncomingNote`] from `address_partition`, `incoming_note` and `light_incoming_note`.
     #[inline]
     pub fn new(
         address_partition: AddressPartition<C>,
@@ -1455,6 +1517,7 @@ where
     C: Configuration<Bool = bool> + ?Sized,
     AddressPartition<C>: Encode,
     IncomingNote<C>: Encode,
+    LightIncomingNote<C>: Encode,
 {
     #[inline]
     fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
@@ -1463,6 +1526,7 @@ where
     {
         self.address_partition.encode(&mut writer)?;
         self.incoming_note.encode(&mut writer)?;
+        self.light_incoming_note.encode(&mut writer)?;
         Ok(())
     }
 }
@@ -1758,6 +1822,18 @@ where
         let incoming_note = self.incoming_note(group_generator, encryption_scheme, compiler);
         compiler.assert_eq(note, &incoming_note);
         asset
+    }
+
+    /// Returns the [`LightIncomingRandomness`] in `self`.
+    #[inline]
+    fn light_incoming_randomness(&self) -> LightIncomingRandomness<C, COM>
+    where
+        <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone,
+    {
+        hybrid::Randomness {
+            ephemeral_secret_key: self.incoming_randomness.ephemeral_secret_key.clone(),
+            randomness: self.incoming_randomness.randomness.clone(),
+        }
     }
 }
 
