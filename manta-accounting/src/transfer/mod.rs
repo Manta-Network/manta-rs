@@ -62,19 +62,18 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-//pub mod batch;
-//pub mod canonical;
+pub mod batch;
+pub mod canonical;
 pub mod receiver;
 pub mod sender;
-//pub mod unverified_transfers;
 pub mod utxo;
 
-// #[cfg(feature = "test")]
-// #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-// pub mod test;
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test;
 
-// #[doc(inline)]
-// pub use canonical::Shape;
+#[doc(inline)]
+pub use canonical::Shape;
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]

@@ -254,7 +254,7 @@ pub trait UtxoReconstruct: NoteOpen {
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
         let (identifier, asset) = self.open(decryption_key, utxo, note)?;
-        if self.utxo_check(utxo, &asset, &identifier, &decryption_key) {
+        if self.utxo_check(utxo, &asset, &identifier, decryption_key) {
             Some((identifier, asset))
         } else {
             None

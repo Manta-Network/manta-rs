@@ -1312,14 +1312,10 @@ where
         };
         let new_utxo = Self::Utxo::new(
             identifier.is_transparent,
-            associated_data.public(&asset),
+            associated_data.public(asset),
             new_utxo_commitment,
         );
-        if new_utxo.eq(utxo, &mut ()) {
-            true
-        } else {
-            false
-        }
+        new_utxo.eq(utxo, &mut ())
     }
 }
 
