@@ -259,8 +259,7 @@ where
             Header = Self::LightIncomingHeader,
             Plaintext = IncomingPlaintext<Self, COM>,
             Ciphertext = Self::LightIncomingCiphertext,
-            Randomness = <Self::IncomingBaseEncryptionScheme 
-            as encryption::RandomnessType>::Randomness,
+            Randomness = <Self::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness,
         >;
 
     /// Incoming Ciphertext Type
