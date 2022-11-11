@@ -313,7 +313,7 @@ pub trait AddressPartitionFunction {
     type Address;
 
     /// Partition Type
-    type Partition;
+    type Partition: cmp::PartialEq;
 
     /// Returns the partition for the `address`.
     fn partition(&self, address: &Self::Address) -> Self::Partition;
@@ -530,14 +530,6 @@ where
 {
     type Nullifier = Nullifier<C, COM>;
 }
-
-// impl<C, COM> utxo::IdentifierType for BaseParameters<C, COM>
-// where
-//     C: BaseConfiguration<COM>,
-//     COM: Has<bool, Type = C::Bool>,
-// {
-//     type Identifier = Identifier<C, COM>;
-// }
 
 impl<C> utxo::IdentifierType for BaseParameters<C>
 where
@@ -876,7 +868,7 @@ impl<C> utxo::NoteType for Parameters<C>
 where
     C: Configuration<Bool = bool>,
 {
-    type Note = FullIncomingNote<C>; // Change this to a pair (FullIncomingNote, LightIncomingNote)? Check where Note is used.
+    type Note = FullIncomingNote<C>;
 }
 
 impl<C> utxo::UtxoType for Parameters<C>
@@ -1008,25 +1000,6 @@ where
             .verify(authorization_key, &message.to_vec(), signature, &mut ())
     }
 }
-
-// impl<C> utxo::DeriveAddress<SpendingKey<Self>> for Parameters<C>
-// where
-//     C: Configuration<Bool = bool>,
-// {
-//     #[inline]
-//     fn derive_address(&self, key: &SpendingKey<Self>) -> Self::Address {
-//         let generator = self.base.group_generator.generator();
-//         Address::new(
-//             generator.scalar_mul(
-//                 &self
-//                     .base
-//                     .viewing_key_derivation_function
-//                     .viewing_key(&generator.scalar_mul(key, &mut ()), &mut ()),
-//                 &mut (),
-//             ),
-//         )
-//     }
-// }
 
 impl<C> utxo::Mint for Parameters<C>
 where
@@ -1263,20 +1236,29 @@ where
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
-        // TODO: Decrypt only if address paritition matches
-        let plaintext = self.base.light_incoming_base_encryption_scheme.decrypt(
-            &note
-                .light_incoming_note
-                .ephemeral_public_key()
+        let address_partition = self.address_partition_function.partition(&Address::new(
+            self.base
+                .group_generator
+                .generator()
                 .scalar_mul(decryption_key, &mut ()),
-            &C::LightIncomingHeader::default(),
-            &note.light_incoming_note.ciphertext.ciphertext,
-            &mut (),
-        )?;
-        Some((
-            Identifier::new(utxo.is_transparent, plaintext.utxo_commitment_randomness),
-            plaintext.asset,
-        ))
+        ));
+        if address_partition == note.address_partition {
+            let plaintext = self.base.light_incoming_base_encryption_scheme.decrypt(
+                &note
+                    .light_incoming_note
+                    .ephemeral_public_key()
+                    .scalar_mul(decryption_key, &mut ()),
+                &C::LightIncomingHeader::default(),
+                &note.light_incoming_note.ciphertext.ciphertext,
+                &mut (),
+            )?;
+            Some((
+                Identifier::new(utxo.is_transparent, plaintext.utxo_commitment_randomness),
+                plaintext.asset,
+            ))
+        } else {
+            None
+        }
     }
 }
 
@@ -1779,14 +1761,6 @@ where
     }
 }
 
-// impl<C, COM> utxo::IdentifierType for MintSecret<C, COM>
-// where
-//     C: BaseConfiguration<COM>,
-//     COM: Has<bool, Type = C::Bool>,
-// {
-//     type Identifier = Identifier<C, COM>;
-// }
-
 impl<C> utxo::IdentifierType for MintSecret<C>
 where
     C: BaseConfiguration<Bool = bool>,
@@ -1878,7 +1852,8 @@ where
         }
     }
 
-    ///
+    /// Computes the viewing key from `viewing_key`, `proof_authorization_key`
+    /// and `viewing_key_derivation_function`.
     #[inline]
     fn compute_viewing_key<'s>(
         viewing_key: &'s mut Option<C::Scalar>,
@@ -2085,8 +2060,7 @@ where
     where
         R: RngCore + ?Sized,
     {
-        // FIXME: Should we sample the transparency flag.
-        Self::new(false, rng.gen())
+        Self::new(rng.gen(), rng.gen())
     }
 }
 

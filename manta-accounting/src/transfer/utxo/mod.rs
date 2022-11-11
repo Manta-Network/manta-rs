@@ -301,7 +301,7 @@ pub trait Spend<COM = ()>: AuthorizationContextType + AssetType + UtxoType + Nul
     /// Spend Secret Type
     type Secret;
 
-    ///
+    /// Returns the UTXO Accumulator Item Hash.
     fn utxo_accumulator_item_hash(&self) -> &Self::UtxoAccumulatorItemHash;
 
     /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
