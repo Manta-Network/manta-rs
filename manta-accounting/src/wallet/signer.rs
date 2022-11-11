@@ -635,6 +635,12 @@ where
         )
     }
 
+    /// Returns the [`AccountTable`] for `self.`
+    #[inline]
+    pub fn accounts(&self) -> &AccountTable<C> {
+        &self.accounts
+    }
+
     /// Finds the next viewing key that can decrypt the `encrypted_note` from the `view_key_table`.
     #[inline]
     fn find_next_key<'h>(

@@ -5,10 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [#276](https://github.com/Manta-Network/manta-rs/pull/276) New circuits part 1: manta-crypto abstractions
 
 ### Changed
-- [\#274](https://github.com/Manta-Network/manta-rs/pull/274) Update TS client installer script to use release 0.5.6.
 
 ### Deprecated
 
@@ -17,6 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 ### Security
+
+## [0.5.7] - 2022-11-04
+### Added
+- [\#262](https://github.com/Manta-Network/manta-rs/pull/262) Added exporting seed phrase and multiple networks support for signer.
+- [#276](https://github.com/Manta-Network/manta-rs/pull/276) New circuits part 1: manta-crypto abstractions
+
+### Changed
+- [\#274](https://github.com/Manta-Network/manta-rs/pull/274) Update TS client installer script to use release 0.5.6.
 
 ## [0.5.6] - 2022-10-27
 ### Added
@@ -130,7 +136,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.7...HEAD
+[0.5.7]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.7
+[0.5.6]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.6
+[0.5.5]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.5
 [0.5.4]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.4
 [0.5.3]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.3
 [0.5.2]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.2

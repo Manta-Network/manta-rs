@@ -19,14 +19,14 @@
 use crate::{
     config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},
     crypto::constraint::arkworks::Fp,
-    key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
+    key::{CoinType, KeySecret, Testnet},
     signer::Checkpoint,
 };
 use alloc::collections::BTreeMap;
 use core::{cmp, marker::PhantomData, mem};
 use manta_accounting::{
     asset::HashAssetMap,
-    key::{self, HierarchicalKeyDerivationScheme},
+    key,
     wallet::{
         self,
         signer::{self, AssetMapKey, SyncData},
@@ -36,7 +36,7 @@ use manta_crypto::{
     arkworks::{ec::ProjectiveCurve, ff::PrimeField},
     key::kdf::KeyDerivationFunction,
     merkle_tree::{self, forest::Configuration},
-    rand::ChaCha20Rng,
+    rand::{ChaCha20Rng, CryptoRng, RngCore},
 };
 
 #[cfg(feature = "serde")]
@@ -58,7 +58,7 @@ impl<C> KeyDerivationFunction for HierarchicalKeyDerivationFunction<C>
 where
     C: CoinType,
 {
-    type Key = <KeySecret<C> as HierarchicalKeyDerivationScheme>::SecretKey;
+    type Key = <KeySecret<C> as key::HierarchicalKeyDerivationScheme>::SecretKey;
     type Output = SecretKey;
 
     #[inline]
@@ -73,6 +73,20 @@ where
     }
 }
 
+/// Hierarchical Key Derivation Scheme
+pub type HierarchicalKeyDerivationScheme<C> =
+    key::Map<KeySecret<C>, HierarchicalKeyDerivationFunction<C>>;
+
+/// Samples a [`HierarchicalKeyDerivationFunction`] from `rng`.
+#[inline]
+pub fn sample_key_secret<C, R>(rng: &mut R) -> HierarchicalKeyDerivationScheme<C>
+where
+    C: CoinType,
+    R: CryptoRng + RngCore + ?Sized,
+{
+    HierarchicalKeyDerivationScheme::new(KeySecret::sample(rng), Default::default())
+}
+
 /// Signer UTXO Accumulator
 pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
     MerkleTreeConfiguration,
@@ -85,8 +99,7 @@ pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
 
 impl wallet::signer::Configuration for Config {
     type Checkpoint = Checkpoint;
-    type HierarchicalKeyDerivationScheme =
-        key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
+    type HierarchicalKeyDerivationScheme = HierarchicalKeyDerivationScheme<Testnet>;
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<AssetMapKey<Self>>;
     type Rng = ChaCha20Rng;
