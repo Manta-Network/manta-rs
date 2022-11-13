@@ -44,6 +44,8 @@ where
     if err.is_timeout() {
         CeremonyError::Timeout
     } else {
+        // todo: debugging
+        println!("I'm getting this network error: {err:?}");
         CeremonyError::Network {
             message: format!("{err}"),
         }
@@ -231,13 +233,14 @@ where
     where
         C::Identifier: Serialize,
         C::Nonce: DeserializeOwned + Serialize,
+        C::Nonce: std::fmt::Debug, // debugging
+        C::Challenge: std::fmt::Debug, // debugging
         C::Signature: Serialize,
         ContributeResponse<C>: DeserializeOwned,
     {
-        self.client
-            .post("update", request)
-            .await
-            .map_err(into_ceremony_error)?
+        let result = self.client.post("update", request).await;
+        println!("Result: {result:?}");
+        result.map_err(into_ceremony_error)?
     }
 
     /// Tries to contribute to the ceremony if at the front of the queue. This method returns an
@@ -253,6 +256,8 @@ where
         C::Identifier: Serialize,
         C::Nonce: DeserializeOwned + Serialize,
         C::Signature: Serialize,
+        C::Challenge: std::fmt::Debug, // debugging
+        C::Nonce: std::fmt::Debug, // debugging
         QueryResponse<C>: DeserializeOwned,
         ContributeRequest<C>: Serialize,
         ContributeResponse<C>: DeserializeOwned,
@@ -293,6 +298,8 @@ where
     C::Identifier: Serialize,
     C::Nonce: DeserializeOwned + Serialize,
     C::Signature: Serialize,
+    C::Nonce: std::fmt::Debug, // debugging
+    C::Challenge: std::fmt::Debug, // debugging
     QueryResponse<C>: DeserializeOwned,
     ContributeRequest<C>: Serialize,
     ContributeResponse<C>: DeserializeOwned,

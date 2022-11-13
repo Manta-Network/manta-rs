@@ -95,6 +95,8 @@ where
         deny_unknown_fields
     )
 )]
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "C::Challenge: Debug"))] // debugging
 pub struct ContributeResponse<C>
 where
     C: Ceremony,
