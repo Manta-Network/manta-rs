@@ -140,6 +140,7 @@ where
                     message: format!("{e:?}"),
                 })
             })?;
+        println!("Circuit names: {names:?}");
         if names.len() != CIRCUIT_COUNT {
             return Err(CeremonyError::Unexpected(
                 UnexpectedError::IncorrectStateSize,
