@@ -1,6 +1,7 @@
 af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262  data/pay/testnet/parameters/address-partition-function.dat
 65a28898c6f1a27a05682cee72bca89885fb7c27b63153971a5c657dfb246a83  data/pay/testnet/parameters/group-generator.dat
 677ddceec2b7758b127381550f2d88a1c82624f4669b656d0167250823a35f58  data/pay/testnet/parameters/incoming-base-encryption-scheme.dat
+af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262  data/pay/testnet/parameters/light-incoming-base-encryption-scheme.dat
 d0e90f772d44b0c4b1fb9ed9cd785d8d5451c5ac6ad77a9617c923e7a45a686b  data/pay/testnet/parameters/nullifier-commitment-scheme.dat
 82950652deef07334d9b490692ad012f1ad8287c5cffc86fdb035db20dd02de5  data/pay/testnet/parameters/outgoing-base-encryption-scheme.dat
 af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262  data/pay/testnet/parameters/schnorr-hash-function.dat
