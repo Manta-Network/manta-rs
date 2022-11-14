@@ -865,7 +865,7 @@ impl encryption::convert::key::Encryption for IncomingAESConverter {
 
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut ()) -> Self::TargetEncryptionKey {
-        let key = source.to_vec();
+        let key = source.to_vec(); // run Blake
         assert_eq!(
             key.len(),
             32,
@@ -892,7 +892,7 @@ impl encryption::convert::key::Encryption<Compiler> for IncomingAESConverter<Com
             .expect("Vector of group elements in not empty"))
         .to_vec();
         // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
-        // to reconstruct source from the key.
+        // to reconstruct source from the key. FIXME: Change this
         assert_eq!(
             key.len(),
             32,
