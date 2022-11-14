@@ -46,7 +46,8 @@ use manta_util::{create_seal, seal, Array};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
-pub use bip32::{Error, Seed, XPrv as SecretKey};
+pub use bip0039;
+pub use bip32::{self, Error, XPrv as SecretKey};
 
 create_seal! {}
 
@@ -136,22 +137,25 @@ impl_coin_type!(
 );
 
 /// Seed Byte Array Type
-type SeedBytes = Array<u8, { Seed::SIZE }>;
+type SeedBytes = Array<u8, { bip32::Seed::SIZE }>;
 
 /// Key Secret
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
+    serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""), Default(bound = ""))]
+#[derivative(Clone(bound = ""))]
 pub struct KeySecret<C>
 where
     C: CoinType,
 {
     /// Key Seed
     seed: SeedBytes,
+
+    /// Mnemonic
+    mnemonic: Mnemonic,
 
     /// Type Parameter Marker
     __: PhantomData<C>,
@@ -161,26 +165,36 @@ impl<C> KeySecret<C>
 where
     C: CoinType,
 {
-    /// Builds a [`KeySecret`] from raw bytes.
+    /// Builds a [`KeySecret`] from `seed` and `mnemonic`.
     #[inline]
-    fn build(seed: [u8; Seed::SIZE]) -> Self {
+    fn new_unchecked(seed: [u8; bip32::Seed::SIZE], mnemonic: Mnemonic) -> Self {
         Self {
             seed: seed.into(),
+            mnemonic,
             __: PhantomData,
         }
-    }
-
-    /// Builds a [`KeySecret`] from a `seed`.
-    #[inline]
-    fn from_seed(seed: Seed) -> Self {
-        Self::build(*seed.as_bytes())
     }
 
     /// Converts a `mnemonic` phrase into a [`KeySecret`], locking it with `password`.
     #[inline]
     #[must_use]
     pub fn new(mnemonic: Mnemonic, password: &str) -> Self {
-        Self::from_seed(mnemonic.to_seed(password))
+        Self::new_unchecked(mnemonic.to_seed(password), mnemonic)
+    }
+
+    /// Exposes a shared reference to the [`Mnemonic`] for `self`.
+    #[inline]
+    pub fn expose_mnemonic(&self) -> &Mnemonic {
+        &self.mnemonic
+    }
+
+    /// Samples a random [`KeySecret`] from `rng` with no password.
+    #[inline]
+    pub fn sample<R>(rng: &mut R) -> Self
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Self::new(Mnemonic::sample(rng), "")
     }
 }
 
@@ -210,21 +224,6 @@ pub type Account<C = Manta> = key::Account<KeySecret<C>>;
 /// Vec Account type
 pub type VecAccountMap<C> = Vec<Account<C>>;
 
-impl<C> Sample for KeySecret<C>
-where
-    C: CoinType,
-{
-    #[inline]
-    fn sample<R>(_: (), rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        let mut seed = [0; Seed::SIZE];
-        rng.fill_bytes(&mut seed);
-        Self::build(seed)
-    }
-}
-
 impl<C> DeriveAddresses for KeySecret<C>
 where
     C: CoinType,
@@ -239,7 +238,6 @@ where
 }
 
 /// Computes the [`BIP-0044`] path string for the given coin settings.
-///
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 #[inline]
 #[must_use]
@@ -262,30 +260,33 @@ where
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields, try_from = "String")
 )]
-#[derive(Clone)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone(bound = ""))]
 pub struct Mnemonic(
     /// Underlying BIP39 Mnemonic
     #[cfg_attr(feature = "serde", serde(serialize_with = "Mnemonic::serialize"))]
-    bip32::Mnemonic,
+    bip0039::Mnemonic,
 );
 
+/// Seed Type
+pub type Seed = [u8; 64];
+
 impl Mnemonic {
-    /// Create a new BIP39 mnemonic phrase from the given string.
+    /// Create a new BIP39 mnemonic phrase from the given phrase.
     #[inline]
-    pub fn new<S>(phrase: S) -> Result<Self, Error>
-    where
-        S: AsRef<str>,
-    {
-        bip32::Mnemonic::new(phrase, Default::default()).map(Self)
+    pub fn new(phrase: &str) -> Result<Self, Error> {
+        Ok(Self(bip0039::Mnemonic::from_phrase(phrase).unwrap()))
     }
 
-    /// Samples a random [`Mnemonic`] using the entropy returned from `rng`.
+    /// Samples a random 12 word [`Mnemonic`] using the entropy returned from `rng`.
     #[inline]
     pub fn sample<R>(rng: &mut R) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Self(bip32::Mnemonic::random(rng, Default::default()))
+        let mut entropy: [u8; 16] = [0; 16];
+        rng.fill_bytes(&mut entropy);
+        Self(bip0039::Mnemonic::from_entropy(entropy.to_vec()).unwrap())
     }
 
     /// Convert this mnemonic phrase into the BIP39 seed value.
@@ -297,7 +298,7 @@ impl Mnemonic {
     /// Serializes the underlying `mnemonic` phrase.
     #[cfg(feature = "serde")]
     #[inline]
-    fn serialize<S>(mnemonic: &bip32::Mnemonic, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(mnemonic: &bip0039::Mnemonic, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -326,6 +327,6 @@ impl TryFrom<String> for Mnemonic {
 
     #[inline]
     fn try_from(string: String) -> Result<Self, Self::Error> {
-        Self::new(string)
+        Self::new(string.as_str())
     }
 }

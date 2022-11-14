@@ -615,11 +615,11 @@ where
         )
     }
 
-    // /// Returns the default account for `self`.
-    // #[inline]
-    // fn default_account(&self) -> &C::Account {
-    //     self.accounts.get_default()
-    // }
+    /// Returns the [`AccountTable`] for `self.`
+    #[inline]
+    pub fn accounts(&self) -> &AccountTable<C> {
+        &self.accounts
+    }
 
     /// Returns the default spending key for `self`.
     #[inline]
@@ -771,6 +771,10 @@ where
                 self.utxo_accumulator
                     .insert_nonprovable(&Self::item_hash(parameters, &utxo));
             }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 74d6c28 (Adding redesign features and fixing merge mistakes)
         }
         self.assets.retain(|identifier, assets| {
             assets.retain(|asset| {

@@ -23,6 +23,7 @@ use crate::{
     },
     signer::base::{Signer, UtxoAccumulator},
     simulation::ledger::{AccountId, Ledger, LedgerConnection},
+    key::KeySecret,
 };
 use alloc::{format, sync::Arc};
 use core::fmt::Debug;
@@ -56,7 +57,7 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     Signer::new(
-        AccountTable::new(rng.gen()),
+        AccountTable::new(KeySecret::sample(rng.gen())),
         parameters.clone(),
         proving_context.clone(),
         UtxoAccumulator::new(utxo_accumulator_model.clone()),
