@@ -318,6 +318,7 @@ pub mod to_public {
             .insert_and_upgrade(parameters, utxo_accumulator)
             .expect("");
         let receiver_1 = Receiver::sample(parameters, address, asset_0, Default::default(), rng);
+        receiver_1.insert_utxo(parameters, utxo_accumulator);
 
         let to_public = ToPublic::build(authorization, [sender_0, sender_1], [receiver_1], asset_1)
             .into_post(
