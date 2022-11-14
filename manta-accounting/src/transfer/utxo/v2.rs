@@ -318,7 +318,7 @@ pub trait AddressPartitionFunction {
     type Address;
 
     /// Partition Type
-    type Partition;
+    type Partition: core::cmp::PartialEq;
 
     /// Returns the partition for the `address`.
     fn partition(&self, address: &Self::Address) -> Self::Partition;
@@ -1294,6 +1294,7 @@ where
     C::Group: Debug,
     C::LightIncomingCiphertext: Debug,
 {
+    /// opens `note` if the note partition is consistent with the receiving key par
     #[inline]
     fn open(
         &self,
@@ -1301,21 +1302,27 @@ where
         utxo: &Self::Utxo,
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
-        // TODO: Decrypt only if address paritition matches
-        let plaintext = Hybrid::new(
-            StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
-            self.base.light_incoming_base_encryption_scheme.clone(),
-        )
-        .decrypt(
-            decryption_key,
-            &C::LightIncomingHeader::default(),
-            &note.light_incoming_note.ciphertext,
-            &mut (),
-        )?;
-        Some((
-            Identifier::new(utxo.is_transparent, plaintext.utxo_commitment_randomness),
-            plaintext.asset,
-        ))
+        let address_partition = self.address_partition_function.partition(&Address::new(
+            self.base.group_generator.generator().scalar_mul(decryption_key, &mut ())
+            ));
+        if address_partition == note.address_partition {
+            let plaintext = Hybrid::new(
+                StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
+                self.base.light_incoming_base_encryption_scheme.clone(),
+            )
+            .decrypt(
+                decryption_key,
+                &C::LightIncomingHeader::default(),
+                &note.light_incoming_note.ciphertext,
+                &mut (),
+            )?;
+            Some((
+                Identifier::new(utxo.is_transparent, plaintext.utxo_commitment_randomness),
+                plaintext.asset,
+            ))
+        } else {
+            None
+        }
     }
 }
 
@@ -1830,6 +1837,30 @@ where
             &self.receiving_key,
             &self.incoming_randomness,
             C::IncomingHeader::default(),
+            &self.plaintext,
+            compiler,
+        )
+    }
+
+    /// Returns the light incoming note for `self` under `encryption_scheme`.
+    #[inline]
+    pub fn light_incoming_note(
+        &self,
+        group_generator: &C::Group,
+        encryption_scheme: &C::LightIncomingBaseEncryptionScheme,
+        compiler: &mut COM,
+    ) -> LightIncomingNote<C, COM>
+    where
+        <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone
+    {
+        Hybrid::new(
+            StandardDiffieHellman::new(group_generator.clone()),
+            encryption_scheme.clone(),
+        )
+        .encrypt_into(
+            &self.receiving_key,
+            &self.light_incoming_randomness(),
+            C::LightIncomingHeader::default(),
             &self.plaintext,
             compiler,
         )
