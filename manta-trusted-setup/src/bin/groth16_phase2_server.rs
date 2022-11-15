@@ -132,3 +132,5 @@ fn change_circuit_names() {
 }
 
 // Try using new circuits from feat/server-bin branch
+
+// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_server /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/registry.csv

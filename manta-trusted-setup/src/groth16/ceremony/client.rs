@@ -271,6 +271,7 @@ where
             Err(CeremonyError::Timeout) => return Ok(Update::Continue(Continue::Timeout)),
             Err(err) => return Err(err),
         };
+        println!("Received the following state from query request: {state:?}");
         process_continuation(&self.metadata, Continue::ComputingUpdate);
         let update = self.compute_update(&C::Hasher::default(), state)?;
         process_continuation(&self.metadata, Continue::SendingUpdate);
