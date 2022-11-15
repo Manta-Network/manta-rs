@@ -351,10 +351,12 @@ where
             .map_err(|_| CeremonyError::<C>::Unexpected(UnexpectedError::TaskError))
             {
                 Ok(Ok(added)) => {
-                    let _ = info!(
-                        "[ACTION] Registry successfully updated. {} New entries added",
-                        added
-                    );
+                    if added > 0 {
+                        let _ = info!(
+                            "[ACTION] Registry successfully updated. {} New entries added",
+                            added
+                        );
+                    }
                 }
                 Ok(Err(CeremonyError::Unexpected(UnexpectedError::Serialization {
                     message: _,
