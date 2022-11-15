@@ -114,7 +114,7 @@ pub trait AccountCollection {
     /// Spending Key Type
     type SpendingKey;
 
-    /// Returns the spending key associated to this account.
+    /// Returns the [`SpendingKey`] corresponding to `index`.
     fn spending_key(&self, index: &AccountIndex) -> Self::SpendingKey;
 }
 
@@ -220,7 +220,7 @@ pub trait DeriveAddress {
     /// Address Type
     type Address;
 
-    /// Returns the spending key associated to this account.
+    /// Returns the [`Address`](Self::Address) corresponding to `self`.
     fn address(&self, parameters: &Self::Parameters) -> Self::Address;
 }
 
@@ -232,7 +232,7 @@ pub trait DeriveAddresses {
     /// Address Type
     type Address;
 
-    /// Returns the spending key associated to this account.
+    /// Returns the [`Address`](Self::Address) corresponding to `index`.
     fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address;
 }
 
