@@ -170,9 +170,10 @@ where
         Self::from_seed(mnemonic.to_seed(password))
     }
 
-    /// Returns the `xpr_secret_key`. NOTE: This function should be made private in the following PRs.
+    /// Returns the [`SecretKey`]. 
     #[inline]
     pub fn xpr_secret_key(&self, index: &AccountIndex) -> SecretKey {
+        // TODO: This function should be made private in the following PRs.
         SecretKey::derive_from_path(
             self.seed,
             &path_string::<C>(*index)

@@ -236,7 +236,16 @@ pub trait DeriveAddresses {
     fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address;
 }
 
-/// Account Struct
+/// Account
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "H: Deserialize<'de>", serialize = "H: Serialize",),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "H: Clone"),
@@ -250,7 +259,10 @@ pub struct Account<H>
 where
     H: AccountCollection,
 {
+    /// Account Collection
     key: H,
+
+    /// Index
     index: AccountIndex,
 }
 
@@ -258,11 +270,14 @@ impl<H> Account<H>
 where
     H: AccountCollection,
 {
-    ///
+    /// Builds a new [`Account`] from `key` and `index`.
+    #[inline]
     pub fn new(key: H, index: AccountIndex) -> Self {
         Self { key, index }
     }
-    ///
+
+    /// Returns the [`SpendingKey`] corresponding to `self`.
+    #[inline]
     pub fn spending_key(&self) -> SpendingKey<H> {
         self.key.spending_key(&self.index)
     }
@@ -275,6 +290,7 @@ where
     type Address = H::Address;
     type Parameters = H::Parameters;
 
+    #[inline]
     fn address(&self, parameters: &Self::Parameters) -> Self::Address {
         self.key.address(parameters, self.index)
     }
@@ -304,7 +320,7 @@ where
     H: AccountCollection,
     M: AccountMap<Account = AccountIndex>,
 {
-    /// AccountCollection
+    /// Account Collection
     keys: H,
 
     /// Account Map

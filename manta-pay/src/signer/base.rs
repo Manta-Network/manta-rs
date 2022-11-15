@@ -71,7 +71,7 @@ where
     }
 }
 
-/// Samples a [`HierarchicalKeyDerivationFunction`] from `rng`.
+/// Samples a [`KeySecret`] from `rng`.
 #[inline]
 pub fn sample_key_secret<C, R>(rng: &mut R) -> KeySecret<C>
 where
