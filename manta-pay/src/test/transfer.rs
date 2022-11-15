@@ -17,7 +17,7 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{FullParameters, Mint, PrivateTransfer, Proof, ProofSystem, Reclaim},
+    config::{FullParameters, Mint, PrivateTransfer, ProofSystem, Reclaim},
     test::payment::UtxoAccumulator,
 };
 use core::fmt::Debug;
@@ -29,7 +29,6 @@ use manta_crypto::{
     constraint::{self, measure::Measure, test::verify_fuzz_public_input, ProofSystem as _},
     rand::{fuzz::Fuzz, OsRng, Rand, RngCore, Sample},
 };
-use std::io::Cursor;
 
 /// Tests the generation of proving/verifying contexts for [`Mint`].
 #[test]
