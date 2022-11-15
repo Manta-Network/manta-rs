@@ -438,10 +438,11 @@ where
 mod tests {
     use super::*;
     use crate::{
-        arkworks::{bls12_381::Fr, ff::BigInteger},
+        arkworks::{bn254::Fr, ff::BigInteger},
         eclair::alloc::Allocate,
-        rand::{OsRng, Rand},
+        rand::{OsRng, Rand, RngCore},
     };
+    use alloc::vec::Vec;
     use core::iter::repeat_with;
 
     /// Checks if `assert_within_range` passes when `should_pass` is `true` and fails when
