@@ -168,12 +168,6 @@ where
     T: ledger::Checkpoint,
 {
     /// Recovery Flag
-    ///
-    /// If `with_recovery` is set to `true`, the [`GAP_LIMIT`] is used during sync to perform a full
-    /// recovery. See [`Configuration::HierarchicalKeyDerivationScheme`] for the scheme where the
-    /// [`GAP_LIMIT`] is configured.
-    ///
-    /// [`GAP_LIMIT`]: HierarchicalKeyDerivationScheme::GAP_LIMIT
     pub with_recovery: bool,
 
     /// Origin Checkpoint
