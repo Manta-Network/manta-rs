@@ -29,9 +29,15 @@
 //! See the [`crate::wallet`] module for more on how this transfer protocol is used in a wallet
 //! protocol for the keeping of accounts for private assets.
 
-use crate::asset::{Asset, AssetId, AssetValue};
+use crate::asset;
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
+use core::{
+    fmt::Debug,
+    hash::Hash,
+    iter::Sum,
+    marker::PhantomData,
+    ops::{AddAssign, Deref},
+};
 use manta_crypto::{
     accumulator::{self, AssertValidVerification, MembershipProof, Model},
     constraint::{HasInput, ProofSystem},
@@ -119,6 +125,12 @@ pub trait VoidNumberCommitmentScheme<COM = ()> {
 
 /// Transfer Configuration
 pub trait Configuration {
+    /// Asset Id Type
+    type AssetId: Clone + Ord;
+
+    /// Asset Value Type
+    type AssetValue: AddAssign + Clone + Default + PartialOrd + Sum;
+
     /// Secret Key Type
     type SecretKey: Clone + Sample + SizeLimit;
 
@@ -157,7 +169,7 @@ pub trait Configuration {
     type UtxoCommitmentScheme: UtxoCommitmentScheme<
         EphemeralSecretKey = SecretKey<Self>,
         PublicSpendKey = PublicKey<Self>,
-        Asset = Asset,
+        Asset = Asset<Self>,
         Utxo = Utxo<Self>,
     >;
 
@@ -228,13 +240,13 @@ pub trait Configuration {
         >;
 
     /// Asset Id Variable Type
-    type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
-        + Variable<Secret, Self::Compiler, Type = AssetId>
+    type AssetIdVar: Variable<Public, Self::Compiler, Type = Self::AssetId>
+        + Variable<Secret, Self::Compiler, Type = Self::AssetId>
         + eclair::cmp::PartialEq<Self::AssetIdVar, Self::Compiler>;
 
     /// Asset Value Variable Type
-    type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
-        + Variable<Secret, Self::Compiler, Type = AssetValue>
+    type AssetValueVar: Variable<Public, Self::Compiler, Type = Self::AssetValue>
+        + Variable<Secret, Self::Compiler, Type = Self::AssetValue>
         + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
         + eclair::cmp::PartialEq<Self::AssetValueVar, Self::Compiler>;
 
@@ -243,8 +255,8 @@ pub trait Configuration {
 
     /// Proof System Type
     type ProofSystem: ProofSystem<Compiler = Self::Compiler>
-        + HasInput<AssetId>
-        + HasInput<AssetValue>
+        + HasInput<Self::AssetId>
+        + HasInput<Self::AssetValue>
         + HasInput<UtxoAccumulatorOutput<Self>>
         + HasInput<Utxo<Self>>
         + HasInput<VoidNumber<Self>>
@@ -262,8 +274,12 @@ pub trait Configuration {
         >;
 }
 
+/// Asset Type
+pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
+
 /// Asset Variable Type
-pub type AssetVar<C> = Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
+pub type AssetVar<C> =
+    asset::Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
 
 /// Secret Key Type
 pub type SecretKey<C> = <C as Configuration>::SecretKey;
@@ -438,7 +454,7 @@ where
         &self,
         ephemeral_secret_key: &SecretKey<C>,
         public_spend_key: &PublicKey<C>,
-        asset: &Asset,
+        asset: &Asset<C>,
     ) -> Utxo<C> {
         self.utxo_commitment
             .commit(ephemeral_secret_key, public_spend_key, asset, &mut ())
@@ -458,7 +474,7 @@ where
         &self,
         secret_spend_key: &SecretKey<C>,
         ephemeral_secret_key: &SecretKey<C>,
-        asset: &Asset,
+        asset: &Asset<C>,
         utxo: &Utxo<C>,
     ) -> Option<VoidNumber<C>> {
         (&self.utxo(ephemeral_secret_key, &self.derive(secret_spend_key), asset) == utxo)
@@ -639,7 +655,7 @@ where
         &self,
         parameters: &Parameters<C>,
         ephemeral_secret_key: &SecretKey<C>,
-        asset: &Asset,
+        asset: &Asset<C>,
         utxo: &Utxo<C>,
     ) -> Option<VoidNumber<C>> {
         parameters.check_full_asset(&self.spend, ephemeral_secret_key, asset, utxo)
@@ -651,7 +667,7 @@ where
         &self,
         parameters: &Parameters<C>,
         ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
+        asset: Asset<C>,
     ) -> PreSender<C> {
         PreSender::new(parameters, self.spend.clone(), ephemeral_secret_key, asset)
     }
@@ -662,7 +678,7 @@ where
         &self,
         parameters: &Parameters<C>,
         ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
+        asset: Asset<C>,
     ) -> Receiver<C> {
         self.derive(parameters.key_agreement_scheme())
             .into_receiver(parameters, ephemeral_secret_key, asset)
@@ -674,9 +690,9 @@ where
         &self,
         parameters: &Parameters<C>,
         ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
+        asset: Asset<C>,
     ) -> (Receiver<C>, PreSender<C>) {
-        let receiver = self.receiver(parameters, ephemeral_secret_key.clone(), asset);
+        let receiver = self.receiver(parameters, ephemeral_secret_key.clone(), asset.clone());
         let sender = self.sender(parameters, ephemeral_secret_key, asset);
         (receiver, sender)
     }
@@ -687,9 +703,9 @@ where
         &self,
         parameters: &Parameters<C>,
         ephemeral_secret_key: SecretKey<C>,
-        asset_id: AssetId,
+        asset_id: C::AssetId,
     ) -> (Receiver<C>, PreSender<C>) {
-        self.internal_pair(parameters, ephemeral_secret_key, Asset::zero(asset_id))
+        self.internal_pair(parameters, ephemeral_secret_key, Asset::<C>::zero(asset_id))
     }
 }
 
@@ -754,7 +770,7 @@ where
         self,
         parameters: &Parameters<C>,
         ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
+        asset: Asset<C>,
     ) -> Receiver<C> {
         Receiver::new(
             parameters,
@@ -769,12 +785,12 @@ where
 /// Note
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SecretKey<C>: Clone"),
-    Copy(bound = "SecretKey<C>: Copy"),
-    Debug(bound = "SecretKey<C>: Debug"),
-    Eq(bound = "SecretKey<C>: Eq"),
-    Hash(bound = "SecretKey<C>: Hash"),
-    PartialEq(bound = "SecretKey<C>: PartialEq")
+    Clone(bound = "Asset<C>: Clone, SecretKey<C>: Clone"),
+    Copy(bound = "Asset<C>: Copy, SecretKey<C>: Copy"),
+    Debug(bound = "Asset<C>: Debug, SecretKey<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, SecretKey<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, SecretKey<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, SecretKey<C>: PartialEq")
 )]
 pub struct Note<C>
 where
@@ -784,7 +800,7 @@ where
     pub ephemeral_secret_key: SecretKey<C>,
 
     /// Asset
-    pub asset: Asset,
+    pub asset: Asset<C>,
 }
 
 impl<C> Note<C>
@@ -793,7 +809,7 @@ where
 {
     /// Builds a new plaintext [`Note`] from `ephemeral_secret_key` and `asset`.
     #[inline]
-    pub fn new(ephemeral_secret_key: SecretKey<C>, asset: Asset) -> Self {
+    pub fn new(ephemeral_secret_key: SecretKey<C>, asset: Asset<C>) -> Self {
         Self {
             ephemeral_secret_key,
             asset,
@@ -805,7 +821,7 @@ impl<C, SD, AD> Sample<(SD, AD)> for Note<C>
 where
     C: Configuration,
     SecretKey<C>: Sample<SD>,
-    Asset: Sample<AD>,
+    Asset<C>: Sample<AD>,
 {
     #[inline]
     fn sample<R>(distribution: (SD, AD), rng: &mut R) -> Self
@@ -819,12 +835,12 @@ where
     }
 }
 
-impl<C> SizeLimit for Note<C>
-where
-    C: Configuration,
-{
-    const SIZE: usize = SecretKey::<C>::SIZE + Asset::SIZE;
-}
+// impl<C> SizeLimit for Note<C>
+// where
+//     C: Configuration,
+// {
+//     const SIZE: usize = SecretKey::<C>::SIZE + Asset<C>::SIZE;
+// }
 
 /// Transfer
 pub struct Transfer<
@@ -837,10 +853,10 @@ pub struct Transfer<
     C: Configuration,
 {
     /// Asset Id
-    asset_id: Option<AssetId>,
+    asset_id: Option<C::AssetId>,
 
     /// Sources
-    sources: [AssetValue; SOURCES],
+    sources: [C::AssetValue; SOURCES],
 
     /// Senders
     senders: [Sender<C>; SENDERS],
@@ -849,7 +865,7 @@ pub struct Transfer<
     receivers: [Receiver<C>; RECEIVERS],
 
     /// Sinks
-    sinks: [AssetValue; SINKS],
+    sinks: [C::AssetValue; SINKS],
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
@@ -860,11 +876,11 @@ where
     /// Builds a new [`Transfer`].
     #[inline]
     pub fn new(
-        asset_id: impl Into<Option<AssetId>>,
-        sources: [AssetValue; SOURCES],
+        asset_id: impl Into<Option<C::AssetId>>,
+        sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
-        sinks: [AssetValue; SINKS],
+        sinks: [C::AssetValue; SINKS],
     ) -> Self {
         let asset_id = asset_id.into();
         Self::check_shape(asset_id.is_some());
@@ -875,8 +891,8 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        if let Some(asset_id) = self.asset_id {
-            C::ProofSystem::extend(&mut input, &asset_id);
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(&mut input, asset_id);
         }
         self.sources
             .iter()
@@ -941,11 +957,11 @@ where
     /// output sides.
     #[inline]
     fn new_unchecked(
-        asset_id: Option<AssetId>,
-        sources: [AssetValue; SOURCES],
+        asset_id: Option<C::AssetId>,
+        sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
-        sinks: [AssetValue; SINKS],
+        sinks: [C::AssetValue; SINKS],
     ) -> Self {
         Self {
             asset_id,
@@ -1115,7 +1131,10 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
         Self {
-            asset_id: this.asset_id.map(|id| id.as_known::<Public, _>(compiler)),
+            asset_id: this
+                .asset_id
+                .as_ref()
+                .map(|id| id.as_known::<Public, _>(compiler)),
             sources: this
                 .sources
                 .iter()
@@ -1195,7 +1214,7 @@ where
     ///
     /// This type must be restricted so that it can only be constructed by this implementation of
     /// [`TransferLedger`].
-    type ValidSourceAccount: AsRef<AssetValue>;
+    type ValidSourceAccount: AsRef<C::AssetValue>;
 
     /// Valid [`AssetValue`] for [`TransferPost`] Sink
     ///
@@ -1203,7 +1222,7 @@ where
     ///
     /// This type must be restricted so that it can only be constructed by this implementation of
     /// [`TransferLedger`].
-    type ValidSinkAccount: AsRef<AssetValue>;
+    type ValidSinkAccount: AsRef<C::AssetValue>;
 
     /// Valid [`Proof`] Posting Key
     ///
@@ -1225,25 +1244,25 @@ where
     /// amount given in `sources`.
     fn check_source_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: C::AssetId,
         sources: I,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<C, Self::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>;
+        I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
     /// Checks that the sink accounts exist and balance can be increased by the specified amounts.
     fn check_sink_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: C::AssetId,
         sinks: I,
-    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<C, Self::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>;
+        I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
     /// Checks that the transfer `proof` is valid.
     fn is_valid(
         &self,
-        asset_id: Option<AssetId>,
+        asset_id: Option<C::AssetId>,
         sources: &[SourcePostingKey<C, Self>],
         senders: &[SenderPostingKey<C, Self>],
         receivers: &[ReceiverPostingKey<C, Self>],
@@ -1260,7 +1279,7 @@ where
     /// [`is_valid`](Self::is_valid) for more.
     fn update_public_balances(
         &mut self,
-        asset_id: AssetId,
+        asset_id: C::AssetId,
         sources: Vec<SourcePostingKey<C, Self>>,
         sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
@@ -1287,15 +1306,18 @@ pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPo
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct InvalidSourceAccount<AccountId> {
+pub struct InvalidSourceAccount<C, AccountId>
+where
+    C: Configuration,
+{
     /// Account Id
     pub account_id: AccountId,
 
     /// Asset Id
-    pub asset_id: AssetId,
+    pub asset_id: C::AssetId,
 
     /// Amount Attempting to Withdraw
-    pub withdraw: AssetValue,
+    pub withdraw: C::AssetValue,
 }
 
 /// Invalid Sink Accounts
@@ -1308,15 +1330,18 @@ pub struct InvalidSourceAccount<AccountId> {
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct InvalidSinkAccount<AccountId> {
+pub struct InvalidSinkAccount<C, AccountId>
+where
+    C: Configuration,
+{
     /// Account Id
     pub account_id: AccountId,
 
     /// Asset Id
-    pub asset_id: AssetId,
+    pub asset_id: C::AssetId,
 
     /// Amount Attempting to Deposit
-    pub deposit: AssetValue,
+    pub deposit: C::AssetValue,
 }
 
 /// Transfer Post Error
@@ -1326,18 +1351,45 @@ pub struct InvalidSinkAccount<AccountId> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = "InvalidSourceAccount<C, AccountId>: Deserialize<'de>, InvalidSinkAccount<C, AccountId>: Deserialize<'de>, UpdateError: Deserialize<'de>",
+            serialize = "InvalidSourceAccount<C, AccountId>: Serialize, InvalidSinkAccount<C, AccountId>: Serialize, UpdateError: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransferPostError<AccountId, UpdateError> {
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(
+        bound = "InvalidSourceAccount<C, AccountId>: Clone, InvalidSinkAccount<C, AccountId>: Clone, UpdateError: Clone"
+    ),
+    Debug(
+        bound = "InvalidSourceAccount<C, AccountId>: Debug, InvalidSinkAccount<C, AccountId>: Debug, UpdateError: Debug"
+    ),
+    Eq(
+        bound = "InvalidSourceAccount<C, AccountId>: Eq, InvalidSinkAccount<C, AccountId>: Eq, UpdateError: Eq"
+    ),
+    Hash(
+        bound = "InvalidSourceAccount<C, AccountId>: Hash, InvalidSinkAccount<C, AccountId>: Hash, UpdateError: Hash"
+    ),
+    PartialEq(
+        bound = "InvalidSourceAccount<C, AccountId>: PartialEq, InvalidSinkAccount<C, AccountId>: PartialEq, UpdateError: PartialEq"
+    )
+)]
+pub enum TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration,
+{
     /// Invalid Transfer Post Shape
     InvalidShape,
 
     /// Invalid Source Accounts
-    InvalidSourceAccount(InvalidSourceAccount<AccountId>),
+    InvalidSourceAccount(InvalidSourceAccount<C, AccountId>),
 
     /// Invalid Sink Accounts
-    InvalidSinkAccount(InvalidSinkAccount<AccountId>),
+    InvalidSinkAccount(InvalidSinkAccount<C, AccountId>),
 
     /// Sender Post Error
     Sender(SenderPostError),
@@ -1362,32 +1414,44 @@ pub enum TransferPostError<AccountId, UpdateError> {
     UpdateError(UpdateError),
 }
 
-impl<AccountId, UpdateError> From<InvalidSourceAccount<AccountId>>
-    for TransferPostError<AccountId, UpdateError>
+impl<C, AccountId, UpdateError> From<InvalidSourceAccount<C, AccountId>>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration,
 {
     #[inline]
-    fn from(err: InvalidSourceAccount<AccountId>) -> Self {
+    fn from(err: InvalidSourceAccount<C, AccountId>) -> Self {
         Self::InvalidSourceAccount(err)
     }
 }
 
-impl<AccountId, UpdateError> From<InvalidSinkAccount<AccountId>>
-    for TransferPostError<AccountId, UpdateError>
+impl<C, AccountId, UpdateError> From<InvalidSinkAccount<C, AccountId>>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration,
 {
     #[inline]
-    fn from(err: InvalidSinkAccount<AccountId>) -> Self {
+    fn from(err: InvalidSinkAccount<C, AccountId>) -> Self {
         Self::InvalidSinkAccount(err)
     }
 }
 
-impl<AccountId, UpdateError> From<SenderPostError> for TransferPostError<AccountId, UpdateError> {
+impl<C, AccountId, UpdateError> From<SenderPostError>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration,
+{
     #[inline]
     fn from(err: SenderPostError) -> Self {
         Self::Sender(err)
     }
 }
 
-impl<AccountId, UpdateError> From<ReceiverPostError> for TransferPostError<AccountId, UpdateError> {
+impl<C, AccountId, UpdateError> From<ReceiverPostError>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration,
+{
     #[inline]
     fn from(err: ReceiverPostError) -> Self {
         Self::Receiver(err)
@@ -1401,11 +1465,15 @@ impl<AccountId, UpdateError> From<ReceiverPostError> for TransferPostError<Accou
     serde(
         bound(
             deserialize = r"
+            C::AssetId: Deserialize<'de>,
+            C::AssetValue: Deserialize<'de>,
                 SenderPost<C>: Deserialize<'de>,
                 ReceiverPost<C>: Deserialize<'de>,
                 Proof<C>: Deserialize<'de>,
             ",
             serialize = r"
+            C::AssetId: Serialize,
+            C::AssetValue: Serialize,
                 SenderPost<C>: Serialize,
                 ReceiverPost<C>: Serialize,
                 Proof<C>: Serialize,
@@ -1417,21 +1485,31 @@ impl<AccountId, UpdateError> From<ReceiverPostError> for TransferPostError<Accou
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SenderPost<C>: Clone, ReceiverPost<C>: Clone, Proof<C>: Clone"),
-    Debug(bound = "SenderPost<C>: Debug, ReceiverPost<C>: Debug, Proof<C>: Debug"),
-    Eq(bound = "SenderPost<C>: Eq, ReceiverPost<C>: Eq, Proof<C>: Eq"),
-    Hash(bound = "SenderPost<C>: Hash, ReceiverPost<C>: Hash, Proof<C>: Hash"),
-    PartialEq(bound = "SenderPost<C>: PartialEq, ReceiverPost<C>: PartialEq, Proof<C>: PartialEq")
+    Clone(
+        bound = "C::AssetId: Clone, C::AssetValue: Clone, SenderPost<C>: Clone, ReceiverPost<C>: Clone, Proof<C>: Clone"
+    ),
+    Debug(
+        bound = "C::AssetId: Debug, C::AssetValue: Debug, SenderPost<C>: Debug, ReceiverPost<C>: Debug, Proof<C>: Debug"
+    ),
+    Eq(
+        bound = "C::AssetId: Eq, C::AssetValue: Eq, SenderPost<C>: Eq, ReceiverPost<C>: Eq, Proof<C>: Eq"
+    ),
+    Hash(
+        bound = "C::AssetId: Hash, C::AssetValue: Hash, SenderPost<C>: Hash, ReceiverPost<C>: Hash, Proof<C>: Hash"
+    ),
+    PartialEq(
+        bound = "C::AssetId: PartialEq, C::AssetValue: PartialEq, SenderPost<C>: PartialEq, ReceiverPost<C>: PartialEq, Proof<C>: PartialEq"
+    )
 )]
 pub struct TransferPost<C>
 where
     C: Configuration,
 {
     /// Asset Id
-    pub asset_id: Option<AssetId>,
+    pub asset_id: Option<C::AssetId>,
 
     /// Sources
-    pub sources: Vec<AssetValue>,
+    pub sources: Vec<C::AssetValue>,
 
     /// Sender Posts
     pub sender_posts: Vec<SenderPost<C>>,
@@ -1440,7 +1518,7 @@ where
     pub receiver_posts: Vec<ReceiverPost<C>>,
 
     /// Sinks
-    pub sinks: Vec<AssetValue>,
+    pub sinks: Vec<C::AssetValue>,
 
     /// Validity Proof
     pub validity_proof: Proof<C>,
@@ -1454,8 +1532,8 @@ where
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        if let Some(asset_id) = self.asset_id {
-            C::ProofSystem::extend(&mut input, &asset_id);
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(&mut input, asset_id);
         }
         self.sources
             .iter()
@@ -1490,15 +1568,15 @@ where
     #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction for this.
     #[inline]
     fn check_public_participants<L>(
-        asset_id: Option<AssetId>,
+        asset_id: Option<C::AssetId>,
         source_accounts: Vec<L::AccountId>,
-        source_values: Vec<AssetValue>,
+        source_values: Vec<C::AssetValue>,
         sink_accounts: Vec<L::AccountId>,
-        sink_values: Vec<AssetValue>,
+        sink_values: Vec<C::AssetValue>,
         ledger: &L,
     ) -> Result<
         (Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>),
-        TransferPostError<L::AccountId, L::UpdateError>,
+        TransferPostError<C, L::AccountId, L::UpdateError>,
     >
     where
         L: TransferLedger<C>,
@@ -1516,7 +1594,7 @@ where
         }
         let sources = if sources > 0 {
             ledger.check_source_accounts(
-                asset_id.unwrap(),
+                asset_id.clone().unwrap(),
                 source_accounts.into_iter().zip(source_values),
             )?
         } else {
@@ -1534,18 +1612,19 @@ where
     }
 
     /// Validates `self` on the transfer `ledger`.
+    #[allow(clippy::type_complexity)]
     #[inline]
     pub fn validate<L>(
         self,
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
         ledger: &L,
-    ) -> Result<TransferPostingKey<C, L>, TransferPostError<L::AccountId, L::UpdateError>>
+    ) -> Result<TransferPostingKey<C, L>, TransferPostError<C, L::AccountId, L::UpdateError>>
     where
         L: TransferLedger<C>,
     {
         let (source_posting_keys, sink_posting_keys) = Self::check_public_participants(
-            self.asset_id,
+            self.asset_id.clone(),
             source_accounts,
             self.sources,
             sink_accounts,
@@ -1583,7 +1662,7 @@ where
             .map(move |r| r.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
         let (validity_proof, event) = match ledger.is_valid(
-            self.asset_id,
+            self.asset_id.clone(),
             &source_posting_keys,
             &sender_posting_keys,
             &receiver_posting_keys,
@@ -1613,7 +1692,7 @@ where
         sink_accounts: Vec<L::AccountId>,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
         ledger: &mut L,
-    ) -> Result<L::Event, TransferPostError<L::AccountId, L::UpdateError>>
+    ) -> Result<L::Event, TransferPostError<C, L::AccountId, L::UpdateError>>
     where
         L: TransferLedger<C>,
     {
@@ -1630,7 +1709,7 @@ where
     L: TransferLedger<C>,
 {
     /// Asset Id
-    asset_id: Option<AssetId>,
+    asset_id: Option<C::AssetId>,
 
     /// Source Posting Keys
     source_posting_keys: Vec<SourcePostingKey<C, L>>,
@@ -1659,7 +1738,7 @@ where
     /// Generates the public input for the [`Transfer`] validation proof.
     #[inline]
     pub fn generate_proof_input(
-        asset_id: Option<AssetId>,
+        asset_id: Option<C::AssetId>,
         sources: &[SourcePostingKey<C, L>],
         senders: &[SenderPostingKey<C, L>],
         receivers: &[ReceiverPostingKey<C, L>],
