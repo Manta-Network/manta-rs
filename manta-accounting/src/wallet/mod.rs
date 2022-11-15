@@ -31,14 +31,14 @@ use crate::{
     asset::{Asset, AssetId, AssetList, AssetMetadata, AssetValue},
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Configuration, ReceivingKey, TransferPost,
+        Configuration, PublicKey, TransferPost,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncData,
-            SyncError, SyncRequest, SyncResponse,
+            BalanceUpdate, SignError, SignRequest, SignResponse, SyncData, SyncError, SyncRequest,
+            SyncResponse,
         },
     },
 };
@@ -381,11 +381,8 @@ where
 
     /// Returns public receiving keys according to the `request`.
     #[inline]
-    pub async fn receiving_keys(
-        &mut self,
-        request: ReceivingKeyRequest,
-    ) -> Result<Vec<ReceivingKey<C>>, S::Error> {
-        self.signer.receiving_keys(request).await
+    pub async fn receiving_keys(&mut self) -> Result<PublicKey<C>, S::Error> {
+        self.signer.receiving_keys().await
     }
 }
 

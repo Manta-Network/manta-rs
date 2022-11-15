@@ -24,7 +24,7 @@ use crate::{
     transfer::{self, canonical::Transaction, PublicKey, ReceivingKey, TransferPost},
     wallet::{
         ledger,
-        signer::{self, ReceivingKeyRequest, SyncData},
+        signer::{self, SyncData},
         BalanceState, Error, Wallet,
     },
 };
@@ -108,8 +108,9 @@ where
     /// Generates a [`Transaction::PrivateTransfer`] for `asset` to `key` self-pointed if `is_self`
     /// is `true`.
     #[inline]
-    pub fn private_transfer(is_self: bool, asset: Asset, key: ReceivingKey<C>) -> Self {
-        Self::post(is_self, false, Transaction::PrivateTransfer(asset, key))
+    pub fn private_transfer(is_self: bool, asset: Asset, key: PublicKey<C>) -> Self {
+        let receiving_key = ReceivingKey::<C>{spend: key.clone(), view: key};
+        Self::post(is_self, false, Transaction::PrivateTransfer(asset, receiving_key))
     }
 
     /// Generates a [`Transaction::Reclaim`] for `asset` which is maximal if `is_maximal` is `true`.
@@ -427,14 +428,11 @@ where
 
     /// Returns the default receiving key for `self`.
     #[inline]
-    async fn default_receiving_key(&mut self) -> Result<ReceivingKey<C>, Error<C, L, S>> {
+    async fn default_receiving_key(&mut self) -> Result<PublicKey<C>, Error<C, L, S>> {
         self.wallet
-            .receiving_keys(ReceivingKeyRequest::Get {
-                index: Default::default(),
-            })
+            .receiving_keys()
             .await
             .map_err(Error::SignerConnectionError)
-            .map(Vec::take_first)
     }
 
     /// Returns the latest public balances from the ledger.
@@ -561,7 +559,7 @@ where
     where
         L: PublicBalanceOracle,
         R: RngCore + ?Sized,
-        K: FnOnce(&mut R) -> Result<Option<ReceivingKey<C>>, Error<C, L, S>>,
+        K: FnOnce(&mut R) -> Result<Option<PublicKey<C>>, Error<C, L, S>>,
     {
         let action = if is_self {
             ActionType::SelfTransfer
@@ -596,7 +594,7 @@ where
     where
         L: PublicBalanceOracle,
         R: RngCore + ?Sized,
-        K: FnOnce(&mut R) -> Result<Option<ReceivingKey<C>>, Error<C, L, S>>,
+        K: FnOnce(&mut R) -> Result<Option<PublicKey<C>>, Error<C, L, S>>,
     {
         let action = if is_self {
             ActionType::SelfTransfer
@@ -684,7 +682,7 @@ pub type Event<C, L, S> =
     ActionLabelled<Result<<L as ledger::Write<Vec<TransferPost<C>>>>::Response, Error<C, L, S>>>;
 
 /// Receiving Key Database
-pub type ReceivingKeyDatabase<C> = IndexSet<ReceivingKey<C>>;
+pub type ReceivingKeyDatabase<C> = IndexSet<PublicKey<C>>;
 
 /// Shared Receiving Key Database
 pub type SharedReceivingKeyDatabase<C> = Arc<Mutex<ReceivingKeyDatabase<C>>>;
@@ -715,7 +713,7 @@ where
 {
     /// Builds a new [`Simulation`] with a starting set of public `keys`.
     #[inline]
-    pub fn new<const N: usize>(keys: [ReceivingKey<C>; N]) -> Self {
+    pub fn new<const N: usize>(keys: [PublicKey<C>; N]) -> Self {
         Self {
             receiving_keys: Arc::new(Mutex::new(keys.into_iter().collect())),
             __: PhantomData,
@@ -724,7 +722,7 @@ where
 
     /// Samples a random receiving key from
     #[inline]
-    pub fn sample_receiving_key<R>(&self, rng: &mut R) -> Option<ReceivingKey<C>>
+    pub fn sample_receiving_key<R>(&self, rng: &mut R) -> Option<PublicKey<C>>
     where
         R: RngCore + ?Sized,
     {
@@ -841,13 +839,11 @@ where
                         action: ActionType::GenerateReceivingKeys,
                         value: match actor
                             .wallet
-                            .receiving_keys(ReceivingKeyRequest::New { count })
+                            .receiving_keys()
                             .await
                         {
-                            Ok(keys) => {
-                                for key in keys {
+                            Ok(key) => {
                                     self.receiving_keys.lock().insert(key);
-                                }
                                 Ok(true)
                             }
                             Err(err) => Err(Error::SignerConnectionError(err)),

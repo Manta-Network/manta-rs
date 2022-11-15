@@ -28,10 +28,7 @@
 
 use crate::{
     asset::{Asset, AssetId, AssetMap, AssetMetadata, AssetValue},
-    key::{
-        self, HierarchicalKeyDerivationScheme, KeyIndex, SecretKeyPair, ViewKeySelection,
-        ViewKeyTable,
-    },
+    key::{self, AccountCollection, DeriveAddress, DeriveAddresses},
     transfer::{
         self,
         batch::Join,
@@ -40,13 +37,13 @@ use crate::{
             Shape, Transaction,
         },
         EncryptedNote, FullParameters, Note, Parameters, PreSender, ProofSystemError,
-        ProvingContext, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer,
-        TransferPost, Utxo, VoidNumber,
+        ProvingContext, PublicKey, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey,
+        Transfer, TransferPost, Utxo, VoidNumber,
     },
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{convert::Infallible, fmt::Debug, hash::Hash};
+use core::{convert::Infallible, default, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
@@ -92,10 +89,7 @@ where
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
     /// Returns public receiving keys according to the `request`.
-    fn receiving_keys(
-        &mut self,
-        request: ReceivingKeyRequest,
-    ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error>;
+    fn receiving_keys(&mut self) -> LocalBoxFutureResult<PublicKey<C>, Self::Error>;
 }
 
 /// Signer Synchronization Data
@@ -412,40 +406,6 @@ where
 /// Signing Result
 pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
 
-/// Receiving Key Request
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum ReceivingKeyRequest {
-    /// Get Specific Key
-    ///
-    /// Requests the key at the specific `index`. If the signer's response is an empty key vector,
-    /// then the index was out of bounds.
-    Get {
-        /// Target Key Index
-        index: KeyIndex,
-    },
-
-    /// Get All Keys
-    ///
-    /// Requests all the public keys associated to the signer. The signer should always respond to
-    /// this request with at least one key, the default public key.
-    GetAll,
-
-    /// New Keys
-    ///
-    /// Requests `count`-many new keys from the hierarchical key derivation scheme. The signer
-    /// should always respond with at most `count`-many keys. If there are fewer, this is because,
-    /// adding such keys would exceed the [`GAP_LIMIT`](HierarchicalKeyDerivationScheme::GAP_LIMIT).
-    New {
-        /// Number of New Keys to Generate
-        count: usize,
-    },
-}
-
 /// Signer Checkpoint
 pub trait Checkpoint<C>: ledger::Checkpoint
 where
@@ -478,10 +438,10 @@ pub trait Configuration: transfer::Configuration {
     /// Checkpoint Type
     type Checkpoint: Checkpoint<Self, UtxoAccumulator = Self::UtxoAccumulator>;
 
-    /// Hierarchical Key Derivation Scheme
-    type HierarchicalKeyDerivationScheme: HierarchicalKeyDerivationScheme<
-        SecretKey = SecretKey<Self>,
-    >;
+    /// Account Type
+    type Account: AccountCollection<SpendingKey = SecretKey<Self>>
+        + Clone
+        + DeriveAddresses<Parameters = Parameters<Self>, Address = PublicKey<Self>>;
 
     /// [`Utxo`] Accumulator Type
     type UtxoAccumulator: Accumulator<Item = Self::Utxo, Model = Self::UtxoAccumulatorModel>
@@ -490,17 +450,14 @@ pub trait Configuration: transfer::Configuration {
         + Rollback;
 
     /// Asset Map Type
-    type AssetMap: AssetMap<Key = AssetMapKey<Self>>;
+    type AssetMap: AssetMap<Key = SecretKey<Self>>;
 
     /// Random Number Generator Type
     type Rng: CryptoRng + FromEntropy + RngCore;
 }
 
 /// Account Table Type
-pub type AccountTable<C> = key::AccountTable<<C as Configuration>::HierarchicalKeyDerivationScheme>;
-
-/// Asset Map Key Type
-pub type AssetMapKey<C> = (KeyIndex, SecretKey<C>);
+pub type AccountTable<C> = key::AccountTable<<C as Configuration>::Account>;
 
 /// Signer Parameters
 #[derive(derivative::Derivative)]
@@ -540,9 +497,10 @@ where
     #[inline]
     fn receiving_key(
         &self,
-        keypair: SecretKeyPair<C::HierarchicalKeyDerivationScheme>,
+        key: SecretKey<C>,
     ) -> ReceivingKey<C> {
-        SpendingKey::new(keypair.spend, keypair.view).derive(self.parameters.key_agreement_scheme())
+        let spending_key = SpendingKey::new(key.clone(), key);
+        spending_key.derive(self.parameters.key_agreement_scheme())
     }
 }
 
@@ -623,10 +581,7 @@ where
 
     /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator`.
     #[inline]
-    pub fn new(
-        keys: C::HierarchicalKeyDerivationScheme,
-        utxo_accumulator: C::UtxoAccumulator,
-    ) -> Self {
+    pub fn new(keys: C::Account, utxo_accumulator: C::UtxoAccumulator) -> Self {
         Self::build(
             AccountTable::<C>::new(keys),
             utxo_accumulator,
@@ -641,20 +596,6 @@ where
         &self.accounts
     }
 
-    /// Finds the next viewing key that can decrypt the `encrypted_note` from the `view_key_table`.
-    #[inline]
-    fn find_next_key<'h>(
-        view_key_table: &mut ViewKeyTable<'h, C::HierarchicalKeyDerivationScheme>,
-        parameters: &Parameters<C>,
-        with_recovery: bool,
-        encrypted_note: EncryptedNote<C>,
-    ) -> Option<ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>> {
-        let mut finder = Finder::new(encrypted_note);
-        view_key_table.find_index_with_maybe_gap(with_recovery, move |k| {
-            finder.next(|note| note.decrypt(&parameters.note_encryption_scheme, k, &mut ()))
-        })
-    }
-
     /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
     /// to `assets` if there is no void number to match it.
     #[inline]
@@ -663,28 +604,21 @@ where
         assets: &mut C::AssetMap,
         parameters: &Parameters<C>,
         utxo: Utxo<C>,
-        selection: ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>,
+        note: Note<C>,
+        key: &SecretKey<C>,
         void_numbers: &mut Vec<VoidNumber<C>>,
         deposit: &mut Vec<Asset>,
     ) {
-        let ViewKeySelection {
-            index,
-            keypair,
-            item: Note {
-                ephemeral_secret_key,
-                asset,
-            },
-        } = selection;
         if let Some(void_number) =
-            parameters.check_full_asset(&keypair.spend, &ephemeral_secret_key, &asset, &utxo)
+            parameters.check_full_asset(key, &note.ephemeral_secret_key, &note.asset, &utxo)
         {
             if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
                 void_numbers.remove(index);
             } else {
                 utxo_accumulator.insert(&utxo);
-                assets.insert((index, ephemeral_secret_key), asset);
-                if !asset.is_zero() {
-                    deposit.push(asset);
+                assets.insert(note.ephemeral_secret_key, note.asset);
+                if !note.asset.is_zero() {
+                    deposit.push(note.asset);
                 }
                 return;
             }
@@ -738,20 +672,18 @@ where
         let void_number_count = void_numbers.len();
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
-        let mut view_key_table = self.accounts.get_mut_default().view_key_table();
+        let mut default_key = self.accounts.get_default().spending_key();
         for (utxo, encrypted_note) in inserts {
-            if let Some(selection) = Self::find_next_key(
-                &mut view_key_table,
-                parameters,
-                with_recovery,
-                encrypted_note,
-            ) {
+            if let Some(note) =
+                encrypted_note.decrypt(&parameters.note_encryption_scheme, &default_key, &mut ())
+            {
                 Self::insert_next_item(
                     &mut self.utxo_accumulator,
                     &mut self.assets,
                     parameters,
                     utxo,
-                    selection,
+                    note,
+                    &default_key,
                     &mut void_numbers,
                     &mut deposit,
                 );
@@ -759,21 +691,18 @@ where
                 self.utxo_accumulator.insert_nonprovable(&utxo);
             }
         }
-        self.assets.retain(|(index, ephemeral_secret_key), assets| {
-            assets.retain(
-                |asset| match self.accounts.get_default().spend_key(*index) {
-                    Some(secret_spend_key) => Self::is_asset_unspent(
-                        &mut self.utxo_accumulator,
-                        parameters,
-                        &secret_spend_key,
-                        ephemeral_secret_key,
-                        *asset,
-                        &mut void_numbers,
-                        &mut withdraw,
-                    ),
-                    _ => true,
-                },
-            );
+        self.assets.retain(|ephemeral_secret_key, assets| {
+            assets.retain(|asset| {
+                Self::is_asset_unspent(
+                    &mut self.utxo_accumulator,
+                    parameters,
+                    &self.accounts.get_default().spending_key(),
+                    ephemeral_secret_key,
+                    *asset,
+                    &mut void_numbers,
+                    &mut withdraw,
+                )
+            });
             !assets.is_empty()
         });
         self.checkpoint.update_from_void_numbers(void_number_count);
@@ -798,17 +727,13 @@ where
     fn build_pre_sender(
         &self,
         parameters: &Parameters<C>,
-        key: AssetMapKey<C>,
+        key: SecretKey<C>,
         asset: Asset,
     ) -> Result<PreSender<C>, SignError<C>> {
-        let (spend_index, ephemeral_secret_key) = key;
         Ok(PreSender::new(
             parameters,
-            self.accounts
-                .get_default()
-                .spend_key(spend_index)
-                .expect("Index is guaranteed to be within bounds."),
-            ephemeral_secret_key,
+            self.accounts.get_default().spending_key(),
+            key,
             asset,
         ))
     }
@@ -820,12 +745,11 @@ where
         parameters: &Parameters<C>,
         asset: Asset,
     ) -> Result<Receiver<C>, SignError<C>> {
-        let keypair = self.accounts.get_default().default_keypair();
-        Ok(SpendingKey::new(keypair.spend, keypair.view).receiver(
-            parameters,
-            self.rng.gen(),
-            asset,
-        ))
+        let receiving_key = ReceivingKey::<C> {
+            spend: self.accounts.get_default().address(parameters).clone(),
+            view: self.accounts.get_default().address(parameters),
+        };
+        Ok(receiving_key.into_receiver(parameters, self.rng.gen(), asset))
     }
 
     /// Builds a new internal [`Mint`] for zero assets.
@@ -836,10 +760,10 @@ where
         asset_id: AssetId,
     ) -> Result<(Mint<C>, PreSender<C>), SignError<C>> {
         let asset = Asset::zero(asset_id);
-        let keypair = self.accounts.get_default().default_keypair();
+        let key = self.accounts.get_default().spending_key();
         Ok(Mint::internal_pair(
             parameters,
-            &SpendingKey::new(keypair.spend, keypair.view),
+            &SpendingKey::new(key.clone(), key),
             asset,
             &mut self.rng,
         ))
@@ -937,11 +861,11 @@ where
         asset_id: AssetId,
         total: AssetValue,
     ) -> Result<([Receiver<C>; PrivateTransferShape::RECEIVERS], Join<C>), SignError<C>> {
-        let keypair = self.accounts.get_default().default_keypair();
+        let secret_key = self.accounts.get_default().spending_key();
         Ok(Join::new(
             parameters,
             asset_id.with(total),
-            &SpendingKey::new(keypair.spend, keypair.view),
+            &SpendingKey::new(secret_key.clone(), secret_key),
             &mut self.rng,
         ))
     }
@@ -1059,7 +983,7 @@ where
 impl<C> Clone for SignerState<C>
 where
     C: Configuration,
-    C::HierarchicalKeyDerivationScheme: Clone,
+    C::Account: Clone,
     C::UtxoAccumulator: Clone,
     C::AssetMap: Clone,
 {
@@ -1256,31 +1180,11 @@ where
 
     /// Returns public receiving keys according to the `request`.
     #[inline]
-    pub fn receiving_keys(&mut self, request: ReceivingKeyRequest) -> Vec<ReceivingKey<C>> {
-        match request {
-            ReceivingKeyRequest::Get { index } => self
-                .state
-                .accounts
-                .get_default()
-                .keypair(index)
-                .into_iter()
-                .map(|k| self.parameters.receiving_key(k))
-                .collect(),
-            ReceivingKeyRequest::GetAll => self
-                .state
-                .accounts
-                .get_default()
-                .keypairs()
-                .map(|k| self.parameters.receiving_key(k))
-                .collect(),
-            ReceivingKeyRequest::New { count } => self
-                .state
-                .accounts
-                .generate_keys(Default::default())
-                .take(count)
-                .map(|k| self.parameters.receiving_key(k))
-                .collect(),
-        }
+    pub fn receiving_keys(&mut self) -> PublicKey<C> {
+        self.state
+            .accounts
+            .get_default()
+            .address(&self.parameters.parameters)
     }
 }
 
@@ -1311,10 +1215,7 @@ where
     }
 
     #[inline]
-    fn receiving_keys(
-        &mut self,
-        request: ReceivingKeyRequest,
-    ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error> {
-        Box::pin(async move { Ok(self.receiving_keys(request)) })
+    fn receiving_keys(&mut self) -> LocalBoxFutureResult<PublicKey<C>, Self::Error> {
+        Box::pin(async move { Ok(self.receiving_keys()) })
     }
 }
