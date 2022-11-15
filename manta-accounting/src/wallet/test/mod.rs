@@ -109,8 +109,15 @@ where
     /// is `true`.
     #[inline]
     pub fn private_transfer(is_self: bool, asset: Asset, key: PublicKey<C>) -> Self {
-        let receiving_key = ReceivingKey::<C>{spend: key.clone(), view: key};
-        Self::post(is_self, false, Transaction::PrivateTransfer(asset, receiving_key))
+        let receiving_key = ReceivingKey::<C> {
+            spend: key.clone(),
+            view: key,
+        };
+        Self::post(
+            is_self,
+            false,
+            Transaction::PrivateTransfer(asset, receiving_key),
+        )
     }
 
     /// Generates a [`Transaction::Reclaim`] for `asset` which is maximal if `is_maximal` is `true`.
@@ -837,13 +844,9 @@ where
                     }
                     Action::GenerateReceivingKeys { count } => Event {
                         action: ActionType::GenerateReceivingKeys,
-                        value: match actor
-                            .wallet
-                            .receiving_keys()
-                            .await
-                        {
+                        value: match actor.wallet.receiving_keys().await {
                             Ok(key) => {
-                                    self.receiving_keys.lock().insert(key);
+                                self.receiving_keys.lock().insert(key);
                                 Ok(true)
                             }
                             Err(err) => Err(Error::SignerConnectionError(err)),

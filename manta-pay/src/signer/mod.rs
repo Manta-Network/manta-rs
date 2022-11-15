@@ -53,9 +53,6 @@ pub type SignError = signer::SignError<Config>;
 /// Signing Result
 pub type SignResult = signer::SignResult<Config>;
 
-/// Receiving Key Request
-pub type ReceivingKeyRequest = signer::ReceivingKeyRequest;
-
 /// Checkpoint
 #[cfg_attr(
     feature = "serde",
@@ -200,4 +197,16 @@ impl From<Checkpoint> for RawCheckpoint {
             checkpoint.sender_index as u64,
         )
     }
+}
+
+/// Get Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone)]
+pub enum GetRequest {
+    /// GET
+    Get,
 }

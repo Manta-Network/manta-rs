@@ -495,10 +495,7 @@ where
     /// Converts `keypair` into a [`ReceivingKey`] by using the key-agreement scheme to derive the
     /// public keys associated to `keypair`.
     #[inline]
-    fn receiving_key(
-        &self,
-        key: SecretKey<C>,
-    ) -> ReceivingKey<C> {
+    fn receiving_key(&self, key: SecretKey<C>) -> ReceivingKey<C> {
         let spending_key = SpendingKey::new(key.clone(), key);
         spending_key.derive(self.parameters.key_agreement_scheme())
     }
