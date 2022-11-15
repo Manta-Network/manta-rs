@@ -33,7 +33,7 @@ use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
 use futures::StreamExt;
 use indexmap::IndexSet;
 use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample};
-use manta_util::{future::LocalBoxFuture, vec::VecExt};
+use manta_util::future::LocalBoxFuture;
 use parking_lot::Mutex;
 use statrs::{
     distribution::{Categorical, Poisson},
@@ -842,7 +842,7 @@ where
                             }
                         }
                     }
-                    Action::GenerateReceivingKeys { count } => Event {
+                    Action::GenerateReceivingKeys { count: _ } => Event {
                         action: ActionType::GenerateReceivingKeys,
                         value: match actor.wallet.receiving_keys().await {
                             Ok(key) => {

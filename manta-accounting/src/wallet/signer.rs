@@ -43,16 +43,13 @@ use crate::{
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
-use core::{convert::Infallible, default, fmt::Debug, hash::Hash};
+use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{
-    array_map,
-    future::LocalBoxFutureResult,
-    into_array_unchecked,
-    iter::{Finder, IteratorExt},
+    array_map, future::LocalBoxFutureResult, into_array_unchecked, iter::IteratorExt,
     persistence::Rollback,
 };
 
@@ -491,14 +488,6 @@ where
             proving_context,
         }
     }
-
-    /// Converts `keypair` into a [`ReceivingKey`] by using the key-agreement scheme to derive the
-    /// public keys associated to `keypair`.
-    #[inline]
-    fn receiving_key(&self, key: SecretKey<C>) -> ReceivingKey<C> {
-        let spending_key = SpendingKey::new(key.clone(), key);
-        spending_key.derive(self.parameters.key_agreement_scheme())
-    }
 }
 
 /// Signer State
@@ -595,6 +584,7 @@ where
 
     /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
     /// to `assets` if there is no void number to match it.
+    #[allow(clippy::too_many_arguments)]
     #[inline]
     fn insert_next_item(
         utxo_accumulator: &mut C::UtxoAccumulator,
@@ -666,10 +656,11 @@ where
     where
         I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
     {
+        let _ = with_recovery;
         let void_number_count = void_numbers.len();
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
-        let mut default_key = self.accounts.get_default().spending_key();
+        let default_key = self.accounts.get_default().spending_key();
         for (utxo, encrypted_note) in inserts {
             if let Some(note) =
                 encrypted_note.decrypt(&parameters.note_encryption_scheme, &default_key, &mut ())
@@ -743,7 +734,7 @@ where
         asset: Asset,
     ) -> Result<Receiver<C>, SignError<C>> {
         let receiving_key = ReceivingKey::<C> {
-            spend: self.accounts.get_default().address(parameters).clone(),
+            spend: self.accounts.get_default().address(parameters),
             view: self.accounts.get_default().address(parameters),
         };
         Ok(receiving_key.into_receiver(parameters, self.rng.gen(), asset))
