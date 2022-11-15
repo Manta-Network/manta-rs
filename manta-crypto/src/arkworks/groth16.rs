@@ -14,25 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Groth-16 Proving System
+//! Groth16 Proof System
 
-use crate::crypto::constraint::arkworks::{
-    self,
-    codec::{HasDeserialization, HasSerialization, SerializationError},
-    R1CS,
+use crate::{
+    arkworks::{
+        constraint::R1CS,
+        ec::PairingEngine,
+        serialize::{
+            ArkReader, ArkWriter, CanonicalDeserialize, CanonicalSerialize, HasDeserialization,
+            HasSerialization, Read, SerializationError, Write,
+        },
+    },
+    constraint::{Input, ProofSystem},
+    rand::{CryptoRng, RngCore, SizedRng},
 };
 use alloc::vec::Vec;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
 use ark_snark::SNARK;
 use core::marker::PhantomData;
-use manta_crypto::{
-    arkworks::{
-        ec::PairingEngine,
-        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write},
-    },
-    constraint::{Input, ProofSystem},
-    rand::{CryptoRng, RngCore, SizedRng},
-};
 use manta_util::codec::{self, DecodeError};
 
 #[cfg(feature = "scale")]
@@ -216,7 +215,7 @@ where
     where
         R: codec::Read,
     {
-        let mut reader = arkworks::codec::ArkReader::new(reader);
+        let mut reader = ArkReader::new(reader);
         match CanonicalDeserialize::deserialize_unchecked(&mut reader) {
             Ok(value) => reader
                 .finish()
@@ -236,7 +235,7 @@ where
     where
         W: codec::Write,
     {
-        let mut writer = arkworks::codec::ArkWriter::new(writer);
+        let mut writer = ArkWriter::new(writer);
         let _ = self.0.serialize_unchecked(&mut writer);
         writer.finish().map(move |_| ())
     }
@@ -426,7 +425,7 @@ where
     where
         R: codec::Read,
     {
-        let mut reader = arkworks::codec::ArkReader::new(reader);
+        let mut reader = ArkReader::new(reader);
         match CanonicalDeserialize::deserialize(&mut reader) {
             Ok(value) => reader
                 .finish()
@@ -447,7 +446,7 @@ where
     where
         W: codec::Write,
     {
-        let mut writer = arkworks::codec::ArkWriter::new(writer);
+        let mut writer = ArkWriter::new(writer);
         let _ = self.serialize(&mut writer);
         writer.finish().map(move |_| ())
     }
@@ -524,22 +523,21 @@ where
     }
 }
 
-impl<E> Input<Groth16<E>> for bool
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(&self, input: &mut Vec<E::Fr>) {
-        input.push((*self).into());
-    }
+/// Implements [`Input`] over [`Groth16`] for `$type` that can convert to a field element.
+macro_rules! public_input_impl {
+    ($($type:tt),* $(,)?) => {
+        $(
+            impl<E> Input<Groth16<E>> for $type
+            where
+                E: PairingEngine,
+            {
+                #[inline]
+                fn extend(&self, input: &mut Vec<E::Fr>) {
+                    input.push((*self).into());
+                }
+            }
+        )*
+    };
 }
 
-impl<E> Input<Groth16<E>> for u128
-where
-    E: PairingEngine,
-{
-    #[inline]
-    fn extend(&self, input: &mut Vec<E::Fr>) {
-        input.push((*self).into());
-    }
-}
+public_input_impl!(bool, u8, u16, u32, u64, u128);

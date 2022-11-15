@@ -24,7 +24,6 @@
 extern crate alloc;
 
 pub mod crypto;
-pub mod util;
 
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
