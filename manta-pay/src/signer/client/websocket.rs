@@ -21,11 +21,11 @@
 use crate::{
     config::{Config, PublicKey},
     signer::{
-        Checkpoint, SignError, SignRequest, SignResponse, SyncError,
-        SyncRequest, SyncResponse, GetRequest,
+        Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
+        SyncResponse,
     },
 };
-use alloc::{boxed::Box};
+use alloc::boxed::Box;
 use core::marker::Unpin;
 use futures::{SinkExt, StreamExt};
 use manta_accounting::wallet::{self, signer};
@@ -141,9 +141,7 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn receiving_keys(
-        &mut self,
-    ) -> LocalBoxFutureResult<PublicKey, Self::Error> {
+    fn receiving_keys(&mut self) -> LocalBoxFutureResult<PublicKey, Self::Error> {
         Box::pin(async move { self.send("receivingKeys", GetRequest::Get).await })
     }
 }

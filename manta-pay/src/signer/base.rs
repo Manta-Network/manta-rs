@@ -17,7 +17,7 @@
 //! Manta Pay Signer Configuration
 
 use crate::{
-    config::{Config, MerkleTreeConfiguration, PublicKey, SecretKey, Parameters},
+    config::{Config, MerkleTreeConfiguration, Parameters, PublicKey, SecretKey},
     crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet},
     signer::Checkpoint,
@@ -26,7 +26,7 @@ use alloc::collections::BTreeMap;
 use core::{cmp, mem};
 use manta_accounting::{
     asset::HashAssetMap,
-    key::{self, AccountIndex, DeriveAddresses, AccountCollection},
+    key::{self, AccountCollection, AccountIndex, DeriveAddresses},
     wallet::{
         self,
         signer::{self, SyncData},
@@ -37,9 +37,9 @@ use manta_crypto::{
         ed_on_bls12_381::FrParameters,
         ff::{Fp256, PrimeField},
     },
-    key::{agreement::Derive},
+    key::agreement::Derive,
     merkle_tree::{self, forest::Configuration},
-    rand::{ChaCha20Rng, CryptoRng, RngCore, Rand},
+    rand::{ChaCha20Rng, CryptoRng, Rand, RngCore},
 };
 
 impl<C> DeriveAddresses for KeySecret<C>
@@ -51,7 +51,9 @@ where
     #[inline]
     fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address {
         let spending_key = self.spending_key(&index);
-        parameters.key_agreement_scheme().derive(&spending_key, & mut ())
+        parameters
+            .key_agreement_scheme()
+            .derive(&spending_key, &mut ())
     }
 }
 
