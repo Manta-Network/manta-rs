@@ -165,6 +165,9 @@ pub type NoteVar = utxo::Note<ParametersVar>;
 pub type IncomingNote = protocol::IncomingNote<Config>;
 
 ///
+pub type LightIncomingNote = protocol::LightIncomingNote<Config>;
+
+///
 pub type FullIncomingNote = protocol::FullIncomingNote<Config>;
 
 ///
@@ -2040,35 +2043,39 @@ pub mod test {
     use crate::{
         config::{
             utxo::v2::{
-                Config, IncomingAESConverter, IncomingBaseAES, IncomingBaseEncryptionScheme,
-                AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE, UtxoCommitmentScheme, GroupGenerator,
-                AddressPartitionFunction
+                AddressPartitionFunction, Config, GroupGenerator, IncomingAESConverter,
+                IncomingBaseAES, IncomingBaseEncryptionScheme, UtxoCommitmentScheme,
+                AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE,
             },
-            Compiler, ConstraintField, Group, GroupVar, EmbeddedScalar
+            Compiler, ConstraintField, EmbeddedScalar, Group, GroupVar,
         },
         crypto::{constraint::arkworks::Fp, encryption},
     };
-    use manta_accounting::{asset, transfer::utxo::v2 as protocol};
-    use protocol::{UtxoCommitmentScheme as UtxoCommitmentSchemeTrait,
-        AddressPartitionFunction as AddressPartitionFunctionTrait,
-        ViewingKeyDerivationFunction as ViewingKeyDerivationFunctionTrait};
-    use manta_accounting::transfer::utxo::{NoteOpen, UtxoReconstruct, address_from_spending_key};
+    use manta_accounting::{
+        asset,
+        transfer::utxo::{address_from_spending_key, v2 as protocol, NoteOpen, UtxoReconstruct},
+    };
     use manta_crypto::{
+        algebra::{diffie_hellman::StandardDiffieHellman, HasGenerator, ScalarMul},
         arkworks::constraint::FpVar,
         eclair::{
             alloc::{mode::Secret, Allocate},
             num::U128,
         },
         encryption::{
-            hybrid::{Hybrid, Randomness},
             convert::{
                 key::Encryption,
                 plaintext::{Forward, Reverse},
             },
+            hybrid::{Hybrid, Randomness},
             Decrypt, EmptyHeader, Encrypt,
         },
-        rand::{OsRng, Sample, Rand},
-        algebra::{diffie_hellman::StandardDiffieHellman, HasGenerator, ScalarMul}
+        rand::{OsRng, Rand, Sample},
+    };
+    use protocol::{
+        AddressPartitionFunction as AddressPartitionFunctionTrait,
+        UtxoCommitmentScheme as UtxoCommitmentSchemeTrait,
+        ViewingKeyDerivationFunction as ViewingKeyDerivationFunctionTrait,
     };
 
     /// Checks that the length of the fixed-nonce AES plaintext is 80. Checks that converting back returns
@@ -2200,7 +2207,7 @@ pub mod test {
         assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
         assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
     }
-    
+
     /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
     /// decryption is the inverse of encryption.
     #[test]
@@ -2249,7 +2256,10 @@ pub mod test {
         let spending_key = EmbeddedScalar::gen(&mut rng);
         let receiving_key = address_from_spending_key(&spending_key, &parameters);
         let proof_authorization_key = group_generator.scalar_mul(&spending_key, &mut ());
-        let decryption_key = parameters.base.viewing_key_derivation_function.viewing_key(&proof_authorization_key, &mut ());
+        let decryption_key = parameters
+            .base
+            .viewing_key_derivation_function
+            .viewing_key(&proof_authorization_key, &mut ());
 
         let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
         let asset_id = Fp::<ConstraintField>::gen(&mut rng);
@@ -2258,7 +2268,8 @@ pub mod test {
             id: asset_id,
             value: asset_value,
         };
-        let plaintext = protocol::IncomingPlaintext::<Config>::new(utxo_commitment_randomness, asset);
+        let plaintext =
+            protocol::IncomingPlaintext::<Config>::new(utxo_commitment_randomness, asset);
         let secret = protocol::MintSecret::<Config>::new(
             receiving_key.receiving_key,
             protocol::IncomingRandomness::<Config>::sample(((), ()), &mut rng),
@@ -2266,20 +2277,40 @@ pub mod test {
         );
 
         let base_poseidon = parameters.base.incoming_base_encryption_scheme.clone();
-        let base_aes = parameters.base.light_incoming_base_encryption_scheme.clone();
+        let base_aes = parameters
+            .base
+            .light_incoming_base_encryption_scheme
+            .clone();
 
-        let address_partition = parameters.address_partition_function.partition(&receiving_key);
+        let address_partition = parameters
+            .address_partition_function
+            .partition(&receiving_key);
 
         let incoming_note = secret.incoming_note(&group_generator, &base_poseidon, &mut ());
         let light_incoming_note = secret.light_incoming_note(&group_generator, &base_aes, &mut ());
-        let full_incoming_note = protocol::FullIncomingNote::<Config>::new(address_partition, incoming_note, light_incoming_note);
+        let full_incoming_note = protocol::FullIncomingNote::<Config>::new(
+            address_partition,
+            incoming_note,
+            light_incoming_note,
+        );
 
-        let utxo_commitment = parameters.base.utxo_commitment_scheme.commit(&utxo_commitment_randomness, &plaintext.asset.id, &plaintext.asset.value, &receiving_key.receiving_key, &mut ());
+        let utxo_commitment = parameters.base.utxo_commitment_scheme.commit(
+            &utxo_commitment_randomness,
+            &plaintext.asset.id,
+            &plaintext.asset.value,
+            &receiving_key.receiving_key,
+            &mut (),
+        );
         let utxo = protocol::Utxo::<Config>::new(true, asset, utxo_commitment);
 
-        let (identifier,new_asset) = parameters.open_with_check(&decryption_key, &utxo, full_incoming_note, &receiving_key).unwrap();
+        let (identifier, new_asset) = parameters
+            .open_with_check(&decryption_key, &utxo, full_incoming_note, &receiving_key)
+            .unwrap();
 
-        assert_eq!(utxo_commitment_randomness, identifier.utxo_commitment_randomness, "Randomness is not the same.");
+        assert_eq!(
+            utxo_commitment_randomness, identifier.utxo_commitment_randomness,
+            "Randomness is not the same."
+        );
         assert_eq!(asset.value, new_asset.value, "Asset value is not the same.");
         assert_eq!(asset.id, new_asset.id, "Asset id is not the same.");
     }
