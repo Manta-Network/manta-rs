@@ -62,13 +62,14 @@ where
 /// Utility Module for [`ToPrivate`]
 pub mod to_private {
     use super::*;
+    use manta_accounting::transfer::utxo::address_from_spending_key;
 
     /// Generates a proof for a [`ToPrivate`] transaction.
     #[inline]
     pub fn prove<R>(
         proving_context: &ProvingContext,
         parameters: &Parameters,
-        utxo_accumulator_model: &UtxoAccumulatorModel,
+        utxo_accumulator: &mut UtxoAccumulator,
         rng: &mut R,
     ) -> TransferPost
     where
@@ -77,7 +78,7 @@ pub mod to_private {
         prove_full(
             proving_context,
             parameters,
-            utxo_accumulator_model,
+            utxo_accumulator,
             rng.gen(),
             rng.gen(),
             rng,
@@ -89,7 +90,7 @@ pub mod to_private {
     pub fn prove_full<R>(
         proving_context: &ProvingContext,
         parameters: &Parameters,
-        utxo_accumulator_model: &UtxoAccumulatorModel,
+        utxo_accumulator: &mut UtxoAccumulator,
         asset_id: AssetId,
         value: AssetValue,
         rng: &mut R,
@@ -97,21 +98,33 @@ pub mod to_private {
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        ToPrivate::from_address(
+        let asset_0 = Asset::new(asset_id, value);
+        let spending_key = rng.gen();
+        let address = address_from_spending_key(&spending_key, parameters);
+        let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
+
+        let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(
             parameters,
-            rng.gen(),
-            Asset::new(asset_id, value),
+            &mut authorization.context,
+            address,
+            asset_0,
             Default::default(),
             rng,
-        )
-        .into_post(
-            FullParametersRef::new(parameters, utxo_accumulator_model),
-            proving_context,
-            None,
-            rng,
-        )
-        .expect("Unable to build TO_PRIVATE proof.")
-        .expect("")
+        );
+        let to_private_0 = to_private_0
+            .into_post(
+                FullParametersRef::new(parameters, utxo_accumulator.model()),
+                &proving_context,
+                None,
+                rng,
+            )
+            .expect("Unable to build TO_PRIVATE proof.")
+            .expect("Did not match transfer shape.");
+        let sender_0 = pre_sender_0
+            .insert_and_upgrade(parameters, utxo_accumulator)
+            .expect("");
+
+        TransferPost::from(to_private_0)
     }
 }
 
