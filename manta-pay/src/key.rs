@@ -24,7 +24,7 @@
 //!
 //! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec::Vec};
 use core::marker::PhantomData;
 use manta_accounting::key::{self, AccountIndex};
 use manta_crypto::rand::{CryptoRng, RngCore};
