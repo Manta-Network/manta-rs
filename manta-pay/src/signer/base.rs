@@ -39,7 +39,7 @@ use manta_crypto::{
     },
     key::agreement::Derive,
     merkle_tree::{self, forest::Configuration},
-    rand::{ChaCha20Rng, CryptoRng, Rand, RngCore},
+    rand::{ChaCha20Rng, CryptoRng, RngCore},
 };
 
 impl<C> DeriveAddresses for KeySecret<C>
@@ -78,7 +78,7 @@ where
     C: CoinType,
     R: CryptoRng + RngCore + ?Sized,
 {
-    rng.gen()
+    KeySecret::sample(rng)
 }
 
 /// Signer UTXO Accumulator

@@ -85,7 +85,7 @@ where
         request: SignRequest<C>,
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
-    /// Returns public receiving keys according to the `request`.
+    /// Returns public receiving keys.
     fn receiving_keys(&mut self) -> LocalBoxFutureResult<PublicKey<C>, Self::Error>;
 }
 
@@ -1160,7 +1160,7 @@ where
         result
     }
 
-    /// Returns public receiving keys according to the `request`.
+    /// Returns public receiving keys.
     #[inline]
     pub fn receiving_keys(&mut self) -> PublicKey<C> {
         self.state
