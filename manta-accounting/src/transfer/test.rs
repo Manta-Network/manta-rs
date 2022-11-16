@@ -344,7 +344,7 @@ where
                     rng.gen(),
                     asset::Asset {
                         id: asset_id.clone(),
-                        value: v.clone(),
+                        value: *v,
                     },
                 );
                 sender.insert_utxo(utxo_accumulator);
@@ -361,7 +361,7 @@ where
                     rng.gen(),
                     asset::Asset {
                         id: asset_id.clone(),
-                        value: v.clone(),
+                        value: *v,
                     },
                 )
             })

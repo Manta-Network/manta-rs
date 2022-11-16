@@ -198,7 +198,7 @@ where
     /// Returns the asset value sent by `self` in the transaction.
     #[inline]
     pub fn asset_value(&self) -> C::AssetValue {
-        self.asset.value.clone()
+        self.asset.value
     }
 
     /// Reverts `self` back into a [`PreSender`].

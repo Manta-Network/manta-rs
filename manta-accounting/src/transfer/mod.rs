@@ -126,10 +126,10 @@ pub trait VoidNumberCommitmentScheme<COM = ()> {
 /// Transfer Configuration
 pub trait Configuration {
     /// Asset Id Type
-    type AssetId: Clone + Ord;
+    type AssetId: Clone + Hash + Ord; // Hash
 
     /// Asset Value Type
-    type AssetValue: AddAssign + Clone + Default + PartialOrd + Sum;
+    type AssetValue: AddAssign + Clone + Copy + Default + PartialOrd + Sum; // Copy
 
     /// Secret Key Type
     type SecretKey: Clone + Sample + SizeLimit;

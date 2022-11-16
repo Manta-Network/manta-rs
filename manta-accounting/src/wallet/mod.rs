@@ -28,10 +28,10 @@
 //! [`Ledger`]: ledger::Connection
 
 use crate::{
-    asset::{Asset, AssetId, AssetList, AssetMetadata, AssetValue},
+    asset::{AssetList, AssetMetadata},
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Configuration, PublicKey, TransferPost,
+        Asset, Configuration, PublicKey, TransferPost,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
@@ -58,12 +58,12 @@ pub mod signer;
 pub mod test;
 
 /// Wallet
-pub struct Wallet<C, L, S = signer::Signer<C>, B = BTreeMapBalanceState>
+pub struct Wallet<C, L, S = signer::Signer<C>, B = BTreeMapBalanceState<C>>
 where
     C: Configuration,
     L: ledger::Connection,
     S: signer::Connection<C>,
-    B: BalanceState,
+    B: BalanceState<C>,
 {
     /// Ledger Connection
     ledger: L,
@@ -86,7 +86,7 @@ where
     C: Configuration,
     L: ledger::Connection,
     S: signer::Connection<C>,
-    B: BalanceState,
+    B: BalanceState<C>,
 {
     /// Builds a new [`Wallet`] without checking if `ledger`, `checkpoint`, `signer`, and `assets`
     /// are properly synchronized.
@@ -137,13 +137,13 @@ where
 
     /// Returns the current balance associated with this `id`.
     #[inline]
-    pub fn balance(&self, id: AssetId) -> AssetValue {
+    pub fn balance(&self, id: C::AssetId) -> C::AssetValue {
         self.assets.balance(id)
     }
 
     /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
     #[inline]
-    pub fn contains(&self, asset: Asset) -> bool {
+    pub fn contains(&self, asset: Asset<C>) -> bool {
         self.assets.contains(asset)
     }
 
@@ -152,7 +152,7 @@ where
     #[inline]
     pub fn contains_all<I>(&self, assets: I) -> bool
     where
-        I: IntoIterator<Item = Asset>,
+        I: IntoIterator<Item = Asset<C>>,
     {
         AssetList::from_iter(assets)
             .into_iter()
@@ -317,7 +317,7 @@ where
     /// This method is already called by [`post`](Self::post), but can be used by custom
     /// implementations to perform checks elsewhere.
     #[inline]
-    pub fn check(&self, transaction: &Transaction<C>) -> Result<TransactionKind, Asset> {
+    pub fn check(&self, transaction: &Transaction<C>) -> Result<TransactionKind<C>, Asset<C>> {
         transaction.check(move |a| self.contains(a))
     }
 
@@ -432,11 +432,13 @@ pub enum InconsistencyError {
     serde(
         bound(
             deserialize = r"
+            Asset<C>: Deserialize<'de>,
                 SignError<C>: Deserialize<'de>,
                 L::Error: Deserialize<'de>,
                 S::Error: Deserialize<'de>
             ",
             serialize = r"
+            Asset<C>: Serialize,
                 SignError<C>: Serialize,
                 L::Error: Serialize,
                 S::Error: Serialize
@@ -448,12 +450,14 @@ pub enum InconsistencyError {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SignError<C>: Clone, L::Error: Clone, S::Error: Clone"),
-    Copy(bound = "SignError<C>: Copy, L::Error: Copy, S::Error: Copy"),
-    Debug(bound = "SignError<C>: Debug, L::Error: Debug, S::Error: Debug"),
-    Eq(bound = "SignError<C>: Eq, L::Error: Eq, S::Error: Eq"),
-    Hash(bound = "SignError<C>: Hash, L::Error: Hash, S::Error: Hash"),
-    PartialEq(bound = "SignError<C>: PartialEq, L::Error: PartialEq, S::Error: PartialEq")
+    Clone(bound = "Asset<C>: Clone, SignError<C>: Clone, L::Error: Clone, S::Error: Clone"),
+    Copy(bound = "Asset<C>: Copy, SignError<C>: Copy, L::Error: Copy, S::Error: Copy"),
+    Debug(bound = "Asset<C>: Debug, SignError<C>: Debug, L::Error: Debug, S::Error: Debug"),
+    Eq(bound = "Asset<C>: Eq, SignError<C>: Eq, L::Error: Eq, S::Error: Eq"),
+    Hash(bound = "Asset<C>: Hash, SignError<C>: Hash, L::Error: Hash, S::Error: Hash"),
+    PartialEq(
+        bound = "Asset<C>: PartialEq, SignError<C>: PartialEq, L::Error: PartialEq, S::Error: PartialEq"
+    )
 )]
 pub enum Error<C, L, S>
 where
@@ -462,7 +466,7 @@ where
     S: signer::Connection<C>,
 {
     /// Insufficient Balance
-    InsufficientBalance(Asset),
+    InsufficientBalance(Asset<C>),
 
     /// Inconsistency Error
     ///
