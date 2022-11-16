@@ -59,6 +59,7 @@ use manta_crypto::{
     hash::ArrayHashFunction,
     key::{self, kdf::KeyDerivationFunction},
     merkle_tree,
+    rand::{RngCore, Sample},
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
@@ -70,8 +71,8 @@ use manta_util::{
 #[cfg(feature = "bs58")]
 use alloc::string::String;
 
-#[cfg(any(feature = "test", test))]
-use manta_crypto::rand::{Rand, RngCore, Sample};
+#[cfg(feature = "test")]
+use manta_crypto::rand::Rand;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -1057,11 +1058,7 @@ pub fn receiving_key_from_base58(string: &str) -> Option<ReceivingKey> {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod asset_value_sample {
     use super::*;
-    use ark_std::rand::{
-        distributions::uniform::{SampleBorrow, UniformInt, UniformSampler},
-        Rng,
-    };
-    use manta_crypto::rand::SampleUniform;
+    use manta_crypto::rand::{rand::Rng, SampleBorrow, SampleUniform, UniformInt, UniformSampler};
 
     /// Asset Value Sampler
     #[derive(Clone, Copy, Debug)]
