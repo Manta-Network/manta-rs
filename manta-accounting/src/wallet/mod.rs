@@ -148,7 +148,7 @@ where
     }
 
     /// Returns `true` if `self` contains at least every asset in `assets`. Assets are combined
-    /// first by [`AssetId`] before checking for membership.
+    /// first by [`AssetId`](Configuration::AssetValue) before checking for membership.
     #[inline]
     pub fn contains_all<I>(&self, assets: I) -> bool
     where

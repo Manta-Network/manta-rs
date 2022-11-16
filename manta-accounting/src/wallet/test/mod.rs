@@ -547,7 +547,7 @@ where
         }
     }
 
-    /// Samples a [`MintZero`] against `self` using `rng` to select the [`AssetId`], returning
+    /// Samples a [`MintZero`] against `self` using `rng` to select the [`AssetId`](transfer::Configuration::AssetId), returning
     /// a [`Skip`] if [`MintZero`] is impossible.
     ///
     /// [`MintZero`]: ActionType::MintZero
@@ -677,7 +677,7 @@ where
             .unwrap_or(Action::Skip))
     }
 
-    /// Reclaims all of the private balance of a random [`AssetId`] to public balance or [`Skip`] if
+    /// Reclaims all of the private balance of a random [`AssetId`](transfer::Configuration::AssetId) to public balance or [`Skip`] if
     /// the private balance is empty.
     ///
     /// [`AssetId`]: crate::asset::AssetId

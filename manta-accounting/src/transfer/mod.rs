@@ -1209,7 +1209,7 @@ where
     /// track this condition.
     type UpdateError;
 
-    /// Valid [`AssetValue`] for [`TransferPost`] Source
+    /// Valid [`AssetValue`](Configuration::AssetValue) for [`TransferPost`] Source
     ///
     /// # Safety
     ///
@@ -1217,7 +1217,7 @@ where
     /// [`TransferLedger`].
     type ValidSourceAccount: AsRef<C::AssetValue>;
 
-    /// Valid [`AssetValue`] for [`TransferPost`] Sink
+    /// Valid [`AssetValue`](Configuration::AssetValue) for [`TransferPost`] Sink
     ///
     /// # Safety
     ///
