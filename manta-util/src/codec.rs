@@ -845,6 +845,23 @@ impl Decode for u64 {
     }
 }
 
+impl Decode for u128 {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let mut bytes = [0; 16];
+        match reader.read_exact(&mut bytes) {
+            Ok(()) => Ok(Self::from_le_bytes(bytes)),
+            Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),
+            _ => Err(DecodeError::Decode(())),
+        }
+    }
+}
+
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<T, const N: usize> Decode for [T; N]

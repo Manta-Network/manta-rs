@@ -21,11 +21,10 @@
 //! abstractions.
 
 use crate::{
-    asset::{self, AssetList},
+    asset::AssetList,
     transfer::{Asset, Configuration},
 };
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
-use core::fmt::Debug;
 use manta_util::num::CheckedSub;
 
 #[cfg(feature = "std")]
@@ -190,13 +189,11 @@ where
 #[cfg(any(feature = "test", test))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
-    use core::ops::Add;
 
     use super::*;
+    use crate::asset;
+    use core::{fmt::Debug, ops::Add};
     use manta_crypto::rand::{CryptoRng, RngCore, Sample};
-
-    #[cfg(test)]
-    use manta_crypto::rand::OsRng;
 
     /// Asserts that a random deposit and withdraw is always valid.
     #[inline]
@@ -263,6 +260,10 @@ pub mod test {
         );
     }
 
+    /*
+
+    Note: the following tests cannot be defined until we specify a transfer configuration.
+
     /// Defines the tests across multiple different [`BalanceState`] types.
     macro_rules! define_tests {
         ($((
@@ -296,34 +297,34 @@ pub mod test {
         }
     }
 
-    // Note: the following tests cannot be defined until we specify a transfer configuration.
+    define_tests!(
+        (
+            AssetList,
+            "[`AssetList`]",
+            asset_list_valid_withdraw,
+            asset_list_full_withdraw,
+        ),
+        (
+            BTreeMapBalanceState,
+            "[`BTreeMapBalanceState`]",
+            btree_map_valid_withdraw,
+            btree_map_full_withdraw,
+        ),
+    );
 
-    // define_tests!(
-    //     (
-    //         AssetList,
-    //         "[`AssetList`]",
-    //         asset_list_valid_withdraw,
-    //         asset_list_full_withdraw,
-    //     ),
-    //     (
-    //         BTreeMapBalanceState,
-    //         "[`BTreeMapBalanceState`]",
-    //         btree_map_valid_withdraw,
-    //         btree_map_full_withdraw,
-    //     ),
-    // );
+    /// Tests valid withdrawals for a [`HashMapBalanceState`] balance state.
+    #[cfg(feature = "std")]
+    #[test]
+    fn hash_map_valid_withdraw() {
+        assert_valid_withdraw(&mut HashMapBalanceState::new(), &mut OsRng);
+    }
 
-    // /// Tests valid withdrawals for a [`HashMapBalanceState`] balance state.
-    // #[cfg(feature = "std")]
-    // #[test]
-    // fn hash_map_valid_withdraw() {
-    //     assert_valid_withdraw(&mut HashMapBalanceState::new(), &mut OsRng);
-    // }
+    ///
+    #[cfg(feature = "std")]
+    #[test]
+    fn hash_map_full_withdraw() {
+        assert_full_withdraw_should_remove_entry::<HashMapBalanceState, _>(&mut OsRng);
+    }
 
-    // ///
-    // #[cfg(feature = "std")]
-    // #[test]
-    // fn hash_map_full_withdraw() {
-    //     assert_full_withdraw_should_remove_entry::<HashMapBalanceState, _>(&mut OsRng);
-    // }
+    */
 }

@@ -36,7 +36,7 @@ use core::{
     hash::Hash,
     iter::Sum,
     marker::PhantomData,
-    ops::{AddAssign, Deref},
+    ops::{AddAssign, Deref, Sub},
 };
 use manta_crypto::{
     accumulator::{self, AssertValidVerification, MembershipProof, Model},
@@ -129,7 +129,7 @@ pub trait Configuration {
     type AssetId: Clone + Hash + Ord; // Hash
 
     /// Asset Value Type
-    type AssetValue: AddAssign + Clone + Copy + Default + PartialOrd + Sum; // Copy
+    type AssetValue: AddAssign + Clone + Copy + Default + PartialOrd + Sub + Sum; // Sub, Copy
 
     /// Secret Key Type
     type SecretKey: Clone + Sample + SizeLimit;
@@ -835,12 +835,13 @@ where
     }
 }
 
-// impl<C> SizeLimit for Note<C>
-// where
-//     C: Configuration,
-// {
-//     const SIZE: usize = SecretKey::<C>::SIZE + Asset<C>::SIZE;
-// }
+impl<C> SizeLimit for Note<C>
+where
+    C: Configuration,
+    Asset<C>: SizeLimit,
+{
+    const SIZE: usize = SecretKey::<C>::SIZE + Asset::<C>::SIZE;
+}
 
 /// Transfer
 pub struct Transfer<

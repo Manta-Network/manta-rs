@@ -33,13 +33,13 @@ pub mod base;
 pub type SyncRequest = signer::SyncRequest<Config, Checkpoint>;
 
 /// Synchronization Response
-pub type SyncResponse = signer::SyncResponse<Checkpoint>;
+pub type SyncResponse = signer::SyncResponse<Config, Checkpoint>;
 
 /// Synchronization Error
 pub type SyncError = signer::SyncError<Checkpoint>;
 
 /// Synchronization Result
-pub type SyncResult = signer::SyncResult<Checkpoint>;
+pub type SyncResult = signer::SyncResult<Config, Checkpoint>;
 
 /// Signing Request
 pub type SignRequest = signer::SignRequest<Config>;

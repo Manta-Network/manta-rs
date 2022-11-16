@@ -55,8 +55,9 @@ use manta_crypto::{
     rand::{Rand, RngCore, Sample},
 };
 use manta_util::{
-    codec::{Encode, Write},
+    codec::{Decode, DecodeError, Encode, Write},
     num::CheckedSub,
+    SizeLimit,
 };
 
 #[cfg(feature = "serde")]
@@ -176,6 +177,14 @@ where
     }
 }
 
+impl<I, V> SizeLimit for Asset<I, V>
+where
+    I: SizeLimit,
+    V: SizeLimit,
+{
+    const SIZE: usize = I::SIZE + V::SIZE;
+}
+
 impl<I, V> Sub<V> for Asset<I, V>
 where
     V: SubAssign,
@@ -287,6 +296,57 @@ where
         self.id.encode(&mut writer)?;
         self.value.encode(&mut writer)?;
         Ok(())
+    }
+}
+
+/// Asset Decode Error
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "I::Error: Clone, V::Error: Clone"),
+    Copy(bound = "I::Error: Copy, V::Error: Copy"),
+    Debug(bound = "I::Error: Debug, V::Error: Debug"),
+    Eq(bound = "I::Error: Eq, V::Error: Eq"),
+    Hash(bound = "I::Error: Hash, V::Error: Hash"),
+    PartialEq(bound = "I::Error: PartialEq, V::Error: PartialEq")
+)]
+pub enum AssetDecodeError<I, V>
+where
+    I: Decode,
+    V: Decode,
+{
+    /// Asset ID Decode Error
+    AssetIdDecodeError(I::Error),
+
+    /// Asset Value Decode Error
+    AssetValueDecodeError(V::Error),
+}
+
+impl<I, V> Decode for Asset<I, V>
+where
+    I: Decode,
+    V: Decode,
+{
+    type Error = AssetDecodeError<I, V>;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: manta_util::codec::Read,
+    {
+        let asset_id = I::decode(&mut reader).map_err(|e| match e {
+            DecodeError::Decode(r) => DecodeError::Decode(AssetDecodeError::AssetIdDecodeError(r)),
+            DecodeError::Read(e) => DecodeError::Read(e),
+        })?;
+        let asset_value = V::decode(&mut reader).map_err(|e| match e {
+            DecodeError::Decode(r) => {
+                DecodeError::Decode(AssetDecodeError::AssetValueDecodeError(r))
+            }
+            DecodeError::Read(e) => DecodeError::Read(e),
+        })?;
+        Ok(Self {
+            id: asset_id,
+            value: asset_value,
+        })
     }
 }
 
@@ -742,7 +802,7 @@ macro_rules! impl_asset_map_for_maps_body {
                 } else if value == &asset.value {
                     return Selection::new(Default::default(), vec![(key.clone(), value.clone())]);
                 } else {
-                    sum.value.add_assign(value);
+                    sum.value.add_assign(value.clone());
                     values.push((key.clone(), value.clone()));
                 }
             }
@@ -819,8 +879,9 @@ impl<K, I, V> AssetMap<I, V> for BTreeAssetMap<K, I, V>
 where
     K: Clone + Ord,
     I: Clone + Ord,
-    V: AddAssign + Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    V: AddAssign + Clone + Default + Ord + Sub<Output = V>,
     for<'v> &'v V: Sub<Output = V>,
+    for<'v> &'v V: AddAssign<&'v V>,
 {
     impl_asset_map_for_maps_body! { K, I, V, BTreeMapEntry }
 }
@@ -836,8 +897,9 @@ impl<K, I, V, S> AssetMap<I, V> for HashAssetMap<K, I, V, S>
 where
     K: Clone + Hash + Eq,
     I: Clone + Ord,
-    V: AddAssign + Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    V: AddAssign + Clone + Default + Ord + Sub<Output = V>,
     for<'v> &'v V: Sub<Output = V>,
+    for<'v> &'v V: AddAssign<&'v V>,
     S: BuildHasher + Default,
 {
     impl_asset_map_for_maps_body! { K, I, V, HashMapEntry }
