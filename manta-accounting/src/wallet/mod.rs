@@ -379,7 +379,7 @@ where
             .map_err(Error::LedgerConnectionError)
     }
 
-    /// Returns public receiving keys according to the `request`.
+    /// Returns public receiving keys.
     #[inline]
     pub async fn receiving_keys(&mut self) -> Result<PublicKey<C>, S::Error> {
         self.signer.receiving_keys().await
