@@ -123,8 +123,6 @@ pub mod to_private {
         let sender_0 = pre_sender_0
             .insert_and_upgrade(parameters, utxo_accumulator)
             .expect("");
-        let receiver_0 = Receiver::sample(parameters, address, asset_0, Default::default(), rng);
-        receiver_0.insert_utxo(parameters, utxo_accumulator);
 
         TransferPost::from(to_private_0)
     }
@@ -177,7 +175,7 @@ pub mod private_transfer {
         let sender_0 = pre_sender_0
             .insert_and_upgrade(parameters, utxo_accumulator)
             .expect("");
-        let receiver_0 = Receiver::sample(parameters, address, asset_1, Default::default(), rng);
+        let receiver_0 = Receiver::sample(parameters, address, asset_0, Default::default(), rng);
 
         let (to_private_1, pre_sender_1) = ToPrivate::internal_pair(
             parameters,
@@ -199,7 +197,7 @@ pub mod private_transfer {
         let sender_1 = pre_sender_1
             .insert_and_upgrade(parameters, utxo_accumulator)
             .expect("");
-        let receiver_1 = Receiver::sample(parameters, address, asset_0, Default::default(), rng);
+        let receiver_1 = Receiver::sample(parameters, address, asset_1, Default::default(), rng);
 
         receiver_0.insert_utxo(parameters, utxo_accumulator);
         receiver_1.insert_utxo(parameters, utxo_accumulator);
