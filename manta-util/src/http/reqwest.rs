@@ -55,7 +55,7 @@ impl KnownUrlClient {
         T: Serialize,
         R: DeserializeOwned,
     {
-        let temp = self.client
+        self.client
             .request(
                 method,
                 self.server_url
@@ -63,9 +63,8 @@ impl KnownUrlClient {
                     .expect("Building the URL is not allowed to fail."),
             )
             .json(request)
-            .send().await;
-            println!("The result of send is {:?}", temp.is_err());
-            temp?
+            .send()
+            .await?
             .json()
             .await
     }

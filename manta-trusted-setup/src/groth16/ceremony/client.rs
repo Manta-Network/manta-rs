@@ -233,7 +233,7 @@ where
     where
         C::Identifier: Serialize,
         C::Nonce: DeserializeOwned + Serialize,
-        C::Nonce: std::fmt::Debug, // debugging
+        C::Nonce: std::fmt::Debug,     // debugging
         C::Challenge: std::fmt::Debug, // debugging
         C::Signature: Serialize,
         ContributeResponse<C>: DeserializeOwned,
@@ -257,7 +257,7 @@ where
         C::Nonce: DeserializeOwned + Serialize,
         C::Signature: Serialize,
         C::Challenge: std::fmt::Debug, // debugging
-        C::Nonce: std::fmt::Debug, // debugging
+        C::Nonce: std::fmt::Debug,     // debugging
         QueryResponse<C>: DeserializeOwned,
         ContributeRequest<C>: Serialize,
         ContributeResponse<C>: DeserializeOwned,
@@ -299,7 +299,7 @@ where
     C::Identifier: Serialize,
     C::Nonce: DeserializeOwned + Serialize,
     C::Signature: Serialize,
-    C::Nonce: std::fmt::Debug, // debugging
+    C::Nonce: std::fmt::Debug,     // debugging
     C::Challenge: std::fmt::Debug, // debugging
     QueryResponse<C>: DeserializeOwned,
     ContributeRequest<C>: Serialize,

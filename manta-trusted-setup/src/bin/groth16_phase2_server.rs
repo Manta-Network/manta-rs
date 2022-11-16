@@ -119,7 +119,11 @@ fn change_circuit_names() {
     use manta_trusted_setup::ceremony::util::serialize_into_file;
     use std::fs::OpenOptions;
 
-    let names = vec!["to_private".to_string(), "to_public".to_string(), "private_transfer".to_string()];
+    let names = vec![
+        "to_private".to_string(),
+        "to_public".to_string(),
+        "private_transfer".to_string(),
+    ];
     let directory =
         PathBuf::from("/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data");
 
