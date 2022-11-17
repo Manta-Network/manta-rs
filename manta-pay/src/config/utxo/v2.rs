@@ -46,6 +46,7 @@ use manta_crypto::{
     algebra::HasGenerator,
     arkworks::{
         algebra::{affine_point_as_bytes, ScalarVar},
+        ec::ProjectiveCurve,
         ff::{try_into_u128, PrimeField, ToConstraintField},
         r1cs_std::R1CSVar,
         serialize::CanonicalSerialize,
@@ -868,15 +869,10 @@ impl encryption::convert::key::Encryption for IncomingAESConverter {
 
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut ()) -> Self::TargetEncryptionKey {
-        let key = source.to_vec(); // run Blake
-        assert_eq!(
-            key.len(),
-            32,
-            "Wrong key length: {}. Expected 32 bytes.",
-            key.len()
-        );
-        key.try_into()
-            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+        let key = source.to_vec();
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, key);
+        hasher.finalize().into()
     }
 }
 
@@ -885,25 +881,17 @@ impl encryption::convert::key::Encryption<Compiler> for IncomingAESConverter<Com
 
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
-        let key = Fp(*source
+        let mut key = [0u8; 32];
+        (*source)
             .0
             .value()
             .expect("Getting the group element from GroupVar is not allowed to fail.")
-            .to_field_elements()
-            .expect("Getting the field elements from a group element is not allowed to fail.")
-            .get(0)
-            .expect("Vector of group elements in not empty"))
-        .to_vec();
-        // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
-        // to reconstruct source from the key. FIXME: Change this
-        assert_eq!(
-            key.len(),
-            32,
-            "Wrong key length: {}. Expected 32 bytes.",
-            key.len()
-        );
-        key.try_into()
-            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+            .into_affine()
+            .serialize(&mut key[..])
+            .expect("Serialization error");
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, key);
+        hasher.finalize().into()
     }
 }
 
@@ -921,14 +909,9 @@ impl encryption::convert::key::Decryption for IncomingAESConverter {
     #[inline]
     fn as_target(source: &Self::DecryptionKey, _: &mut ()) -> Self::TargetDecryptionKey {
         let key = source.to_vec();
-        assert_eq!(
-            key.len(),
-            32,
-            "Wrong key length: {}. Expected 32 bytes.",
-            key.len()
-        );
-        key.try_into()
-            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, key);
+        hasher.finalize().into()
     }
 }
 
@@ -937,25 +920,17 @@ impl encryption::convert::key::Decryption<Compiler> for IncomingAESConverter<Com
 
     #[inline]
     fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
-        let key = Fp(*source
+        let mut key = [0u8; 32];
+        (*source)
             .0
             .value()
             .expect("Getting the group element from GroupVar is not allowed to fail.")
-            .to_field_elements()
-            .expect("Getting the field elements from a group element is not allowed to fail.")
-            .get(0)
-            .expect("Vector of group elements in not empty"))
-        .to_vec();
-        // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
-        // to reconstruct source from the key.
-        assert_eq!(
-            key.len(),
-            32,
-            "Wrong key length: {}. Expected 32 bytes.",
-            key.len()
-        );
-        key.try_into()
-            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+            .into_affine()
+            .serialize(&mut key[..])
+            .expect("Serialization error");
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, key);
+        hasher.finalize().into()
     }
 }
 
