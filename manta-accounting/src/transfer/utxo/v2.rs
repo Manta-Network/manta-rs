@@ -1344,13 +1344,17 @@ where
         utxo: &Self::Utxo,
         asset: &Self::Asset,
         identifier: &Self::Identifier,
-        address: &Self::Address,
+        decryption_key: &Self::DecryptionKey,
     ) -> bool {
         let new_utxo_commitment = self.base.utxo_commitment_scheme.commit(
             &identifier.utxo_commitment_randomness,
             &asset.id,
             &asset.value,
-            &address.receiving_key,
+            &self
+                .base
+                .group_generator
+                .generator()
+                .scalar_mul(decryption_key, &mut ()),
             &mut (),
         );
 

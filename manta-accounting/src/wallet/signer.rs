@@ -752,16 +752,10 @@ where
         let mut withdraw = Vec::new();
         let mut authorization_context = self.default_authorization_context(parameters);
         let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
-        let receiving_key = self.default_address(parameters);
-
         for (utxo, note) in inserts {
-            //println!("There is a utxo in inserts");
-
             if let Some((identifier, asset)) =
-                parameters.open_with_check(&decryption_key, &utxo, note, &receiving_key)
+                parameters.open_with_check(&decryption_key, &utxo, note)
             {
-                //println!("We decrypted a note");
-
                 Self::insert_next_item(
                     &mut authorization_context,
                     &mut self.utxo_accumulator,

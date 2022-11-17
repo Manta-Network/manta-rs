@@ -240,7 +240,7 @@ pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType 
 }
 
 /// Utxo Reconstruction
-pub trait UtxoReconstruct: NoteOpen + AddressType {
+pub trait UtxoReconstruct: NoteOpen {
     /// Check if `utxo` is consistent with `asset` and `identifier`, which come from
     /// decrypting a Note.
     fn utxo_check(
@@ -248,7 +248,7 @@ pub trait UtxoReconstruct: NoteOpen + AddressType {
         utxo: &Self::Utxo,
         asset: &Self::Asset,
         identifier: &Self::Identifier,
-        address: &Self::Address,
+        decryption_key: &Self::DecryptionKey,
     ) -> bool;
 
     /// Check if `utxo` is consistent with a `note` and tries to open `note`.
@@ -258,11 +258,10 @@ pub trait UtxoReconstruct: NoteOpen + AddressType {
         decryption_key: &Self::DecryptionKey,
         utxo: &Self::Utxo,
         note: Self::Note,
-        address: &Self::Address,
     ) -> Option<(Self::Identifier, Self::Asset)> {
         let (identifier, asset) = self.open(decryption_key, utxo, note)?;
 
-        if self.utxo_check(utxo, &asset, &identifier, address) {
+        if self.utxo_check(utxo, &asset, &identifier, decryption_key) {
             Some((identifier, asset))
         } else {
             None
