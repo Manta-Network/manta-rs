@@ -281,6 +281,12 @@ where
     pub fn spending_key(&self) -> SpendingKey<H> {
         self.key.spending_key(&self.index)
     }
+
+    /// Returns the [`AccountCollection`] corresponding to `self`.
+    #[inline]
+    pub fn keys(&self) -> &H {
+        &self.key
+    }
 }
 
 impl<H> DeriveAddress for Account<H>
@@ -342,6 +348,12 @@ where
     #[inline]
     pub fn with_accounts(keys: H, accounts: M) -> Self {
         Self { keys, accounts }
+    }
+
+    /// Returns the [`AccountCollection`] corresponding to `self`.
+    #[inline]
+    pub fn keys(&self) -> &H {
+        &self.keys
     }
 
     /// Returns the account keys for `account` if it exists.
