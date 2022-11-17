@@ -97,6 +97,7 @@ pub mod to_private {
     ) -> TransferPost
     where
         R: CryptoRng + RngCore + ?Sized,
+        A: Accumulator<Item = UtxoAccumulatorItem, Model = UtxoAccumulatorModel>,
     {
         let asset_0 = Asset::new(asset_id, value);
         let spending_key = rng.gen();
