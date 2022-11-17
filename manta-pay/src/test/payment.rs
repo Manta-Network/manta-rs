@@ -66,24 +66,36 @@ pub mod to_private {
 
     /// Generates a proof for a [`ToPrivate`] transaction.
     #[inline]
-    pub fn prove<A, R>(
+    pub fn prove<R>(
         proving_context: &ProvingContext,
         parameters: &Parameters,
-        utxo_accumulator: &mut A,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
         rng: &mut R,
     ) -> TransferPost
     where
-        A: Accumulator<Item = UtxoAccumulatorItem, Model = UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
-        prove_full(
-            proving_context,
+        let asset_0 = Asset::new(rng.gen(), rng.gen());
+        let spending_key = rng.gen();
+        let address = address_from_spending_key(&spending_key, parameters);
+        let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
+        let (to_private_0, _pre_sender_0) = ToPrivate::internal_pair(
             parameters,
-            utxo_accumulator,
-            rng.gen(),
-            rng.gen(),
+            &mut authorization.context,
+            address,
+            asset_0,
+            Default::default(),
             rng,
-        )
+        );
+        to_private_0
+            .into_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                proving_context,
+                None,
+                rng,
+            )
+            .expect("Unable to build TO_PRIVATE proof.")
+            .expect("Did not match transfer shape.")
     }
 
     /// Generates a proof for a [`ToPrivate`] transaction with custom `asset` as input.

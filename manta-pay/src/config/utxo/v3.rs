@@ -47,7 +47,7 @@ use manta_crypto::{
     arkworks::{
         algebra::{affine_point_as_bytes, ScalarVar},
         ec::ProjectiveCurve,
-        ff::{try_into_u128, PrimeField, ToConstraintField},
+        ff::{try_into_u128, PrimeField},
         r1cs_std::R1CSVar,
         serialize::CanonicalSerialize,
     },
@@ -882,7 +882,7 @@ impl encryption::convert::key::Encryption<Compiler> for IncomingAESConverter<Com
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
         let mut key = [0u8; 32];
-        (*source)
+        source
             .0
             .value()
             .expect("Getting the group element from GroupVar is not allowed to fail.")
@@ -921,7 +921,7 @@ impl encryption::convert::key::Decryption<Compiler> for IncomingAESConverter<Com
     #[inline]
     fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
         let mut key = [0u8; 32];
-        (*source)
+        source
             .0
             .value()
             .expect("Getting the group element from GroupVar is not allowed to fail.")
@@ -1640,7 +1640,7 @@ impl encryption::convert::key::Encryption<Compiler> for OutgoingAESConverter<Com
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
         let mut key = [0u8; 32];
-        (*source)
+        source
             .0
             .value()
             .expect("Getting the group element from GroupVar is not allowed to fail.")
@@ -1679,7 +1679,7 @@ impl encryption::convert::key::Decryption<Compiler> for OutgoingAESConverter<Com
     #[inline]
     fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
         let mut key = [0u8; 32];
-        (*source)
+        source
             .0
             .value()
             .expect("Getting the group element from GroupVar is not allowed to fail.")
@@ -1990,7 +1990,8 @@ impl protocol::BaseConfiguration<Compiler> for Config<Compiler> {
     type OutgoingHeader = EmptyHeader<Compiler>;
     type OutgoingCiphertext =
         <Self::OutgoingBaseEncryptionScheme as encryption::CiphertextType>::Ciphertext;
-    type OutgoingBaseEncryptionScheme = encryption::UnsafeNoEncrypt<OutgoingBaseAES<Compiler>, Compiler>;
+    type OutgoingBaseEncryptionScheme =
+        encryption::UnsafeNoEncrypt<OutgoingBaseAES<Compiler>, Compiler>;
 }
 
 impl protocol::Configuration for Config {
@@ -2149,11 +2150,12 @@ impl From<Checkpoint> for RawCheckpoint {
 pub mod test {
     use crate::{
         config::{
-            utxo::{v3::{
+            utxo::v3::{
                 AddressPartitionFunction, Config, GroupGenerator, IncomingAESConverter,
-                IncomingBaseAES, IncomingBaseEncryptionScheme, UtxoCommitmentScheme,
-                AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE,
-            }, v3::{OutgoingBaseAES, OUT_AES_PLAINTEXT_SIZE, OUT_AES_CIPHERTEXT_SIZE}},
+                IncomingBaseAES, IncomingBaseEncryptionScheme, OutgoingBaseAES,
+                UtxoCommitmentScheme, AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE,
+                OUT_AES_CIPHERTEXT_SIZE, OUT_AES_PLAINTEXT_SIZE,
+            },
             Compiler, ConstraintField, EmbeddedScalar, Group, GroupVar,
         },
         crypto::{constraint::arkworks::Fp, encryption},

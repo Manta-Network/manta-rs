@@ -21,4 +21,4 @@
 #![forbid(missing_docs)]
 
 pub mod ecc;
-//pub mod transfer;
+pub mod transfer;
