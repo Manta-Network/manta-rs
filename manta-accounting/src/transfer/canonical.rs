@@ -25,12 +25,15 @@ use crate::{
         AssociatedData, Authorization, AuthorizationContext, Configuration, FullParametersRef,
         Parameters, PreSender, ProofSystemError, ProofSystemPublicParameters, ProvingContext,
         Receiver, Sender, Transfer, TransferLedger, TransferPost, TransferPostingKeyRef,
-        VerifyingContext,
+        UtxoAccumulatorModel, VerifyingContext,
     },
 };
 use alloc::{string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::rand::{CryptoRng, RngCore};
+use manta_crypto::{
+    accumulator::{Accumulator, ItemHashFunction},
+    rand::{CryptoRng, RngCore},
+};
 use manta_util::{create_seal, seal};
 
 #[cfg(feature = "serde")]
@@ -127,15 +130,21 @@ where
 
     /// Builds a new [`ToPrivate`] and [`PreSender`] pair from `authorization_context` and `asset`.
     #[inline]
-    pub fn internal_pair<R>(
+    pub fn internal_pair<A, R>(
         parameters: &Parameters<C>,
         authorization_context: &mut AuthorizationContext<C>,
         address: Address<C>,
         asset: Asset<C>,
         associated_data: AssociatedData<C>,
+        utxo_accumulator: &mut A,
         rng: &mut R,
     ) -> (Self, PreSender<C>)
     where
+        A: Accumulator<
+            Item = <C::Parameters as ItemHashFunction<C::Utxo>>::Item,
+            Model = UtxoAccumulatorModel<C>,
+        >,
+        Parameters<C>: ItemHashFunction<C::Utxo>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let (receiver, pre_sender) = internal_pair::<C, _>(
@@ -146,6 +155,7 @@ where
             associated_data,
             rng,
         );
+        receiver.insert_utxo(parameters, utxo_accumulator);
         (Self::build(asset, receiver), pre_sender)
     }
 }

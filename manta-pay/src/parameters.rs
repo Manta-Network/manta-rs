@@ -250,7 +250,10 @@ pub fn load_transfer_parameters() -> Parameters {
             group_generator: load_get_object::<GroupGenerator, _>(),
             utxo_commitment_scheme: load_get_object::<UtxoCommitmentScheme, _>(),
             incoming_base_encryption_scheme: load_get_object::<IncomingBaseEncryptionScheme, _>(),
-            light_incoming_base_encryption_scheme: load_get_object::<LightIncomingBaseEncryptionScheme, _>(),
+            light_incoming_base_encryption_scheme: load_get_object::<
+                LightIncomingBaseEncryptionScheme,
+                _,
+            >(),
             viewing_key_derivation_function: load_get_object::<ViewingKeyDerivationFunction, _>(),
             utxo_accumulator_item_hash: load_get_object::<UtxoAccumulatorItemHash, _>(),
             nullifier_commitment_scheme: load_get_object::<NullifierCommitmentScheme, _>(),

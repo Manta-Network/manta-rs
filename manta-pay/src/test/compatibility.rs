@@ -38,7 +38,7 @@ fn compatibility() {
     let _ = &prove_to_private(
         &proving_context.to_private,
         &parameters,
-        &utxo_accumulator_model,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
         rng.gen(),
         rng.gen(),
         &mut rng,

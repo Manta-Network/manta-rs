@@ -1303,8 +1303,11 @@ where
         note: Self::Note,
     ) -> Option<(Self::Identifier, Self::Asset)> {
         let address_partition = self.address_partition_function.partition(&Address::new(
-            self.base.group_generator.generator().scalar_mul(decryption_key, &mut ())
-            ));
+            self.base
+                .group_generator
+                .generator()
+                .scalar_mul(decryption_key, &mut ()),
+        ));
         if address_partition == note.address_partition {
             let plaintext = Hybrid::new(
                 StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
@@ -1333,15 +1336,23 @@ where
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
     C::Group: Debug,
     C::LightIncomingCiphertext: Debug,
-    Asset<C>: Clone + Default
+    Asset<C>: Clone + Default,
 {
-
     #[inline]
-    fn utxo_check (&self, utxo: &Self::Utxo, asset: &Self::Asset, identifier: &Self::Identifier, address: &Self::Address) -> bool {
-
-        let new_utxo_commitment =
-            self.base.utxo_commitment_scheme.commit(&identifier.utxo_commitment_randomness, 
-            &asset.id, &asset.value, &address.receiving_key, &mut ());
+    fn utxo_check(
+        &self,
+        utxo: &Self::Utxo,
+        asset: &Self::Asset,
+        identifier: &Self::Identifier,
+        address: &Self::Address,
+    ) -> bool {
+        let new_utxo_commitment = self.base.utxo_commitment_scheme.commit(
+            &identifier.utxo_commitment_randomness,
+            &asset.id,
+            &asset.value,
+            &address.receiving_key,
+            &mut (),
+        );
 
         let associated_data = if identifier.is_transparent {
             Visibility::Transparent
@@ -1349,13 +1360,12 @@ where
             Visibility::Opaque
         };
 
-        let new_utxo = Self::Utxo::new(identifier.is_transparent,associated_data.public(&asset), new_utxo_commitment);
-
-        if new_utxo.eq( &utxo,&mut ()) {
-            true
-        } else {
-            false
-        }
+        let new_utxo = Self::Utxo::new(
+            identifier.is_transparent,
+            associated_data.public(asset),
+            new_utxo_commitment,
+        );
+        new_utxo.eq(utxo, &mut ())
     }
 }
 
@@ -1851,7 +1861,7 @@ where
         compiler: &mut COM,
     ) -> LightIncomingNote<C, COM>
     where
-        <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone
+        <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone,
     {
         Hybrid::new(
             StandardDiffieHellman::new(group_generator.clone()),

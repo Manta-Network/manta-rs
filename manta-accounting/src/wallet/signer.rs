@@ -756,8 +756,10 @@ where
 
         for (utxo, note) in inserts {
             //println!("There is a utxo in inserts");
-            
-            if let Some((identifier,asset)) = parameters.open_with_check(&decryption_key, &utxo, note, &receiving_key) {
+
+            if let Some((identifier, asset)) =
+                parameters.open_with_check(&decryption_key, &utxo, note, &receiving_key)
+            {
                 //println!("We decrypted a note");
 
                 Self::insert_next_item(
@@ -773,9 +775,8 @@ where
                 );
             } else {
                 self.utxo_accumulator
-                .insert_nonprovable(&Self::item_hash(parameters, &utxo));
+                    .insert_nonprovable(&Self::item_hash(parameters, &utxo));
             }
-            
         }
         self.assets.retain(|identifier, assets| {
             assets.retain(|asset| {

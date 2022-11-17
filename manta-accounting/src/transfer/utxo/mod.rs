@@ -241,17 +241,28 @@ pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType 
 
 /// Utxo Reconstruction
 pub trait UtxoReconstruct: NoteOpen + AddressType {
-
     /// Check if `utxo` is consistent with `asset` and `identifier`, which come from
     /// decrypting a Note.
-    fn utxo_check (&self, utxo: &Self::Utxo, asset: &Self::Asset, identifier: &Self::Identifier, address: &Self::Address) -> bool;
+    fn utxo_check(
+        &self,
+        utxo: &Self::Utxo,
+        asset: &Self::Asset,
+        identifier: &Self::Identifier,
+        address: &Self::Address,
+    ) -> bool;
 
     /// Check if `utxo` is consistent with a `note` and tries to open `note`.
     /// Mainly used when `note` is of type LightIncomingNote which is computed off-circuit.
-    fn open_with_check(&self, decryption_key: &Self::DecryptionKey, utxo: &Self::Utxo, note: Self::Note, address: &Self::Address) -> Option<(Self::Identifier, Self::Asset)> {
+    fn open_with_check(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        utxo: &Self::Utxo,
+        note: Self::Note,
+        address: &Self::Address,
+    ) -> Option<(Self::Identifier, Self::Asset)> {
         let (identifier, asset) = self.open(decryption_key, utxo, note)?;
 
-        if self.utxo_check(utxo, &asset, &identifier, &address) {
+        if self.utxo_check(utxo, &asset, &identifier, address) {
             Some((identifier, asset))
         } else {
             None

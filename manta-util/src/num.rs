@@ -128,7 +128,6 @@ impl<'v> CheckedSub for &'v u128 {
     type Output = u128;
 
     fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
-        let result = self.clone().checked_sub(rhs.clone());
-        result
+        (*self).checked_sub(*rhs)
     }
 }

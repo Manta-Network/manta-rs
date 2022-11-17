@@ -572,7 +572,7 @@ where
                 ) {
                     Some(authorization_signature) => Ok(Some(UnsafeTransferPost::new_unchecked(
                         Some(authorization_signature),
-                        body.into(),
+                        body,
                     ))),
                     _ => Ok(None),
                 }

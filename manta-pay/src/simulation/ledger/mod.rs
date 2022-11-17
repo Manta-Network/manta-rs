@@ -303,7 +303,7 @@ impl TransferLedger<Config> for Ledger {
         sources
             .map(|(account_id, withdraw)| {
                 match self.accounts.get(&account_id) {
-                    Some(map) => match map.get(&asset_id) {
+                    Some(map) => match map.get(asset_id) {
                         Some(balance) => {
                             if balance >= &withdraw {
                                 Ok(WrapPair(account_id, withdraw))

@@ -79,9 +79,7 @@ where
     E: PairingEngine,
 {
     fn default() -> Self {
-        Self {
-            0: Default::default(),
-        }
+        Self(Default::default())
     }
 }
 

@@ -17,7 +17,7 @@
 //! Transfer Protocol Testing Framework
 
 use crate::transfer::{
-    canonical::ToPrivate, has_public_participants, requires_authorization, Address, Asset,
+    has_public_participants, requires_authorization, Address, Asset,
     AssociatedData, Authorization, AuthorizationContext, Configuration, FullParametersRef,
     Parameters, PreSender, ProofInput, ProofSystemError, ProofSystemPublicParameters,
     ProvingContext, Receiver, Sender, SpendingKey, Transfer, TransferPost, UtxoAccumulatorItem,
@@ -489,33 +489,33 @@ where
     }
 }
 
-///
-#[inline]
-pub fn sample_to_private<C, R>(
-    parameters: FullParametersRef<C>,
-    proving_context: &ProvingContext<C>,
-    authorization_context: &mut AuthorizationContext<C>,
-    address: Address<C>,
-    asset: Asset<C>,
-    associated_data: AssociatedData<C>,
-    rng: &mut R,
-) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
-where
-    C: Configuration,
-    R: CryptoRng + RngCore + ?Sized,
-{
-    let (transaction, pre_sender) = ToPrivate::internal_pair(
-        parameters.base,
-        authorization_context,
-        address,
-        asset,
-        associated_data,
-        rng,
-    );
-    Ok((
-        transaction
-            .into_post(parameters, proving_context, None, rng)?
-            .expect("The `ToPrivate` transaction does not require authorization."),
-        pre_sender,
-    ))
-}
+// ///
+// #[inline]
+// pub fn sample_to_private<C, R>(
+//     parameters: FullParametersRef<C>,
+//     proving_context: &ProvingContext<C>,
+//     authorization_context: &mut AuthorizationContext<C>,
+//     address: Address<C>,
+//     asset: Asset<C>,
+//     associated_data: AssociatedData<C>,
+//     rng: &mut R,
+// ) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
+// where
+//     C: Configuration,
+//     R: CryptoRng + RngCore + ?Sized,
+// {
+//     let (transaction, pre_sender) = ToPrivate::internal_pair(
+//         parameters.base,
+//         authorization_context,
+//         address,
+//         asset,
+//         associated_data,
+//         rng,
+//     );
+//     Ok((
+//         transaction
+//             .into_post(parameters, proving_context, None, rng)?
+//             .expect("The `ToPrivate` transaction does not require authorization."),
+//         pre_sender,
+//     ))
+//}
