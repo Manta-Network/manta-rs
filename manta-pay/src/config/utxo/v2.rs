@@ -2027,7 +2027,9 @@ pub mod test {
     };
     use manta_accounting::{
         asset,
-        transfer::utxo::{address_from_spending_key, v2 as protocol, UtxoReconstruct},
+        transfer::utxo::{
+            address_from_spending_key, protocol::Visibility, v2 as protocol, UtxoReconstruct,
+        },
     };
     use manta_crypto::{
         algebra::{HasGenerator, ScalarMul},
@@ -2225,7 +2227,6 @@ pub mod test {
         let mut rng = OsRng;
         let parameters = protocol::Parameters::<Config>::gen(&mut rng);
         let group_generator = parameters.base.group_generator.generator();
-
         let spending_key = EmbeddedScalar::gen(&mut rng);
         let receiving_key = address_from_spending_key(&spending_key, &parameters);
         let proof_authorization_key = group_generator.scalar_mul(&spending_key, &mut ());
@@ -2233,13 +2234,19 @@ pub mod test {
             .base
             .viewing_key_derivation_function
             .viewing_key(&proof_authorization_key, &mut ());
-
         let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
         let asset_id = Fp::<ConstraintField>::gen(&mut rng);
         let asset_value = u128::gen(&mut rng);
         let asset = asset::Asset {
             id: asset_id,
             value: asset_value,
+        };
+        let is_transparent = bool::gen(&mut rng);
+        println!("{is_transparent:?}");
+        let associated_data = if is_transparent {
+            Visibility::Transparent
+        } else {
+            Visibility::Opaque
         };
         let plaintext =
             protocol::IncomingPlaintext::<Config>::new(utxo_commitment_randomness, asset);
@@ -2248,17 +2255,14 @@ pub mod test {
             protocol::IncomingRandomness::<Config>::sample(((), ()), &mut rng),
             plaintext.clone(),
         );
-
         let base_poseidon = parameters.base.incoming_base_encryption_scheme.clone();
         let base_aes = parameters
             .base
             .light_incoming_base_encryption_scheme
             .clone();
-
         let address_partition = parameters
             .address_partition_function
             .partition(&receiving_key);
-
         let incoming_note = secret.incoming_note(&group_generator, &base_poseidon, &mut ());
         let light_incoming_note = secret.light_incoming_note(&group_generator, &base_aes, &mut ());
         let full_incoming_note = protocol::FullIncomingNote::<Config>::new(
@@ -2266,20 +2270,21 @@ pub mod test {
             incoming_note,
             light_incoming_note,
         );
-
         let utxo_commitment = parameters.base.utxo_commitment_scheme.commit(
             &utxo_commitment_randomness,
-            &plaintext.asset.id,
-            &plaintext.asset.value,
+            &associated_data.secret(&asset).id,
+            &associated_data.secret(&asset).value,
             &receiving_key.receiving_key,
             &mut (),
         );
-        let utxo = protocol::Utxo::<Config>::new(true, asset, utxo_commitment);
-
+        let utxo = protocol::Utxo::<Config>::new(
+            is_transparent,
+            associated_data.public(&asset),
+            utxo_commitment,
+        );
         let (identifier, new_asset) = parameters
-            .open_with_check(&decryption_key, &utxo, full_incoming_note, &receiving_key)
-            .unwrap();
-
+            .open_with_check(&decryption_key, &utxo, full_incoming_note)
+            .expect("Inconsistent note");
         assert_eq!(
             utxo_commitment_randomness, identifier.utxo_commitment_randomness,
             "Randomness is not the same."

@@ -81,25 +81,23 @@ pub type Spec5 = Spec<5>;
 ///
 #[cfg(test)]
 pub mod test {
-    use manta_crypto::{
-        encryption::{Decrypt, Encrypt},
-        rand::{OsRng, Sample},
-    };
-    use manta_util::BoxArray;
-
     use crate::{
         config::ConstraintField,
         crypto::{
             constraint::arkworks::Fp,
             poseidon::{
                 encryption::{BlockArray, FixedDuplexer, PlaintextBlock},
-                Constants, Permutation, State,
+                Constants,
             },
         },
     };
     use alloc::boxed::Box;
+    use manta_crypto::{
+        encryption::{Decrypt, Encrypt},
+        rand::{OsRng, Sample},
+    };
 
-    use super::{Spec, Spec4};
+    use super::Spec;
 
     /// Tests Poseidon duplexer encryption works.
     #[test]

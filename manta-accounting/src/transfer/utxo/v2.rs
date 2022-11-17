@@ -1346,10 +1346,15 @@ where
         identifier: &Self::Identifier,
         decryption_key: &Self::DecryptionKey,
     ) -> bool {
+        let associated_data = if identifier.is_transparent {
+            Visibility::Transparent
+        } else {
+            Visibility::Opaque
+        };
         let new_utxo_commitment = self.base.utxo_commitment_scheme.commit(
             &identifier.utxo_commitment_randomness,
-            &asset.id,
-            &asset.value,
+            &associated_data.secret(asset).id,
+            &associated_data.secret(asset).value,
             &self
                 .base
                 .group_generator
@@ -1357,13 +1362,6 @@ where
                 .scalar_mul(decryption_key, &mut ()),
             &mut (),
         );
-
-        let associated_data = if identifier.is_transparent {
-            Visibility::Transparent
-        } else {
-            Visibility::Opaque
-        };
-
         let new_utxo = Self::Utxo::new(
             identifier.is_transparent,
             associated_data.public(asset),
