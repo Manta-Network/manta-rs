@@ -881,7 +881,7 @@ impl encryption::convert::plaintext::Reverse for NotePlaintextMapping {
         Some(Note {
             ephemeral_secret_key: Fp(EmbeddedScalarField::deserialize(&mut slice).ok()?),
             asset: Asset::<Config>::from_vec(
-                into_array_unchecked::<u8, _, { Note::SIZE }>(slice).to_vec(),
+                into_array_unchecked::<u8, _, { Asset::<Config>::SIZE }>(slice).to_vec(),
             )
             .expect("Decoding Asset is not allowed to fail."),
         })
