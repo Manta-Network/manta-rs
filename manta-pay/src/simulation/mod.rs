@@ -57,7 +57,7 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     Signer::new(
-        AccountTable::new(KeySecret::sample(rng.gen())),
+        AccountTable::new(rng.gen()),
         parameters.clone(),
         proving_context.clone(),
         UtxoAccumulator::new(utxo_accumulator_model.clone()),

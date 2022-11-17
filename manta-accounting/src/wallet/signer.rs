@@ -771,10 +771,6 @@ where
                 self.utxo_accumulator
                     .insert_nonprovable(&Self::item_hash(parameters, &utxo));
             }
-<<<<<<< HEAD
-=======
-
->>>>>>> 74d6c28 (Adding redesign features and fixing merge mistakes)
         }
         self.assets.retain(|identifier, assets| {
             assets.retain(|asset| {
