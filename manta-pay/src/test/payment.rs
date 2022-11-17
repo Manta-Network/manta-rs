@@ -105,15 +105,17 @@ pub mod to_private {
         let address = address_from_spending_key(&spending_key, parameters);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
 
-        let (to_private_0, _) = ToPrivate::internal_pair(
+        let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(
             parameters,
             &mut authorization.context,
             address,
             asset_0,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
+        let _ = pre_sender_0
+            .insert_and_upgrade(parameters, utxo_accumulator)
+            .expect("");
         to_private_0
             .into_post(
                 FullParametersRef::new(parameters, utxo_accumulator.model()),
@@ -159,7 +161,6 @@ pub mod private_transfer {
             address,
             asset_0,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
         let to_private_0 = to_private_0
@@ -182,7 +183,6 @@ pub mod private_transfer {
             address,
             asset_1,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
         let to_private_1 = to_private_1
@@ -295,7 +295,6 @@ pub mod to_public {
             address,
             asset_0,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
         let to_private_0 = to_private_0
@@ -317,7 +316,6 @@ pub mod to_public {
             address,
             asset_1,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
         let to_private_1 = to_private_1
@@ -475,7 +473,6 @@ pub mod unsafe_private_transfer {
             address,
             asset_0,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
         let to_private_0 = to_private_0
@@ -499,7 +496,6 @@ pub mod unsafe_private_transfer {
             address,
             asset_1,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
         let to_private_1 = to_private_1
@@ -615,7 +611,6 @@ pub mod unsafe_to_public {
             address,
             asset_0,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
         let to_private_0 = to_private_0
@@ -638,7 +633,6 @@ pub mod unsafe_to_public {
             address,
             asset_1,
             Default::default(),
-            utxo_accumulator,
             rng,
         );
         let to_private_1 = to_private_1
