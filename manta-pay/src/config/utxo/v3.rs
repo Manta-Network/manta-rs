@@ -1494,7 +1494,7 @@ pub type OutAes = aes::FixedNonceAesGcm<OUT_AES_PLAINTEXT_SIZE, OUT_AES_CIPHERTE
 
 ///
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Default)]
+#[derivative(Clone, Default, Debug)]
 pub struct OutgoingAESEncryptionScheme<COM = ()>(PhantomData<COM>);
 
 impl<COM> Constant<COM> for OutgoingAESEncryptionScheme<COM> {
@@ -2151,21 +2151,20 @@ pub mod test {
     use crate::{
         config::{
             utxo::v3::{
-                AddressPartitionFunction, Config, GroupGenerator, IncomingAESConverter,
-                IncomingBaseAES, IncomingBaseEncryptionScheme, OutgoingBaseAES,
-                UtxoCommitmentScheme, AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE,
-                OUT_AES_CIPHERTEXT_SIZE, OUT_AES_PLAINTEXT_SIZE,
+                Config, IncomingAESConverter, IncomingBaseAES, IncomingBaseEncryptionScheme,
+                OutgoingBaseAES, AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE, OUT_AES_CIPHERTEXT_SIZE,
+                OUT_AES_PLAINTEXT_SIZE,
             },
             Compiler, ConstraintField, EmbeddedScalar, Group, GroupVar,
         },
-        crypto::{constraint::arkworks::Fp, encryption},
+        crypto::constraint::arkworks::Fp,
     };
     use manta_accounting::{
         asset,
-        transfer::utxo::{address_from_spending_key, v2 as protocol, NoteOpen, UtxoReconstruct},
+        transfer::utxo::{address_from_spending_key, v2 as protocol, UtxoReconstruct},
     };
     use manta_crypto::{
-        algebra::{diffie_hellman::StandardDiffieHellman, HasGenerator, ScalarMul},
+        algebra::{HasGenerator, ScalarMul},
         arkworks::constraint::FpVar,
         eclair::{
             alloc::{mode::Secret, Allocate},
@@ -2176,10 +2175,9 @@ pub mod test {
                 key::Encryption,
                 plaintext::{Forward, Reverse},
             },
-            hybrid::{Hybrid, Randomness},
             Decrypt, EmptyHeader, Encrypt,
         },
-        rand::{OsRng, Rand, Sample},
+        rand::{OsRng, Sample},
     };
     use protocol::{
         AddressPartitionFunction as AddressPartitionFunctionTrait,

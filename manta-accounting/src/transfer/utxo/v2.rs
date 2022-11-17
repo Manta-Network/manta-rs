@@ -2584,11 +2584,12 @@ where
 impl<C, P> Input<P> for Nullifier<C>
 where
     C: BaseConfiguration<Bool = bool>,
-    P: HasInput<NullifierCommitment<C>> + HasInput<OutgoingNote<C>> + ?Sized,
+    P: HasInput<NullifierCommitment<C>> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
+        // NOTE: We don't want OutgoingNote to be ZKP verified,
+        // hence this implementation.
         P::extend(input, &self.commitment);
-        P::extend(input, &self.outgoing_note);
     }
 }

@@ -18,7 +18,7 @@
 
 use crate::{
     config::{
-        utxo::v2::{AssetId, AssetValue},
+        utxo::v3::{AssetId, AssetValue},
         Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
     },
     signer::base::{Signer, UtxoAccumulator},

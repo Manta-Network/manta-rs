@@ -19,7 +19,7 @@
 // TODO: Make this code work on WASM and non-WASM by choosing the correct dependency library.
 
 use crate::{
-    config::{utxo::v2 as protocol_pay, Config},
+    config::{utxo::v3 as protocol_pay, Config},
     signer::{
         Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
         SyncResponse,

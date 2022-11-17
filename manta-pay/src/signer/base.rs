@@ -18,7 +18,7 @@
 
 use crate::{
     config::{
-        utxo::{v2 as protocol_pay, v2::MerkleTreeConfiguration},
+        utxo::{v3 as protocol_pay, v3::MerkleTreeConfiguration},
         Config,
     },
     key::Manta,

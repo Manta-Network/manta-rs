@@ -19,7 +19,7 @@
 use manta_accounting::wallet::signer;
 
 #[cfg(feature = "groth16")]
-use crate::config::{utxo::v2::Checkpoint, Config};
+use crate::config::{utxo::v3::Checkpoint, Config};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
