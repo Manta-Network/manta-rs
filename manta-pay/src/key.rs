@@ -224,6 +224,21 @@ pub type Account<C = Manta> = key::Account<KeySecret<C>>;
 /// Vec Account type
 pub type VecAccountMap<C> = Vec<Account<C>>;
 
+impl<C> Sample for KeySecret<C>
+where
+    C: CoinType,
+{
+    #[inline]
+    fn sample<R>(_: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let mut seed = [0; bip32::Seed::SIZE];
+        rng.fill_bytes(&mut seed);
+        Self::new(Mnemonic::sample(rng), "")
+    }
+}
+
 impl<C> DeriveAddresses for KeySecret<C>
 where
     C: CoinType,
@@ -282,7 +297,7 @@ impl Mnemonic {
     #[inline]
     pub fn sample<R>(rng: &mut R) -> Self
     where
-        R: CryptoRng + RngCore + ?Sized,
+        R: RngCore + ?Sized,
     {
         let mut entropy: [u8; 16] = [0; 16];
         rng.fill_bytes(&mut entropy);

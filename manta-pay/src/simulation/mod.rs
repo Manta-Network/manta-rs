@@ -23,7 +23,6 @@ use crate::{
     },
     signer::base::{Signer, UtxoAccumulator},
     simulation::ledger::{AccountId, Ledger, LedgerConnection},
-    key::KeySecret,
 };
 use alloc::{format, sync::Arc};
 use core::fmt::Debug;
