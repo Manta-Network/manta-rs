@@ -219,3 +219,5 @@ pub fn main() -> io::Result<()> {
 
     Ok(())
 }
+
+// cargo run --release --package manta-pay --bin generate_parameters --all-features --features groth16 --features manta-util/std --features parameters --features serde > data
