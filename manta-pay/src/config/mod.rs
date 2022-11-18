@@ -17,7 +17,7 @@
 //! Manta-Pay Configuration
 
 use crate::{
-    config::utxo::v3 as protocol_pay,
+    config::utxo::protocol_pay,
     crypto::{
         constraint::arkworks::{groth16, FpVar, R1CS},
         ecc,

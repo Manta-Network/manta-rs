@@ -34,11 +34,12 @@ use manta_util::cmp::IndependenceContext;
 pub mod auth;
 pub mod v1;
 pub mod v2;
+pub mod v3;
 
 #[doc(inline)]
-pub use v2 as protocol;
+pub use v3 as protocol;
 
-use self::v2::ViewingKeyDerivationFunction;
+use self::protocol::ViewingKeyDerivationFunction;
 
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;

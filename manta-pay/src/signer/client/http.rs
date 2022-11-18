@@ -17,7 +17,7 @@
 //! Signer HTTP Client Implementation
 
 use crate::{
-    config::{utxo::v3 as protocol_pay, Config},
+    config::{utxo::protocol_pay, Config},
     signer::{
         Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
         SyncResponse,

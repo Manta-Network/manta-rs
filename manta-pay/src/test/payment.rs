@@ -18,7 +18,7 @@
 
 use crate::config::{
     self,
-    utxo::v3::{MerkleTreeConfiguration, UtxoAccumulatorItem, UtxoAccumulatorModel},
+    utxo::protocol_pay::{MerkleTreeConfiguration, UtxoAccumulatorItem, UtxoAccumulatorModel},
     Asset, AssetId, AssetValue, Authorization, AuthorizationContext, Config, FullParametersRef,
     MultiProvingContext, Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate,
     ToPublic, TransferPost,

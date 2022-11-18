@@ -72,7 +72,7 @@ use manta_util::serde::{Deserialize, Serialize};
 
 pub use manta_accounting::transfer::{
     self,
-    utxo::{self, v2 as protocol},
+    utxo::{self, v3 as protocol},
 };
 
 /// Asset Id Type
@@ -2162,7 +2162,7 @@ pub mod test {
     use manta_accounting::{
         asset,
         transfer::utxo::{
-            address_from_spending_key, protocol::Visibility, v2 as protocol, UtxoReconstruct,
+            address_from_spending_key, v3 as protocol, v3::Visibility, UtxoReconstruct,
         },
     };
     use manta_crypto::{

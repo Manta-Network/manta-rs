@@ -18,7 +18,7 @@
 
 use crate::{
     config::{
-        utxo::v3::{AssetId, AssetValue},
+        utxo::protocol_pay::{AssetId, AssetValue},
         Config, TransferPost,
     },
     simulation::ledger::{http::Request, AccountId, Checkpoint},

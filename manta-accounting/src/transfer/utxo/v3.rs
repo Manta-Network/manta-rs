@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! UTXO Version 2 Protocol
+//! UTXO Version 3 Protocol
 
 use crate::{
     asset,
@@ -61,7 +61,7 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 /// UTXO Version Number
-pub const VERSION: u8 = 2;
+pub const VERSION: u8 = 3;
 
 /// UTXO Visibility
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -2586,11 +2586,12 @@ where
 impl<C, P> Input<P> for Nullifier<C>
 where
     C: BaseConfiguration<Bool = bool>,
-    P: HasInput<NullifierCommitment<C>> + HasInput<OutgoingNote<C>> + ?Sized,
+    P: HasInput<NullifierCommitment<C>> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
+        // NOTE: We don't want OutgoingNote to be ZKP verified,
+        // hence this implementation.
         P::extend(input, &self.commitment);
-        P::extend(input, &self.outgoing_note);
     }
 }

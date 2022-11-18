@@ -20,7 +20,7 @@
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
 use manta_pay::{
-    config::{utxo::v3::protocol::BaseParameters, Parameters},
+    config::{utxo::protocol_pay::protocol::BaseParameters, Parameters},
     parameters,
 };
 use manta_util::codec::{Encode, IoWriter};

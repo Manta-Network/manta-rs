@@ -17,7 +17,7 @@
 //! Generate Parameters and Proving/Verifying Contexts
 
 use crate::config::{
-    utxo::v3::protocol::BaseParameters, FullParametersRef, MultiProvingContext,
+    utxo::protocol_pay::protocol::BaseParameters, FullParametersRef, MultiProvingContext,
     MultiVerifyingContext, Parameters, PrivateTransfer, ProofSystemError, ToPrivate, ToPublic,
     UtxoAccumulatorModel, VerifyingContext,
 };

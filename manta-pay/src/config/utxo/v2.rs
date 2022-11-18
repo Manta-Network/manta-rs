@@ -2028,7 +2028,7 @@ pub mod test {
     use manta_accounting::{
         asset,
         transfer::utxo::{
-            address_from_spending_key, protocol::Visibility, v2 as protocol, UtxoReconstruct,
+            address_from_spending_key, v2 as protocol, v2::Visibility, UtxoReconstruct,
         },
     };
     use manta_crypto::{
