@@ -29,8 +29,8 @@ pub mod crypto;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod config;
 
-#[cfg(feature = "bip32")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
+#[cfg(feature = "key")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "key")))]
 pub mod key;
 
 #[cfg(all(feature = "groth16", feature = "test"))]

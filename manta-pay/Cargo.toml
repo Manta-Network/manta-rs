@@ -47,6 +47,9 @@ arkworks = [
 # Enable Download Parameters
 download = ["manta-parameters/download", "std"]
 
+# Key Features
+key = ["bip32", "bip0039"]
+
 # Enable Groth16 ZKP System
 groth16 = [
     "arkworks",
@@ -81,7 +84,7 @@ std = ["manta-accounting/std", "manta-util/std"]
 test = ["manta-accounting/test", "manta-crypto/test", "manta-parameters", "tempfile"]
 
 # Wallet
-wallet = ["bip32", "bip0039", "manta-crypto/getrandom", "std"]
+wallet = ["key", "manta-crypto/getrandom", "std"]
 
 # Enable WebSocket Signer Client
 websocket = [
