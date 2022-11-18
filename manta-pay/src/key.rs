@@ -24,19 +24,17 @@
 //!
 //! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
-use alloc::{format, string::String};
+use alloc::{format, string::String, vec::Vec};
 use core::marker::PhantomData;
-use manta_accounting::key::{
-    self, AccountIndex, HierarchicalKeyDerivationScheme, IndexType, KeyIndex, Kind,
-};
+use manta_accounting::key::{self, AccountIndex};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{create_seal, seal, Array};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize, Serializer};
 
-pub use bip0039;
-pub use bip32::{self, Error, XPrv as SecretKey};
+pub use bip0039::{self, Error};
+pub use bip32::{self, XPrv as SecretKey};
 
 create_seal! {}
 
@@ -67,7 +65,7 @@ macro_rules! impl_coin_type {
         $id:expr,
         $coin_type_id:ident,
         $key_secret:ident,
-        $account_table:ident
+        $account_map:ident
     ) => {
         #[doc = $doc]
         #[doc = "Network"]
@@ -84,8 +82,8 @@ macro_rules! impl_coin_type {
         pub type $key_secret = KeySecret<$coin>;
 
         #[doc = stringify!($coin)]
-        #[doc = "[`AccountTable`] Type"]
-        pub type $account_table = AccountTable<$coin>;
+        #[doc = "[`VecAccountMap`] Type"]
+        pub type $account_map = VecAccountMap<$coin>;
 
         seal!($coin);
 
@@ -102,7 +100,7 @@ impl_coin_type!(
     1,
     TESTNET_COIN_TYPE_ID,
     TestnetKeySecret,
-    TestnetAccountTable
+    TestnetAccountMap
 );
 
 impl_coin_type!(
@@ -112,7 +110,7 @@ impl_coin_type!(
     611,
     MANTA_COIN_TYPE_ID,
     MantaKeySecret,
-    MantaAccountTable
+    MantaAccountMap
 );
 
 impl_coin_type!(
@@ -122,14 +120,11 @@ impl_coin_type!(
     612,
     CALAMARI_COIN_TYPE_ID,
     CalamariKeySecret,
-    CalamariAccountTable
+    CalamariAccountMap
 );
 
-/// Account Table Type
-pub type AccountTable<C> = key::AccountTable<KeySecret<C>>;
-
-/// Seed Bytes
-pub type SeedBytes = Array<u8, { bip32::Seed::SIZE }>;
+/// Seed Byte Array Type
+type SeedBytes = Array<u8, { bip32::Seed::SIZE }>;
 
 /// Key Secret
 #[cfg_attr(
@@ -188,46 +183,43 @@ where
     {
         Self::new(Mnemonic::sample(rng), "")
     }
+
+    /// Returns the [`SecretKey`].
+    #[inline]
+    pub fn xpr_secret_key(&self, index: &AccountIndex) -> SecretKey {
+        // TODO: This function should be made private in the following PRs.
+        SecretKey::derive_from_path(
+            self.seed,
+            &path_string::<C>(*index)
+                .parse()
+                .expect("Path string is valid by construction."),
+        )
+        .expect("Unable to generate secret key for valid seed and path string.")
+    }
 }
+
+/// Account type
+pub type Account<C = Manta> = key::Account<KeySecret<C>>;
+
+/// Vec Account type
+pub type VecAccountMap<C> = Vec<Account<C>>;
 
 /// Computes the [`BIP-0044`] path string for the given coin settings.
 ///
 /// [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 #[inline]
 #[must_use]
-pub fn path_string<C>(account: AccountIndex, kind: Kind, index: KeyIndex) -> String
+pub fn path_string<C>(account: AccountIndex) -> String
 where
     C: CoinType,
 {
     const BIP_44_PURPOSE_ID: u8 = 44;
     format!(
-        "m/{}'/{}'/{}'/{}'/{}'",
+        "m/{}'/{}'/{}'",
         BIP_44_PURPOSE_ID,
         C::COIN_TYPE_ID,
-        account.index(),
-        kind as u8,
-        index.index(),
+        account.index()
     )
-}
-
-impl<C> HierarchicalKeyDerivationScheme for KeySecret<C>
-where
-    C: CoinType,
-{
-    const GAP_LIMIT: IndexType = 20;
-
-    type SecretKey = SecretKey;
-
-    #[inline]
-    fn derive(&self, account: AccountIndex, kind: Kind, index: KeyIndex) -> Self::SecretKey {
-        SecretKey::derive_from_path(
-            self.seed,
-            &path_string::<C>(account, kind, index)
-                .parse()
-                .expect("Path string is valid by construction."),
-        )
-        .expect("Unable to generate secret key for valid seed and path string.")
-    }
 }
 
 /// Mnemonic
@@ -243,14 +235,11 @@ pub struct Mnemonic(
     bip0039::Mnemonic,
 );
 
-/// Seed Type
-pub type Seed = [u8; 64];
-
 impl Mnemonic {
-    /// Create a new BIP39 mnemonic phrase from the given phrase.
+    /// Create a new BIP0039 mnemonic phrase from the given string.
     #[inline]
     pub fn new(phrase: &str) -> Result<Self, Error> {
-        Ok(Self(bip0039::Mnemonic::from_phrase(phrase).unwrap()))
+        bip0039::Mnemonic::from_phrase(phrase).map(Self)
     }
 
     /// Samples a random 12 word [`Mnemonic`] using the entropy returned from `rng`.
@@ -261,12 +250,15 @@ impl Mnemonic {
     {
         let mut entropy: [u8; 16] = [0; 16];
         rng.fill_bytes(&mut entropy);
-        Self(bip0039::Mnemonic::from_entropy(entropy.to_vec()).unwrap())
+        Self(
+            bip0039::Mnemonic::from_entropy(entropy.to_vec())
+                .expect("Creating a Mnemonic from 16 bytes of entropy is not allowed to fail."),
+        )
     }
 
-    /// Convert this mnemonic phrase into the BIP39 seed value.
+    /// Convert this mnemonic phrase into the BIP32 seed value.
     #[inline]
-    pub fn to_seed(&self, password: &str) -> Seed {
+    pub fn to_seed(&self, password: &str) -> [u8; bip32::Seed::SIZE] {
         self.0.to_seed(password)
     }
 
