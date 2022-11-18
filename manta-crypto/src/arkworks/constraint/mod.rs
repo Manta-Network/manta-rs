@@ -40,7 +40,7 @@ use crate::{
         },
         bool::{Assert, ConditionalSelect, ConditionalSwap},
         num::{AssertWithinBitRange, Zero},
-        ops::Add,
+        ops::{Add, BitAnd, BitOr},
         Has, NonNative,
     },
 };
@@ -260,6 +260,32 @@ where
     fn new_unknown(compiler: &mut R1CS<F>) -> Self {
         Self::new_witness(ns!(compiler.0, "boolean secret witness"), empty::<bool>)
             .expect("Variable allocation is not allowed to fail.")
+    }
+}
+
+impl<F> BitAnd<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitand(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.and(&rhs).expect("Bitwise AND is not allowed to fail.")
+    }
+}
+
+impl<F> BitOr<Self, R1CS<F>> for Boolean<F>
+where
+    F: PrimeField,
+{
+    type Output = Self;
+
+    #[inline]
+    fn bitor(self, rhs: Self, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = compiler;
+        self.or(&rhs).expect("Bitwise OR is not allowed to fail.")
     }
 }
 

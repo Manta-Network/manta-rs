@@ -17,9 +17,7 @@
 //! Manta Pay Signer Configuration
 
 use crate::{
-    config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},
     config::{Config, MerkleTreeConfiguration, Parameters, PublicKey, SecretKey},
-    crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet},
     signer::Checkpoint,
 };
@@ -34,9 +32,8 @@ use manta_accounting::{
     },
 };
 use manta_crypto::{
-    arkworks::{constraint::fp::Fp, ec::ProjectiveCurve, ff::PrimeField},
-    key::kdf::KeyDerivationFunction,
     arkworks::{
+        constraint::fp::Fp,
         ed_on_bls12_381::FrParameters,
         ff::{Fp256, PrimeField},
     },

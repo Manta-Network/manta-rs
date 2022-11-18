@@ -239,7 +239,7 @@ where
 
     #[inline]
     fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        F::deserialize(&mut bytes.as_slice()).map(Self)
+        Self::from_vec(bytes)
     }
 }
 
@@ -249,11 +249,7 @@ pub fn field_element_as_bytes<F>(element: &F) -> Vec<u8>
 where
     F: Field,
 {
-    let mut buffer = Vec::new();
-    element
-        .serialize(&mut buffer)
-        .expect("Serialization is not allowed to fail.");
-    buffer
+    Fp(*element).to_vec()
 }
 
 /// Uses `serializer` to serialize `element`.
