@@ -53,7 +53,7 @@ use manta_crypto::{
 };
 use manta_util::{
     cmp::Independence,
-    codec::{Encode, Write},
+    codec::{Decode, DecodeError, Encode, Write},
     convert::Field,
 };
 
@@ -2653,6 +2653,73 @@ where
         self.nullifier.commitment.encode(&mut writer)?;
         self.outgoing_note.encode(&mut writer)?;
         Ok(())
+    }
+}
+
+/// Full Nullifier Decode Error
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Clone, <OutgoingNote<C> as Decode>::Error: Clone"
+    ),
+    Copy(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Copy, <OutgoingNote<C> as Decode>::Error: Copy"
+    ),
+    Debug(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Debug, <OutgoingNote<C> as Decode>::Error: Debug"
+    ),
+    Eq(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Eq, <OutgoingNote<C> as Decode>::Error: Eq"
+    ),
+    Hash(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Hash, <OutgoingNote<C> as Decode>::Error: Hash"
+    ),
+    PartialEq(
+        bound = "<NullifierCommitment<C> as Decode>::Error: cmp::PartialEq, <OutgoingNote<C> as Decode>::Error: cmp::PartialEq"
+    )
+)]
+pub enum FullNullifierDecodeError<C>
+where
+    C: Configuration<Bool = bool>,
+    NullifierCommitment<C>: Decode,
+    OutgoingNote<C>: Decode,
+{
+    /// Nullifier Commitment Error
+    CommitmentDecodeError(<NullifierCommitment<C> as Decode>::Error),
+
+    /// Note Error
+    NoteDecodeError(<OutgoingNote<C> as Decode>::Error),
+}
+
+impl<C> Decode for FullNullifier<C>
+where
+    C: Configuration<Bool = bool>,
+    NullifierCommitment<C>: Decode,
+    OutgoingNote<C>: Decode,
+{
+    type Error = FullNullifierDecodeError<C>;
+
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: manta_util::codec::Read,
+    {
+        let nullifier_commitment =
+            NullifierCommitment::<C>::decode(&mut reader).map_err(|e| match e {
+                DecodeError::Decode(r) => {
+                    DecodeError::Decode(FullNullifierDecodeError::CommitmentDecodeError(r))
+                }
+                DecodeError::Read(e) => DecodeError::Read(e),
+            })?;
+        let outgoing_note = OutgoingNote::<C>::decode(&mut reader).map_err(|e| match e {
+            DecodeError::Decode(r) => {
+                DecodeError::Decode(FullNullifierDecodeError::NoteDecodeError(r))
+            }
+            DecodeError::Read(e) => DecodeError::Read(e),
+        })?;
+        Ok(Self {
+            nullifier: Nullifier::new(nullifier_commitment),
+            outgoing_note,
+        })
     }
 }
 
