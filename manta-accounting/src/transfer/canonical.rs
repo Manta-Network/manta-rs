@@ -439,6 +439,11 @@ where
 }
 
 /// Transaction Kind
+#[cfg_attr(
+feature = "serde",
+derive(Deserialize, Serialize),
+serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 pub enum TransactionKind<'a, C>
 where
     C: Configuration,
