@@ -894,25 +894,15 @@ where
     I: IntoIterator<Item = &'w mut Wallet<C, L, S, B>>,
 {
     let mut balances = AssetList::<C::AssetId, C::AssetValue>::new();
-    for (i, wallet) in wallets.into_iter().enumerate() {
+    for wallet in wallets.into_iter() {
         wallet.sync().await?;
         let public_balance = wallet.ledger().public_balances().await.expect("");
-        for asset in &public_balance {
-            println!(
-                "Actor: {i} public asset id: {:?}, value: {:?}",
-                asset.id, asset.value
-            );
-        }
         balances.deposit_all(public_balance);
         balances.deposit_all({
-            wallet.assets().convert_iter().map(|(id, value)| {
-                println!(
-                    "Actor: {i} private asset id: {:?}, value: {:?}",
-                    id.clone(),
-                    value.clone()
-                );
-                Asset::<C>::new(id.clone(), value.clone())
-            })
+            wallet
+                .assets()
+                .convert_iter()
+                .map(|(id, value)| Asset::<C>::new(id.clone(), value.clone()))
         });
     }
     Ok(balances)
@@ -954,7 +944,7 @@ impl Config {
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
-        F: FnMut() -> R,
+        F: FnMut(usize) -> R,
         ES: Copy + FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S, B>>>) -> ESFut,
         ESFut: Future<Output = ()>,
         Error<C, L, S>: Debug,

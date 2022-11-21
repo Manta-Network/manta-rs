@@ -163,6 +163,7 @@ impl Ledger {
     /// Sets the public balance of `account` in assets with `id` to `value`.
     #[inline]
     pub fn set_public_balance(&mut self, account: AccountId, id: AssetId, value: AssetValue) {
+        assert_ne!(id, Default::default(), "Asset id can't be zero!");
         self.accounts.entry(account).or_default().insert(id, value);
     }
 

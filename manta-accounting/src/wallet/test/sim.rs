@@ -135,12 +135,12 @@ where
     pub fn run<'s, R, F>(&'s mut self, mut rng: F) -> impl 's + Stream<Item = Event<S>>
     where
         R: 's + CryptoRng + RngCore,
-        F: FnMut() -> R,
+        F: FnMut(usize) -> R,
     {
         let mut actors = SelectAll::new();
         for (i, actor) in self.actors.iter_mut().enumerate() {
             actors.push(stream::unfold(
-                ActorStream::new(&self.simulation, i, actor, rng()),
+                ActorStream::new(&self.simulation, i, actor, rng(i)),
                 move |mut s| Box::pin(async move { s.next().await.map(move |e| (e, s)) }),
             ));
         }

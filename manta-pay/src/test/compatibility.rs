@@ -51,7 +51,7 @@ fn compatibility() {
         &parameters,
         &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
         rng.gen(),
-        rng.gen(),
+        [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
         &mut rng,
     )
     .1
@@ -61,7 +61,7 @@ fn compatibility() {
         &parameters,
         &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
         rng.gen(),
-        rng.gen(),
+        [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
         &mut rng,
     )
     .1

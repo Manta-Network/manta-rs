@@ -99,7 +99,11 @@ impl Simulation {
         for i in 0..self.actor_count {
             let account = AccountId(i as u64);
             for id in 0..self.asset_id_count {
-                ledger.set_public_balance(account, AssetId::from(id as u128), starting_balance);
+                ledger.set_public_balance(
+                    account,
+                    AssetId::from((id + 1) as u128),
+                    starting_balance,
+                );
             }
         }
     }
@@ -146,9 +150,10 @@ impl Simulation {
         GS: FnMut(usize) -> S,
         Error<Config, L, S>: Debug,
     {
+        // FIXME: rng
         assert!(
             self.config()
-                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, ChaCha20Rng::from_entropy, |event| {
+                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |_| ChaCha20Rng::from_entropy(), |event| {
                     let event = format!("{event:?}\n");
                     async move {
                         let _ = write_stdout(event.as_bytes()).await;
