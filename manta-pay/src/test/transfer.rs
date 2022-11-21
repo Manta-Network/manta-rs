@@ -57,6 +57,8 @@ fn sample_to_public_context() {
     ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate ToPublic context.");
 }
 
+// cargo test --release --package manta-pay --lib --all-features -- test::transfer::to_private --exact --nocapture
+
 /// Tests the generation of a [`ToPrivate`].
 #[test]
 fn to_private() {
@@ -74,6 +76,8 @@ fn to_private() {
     );
 }
 
+// cargo test --release --package manta-pay --lib --all-features -- test::transfer::private_transfer --exact --nocapture
+
 /// Tests the generation of a [`PrivateTransfer`].
 #[test]
 fn private_transfer() {
@@ -90,6 +94,8 @@ fn private_transfer() {
         "The PrivateTransfer proof should have been valid."
     );
 }
+
+// cargo test --release --package manta-pay --lib --all-features -- test::transfer::to_public --exact --nocapture
 
 /// Tests the generation of a [`ToPublic`].
 #[test]

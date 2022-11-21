@@ -28,6 +28,8 @@ use crate::{
 };
 use manta_crypto::rand::{OsRng, Rand};
 
+// cargo test --release --package manta-pay --lib --all-features -- test::compatibility::compatibility --exact --nocapture
+
 /// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
 #[test]
 fn compatibility() {

@@ -21,7 +21,7 @@ use crate::{
         utxo::{protocol_pay, protocol_pay::MerkleTreeConfiguration},
         Config,
     },
-    key::Manta,
+    key::Testnet,
     signer::Checkpoint,
 };
 use alloc::collections::BTreeMap;
@@ -97,7 +97,7 @@ pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
 // AssetMapKey = (KeyIndex, SecretKey);
 
 impl wallet::signer::Configuration for Config {
-    type Account = crate::key::KeySecret<Manta>;
+    type Account = crate::key::KeySecret<Testnet>;
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
