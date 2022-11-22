@@ -17,12 +17,13 @@
 //! Prove and Verify Functions for Benchmark and Test Purposes
 
 use crate::config::{
-    self, FullParameters, MerkleTreeConfiguration, Mint, MultiProvingContext, Parameters,
-    PrivateTransfer, ProvingContext, Reclaim, UtxoAccumulatorModel,
+    self, AssetId, AssetValue, Config, FullParameters, MerkleTreeConfiguration, Mint,
+    MultiProvingContext, Parameters, PrivateTransfer, ProvingContext, Reclaim,
+    UtxoAccumulatorModel,
 };
 use manta_accounting::{
-    asset::{Asset, AssetId},
-    transfer::SpendingKey,
+    asset,
+    transfer::{Asset, SpendingKey},
 };
 use manta_crypto::{
     accumulator::Accumulator,
@@ -40,7 +41,7 @@ pub fn prove_mint<R>(
     proving_context: &ProvingContext,
     parameters: &Parameters,
     utxo_accumulator_model: &UtxoAccumulatorModel,
-    asset: Asset,
+    asset: Asset<Config>,
     rng: &mut R,
 ) -> config::TransferPost
 where
@@ -64,7 +65,7 @@ where
 pub fn sample_mint_spender<R>(
     parameters: &Parameters,
     utxo_accumulator: &mut UtxoAccumulator,
-    asset: Asset,
+    asset: Asset<Config>,
     rng: &mut R,
 ) -> (config::SpendingKey, config::Sender)
 where
@@ -90,8 +91,14 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     let asset_id = AssetId(rng.gen());
-    let asset_0 = asset_id.value(10_000);
-    let asset_1 = asset_id.value(20_000);
+    let asset_0 = asset::Asset {
+        id: asset_id,
+        value: AssetValue(10_000),
+    };
+    let asset_1 = asset::Asset {
+        id: asset_id,
+        value: AssetValue(20_000),
+    };
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
     let (spending_key_0, sender_0) =
         sample_mint_spender(parameters, &mut utxo_accumulator, asset_0, rng);
@@ -124,8 +131,14 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     let asset_id = AssetId(rng.gen());
-    let asset_0 = asset_id.value(10_000);
-    let asset_1 = asset_id.value(20_000);
+    let asset_0 = asset::Asset {
+        id: asset_id,
+        value: AssetValue(10_000),
+    };
+    let asset_1 = asset::Asset {
+        id: asset_id,
+        value: AssetValue(20_000),
+    };
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
     let (spending_key_0, sender_0) =
         sample_mint_spender(parameters, &mut utxo_accumulator, asset_0, rng);

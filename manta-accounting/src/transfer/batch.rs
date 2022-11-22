@@ -18,10 +18,7 @@
 
 // TODO: Move more of the batching algorithm here to improve library interfaces.
 
-use crate::{
-    asset::Asset,
-    transfer::{Configuration, Parameters, PreSender, Receiver, SpendingKey, Utxo},
-};
+use crate::transfer::{Asset, Configuration, Parameters, PreSender, Receiver, SpendingKey, Utxo};
 use alloc::vec::Vec;
 use manta_crypto::{
     accumulator::Accumulator,
@@ -49,7 +46,7 @@ where
     #[inline]
     pub fn new<R, const RECEIVERS: usize>(
         parameters: &Parameters<C>,
-        asset: Asset,
+        asset: Asset<C>,
         spending_key: &SpendingKey<C>,
         rng: &mut R,
     ) -> ([Receiver<C>; RECEIVERS], Self)
@@ -58,11 +55,12 @@ where
     {
         let mut receivers = Vec::with_capacity(RECEIVERS);
         let mut zeroes = Vec::with_capacity(RECEIVERS - 1);
-        let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
+        let (receiver, pre_sender) =
+            spending_key.internal_pair(parameters, rng.gen(), asset.clone());
         receivers.push(receiver);
         for _ in 1..RECEIVERS {
             let (receiver, pre_sender) =
-                spending_key.internal_zero_pair(parameters, rng.gen(), asset.id);
+                spending_key.internal_zero_pair(parameters, rng.gen(), asset.id.clone());
             receivers.push(receiver);
             zeroes.push(pre_sender);
         }

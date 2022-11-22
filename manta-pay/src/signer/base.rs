@@ -26,6 +26,7 @@ use core::{cmp, mem};
 use manta_accounting::{
     asset::HashAssetMap,
     key::{self, AccountCollection, AccountIndex, DeriveAddresses},
+    transfer,
     wallet::{
         self,
         signer::{self, SyncData},
@@ -95,7 +96,11 @@ impl wallet::signer::Configuration for Config {
     type Checkpoint = Checkpoint;
     type Account = KeySecret<Testnet>;
     type UtxoAccumulator = UtxoAccumulator;
-    type AssetMap = HashAssetMap<SecretKey>;
+    type AssetMap = HashAssetMap<
+        SecretKey,
+        <Config as transfer::Configuration>::AssetId,
+        <Config as transfer::Configuration>::AssetValue,
+    >;
     type Rng = ChaCha20Rng;
 }
 

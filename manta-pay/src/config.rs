@@ -27,9 +27,13 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
 };
+use core::{
+    iter::Sum,
+    ops::{AddAssign, Rem, Sub, SubAssign},
+};
 use manta_accounting::{
-    asset::{Asset, AssetId, AssetValue},
-    transfer,
+    asset,
+    transfer::{self, Asset},
 };
 use manta_crypto::{
     accumulator,
@@ -58,19 +62,226 @@ use manta_crypto::{
     hash::ArrayHashFunction,
     key::{self, kdf::KeyDerivationFunction},
     merkle_tree,
+    rand::{RngCore, Sample},
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
-    into_array_unchecked, Array, AsBytes, SizeLimit,
+    num::CheckedSub,
+    Array, AsBytes, SizeLimit,
 };
 
 #[cfg(feature = "bs58")]
 use alloc::string::String;
 
-#[cfg(any(feature = "test", test))]
-use manta_crypto::rand::{Rand, RngCore, Sample};
+#[cfg(feature = "test")]
+use manta_crypto::rand::Rand;
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 pub(crate) use ed_on_bls12_381::EdwardsProjective as Bls12_381_Edwards;
+
+/// Asset Id Type
+pub type AssetIdType = u32;
+
+/// Asset Id
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct AssetId(pub AssetIdType);
+
+impl SizeLimit for AssetId {
+    const SIZE: usize = (AssetIdType::BITS / 8) as usize;
+}
+
+impl Encode for AssetId {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl Decode for AssetId {
+    type Error = <AssetIdType as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(AssetIdType::decode(reader)?))
+    }
+}
+
+impl Sample for AssetId {
+    #[inline]
+    fn gen<R>(rng: &mut R) -> Self
+    where
+        (): Default,
+        R: RngCore + ?Sized,
+    {
+        Self(AssetIdType::gen(rng))
+    }
+
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self(AssetIdType::sample(distribution, rng))
+    }
+}
+
+impl Input<ProofSystem> for AssetId {
+    #[inline]
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
+    }
+}
+
+/// Asset Value Type
+pub type AssetValueType = u128;
+
+/// Asset Value
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct AssetValue(pub AssetValueType);
+
+impl SizeLimit for AssetValue {
+    const SIZE: usize = (AssetValueType::BITS / 8) as usize;
+}
+
+impl Sub for AssetValue {
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl SubAssign for AssetValue {
+    #[inline]
+    fn sub_assign(&mut self, rhs: Self) {
+        self.0.sub_assign(rhs.0);
+    }
+}
+
+impl CheckedSub for AssetValue {
+    type Output = Self;
+
+    #[inline]
+    fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
+        Some(Self(self.0.checked_sub(rhs.0)?))
+    }
+}
+
+impl CheckedSub for &AssetValue {
+    type Output = <AssetValue as CheckedSub>::Output;
+
+    #[inline]
+    fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
+        (*self).checked_sub(*rhs)
+    }
+}
+
+impl Sub for &AssetValue {
+    type Output = <AssetValue as Sub>::Output;
+
+    #[inline]
+    fn sub(self, rhs: Self) -> Self::Output {
+        (*self).sub(*rhs)
+    }
+}
+
+impl Sum for AssetValue {
+    #[inline]
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+        Self(iter.map(|x| x.0).sum())
+    }
+}
+
+impl Rem for AssetValue {
+    type Output = Self;
+
+    #[inline]
+    fn rem(self, rhs: Self) -> Self::Output {
+        Self(self.0 % rhs.0)
+    }
+}
+
+impl AddAssign for AssetValue {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0;
+    }
+}
+
+impl AddAssign for &AssetValue {
+    #[inline]
+    fn add_assign(&mut self, rhs: Self) {
+        let mut asset_value = **self;
+        asset_value.add_assign(*rhs);
+    }
+}
+
+impl Encode for AssetValue {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl Decode for AssetValue {
+    type Error = <AssetValueType as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(AssetValueType::decode(reader)?))
+    }
+}
+
+impl Sample for AssetValue {
+    #[inline]
+    fn gen<R>(rng: &mut R) -> Self
+    where
+        (): Default,
+        R: RngCore + ?Sized,
+    {
+        Self(AssetValueType::gen(rng))
+    }
+
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self(AssetValueType::sample(distribution, rng))
+    }
+}
+
+impl Input<ProofSystem> for AssetValue {
+    #[inline]
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
+    }
+}
 
 /// Pairing Curve Type
 pub type PairingCurve = Bls12_381;
@@ -178,7 +389,7 @@ pub struct UtxoCommitmentScheme(pub Poseidon4);
 impl transfer::UtxoCommitmentScheme for UtxoCommitmentScheme {
     type EphemeralSecretKey = EmbeddedScalar;
     type PublicSpendKey = Group;
-    type Asset = Asset;
+    type Asset = asset::Asset<AssetId, AssetValue>;
     type Utxo = Utxo;
 
     #[inline]
@@ -245,7 +456,7 @@ pub struct UtxoCommitmentSchemeVar(pub Poseidon4Var);
 impl transfer::UtxoCommitmentScheme<Compiler> for UtxoCommitmentSchemeVar {
     type EphemeralSecretKey = EmbeddedScalarVar;
     type PublicSpendKey = GroupVar;
-    type Asset = Asset<AssetIdVar, AssetValueVar>;
+    type Asset = asset::Asset<AssetIdVar, AssetValueVar>;
     type Utxo = UtxoVar;
 
     #[inline]
@@ -651,7 +862,7 @@ impl encryption::convert::plaintext::Forward for NotePlaintextMapping {
         let mut bytes = Vec::new();
         bytes.append(&mut field_element_as_bytes(&source.ephemeral_secret_key.0));
         bytes
-            .write(&mut source.asset.into_bytes().as_slice())
+            .write(&mut source.asset.to_vec().as_slice())
             .expect("This can never fail.");
         Array::from_unchecked(bytes)
     }
@@ -668,10 +879,11 @@ impl encryption::convert::plaintext::Reverse for NotePlaintextMapping {
     fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
         // TODO: Use a deserialization method to do this.
         let target = target?;
-        let mut slice = target.as_ref();
+        let mut slice: &[u8] = target.as_ref();
         Some(Note {
             ephemeral_secret_key: Fp(EmbeddedScalarField::deserialize(&mut slice).ok()?),
-            asset: Asset::from_bytes(into_array_unchecked(slice)),
+            asset: Asset::<Config>::from_vec(slice.to_vec())
+                .expect("Decoding Asset is not allowed to fail."),
         })
     }
 }
@@ -722,6 +934,8 @@ pub type NoteEncryptionScheme =
 pub struct Config;
 
 impl transfer::Configuration for Config {
+    type AssetId = AssetId;
+    type AssetValue = AssetValue;
     type SecretKey = SecretKey;
     type PublicKey = PublicKey;
     type KeyAgreementScheme = KeyAgreementScheme;
@@ -837,4 +1051,53 @@ pub fn receiving_key_from_base58(string: &str) -> Option<ReceivingKey> {
         spend: spend.to_owned().try_into().ok()?,
         view: view.to_owned().try_into().ok()?,
     })
+}
+
+/// Asset Value Sample
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod asset_value_sample {
+    use super::*;
+    use manta_crypto::rand::{rand::Rng, SampleBorrow, SampleUniform, UniformInt, UniformSampler};
+
+    /// Asset Value Sampler
+    #[derive(Clone, Copy, Debug)]
+    pub struct AssetValueSampler(UniformInt<u128>);
+
+    impl UniformSampler for AssetValueSampler {
+        type X = AssetValue;
+
+        #[inline]
+        fn new<B1, B2>(low: B1, high: B2) -> Self
+        where
+            B1: SampleBorrow<Self::X>,
+            B2: SampleBorrow<Self::X>,
+        {
+            AssetValueSampler(UniformInt::<u128>::new(low.borrow().0, high.borrow().0))
+        }
+
+        #[inline]
+        fn new_inclusive<B1, B2>(low: B1, high: B2) -> Self
+        where
+            B1: SampleBorrow<Self::X>,
+            B2: SampleBorrow<Self::X>,
+        {
+            AssetValueSampler(UniformInt::<u128>::new_inclusive(
+                low.borrow().0,
+                high.borrow().0,
+            ))
+        }
+
+        #[inline]
+        fn sample<R>(&self, rng: &mut R) -> Self::X
+        where
+            R: Rng + ?Sized,
+        {
+            AssetValue(self.0.sample(rng))
+        }
+    }
+
+    impl SampleUniform for AssetValue {
+        type Sampler = AssetValueSampler;
+    }
 }

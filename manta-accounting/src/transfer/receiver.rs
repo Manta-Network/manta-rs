@@ -16,19 +16,16 @@
 
 //! Transfer Receiver
 
-use crate::{
-    asset::Asset,
-    transfer::{
-        AssetVar, Configuration, EncryptedNote, FullParametersVar, Note, Parameters, ProofInput,
-        PublicKey, PublicKeyVar, SecretKey, SecretKeyVar, Utxo, UtxoVar,
-    },
+use crate::transfer::{
+    Asset, AssetVar, Configuration, EncryptedNote, FullParametersVar, Note, Parameters, ProofInput,
+    PublicKey, PublicKeyVar, SecretKey, SecretKeyVar, Utxo, UtxoVar,
 };
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     constraint::HasInput,
     eclair::{
         alloc::{
-            mode::{Derived, Public},
+            mode::{Derived, Public, Secret},
             Allocate, Allocator, Variable,
         },
         bool::AssertEq,
@@ -51,7 +48,7 @@ where
     ephemeral_secret_key: SecretKey<C>,
 
     /// Asset
-    asset: Asset,
+    asset: Asset<C>,
 
     /// Unspent Transaction Output
     utxo: Utxo<C>,
@@ -72,7 +69,7 @@ where
         public_spend_key: PublicKey<C>,
         public_view_key: PublicKey<C>,
         ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
+        asset: Asset<C>,
     ) -> Self {
         let randomness = hybrid::Randomness::from_key(ephemeral_secret_key);
         Self {
@@ -81,7 +78,7 @@ where
                 &public_view_key,
                 &randomness,
                 (),
-                &Note::new(randomness.ephemeral_secret_key.clone(), asset),
+                &Note::new(randomness.ephemeral_secret_key.clone(), asset.clone()),
                 &mut (),
             ),
             ephemeral_secret_key: randomness.ephemeral_secret_key,
@@ -163,7 +160,7 @@ where
         Self {
             ephemeral_secret_key: this.ephemeral_secret_key.as_known(compiler),
             public_spend_key: this.public_spend_key.as_known(compiler),
-            asset: this.asset.as_known(compiler),
+            asset: this.asset.as_known::<Secret, AssetVar<C>>(compiler),
             utxo: this.utxo.as_known::<Public, _>(compiler),
         }
     }
@@ -173,7 +170,7 @@ where
         Self {
             ephemeral_secret_key: compiler.allocate_unknown(),
             public_spend_key: compiler.allocate_unknown(),
-            asset: compiler.allocate_unknown(),
+            asset: compiler.allocate_unknown::<Secret, AssetVar<C>>(),
             utxo: compiler.allocate_unknown::<Public, _>(),
         }
     }

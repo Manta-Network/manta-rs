@@ -18,7 +18,8 @@
 
 use crate::{
     config::{
-        Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
+        AssetId, AssetValue, AssetValueType, Config, MultiProvingContext, MultiVerifyingContext,
+        Parameters, UtxoAccumulatorModel,
     },
     signer::base::{sample_key_secret, Signer, UtxoAccumulator},
     simulation::ledger::{AccountId, Ledger, LedgerConnection},
@@ -27,7 +28,6 @@ use alloc::{format, sync::Arc};
 use core::fmt::Debug;
 use manta_accounting::{
     self,
-    asset::{AssetId, AssetValue, AssetValueType},
     key::AccountTable,
     wallet::{
         self,
@@ -134,7 +134,7 @@ impl Simulation {
     #[inline]
     pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
     where
-        L: wallet::test::Ledger<Config> + PublicBalanceOracle,
+        L: wallet::test::Ledger<Config> + PublicBalanceOracle<Config>,
         S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,

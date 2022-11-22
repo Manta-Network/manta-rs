@@ -17,15 +17,18 @@
 //! Transfer Protocol Testing Framework
 
 use crate::{
-    asset::{Asset, AssetId, AssetValue, AssetValueType},
+    asset,
     transfer::{
-        canonical::Mint, has_public_participants, Configuration, FullParameters, Parameters,
+        canonical::Mint, has_public_participants, Asset, Configuration, FullParameters, Parameters,
         PreSender, Proof, ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver,
         Sender, SpendingKey, Transfer, TransferPost, Utxo, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
-use core::fmt::Debug;
+use core::{
+    fmt::Debug,
+    ops::{Rem, Sub},
+};
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::ProofSystem,
@@ -41,17 +44,23 @@ use super::ProofInput;
 ///
 /// This is a naive algorithm and should only be used for testing purposes.
 #[inline]
-pub fn value_distribution<R>(count: usize, total: AssetValue, rng: &mut R) -> Vec<AssetValue>
+pub fn value_distribution<C, R>(
+    count: usize,
+    total: C::AssetValue,
+    rng: &mut R,
+) -> Vec<C::AssetValue>
 where
+    C: Configuration,
+    C::AssetValue: Ord + Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
     R: RngCore + ?Sized,
 {
     if count == 0 {
         return Vec::default();
     }
     let mut result = Vec::with_capacity(count + 1);
-    result.push(AssetValue(0));
+    result.push(C::AssetValue::default());
     for _ in 1..count {
-        result.push(AssetValue(AssetValueType::gen(rng) % total.0));
+        result.push(<C::AssetValue>::gen(rng) % total);
     }
     result.push(total);
     result.sort_unstable();
@@ -70,11 +79,16 @@ where
 ///
 /// This is a naive algorithm and should only be used for testing purposes.
 #[inline]
-pub fn sample_asset_values<R, const N: usize>(total: AssetValue, rng: &mut R) -> [AssetValue; N]
+pub fn sample_asset_values<C, R, const N: usize>(
+    total: C::AssetValue,
+    rng: &mut R,
+) -> [C::AssetValue; N]
 where
+    C: Configuration,
+    C::AssetValue: Ord + Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
     R: RngCore + ?Sized,
 {
-    into_array_unchecked(value_distribution(N, total, rng))
+    into_array_unchecked(value_distribution::<C, _>(N, total, rng))
 }
 
 /// Parameters Distribution
@@ -155,25 +169,27 @@ where
     pub base: TransferDistribution<'p, C, A>,
 
     /// Asset Id for this Transfer
-    pub asset_id: AssetId,
+    pub asset_id: C::AssetId,
 
     /// Source Asset Value Sum
-    pub source_sum: AssetValue,
+    pub source_sum: C::AssetValue,
 
     /// Sender Asset Value Sum
-    pub sender_sum: AssetValue,
+    pub sender_sum: C::AssetValue,
 
     /// Receiver Asset Value Sum
-    pub receiver_sum: AssetValue,
+    pub receiver_sum: C::AssetValue,
 
     /// Sink Asset Value Sum
-    pub sink_sum: AssetValue,
+    pub sink_sum: C::AssetValue,
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
     Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
+    C::AssetId: Sample,
+    C::AssetValue: Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
 {
     /// Samples a [`TransferPost`] from `parameters` and `utxo_accumulator` using `proving_context`
     /// and `rng`.
@@ -187,6 +203,7 @@ where
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
+        C::AssetValue: Ord + Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
     {
         Self::sample(
             TransferDistribution {
@@ -214,6 +231,7 @@ where
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
+        C::AssetValue: Ord + Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
     {
         let (proving_context, verifying_context) = Self::generate_context(
             public_parameters,
@@ -242,6 +260,7 @@ where
     where
         A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
+        C::AssetValue: Ord + Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
     {
         let post = Self::sample_post(proving_context, parameters, utxo_accumulator, rng)?;
         C::ProofSystem::verify(
@@ -264,6 +283,7 @@ where
         R: CryptoRng + RngCore + ?Sized,
         ProofInput<C>: PartialEq,
         ProofSystemError<C>: Debug,
+        C::AssetValue: Ord + Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
     {
         let transfer = Self::sample(
             TransferDistribution {
@@ -305,9 +325,9 @@ where
 #[inline]
 fn sample_senders_and_receivers<C, A, R>(
     parameters: &Parameters<C>,
-    asset_id: AssetId,
-    senders: &[AssetValue],
-    receivers: &[AssetValue],
+    asset_id: C::AssetId,
+    senders: &[C::AssetValue],
+    receivers: &[C::AssetValue],
     utxo_accumulator: &mut A,
     rng: &mut R,
 ) -> (Vec<Sender<C>>, Vec<Receiver<C>>)
@@ -320,7 +340,15 @@ where
         senders
             .iter()
             .map(|v| {
-                let sender = PreSender::new(parameters, rng.gen(), rng.gen(), asset_id.with(*v));
+                let sender = PreSender::new(
+                    parameters,
+                    rng.gen(),
+                    rng.gen(),
+                    asset::Asset {
+                        id: asset_id.clone(),
+                        value: *v,
+                    },
+                );
                 sender.insert_utxo(utxo_accumulator);
                 sender.try_upgrade(utxo_accumulator).unwrap()
             })
@@ -333,7 +361,10 @@ where
                     parameters.derive(&rng.gen()),
                     parameters.derive(&rng.gen()),
                     rng.gen(),
-                    asset_id.with(*v),
+                    asset::Asset {
+                        id: asset_id.clone(),
+                        value: *v,
+                    },
                 )
             })
             .collect(),
@@ -350,6 +381,8 @@ impl<
     > Sample<TransferDistribution<'_, C, A>> for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
+    C::AssetId: Sample,
+    C::AssetValue: Ord + Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
     A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
 {
     #[inline]
@@ -357,14 +390,14 @@ where
     where
         R: RngCore + ?Sized,
     {
-        let asset = Asset::gen(rng);
-        let mut input = value_distribution(SOURCES + SENDERS, asset.value, rng);
-        let mut output = value_distribution(RECEIVERS + SINKS, asset.value, rng);
+        let asset = Asset::<C>::gen(rng);
+        let mut input = value_distribution::<C, _>(SOURCES + SENDERS, asset.value, rng);
+        let mut output = value_distribution::<C, _>(RECEIVERS + SINKS, asset.value, rng);
         let secret_input = input.split_off(SOURCES);
         let public_output = output.split_off(RECEIVERS);
         let (senders, receivers) = sample_senders_and_receivers(
             distribution.parameters,
-            asset.id,
+            asset.id.clone(),
             &secret_input,
             &output,
             distribution.utxo_accumulator,
@@ -391,6 +424,7 @@ impl<
     for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
 where
     C: Configuration,
+    C::AssetValue: Ord + Rem<Output = C::AssetValue> + Sample + Sub<Output = C::AssetValue>,
     A: Accumulator<Item = Utxo<C>, Model = C::UtxoAccumulatorModel>,
 {
     #[inline]
@@ -400,18 +434,18 @@ where
     {
         let (senders, receivers) = sample_senders_and_receivers(
             distribution.base.parameters,
-            distribution.asset_id,
-            &value_distribution(SENDERS, distribution.sender_sum, rng),
-            &value_distribution(RECEIVERS, distribution.receiver_sum, rng),
+            distribution.asset_id.clone(),
+            &value_distribution::<C, _>(SENDERS, distribution.sender_sum, rng),
+            &value_distribution::<C, _>(RECEIVERS, distribution.receiver_sum, rng),
             distribution.base.utxo_accumulator,
             rng,
         );
         Self::new(
             has_public_participants(SOURCES, SINKS).then_some(distribution.asset_id),
-            sample_asset_values(distribution.source_sum, rng),
+            sample_asset_values::<C, _, SOURCES>(distribution.source_sum, rng),
             into_array_unchecked(senders),
             into_array_unchecked(receivers),
-            sample_asset_values(distribution.sink_sum, rng),
+            sample_asset_values::<C, _, SINKS>(distribution.sink_sum, rng),
         )
     }
 }
@@ -423,7 +457,7 @@ pub fn sample_mint<C, R>(
     proving_context: &ProvingContext<C>,
     full_parameters: FullParameters<C>,
     spending_key: &SpendingKey<C>,
-    asset: Asset,
+    asset: Asset<C>,
     rng: &mut R,
 ) -> Result<(TransferPost<C>, PreSender<C>), ProofSystemError<C>>
 where

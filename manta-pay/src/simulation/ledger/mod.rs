@@ -30,11 +30,12 @@ use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
 use indexmap::IndexSet;
 use manta_accounting::{
-    asset::{Asset, AssetId, AssetList, AssetValue},
+    asset::AssetList,
     transfer::{
-        canonical::TransferShape, InvalidSinkAccount, InvalidSourceAccount, Proof, ReceiverLedger,
-        ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey, SourcePostingKey,
-        TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoAccumulatorOutput,
+        self, canonical::TransferShape, Asset, InvalidSinkAccount, InvalidSourceAccount, Proof,
+        ReceiverLedger, ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey,
+        SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey,
+        UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, ReadResponse},
@@ -117,7 +118,13 @@ pub struct Ledger {
     utxo_forest: UtxoMerkleForest,
 
     /// Account Table
-    accounts: HashMap<AccountId, HashMap<AssetId, AssetValue>>,
+    accounts: HashMap<
+        AccountId,
+        HashMap<
+            <Config as transfer::Configuration>::AssetId,
+            <Config as transfer::Configuration>::AssetValue,
+        >,
+    >,
 
     /// Verifying Contexts
     verifying_context: MultiVerifyingContext,
@@ -144,19 +151,32 @@ impl Ledger {
 
     /// Returns the public balances of `account` if it exists.
     #[inline]
-    pub fn public_balances(&self, account: AccountId) -> Option<AssetList> {
+    pub fn public_balances(
+        &self,
+        account: AccountId,
+    ) -> Option<
+        AssetList<
+            <Config as transfer::Configuration>::AssetId,
+            <Config as transfer::Configuration>::AssetValue,
+        >,
+    > {
         Some(
             self.accounts
                 .get(&account)?
                 .iter()
-                .map(|(id, value)| Asset::new(*id, *value))
+                .map(|(id, value)| Asset::<Config>::new(*id, *value))
                 .collect(),
         )
     }
 
     /// Sets the public balance of `account` in assets with `id` to `value`.
     #[inline]
-    pub fn set_public_balance(&mut self, account: AccountId, id: AssetId, value: AssetValue) {
+    pub fn set_public_balance(
+        &mut self,
+        account: AccountId,
+        id: <Config as transfer::Configuration>::AssetId,
+        value: <Config as transfer::Configuration>::AssetValue,
+    ) {
         self.accounts.entry(account).or_default().insert(id, value);
     }
 
@@ -275,8 +295,10 @@ impl ReceiverLedger<Config> for Ledger {
 impl TransferLedger<Config> for Ledger {
     type AccountId = AccountId;
     type Event = ();
-    type ValidSourceAccount = WrapPair<Self::AccountId, AssetValue>;
-    type ValidSinkAccount = WrapPair<Self::AccountId, AssetValue>;
+    type ValidSourceAccount =
+        WrapPair<Self::AccountId, <Config as transfer::Configuration>::AssetValue>;
+    type ValidSinkAccount =
+        WrapPair<Self::AccountId, <Config as transfer::Configuration>::AssetValue>;
     type ValidProof = Wrap<()>;
     type SuperPostingKey = ();
     type UpdateError = Infallible;
@@ -284,11 +306,16 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn check_source_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: <Config as transfer::Configuration>::AssetId,
         sources: I,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Config, Self::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>,
+        I: Iterator<
+            Item = (
+                Self::AccountId,
+                <Config as transfer::Configuration>::AssetValue,
+            ),
+        >,
     {
         sources
             .map(|(account_id, withdraw)| {
@@ -327,11 +354,16 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn check_sink_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: <Config as transfer::Configuration>::AssetId,
         sinks: I,
-    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Config, Self::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>,
+        I: Iterator<
+            Item = (
+                Self::AccountId,
+                <Config as transfer::Configuration>::AssetValue,
+            ),
+        >,
     {
         sinks
             .map(move |(account_id, deposit)| {
@@ -351,7 +383,7 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn is_valid(
         &self,
-        asset_id: Option<AssetId>,
+        asset_id: Option<<Config as transfer::Configuration>::AssetId>,
         sources: &[SourcePostingKey<Config, Self>],
         senders: &[SenderPostingKey<Config, Self>],
         receivers: &[ReceiverPostingKey<Config, Self>],
@@ -377,7 +409,7 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn update_public_balances(
         &mut self,
-        asset_id: AssetId,
+        asset_id: <Config as transfer::Configuration>::AssetId,
         sources: Vec<SourcePostingKey<Config, Self>>,
         sinks: Vec<SinkPostingKey<Config, Self>>,
         proof: Self::ValidProof,
@@ -452,9 +484,18 @@ impl ledger::Write<Vec<TransferPost>> for LedgerConnection {
     }
 }
 
-impl PublicBalanceOracle for LedgerConnection {
+impl PublicBalanceOracle<Config> for LedgerConnection {
     #[inline]
-    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
+    fn public_balances(
+        &self,
+    ) -> LocalBoxFuture<
+        Option<
+            AssetList<
+                <Config as transfer::Configuration>::AssetId,
+                <Config as transfer::Configuration>::AssetValue,
+            >,
+        >,
+    > {
         Box::pin(async move { self.ledger.read().await.public_balances(self.account) })
     }
 }

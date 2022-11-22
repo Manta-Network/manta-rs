@@ -16,20 +16,20 @@
 
 //! Transfer Sender
 
-use crate::{
-    asset::{Asset, AssetValue},
-    transfer::{
-        AssetVar, Configuration, FullParametersVar, Parameters, ProofInput, SecretKey,
-        SecretKeyVar, Utxo, UtxoAccumulatorOutput, UtxoMembershipProof, UtxoMembershipProofVar,
-        VoidNumber, VoidNumberVar,
-    },
+use crate::transfer::{
+    Asset, AssetVar, Configuration, FullParametersVar, Parameters, ProofInput, SecretKey,
+    SecretKeyVar, Utxo, UtxoAccumulatorOutput, UtxoMembershipProof, UtxoMembershipProofVar,
+    VoidNumber, VoidNumberVar,
 };
 use core::{fmt::Debug, hash::Hash, iter};
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::HasInput,
     eclair::{
-        alloc::{mode::Derived, Allocate, Allocator, Variable},
+        alloc::{
+            mode::{Derived, Secret},
+            Allocate, Allocator, Variable,
+        },
         bool::AssertEq,
     },
 };
@@ -49,7 +49,7 @@ where
     ephemeral_secret_key: SecretKey<C>,
 
     /// Asset
-    asset: Asset,
+    asset: Asset<C>,
 
     /// Unspent Transaction Output
     utxo: Utxo<C>,
@@ -69,7 +69,7 @@ where
         parameters: &Parameters<C>,
         secret_spend_key: SecretKey<C>,
         ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
+        asset: Asset<C>,
     ) -> Self {
         let utxo = parameters.utxo(
             &ephemeral_secret_key,
@@ -179,7 +179,7 @@ where
     ephemeral_secret_key: SecretKey<C>,
 
     /// Asset
-    asset: Asset,
+    asset: Asset<C>,
 
     /// Unspent Transaction Output
     utxo: Utxo<C>,
@@ -197,7 +197,7 @@ where
 {
     /// Returns the asset value sent by `self` in the transaction.
     #[inline]
-    pub fn asset_value(&self) -> AssetValue {
+    pub fn asset_value(&self) -> C::AssetValue {
         self.asset.value
     }
 
@@ -294,7 +294,7 @@ where
         Self {
             secret_spend_key: this.secret_spend_key.as_known(compiler),
             ephemeral_secret_key: this.ephemeral_secret_key.as_known(compiler),
-            asset: this.asset.as_known(compiler),
+            asset: this.asset.as_known::<Secret, AssetVar<C>>(compiler),
             utxo_membership_proof: this.utxo_membership_proof.as_known(compiler),
             void_number: this.void_number.as_known(compiler),
         }
@@ -305,7 +305,7 @@ where
         Self {
             secret_spend_key: compiler.allocate_unknown(),
             ephemeral_secret_key: compiler.allocate_unknown(),
-            asset: compiler.allocate_unknown(),
+            asset: compiler.allocate_unknown::<Secret, AssetVar<C>>(),
             utxo_membership_proof: compiler.allocate_unknown(),
             void_number: compiler.allocate_unknown(),
         }

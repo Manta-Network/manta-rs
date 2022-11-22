@@ -19,9 +19,9 @@
 // TODO: Add typing for `ProvingContext` and `VerifyingContext` against the canonical shapes.
 
 use crate::{
-    asset::{self, Asset, AssetMap, AssetValue},
+    asset::{self, AssetMap},
     transfer::{
-        has_public_participants, Configuration, FullParameters, Parameters, PreSender,
+        has_public_participants, Asset, Configuration, FullParameters, Parameters, PreSender,
         ProofSystemError, ProofSystemPublicParameters, ProvingContext, Receiver, ReceivingKey,
         Sender, SpendingKey, Transfer, TransferPost, VerifyingContext,
     },
@@ -101,7 +101,7 @@ where
 {
     /// Builds a [`Mint`] from `asset` and `receiver`.
     #[inline]
-    pub fn build(asset: Asset, receiver: Receiver<C>) -> Self {
+    pub fn build(asset: Asset<C>, receiver: Receiver<C>) -> Self {
         Self::new_unchecked(Some(asset.id), [asset.value], [], [receiver], [])
     }
 
@@ -110,13 +110,16 @@ where
     pub fn from_spending_key<R>(
         parameters: &Parameters<C>,
         spending_key: &SpendingKey<C>,
-        asset: Asset,
+        asset: Asset<C>,
         rng: &mut R,
     ) -> Self
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Self::build(asset, spending_key.receiver(parameters, rng.gen(), asset))
+        Self::build(
+            asset.clone(),
+            spending_key.receiver(parameters, rng.gen(), asset),
+        )
     }
 
     /// Builds a new [`Mint`] and [`PreSender`] pair from a [`SpendingKey`] using
@@ -125,13 +128,14 @@ where
     pub fn internal_pair<R>(
         parameters: &Parameters<C>,
         spending_key: &SpendingKey<C>,
-        asset: Asset,
+        asset: Asset<C>,
         rng: &mut R,
     ) -> (Self, PreSender<C>)
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let (receiver, pre_sender) = spending_key.internal_pair(parameters, rng.gen(), asset);
+        let (receiver, pre_sender) =
+            spending_key.internal_pair(parameters, rng.gen(), asset.clone());
         (Self::build(asset, receiver), pre_sender)
     }
 }
@@ -194,7 +198,7 @@ where
     pub fn build(
         senders: [Sender<C>; ReclaimShape::SENDERS],
         receivers: [Receiver<C>; ReclaimShape::RECEIVERS],
-        asset: Asset,
+        asset: Asset<C>,
     ) -> Self {
         Self::new_unchecked(Some(asset.id), [], senders, receivers, [asset.value])
     }
@@ -282,8 +286,8 @@ impl TransferShape {
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "ReceivingKey<C>: Deserialize<'de>",
-            serialize = "ReceivingKey<C>: Serialize"
+            deserialize = "Asset<C>: Deserialize<'de>, ReceivingKey<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize, ReceivingKey<C>: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -291,25 +295,25 @@ impl TransferShape {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "ReceivingKey<C>: Clone"),
-    Copy(bound = "ReceivingKey<C>: Copy"),
-    Debug(bound = "ReceivingKey<C>: Debug"),
-    Eq(bound = "ReceivingKey<C>: Eq"),
-    Hash(bound = "ReceivingKey<C>: Hash"),
-    PartialEq(bound = "ReceivingKey<C>: PartialEq")
+    Clone(bound = "Asset<C>: Clone, ReceivingKey<C>: Clone"),
+    Copy(bound = "Asset<C>: Copy, ReceivingKey<C>: Copy"),
+    Debug(bound = "Asset<C>: Debug, ReceivingKey<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, ReceivingKey<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, ReceivingKey<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, ReceivingKey<C>: PartialEq")
 )]
 pub enum Transaction<C>
 where
     C: Configuration,
 {
     /// Mint Private Asset
-    Mint(Asset),
+    Mint(Asset<C>),
 
     /// Private Transfer Asset to Receiver
-    PrivateTransfer(Asset, ReceivingKey<C>),
+    PrivateTransfer(Asset<C>, ReceivingKey<C>),
 
     /// Reclaim Private Asset
-    Reclaim(Asset),
+    Reclaim(Asset<C>),
 }
 
 impl<C> Transaction<C>
@@ -320,17 +324,17 @@ where
     /// transaction kind if successful, and returning the asset back if the balance was
     /// insufficient.
     #[inline]
-    pub fn check<F>(&self, balance: F) -> Result<TransactionKind, Asset>
+    pub fn check<F>(&self, balance: F) -> Result<TransactionKind<C>, Asset<C>>
     where
-        F: FnOnce(Asset) -> bool,
+        F: FnOnce(Asset<C>) -> bool,
     {
         match self {
-            Self::Mint(asset) => Ok(TransactionKind::Deposit(*asset)),
+            Self::Mint(asset) => Ok(TransactionKind::Deposit(asset.clone())),
             Self::PrivateTransfer(asset, _) | Self::Reclaim(asset) => {
-                if balance(*asset) {
-                    Ok(TransactionKind::Withdraw(*asset))
+                if balance(asset.clone()) {
+                    Ok(TransactionKind::Withdraw(asset.clone()))
                 } else {
-                    Err(*asset)
+                    Err(asset.clone())
                 }
             }
         }
@@ -361,19 +365,37 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = "Asset<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransactionKind {
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone"),
+    Copy(bound = "Asset<C>: Copy"),
+    Debug(bound = "Asset<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq")
+)]
+pub enum TransactionKind<C>
+where
+    C: Configuration,
+{
     /// Deposit Transaction
     ///
     /// A transaction of this kind will result in a deposit of `asset`.
-    Deposit(Asset),
+    Deposit(Asset<C>),
 
     /// Withdraw Transaction
     ///
     /// A transaction of this kind will result in a withdraw of `asset`.
-    Withdraw(Asset),
+    Withdraw(Asset<C>),
 }
 
 /// Transfer Asset Selection
@@ -382,7 +404,7 @@ where
     C: Configuration,
 {
     /// Change Value
-    pub change: AssetValue,
+    pub change: C::AssetValue,
 
     /// Pre-Senders
     pub pre_senders: Vec<PreSender<C>>,
@@ -394,7 +416,7 @@ where
 {
     /// Builds a new [`Selection`] from `change` and `pre_senders`.
     #[inline]
-    fn build(change: AssetValue, pre_senders: Vec<PreSender<C>>) -> Self {
+    fn build(change: C::AssetValue, pre_senders: Vec<PreSender<C>>) -> Self {
         Self {
             change,
             pre_senders,
@@ -403,10 +425,13 @@ where
 
     /// Builds a new [`Selection`] by mapping over an asset selection with `builder`.
     #[inline]
-    pub fn new<M, E, F>(selection: asset::Selection<M>, mut builder: F) -> Result<Self, E>
+    pub fn new<M, E, F>(
+        selection: asset::Selection<C::AssetId, C::AssetValue, M>,
+        mut builder: F,
+    ) -> Result<Self, E>
     where
-        M: AssetMap,
-        F: FnMut(M::Key, AssetValue) -> Result<PreSender<C>, E>,
+        M: AssetMap<C::AssetId, C::AssetValue>,
+        F: FnMut(M::Key, C::AssetValue) -> Result<PreSender<C>, E>,
     {
         Ok(Self::build(
             selection.change,
