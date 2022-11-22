@@ -16,11 +16,6 @@
 
 //! Manta-Pay Configuration
 
-use core::{
-    iter::Sum,
-    ops::{AddAssign, Rem, Sub, SubAssign},
-};
-
 use crate::crypto::{
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
@@ -31,6 +26,10 @@ use alloc::vec::Vec;
 use blake2::{
     digest::{Update, VariableOutput},
     Blake2sVar,
+};
+use core::{
+    iter::Sum,
+    ops::{AddAssign, Rem, Sub, SubAssign},
 };
 use manta_accounting::{
     asset,
@@ -137,6 +136,13 @@ impl Sample for AssetId {
         R: RngCore + ?Sized,
     {
         Self(AssetIdType::sample(distribution, rng))
+    }
+}
+
+impl Input<ProofSystem> for AssetId {
+    #[inline]
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
     }
 }
 
@@ -268,6 +274,13 @@ impl Sample for AssetValue {
         R: RngCore + ?Sized,
     {
         Self(AssetValueType::sample(distribution, rng))
+    }
+}
+
+impl Input<ProofSystem> for AssetValue {
+    #[inline]
+    fn extend(&self, input: &mut Vec<ConstraintField>) {
+        input.push(self.0.into());
     }
 }
 
