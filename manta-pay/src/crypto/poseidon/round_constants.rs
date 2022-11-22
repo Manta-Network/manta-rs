@@ -78,8 +78,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::crypto::constraint::arkworks::Fp;
-    use manta_crypto::arkworks::{bls12_381::Fr, ff::field_new};
+    use manta_crypto::arkworks::{bls12_381::Fr, constraint::fp::Fp, ff::field_new};
 
     #[allow(clippy::needless_borrow)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9710
     /// Checks if [`GrainLFSR`] matches hardcoded sage outputs.

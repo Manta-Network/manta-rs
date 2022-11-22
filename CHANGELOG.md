@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 - [\#283](https://github.com/Manta-Network/manta-rs/pull/283) Upgrade asset system.
+- [\#284](https://github.com/Manta-Network/manta-rs/pull/284) Moved `R1CS` implementation to `manta-crypto` 
 - [\#282](https://github.com/Manta-Network/manta-rs/pull/282) Upgrade key system.
 
 ### Deprecated

@@ -43,6 +43,7 @@ use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     arkworks::{
         bn254::{self, Fr},
+        constraint::{fp::Fp, FpVar, R1CS},
         ec::{AffineCurve, PairingEngine},
         ff::field_new,
         pairing::Pairing,
@@ -57,7 +58,6 @@ use manta_crypto::{
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     signature,
 };
-use manta_pay::crypto::constraint::arkworks::{Fp, FpVar, R1CS};
 use manta_util::{
     into_array_unchecked,
     serde::{de::DeserializeOwned, Deserialize, Serialize},

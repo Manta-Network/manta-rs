@@ -22,7 +22,6 @@ use core::{
 };
 
 use crate::crypto::{
-    constraint::arkworks::{field_element_as_bytes, groth16, Boolean, Fp, FpVar, R1CS},
     ecc,
     encryption::aes::{self, FixedNonceAesGcm},
     key::Blake2sKdf,
@@ -42,8 +41,13 @@ use manta_crypto::{
     algebra::diffie_hellman::DiffieHellman,
     arkworks::{
         bls12_381::{self, Bls12_381},
+        constraint::{
+            fp::{field_element_as_bytes, Fp},
+            Boolean, FpVar, R1CS,
+        },
         ed_on_bls12_381::{self, constraints::EdwardsVar as Bls12_381_EdwardsVar},
         ff::ToConstraintField,
+        groth16,
         serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
     },
     constraint::Input,
@@ -820,20 +824,6 @@ impl Constant<Compiler> for MerkleTreeConfigurationVar {
     fn new_constant(this: &Self::Type, compiler: &mut Compiler) -> Self {
         let _ = (this, compiler);
         Self
-    }
-}
-
-impl Input<ProofSystem> for AssetId {
-    #[inline]
-    fn extend(&self, input: &mut Vec<ConstraintField>) {
-        input.push(self.0.into());
-    }
-}
-
-impl Input<ProofSystem> for AssetValue {
-    #[inline]
-    fn extend(&self, input: &mut Vec<ConstraintField>) {
-        input.push(self.0.into());
     }
 }
 

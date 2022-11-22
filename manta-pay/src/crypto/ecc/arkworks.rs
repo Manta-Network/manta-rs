@@ -16,9 +16,6 @@
 
 //! Arkworks Elliptic Curve Primitives
 
-use crate::crypto::constraint::arkworks::{
-    self, conditionally_select, empty, full, Boolean, Fp, FpVar, R1CS,
-};
 use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
 use manta_crypto::{
@@ -26,11 +23,14 @@ use manta_crypto::{
     algebra::FixedBaseScalarMul,
     arkworks::{
         algebra::{affine_point_as_bytes, modulus_is_smaller},
+        constraint::{conditionally_select, empty, fp::Fp, full, Boolean, FpVar, R1CS},
         ec::{AffineCurve, ProjectiveCurve},
         ff::{BigInteger, Field, PrimeField, Zero as _},
         r1cs_std::{groups::CurveVar, ToBitsGadget},
         relations::ns,
-        serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError},
+        serialize::{
+            ArkReader, ArkWriter, CanonicalDeserialize, CanonicalSerialize, SerializationError,
+        },
     },
     eclair::{
         self,
@@ -116,7 +116,7 @@ where
     where
         R: codec::Read,
     {
-        let mut reader = arkworks::codec::ArkReader::new(reader);
+        let mut reader = ArkReader::new(reader);
         match CanonicalDeserialize::deserialize(&mut reader) {
             Ok(value) => reader
                 .finish()
@@ -136,76 +136,9 @@ where
     where
         W: codec::Write,
     {
-        let mut writer = arkworks::codec::ArkWriter::new(writer);
+        let mut writer = ArkWriter::new(writer);
         let _ = self.0.serialize(&mut writer);
         writer.finish().map(|_| ())
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_codec::Decode for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    #[inline]
-    fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
-    where
-        I: scale_codec::Input,
-    {
-        Ok(Self(
-            CanonicalDeserialize::deserialize(arkworks::codec::ScaleCodecReader(input))
-                .map_err(|_| "Deserialization Error")?,
-        ))
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_codec::Encode for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    #[inline]
-    fn using_encoded<R, Encoder>(&self, f: Encoder) -> R
-    where
-        Encoder: FnOnce(&[u8]) -> R,
-    {
-        f(&affine_point_as_bytes::<C>(&self.0))
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_codec::EncodeLike for Group<C> where C: ProjectiveCurve {}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_codec::MaxEncodedLen for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    #[inline]
-    fn max_encoded_len() -> usize {
-        // NOTE: In affine form, we have two base field elements to represent the point. The
-        //       encoding uses a compressed representation, so we only need to include half as many
-        //       bytes. We add space for an extra byte flag in case we need to keep track of
-        //       "infinity".
-        Fp::<C::BaseField>::max_encoded_len() + 1
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl<C> scale_info::TypeInfo for Group<C>
-where
-    C: ProjectiveCurve,
-{
-    type Identity = [u8];
-
-    #[inline]
-    fn type_info() -> scale_info::Type {
-        Self::Identity::type_info()
     }
 }
 
@@ -567,8 +500,11 @@ where
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
-            CV::new_constant(ns!(compiler.cs, "embedded curve point constant"), this.0)
-                .expect("Variable allocation is not allowed to fail."),
+            CV::new_constant(
+                ns!(compiler.as_ref(), "embedded curve point constant"),
+                this.0,
+            )
+            .expect("Variable allocation is not allowed to fail."),
         )
     }
 }
@@ -584,7 +520,7 @@ where
     fn new_known(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_input(
-                ns!(compiler.cs, "embedded curve point public input"),
+                ns!(compiler.as_ref(), "embedded curve point public input"),
                 full(this.0),
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -595,7 +531,7 @@ where
     fn new_unknown(compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_input(
-                ns!(compiler.cs, "embedded curve point public input"),
+                ns!(compiler.as_ref(), "embedded curve point public input"),
                 empty::<C>,
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -614,7 +550,7 @@ where
     fn new_known(this: &Self::Type, compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_witness(
-                ns!(compiler.cs, "embedded curve point secret witness"),
+                ns!(compiler.as_ref(), "embedded curve point secret witness"),
                 full(this.0),
             )
             .expect("Variable allocation is not allowed to fail."),
@@ -625,7 +561,7 @@ where
     fn new_unknown(compiler: &mut Compiler<C>) -> Self {
         Self::new(
             CV::new_witness(
-                ns!(compiler.cs, "embedded curve point secret witness"),
+                ns!(compiler.as_ref(), "embedded curve point secret witness"),
                 empty::<C>,
             )
             .expect("Variable allocation is not allowed to fail."),
