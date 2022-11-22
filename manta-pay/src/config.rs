@@ -66,7 +66,6 @@ use manta_crypto::{
 };
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
-    into_array_unchecked,
     num::CheckedSub,
     Array, AsBytes, SizeLimit,
 };
@@ -883,10 +882,8 @@ impl encryption::convert::plaintext::Reverse for NotePlaintextMapping {
         let mut slice: &[u8] = target.as_ref();
         Some(Note {
             ephemeral_secret_key: Fp(EmbeddedScalarField::deserialize(&mut slice).ok()?),
-            asset: Asset::<Config>::from_vec(
-                into_array_unchecked::<u8, _, { Asset::<Config>::SIZE }>(slice).to_vec(),
-            )
-            .expect("Decoding Asset is not allowed to fail."),
+            asset: Asset::<Config>::from_vec(slice.to_vec())
+                .expect("Decoding Asset is not allowed to fail."),
         })
     }
 }
