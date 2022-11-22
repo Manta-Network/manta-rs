@@ -61,6 +61,7 @@ use manta_crypto::{
 use manta_pay::{
     config::{FullParametersRef, PrivateTransfer, ToPrivate, ToPublic},
     crypto::constraint::arkworks::{Fp, FpVar, R1CS},
+    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
 };
 use manta_util::{
     into_array_unchecked,
@@ -887,49 +888,30 @@ impl Ceremony for Config {
 impl Circuits<<Self as Pairing>::Scalar> for Config {
     #[inline]
     fn circuits() -> Vec<(R1CS<<Self as Pairing>::Scalar>, String)> {
-        let mut circuits = Vec::new();
-        let mut rng = OsRng; // TODO: Are you sure rng.gen() is a good way to get FullParameters?
-        circuits.push((
-            ToPrivate::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen())),
-            "to_private".to_string(),
-        ));
-        circuits.push((
-            ToPublic::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen())),
-            "to_public".to_string(),
-        ));
-        circuits.push((
-            PrivateTransfer::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen())),
-            "private_transfer".to_string(),
-        ));
-        circuits
+        vec![
+            (
+                ToPrivate::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "to_private".to_string(),
+            ),
+            (
+                ToPublic::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "to_public".to_string(),
+            ),
+            (
+                PrivateTransfer::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "private_transfer".to_string(),
+            ),
+        ]
     }
-}
-
-// quick question: are the Full Parameters we generate actually random?
-#[test]
-fn parameter_generation_test() {
-    let mut rng = OsRng;
-    let base_params_1: manta_accounting::transfer::Parameters<manta_pay::config::Config> = rng.gen();
-    let utxo_accumulator_model_1: <manta_accounting::transfer::Parameters<manta_pay::config::Config> as manta_accounting::transfer::utxo::Spend>::UtxoAccumulatorModel = rng.gen();
-    let base_params_2: manta_accounting::transfer::Parameters<manta_pay::config::Config> = rng.gen();
-    let utxo_accumulator_model_2: <manta_accounting::transfer::Parameters<manta_pay::config::Config> as manta_accounting::transfer::utxo::Spend>::UtxoAccumulatorModel = rng.gen();
-
-    // assert_eq!(base_params_1.base.group_generator, base_params_2.base.group_generator);
-    // assert_eq!(base_params_1.base.utxo_commitment_scheme, base_params_2.base.utxo_commitment_scheme);
-    
-    // unequal?
-    assert_eq!(base_params_1.base.incoming_base_encryption_scheme, base_params_2.base.incoming_base_encryption_scheme);
-    
-    // assert_eq!(base_params_1.base.viewing_key_derivation_function, base_params_2.base.viewing_key_derivation_function);
-    // assert_eq!(base_params_1.base.utxo_accumulator_item_hash, base_params_2.base.utxo_accumulator_item_hash);
-    assert_eq!(base_params_1.base.nullifier_commitment_scheme, base_params_2.base.nullifier_commitment_scheme);
-    
-    // unequal?
-    // assert_eq!(base_params_1.base.outgoing_base_encryption_scheme, base_params_2.base.outgoing_base_encryption_scheme);
-
-    assert_eq!(base_params_1.address_partition_function, base_params_2.address_partition_function);
-    assert_eq!(base_params_1.schnorr_hash_function, base_params_2.schnorr_hash_function);
-    assert_eq!(utxo_accumulator_model_1, utxo_accumulator_model_2);
 }
 
 /// Generates a dummy R1CS circuit.

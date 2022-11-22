@@ -20,7 +20,7 @@
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
 use manta_pay::{
-    config::{utxo::v2::protocol::BaseParameters, Parameters},
+    config::{utxo::protocol_pay::protocol::BaseParameters, Parameters},
     parameters,
 };
 use manta_util::codec::{Encode, IoWriter};
@@ -59,6 +59,7 @@ pub fn main() -> io::Result<()> {
                 utxo_accumulator_item_hash,
                 nullifier_commitment_scheme,
                 outgoing_base_encryption_scheme,
+                light_incoming_base_encryption_scheme,
             },
         address_partition_function,
         schnorr_hash_function,
@@ -146,6 +147,11 @@ pub fn main() -> io::Result<()> {
                 .write(true)
                 .open(parameters_dir.join("utxo-accumulator-model.dat"))?,
         ))
+        .unwrap();
+    light_incoming_base_encryption_scheme
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("light_incoming_base_encryption_scheme.dat"),
+        )?))
         .unwrap();
 
     let proving_context_dir = target_dir.join("proving");

@@ -159,7 +159,7 @@ pub trait Configuration {
             Secret = Self::SpendSecret,
             Nullifier = Self::Nullifier,
             Identifier = Self::Identifier,
-        > + utxo::NoteOpen;
+        > + utxo::UtxoReconstruct;
 
     /// Authorization Context Variable Type
     type AuthorizationContextVar: Variable<

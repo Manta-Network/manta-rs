@@ -426,12 +426,6 @@ where
             __: PhantomData,
         }
     }
-
-    /// Loads the [`FullParameters`] from `manta-parameters`.
-    #[inline]
-    pub fn load() -> Self {
-        todo!()
-    }
 }
 
 impl<'p, P, COM> Constant<COM> for FullParameters<'p, P, COM>

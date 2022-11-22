@@ -25,7 +25,7 @@ use crate::{
     eclair::{
         self,
         alloc::{
-            mode::{Derived, Public},
+            mode::{Derived, Public, Secret},
             Allocate, Allocator, Constant, Var, Variable,
         },
         bool::{Assert, AssertEq, Bool},
@@ -236,8 +236,11 @@ where
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UnsafeNoEncrypt<E, COM = ()>(PhantomData<(E, COM)>);
 
-impl<E, COM> Constant<COM> for UnsafeNoEncrypt<E, COM> {
-    type Type = E;
+impl<E, COM> Constant<COM> for UnsafeNoEncrypt<E, COM>
+where
+    E: Constant<COM>,
+{
+    type Type = E::Type;
 
     #[inline]
     fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
@@ -800,6 +803,27 @@ where
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
         Variable::<Derived<(Public, Public)>, _>::new_known(this, compiler)
+    }
+}
+
+impl<E, COM> Variable<Secret, COM> for EncryptedMessage<E>
+where
+    E: CiphertextType + HeaderType + Constant<COM>,
+    E::Header: Variable<Secret, COM>,
+    E::Ciphertext: Variable<Secret, COM>,
+    E::Type: CiphertextType<Ciphertext = Var<E::Ciphertext, Secret, COM>>
+        + HeaderType<Header = Var<E::Header, Secret, COM>>,
+{
+    type Type = EncryptedMessage<E::Type>;
+
+    #[inline]
+    fn new_unknown(compiler: &mut COM) -> Self {
+        Variable::<Derived<(Secret, Secret)>, _>::new_unknown(compiler)
+    }
+
+    #[inline]
+    fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
+        Variable::<Derived<(Secret, Secret)>, _>::new_known(this, compiler)
     }
 }
 
