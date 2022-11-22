@@ -18,7 +18,6 @@
 
 use crate::{
     config::{Config, MerkleTreeConfiguration, Parameters, PublicKey, SecretKey},
-    crypto::constraint::arkworks::Fp,
     key::{CoinType, KeySecret, Testnet},
     signer::Checkpoint,
 };
@@ -34,6 +33,7 @@ use manta_accounting::{
 };
 use manta_crypto::{
     arkworks::{
+        constraint::fp::Fp,
         ed_on_bls12_381::FrParameters,
         ff::{Fp256, PrimeField},
     },

@@ -16,15 +16,13 @@
 
 //! Poseidon Arkworks Backend
 
-use crate::crypto::{
-    constraint::arkworks::{Fp, FpVar, R1CS},
-    poseidon::{
-        self, encryption::BlockElement, hash::DomainTag, Constants, Field, FieldGeneration,
-        ParameterFieldType,
-    },
+use crate::crypto::poseidon::{
+    self, encryption::BlockElement, hash::DomainTag, Constants, Field, FieldGeneration,
+    ParameterFieldType,
 };
 use manta_crypto::{
     arkworks::{
+        constraint::{fp::Fp, FpVar, R1CS},
         ff::{BigInteger, Field as _, FpParameters, PrimeField},
         r1cs_std::fields::FieldVar,
     },
