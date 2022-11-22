@@ -439,19 +439,7 @@ where
 }
 
 /// Transaction Kind
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "&'a Asset<C>: Deserialize<'de>",
-            serialize = "&'a Asset<C>: Serialize"
-        ),
-        crate = "manta_util::serde",
-        deny_unknown_fields
-    )
-)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum TransactionKind<'a, C>
 where
     C: Configuration,
