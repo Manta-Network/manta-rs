@@ -24,8 +24,8 @@
 
 use crate::{
     accumulator::{
-        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
-        OptimizedAccumulator,
+        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, ExtractOutput,
+        MembershipProof, OptimizedAccumulator,
     },
     merkle_tree::{
         fork::ForkedTree,
@@ -369,6 +369,19 @@ where
     #[inline]
     fn is_empty(&self) -> bool {
         self.is_empty()
+    }
+}
+
+impl<C, F> ExtractOutput for MerkleForest<C, F>
+where
+    C: Configuration + ?Sized,
+    F: Forest<C>,
+    Root<C>: Clone,
+{
+    type Index = C::Index;
+    type Output = Root<C>;
+    fn extract(&self, index: Self::Index) -> Self::Output {
+        self.forest.get(index).root().clone()
     }
 }
 

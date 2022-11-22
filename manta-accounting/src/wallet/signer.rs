@@ -41,15 +41,18 @@ use crate::{
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
-        UtxoAccumulatorItem, UtxoAccumulatorModel,
+        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorOutput,
     },
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
-    accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
-    rand::{CryptoRng, FromEntropy, Rand, RngCore},
+    accumulator::{
+        Accumulator, ExactSizeAccumulator, ExtractOutput, ItemHashFunction, MembershipProof,
+        OptimizedAccumulator,
+    },
+    rand::{CryptoRng, FromEntropy, Rand, RngCore, Sample},
 };
 use manta_util::{
     array_map, cmp::Independence, future::LocalBoxFutureResult, into_array_unchecked,
@@ -483,7 +486,14 @@ pub trait Configuration: transfer::Configuration {
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
         + ExactSizeAccumulator
         + OptimizedAccumulator
-        + Rollback;
+        + Rollback
+        + ExtractOutput<
+            Index = Self::UtxoAccumulatorExtractorIndex,
+            Output = UtxoAccumulatorOutput<Self>,
+        >;
+
+    /// [`UtxoAccumulator`] Extractor Index Type
+    type UtxoAccumulatorExtractorIndex: Sample;
 
     /// Asset Map Type
     type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
@@ -973,7 +983,10 @@ where
                     identifier,
                     Asset::<C>::new(asset_id.clone(), Default::default()),
                 )
-                .upgrade_unchecked(Default::default()),
+                .upgrade_unchecked(MembershipProof::new(
+                    Default::default(),
+                    self.utxo_accumulator.extract(self.rng.gen()),
+                )), // TODO: don't point at zero root, choose an existing one.
             );
         }
         Ok(senders)

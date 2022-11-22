@@ -49,6 +49,18 @@ where
     type Output = T::Output;
 }
 
+/// Extract Output
+pub trait ExtractOutput {
+    /// Index Type
+    type Index;
+
+    /// Output Type
+    type Output;
+
+    /// Extracts an [`Output`](Self::Output) from `self` and `randomness`.
+    fn extract(&self, index: Self::Index) -> Self::Output;
+}
+
 /// Accumulator Item Type
 pub type Item<T> = <T as Types>::Item;
 

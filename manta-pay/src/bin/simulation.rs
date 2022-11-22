@@ -18,11 +18,11 @@
 
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use manta_accounting::transfer::canonical::generate_context;
-use manta_crypto::rand::{OsRng, Rand, ChaCha20Rng, SeedableRng};
+use manta_crypto::rand::{ChaCha20Rng, OsRng, Rand, SeedableRng};
 use manta_pay::{config::FullParametersRef, simulation::Simulation};
 
 // cargo run --release --package manta-pay --all-features --bin simulation <number_of_actors> <number_of_steps> <number_of_asset_ids> <initial_balance>
-// cargo run --release --package manta-pay --all-features --bin simulation 100 100000000 5 1000
+// cargo run --release --package manta-pay --all-features --bin simulation 3 100000000 1 1000 > simulation_output_1
 
 /// Runs the Manta Pay simulation.
 pub fn main() {

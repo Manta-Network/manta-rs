@@ -100,6 +100,7 @@ impl wallet::signer::Configuration for Config {
     type Account = crate::key::KeySecret<Testnet>;
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
+    type UtxoAccumulatorExtractorIndex = u8;
     type AssetMap = HashAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
     type Rng = ChaCha20Rng;
 }
