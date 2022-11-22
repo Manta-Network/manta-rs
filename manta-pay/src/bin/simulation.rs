@@ -22,7 +22,7 @@ use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{config::FullParametersRef, simulation::Simulation};
 
 // cargo run --release --package manta-pay --all-features --bin simulation <number_of_actors> <number_of_steps> <number_of_asset_ids> <initial_balance>
-// cargo run --release --package manta-pay --all-features --bin simulation 10 100000000 3 1000 > simulation_output_1
+// cargo run --release --package manta-pay --all-features --bin simulation 5 100000000 3 1000 > simulation_output_1
 
 /// Runs the Manta Pay simulation.
 pub fn main() {

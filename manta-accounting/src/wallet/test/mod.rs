@@ -846,7 +846,7 @@ where
                         transaction,
                     } => {
                         let action = Action::as_post_type(is_self, is_maximal, &transaction);
-                        let mut retries = 5; // TODO: Make this parameter tunable based on concurrency.
+                        let mut retries = 0; // TODO: Make this parameter tunable based on concurrency.
                         loop {
                             let event = Event {
                                 action,
