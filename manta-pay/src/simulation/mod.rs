@@ -153,7 +153,7 @@ impl Simulation {
         // FIXME: rng
         assert!(
             self.config()
-                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |i| ChaCha20Rng::from_seed([i as u8; 32]), |event| {
+                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |_| ChaCha20Rng::from_entropy(), |event| {
                     let event = format!("{event:?}\n");
                     async move {
                         let _ = write_stdout(event.as_bytes()).await;

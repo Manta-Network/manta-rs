@@ -18,19 +18,16 @@
 
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use manta_accounting::transfer::canonical::generate_context;
-use manta_crypto::rand::{ChaCha20Rng, OsRng, Rand, SeedableRng};
+use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{config::FullParametersRef, simulation::Simulation};
 
 // cargo run --release --package manta-pay --all-features --bin simulation <number_of_actors> <number_of_steps> <number_of_asset_ids> <initial_balance>
-// cargo run --release --package manta-pay --all-features --bin simulation 3 100000000 1 1000 > simulation_output_1
+// cargo run --release --package manta-pay --all-features --bin simulation 10 100000000 3 1000 > simulation_output_1
 
 /// Runs the Manta Pay simulation.
 pub fn main() {
     let simulation = Simulation::parse();
     let mut rng = OsRng;
-    let seed = rng.gen();
-    println!("Seed: {seed:?}");
-    let mut rng = ChaCha20Rng::from_seed(seed);
     let parameters = rng.gen();
     let utxo_accumulator_model = rng.gen();
     let (proving_context, verifying_context) = generate_context(
