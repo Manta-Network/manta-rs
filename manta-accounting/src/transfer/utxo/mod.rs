@@ -34,11 +34,12 @@ use manta_util::cmp::IndependenceContext;
 pub mod auth;
 pub mod v1;
 pub mod v2;
+pub mod v3;
 
 #[doc(inline)]
-pub use v2 as protocol;
+pub use v3 as protocol;
 
-use self::v2::ViewingKeyDerivationFunction;
+use protocol::ViewingKeyDerivationFunction;
 
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
@@ -239,6 +240,36 @@ pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType 
     }
 }
 
+/// Utxo Reconstruction
+pub trait UtxoReconstruct: NoteOpen {
+    /// Check if `utxo` is consistent with `asset` and `identifier`, which come from
+    /// decrypting a Note.
+    fn utxo_check(
+        &self,
+        utxo: &Self::Utxo,
+        asset: &Self::Asset,
+        identifier: &Self::Identifier,
+        decryption_key: &Self::DecryptionKey,
+    ) -> bool;
+
+    /// Check if `utxo` is consistent with a `note` and tries to open `note`.
+    /// Mainly used when `note` is of type LightIncomingNote which is computed off-circuit.
+    fn open_with_check(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        utxo: &Self::Utxo,
+        note: Self::Note,
+    ) -> Option<(Self::Identifier, Self::Asset)> {
+        let (identifier, asset) = self.open(decryption_key, utxo, note)?;
+
+        if self.utxo_check(utxo, &asset, &identifier, decryption_key) {
+            Some((identifier, asset))
+        } else {
+            None
+        }
+    }
+}
+
 /// Query Identifier Value
 pub trait QueryIdentifier: IdentifierType + UtxoType {
     /// Queries the underlying identifier from `self` and `utxo`.
@@ -394,6 +425,12 @@ where
             utxo_accumulator_model,
             __: PhantomData,
         }
+    }
+
+    /// Loads the [`FullParameters`] from `manta-parameters`.
+    #[inline]
+    pub fn load() -> Self {
+        todo!()
     }
 }
 

@@ -370,6 +370,11 @@ pub mod pay {
                 "pay/testnet/parameters/incoming-base-encryption-scheme",
             );
             define_dat!(
+                LightIncomingBaseEncryptionScheme,
+                "Light Incoming Base Encryption Scheme Parameters",
+                "pay/testnet/parameters/light-incoming-base-encryption-scheme",
+            );
+            define_dat!(
                 ViewingKeyDerivationFunction,
                 "Viewing Key Derivation Function Parameters",
                 "pay/testnet/parameters/viewing-key-derivation-function",

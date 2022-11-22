@@ -24,14 +24,14 @@
 //!
 //! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
-use crate::{config::utxo::v2 as protocol_pay, crypto::constraint::arkworks::Fp};
+use crate::{config::utxo::protocol_pay, crypto::constraint::arkworks::Fp};
 use alloc::{format, string::String};
 use core::marker::PhantomData;
 use manta_accounting::{
     key::{self, AccountIndex, DeriveAddresses},
     transfer::{
         self,
-        utxo::{address_from_spending_key, v2 as protocol},
+        utxo::{address_from_spending_key, protocol},
     },
 };
 use manta_crypto::{

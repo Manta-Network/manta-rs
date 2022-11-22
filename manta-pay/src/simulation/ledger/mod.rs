@@ -20,7 +20,7 @@
 // TODO: Add in some concurrency (and measure how much we need it).
 
 use crate::config::{
-    utxo::v2::{
+    utxo::protocol_pay::{
         AssetId, AssetValue, Checkpoint, FullIncomingNote, MerkleTreeConfiguration, Parameters,
     },
     Config, MultiVerifyingContext, Nullifier, ProofSystem, TransferPost, Utxo,

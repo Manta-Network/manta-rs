@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! UTXO Version 2 Protocol
+//! UTXO Version 3 Protocol
 
 use crate::{
     asset,
@@ -53,7 +53,7 @@ use manta_crypto::{
 };
 use manta_util::{
     cmp::Independence,
-    codec::{Encode, Write},
+    codec::{Decode, DecodeError, Encode, Write},
     convert::Field,
 };
 
@@ -61,7 +61,7 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 /// UTXO Version Number
-pub const VERSION: u8 = 2;
+pub const VERSION: u8 = 3;
 
 /// UTXO Visibility
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -909,7 +909,7 @@ impl<C> utxo::NullifierType for Parameters<C>
 where
     C: Configuration<Bool = bool>,
 {
-    type Nullifier = Nullifier<C>;
+    type Nullifier = FullNullifier<C>;
 }
 
 impl<C> utxo::IdentifierType for Parameters<C>
@@ -1176,14 +1176,27 @@ where
         utxo_membership_proof: &UtxoMembershipProof<C>,
         compiler: &mut (),
     ) -> (Self::Asset, Self::Nullifier) {
-        self.base.well_formed_asset(
+        let (asset, commitment) = self.base.well_formed_asset(
             utxo_accumulator_model,
             authorization_context,
             secret,
             utxo,
             utxo_membership_proof,
             compiler,
-        )
+        );
+        let receiving_key = authorization_context.receiving_key(
+            self.base.group_generator.generator(),
+            &self.base.viewing_key_derivation_function,
+            compiler,
+        );
+        let outgoing_note = secret.outgoing_note(
+            self.base.group_generator.generator(),
+            &self.base.outgoing_base_encryption_scheme,
+            receiving_key,
+            &asset,
+            compiler,
+        );
+        (asset, FullNullifier::new(commitment, outgoing_note))
     }
 
     #[inline]
@@ -1193,7 +1206,8 @@ where
         rhs: &Self::Nullifier,
         compiler: &mut (),
     ) {
-        self.base.assert_equal_nullifiers(lhs, rhs, compiler)
+        self.base
+            .assert_equal_nullifiers(&lhs.nullifier, &rhs.nullifier, compiler)
     }
 }
 
@@ -1264,7 +1278,7 @@ where
         (
             secret,
             utxo,
-            Nullifier::new(nullifier_commitment, outgoing_note),
+            FullNullifier::new(Nullifier::new(nullifier_commitment), outgoing_note),
         )
     }
 }
@@ -2373,18 +2387,6 @@ where
         let utxo_commitment =
             self.utxo_commitment(&parameters.utxo_commitment_scheme, receiving_key, compiler);
         compiler.assert_eq(&utxo.commitment, &utxo_commitment);
-        let receiving_key = authorization_context.receiving_key(
-            parameters.group_generator.generator(),
-            &parameters.viewing_key_derivation_function,
-            compiler,
-        );
-        let outgoing_note = self.outgoing_note(
-            parameters.group_generator.generator(),
-            &parameters.outgoing_base_encryption_scheme,
-            receiving_key,
-            &asset,
-            compiler,
-        );
         let item = parameters.item_hash(utxo, compiler);
         let has_valid_membership = &asset.value.is_zero(compiler).bitor(
             utxo_membership_proof.verify(utxo_accumulator_model, &item, compiler),
@@ -2396,7 +2398,7 @@ where
             &item,
             compiler,
         );
-        (asset, Nullifier::new(nullifier_commitment, outgoing_note))
+        (asset, Nullifier::new(nullifier_commitment))
     }
 }
 
@@ -2462,8 +2464,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "NullifierCommitment<C, COM>: Deserialize<'de>, OutgoingNote<C, COM>: Deserialize<'de>",
-            serialize = "NullifierCommitment<C, COM>: Serialize, OutgoingNote<C, COM>: Serialize"
+            deserialize = "NullifierCommitment<C, COM>: Deserialize<'de>",
+            serialize = "NullifierCommitment<C, COM>: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -2471,55 +2473,41 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "NullifierCommitment<C, COM>: Clone, OutgoingNote<C, COM>: Clone"),
-    Debug(bound = "NullifierCommitment<C, COM>: Debug, OutgoingNote<C, COM>: Debug"),
-    Eq(bound = "NullifierCommitment<C, COM>: cmp::Eq, OutgoingNote<C, COM>: cmp::Eq"),
-    Hash(bound = "NullifierCommitment<C, COM>: Hash, OutgoingNote<C, COM>: Hash"),
-    PartialEq(
-        bound = "NullifierCommitment<C, COM>: cmp::PartialEq, OutgoingNote<C, COM>: cmp::PartialEq"
-    )
+    Clone(bound = "NullifierCommitment<C, COM>: Clone"),
+    Debug(bound = "NullifierCommitment<C, COM>: Debug"),
+    Eq(bound = "NullifierCommitment<C, COM>: cmp::Eq"),
+    Hash(bound = "NullifierCommitment<C, COM>: Hash"),
+    PartialEq(bound = "NullifierCommitment<C, COM>: cmp::PartialEq")
 )]
 pub struct Nullifier<C, COM = ()>
 where
-    C: BaseConfiguration<COM>,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     /// Nullifier Commitment
     pub commitment: NullifierCommitment<C, COM>,
-
-    /// Outgoing Note
-    pub outgoing_note: OutgoingNote<C, COM>,
 }
 
 impl<C, COM> Nullifier<C, COM>
 where
-    C: BaseConfiguration<COM>,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
-    /// Builds a new [`Nullifier`] from `commitment` and `outgoing_note`.
+    /// Builds a new [`Nullifier`] from `commitment`.
     #[inline]
-    pub fn new(
-        commitment: NullifierCommitment<C, COM>,
-        outgoing_note: OutgoingNote<C, COM>,
-    ) -> Self {
-        Self {
-            commitment,
-            outgoing_note,
-        }
+    pub fn new(commitment: NullifierCommitment<C, COM>) -> Self {
+        Self { commitment }
     }
 }
 
 impl<C, COM> PartialEq<Self, COM> for Nullifier<C, COM>
 where
-    C: BaseConfiguration<COM>,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     #[inline]
     fn eq(&self, rhs: &Self, compiler: &mut COM) -> Bool<COM> {
-        self.commitment.eq(&rhs.commitment, compiler).bitand(
-            self.outgoing_note.eq(&rhs.outgoing_note, compiler),
-            compiler,
-        )
+        self.commitment.eq(&rhs.commitment, compiler)
     }
 
     #[inline]
@@ -2528,6 +2516,93 @@ where
         COM: Assert,
     {
         compiler.assert_eq(&self.commitment, &rhs.commitment);
+    }
+}
+
+/// Full Nullifier
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Nullifier<C>: Deserialize<'de>, OutgoingNote<C>: Deserialize<'de>",
+            serialize = "Nullifier<C>: Serialize, OutgoingNote<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Nullifier<C>: Clone, OutgoingNote<C>: Clone"),
+    Debug(bound = "Nullifier<C>: Debug, OutgoingNote<C>: Debug"),
+    Eq(bound = "Nullifier<C>: cmp::Eq, OutgoingNote<C>: cmp::Eq"),
+    Hash(bound = "Nullifier<C>: Hash, OutgoingNote<C>: Hash"),
+    PartialEq(bound = "Nullifier<C>: cmp::PartialEq, OutgoingNote<C>: cmp::PartialEq")
+)]
+pub struct FullNullifier<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    /// Nullifier
+    pub nullifier: Nullifier<C>,
+
+    /// Outgoing Note
+    pub outgoing_note: OutgoingNote<C>,
+}
+
+impl<C> FullNullifier<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    /// Builds a new [`FullNullifier`] from `commitment` and `outgoing_note`.
+    #[inline]
+    pub fn new(nullifier: Nullifier<C>, outgoing_note: OutgoingNote<C>) -> Self {
+        Self {
+            nullifier,
+            outgoing_note,
+        }
+    }
+}
+
+impl<C> AsRef<Nullifier<C>> for FullNullifier<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn as_ref(&self) -> &Nullifier<C> {
+        &self.nullifier
+    }
+}
+
+impl<C> From<FullNullifier<C>> for Nullifier<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn from(note: FullNullifier<C>) -> Self {
+        note.nullifier
+    }
+}
+
+impl<C> PartialEq<Self> for FullNullifier<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn eq(&self, rhs: &Self, compiler: &mut ()) -> C::Bool {
+        self.nullifier
+            .commitment
+            .eq(&rhs.nullifier.commitment, compiler)
+            .bitand(
+                self.outgoing_note.eq(&rhs.outgoing_note, compiler),
+                compiler,
+            )
+    }
+
+    #[inline]
+    fn assert_equal(&self, rhs: &Self, compiler: &mut ()) {
+        compiler.assert_eq(&self.nullifier.commitment, &rhs.nullifier.commitment);
         compiler.assert_eq(&self.outgoing_note, &rhs.outgoing_note);
     }
 }
@@ -2535,40 +2610,38 @@ where
 impl<C, COM> Variable<Public, COM> for Nullifier<C, COM>
 where
     C: BaseConfiguration<COM> + Constant<COM>,
-    C::Type: BaseConfiguration<Bool = bool>,
+    C::Type: Configuration<Bool = bool>,
     COM: Has<bool, Type = C::Bool>,
     NullifierCommitment<C, COM>: Variable<Public, COM, Type = NullifierCommitment<C::Type>>,
-    OutgoingNote<C, COM>: Variable<Public, COM, Type = OutgoingNote<C::Type>>,
 {
-    type Type = Nullifier<C::Type>;
+    type Type = FullNullifier<C::Type>;
 
     #[inline]
     fn new_unknown(compiler: &mut COM) -> Self {
-        Self::new(compiler.allocate_unknown(), compiler.allocate_unknown())
+        Self::new(compiler.allocate_unknown())
     }
 
     #[inline]
     fn new_known(this: &Self::Type, compiler: &mut COM) -> Self {
-        Self::new(
-            this.commitment.as_known(compiler),
-            this.outgoing_note.as_known(compiler),
-        )
+        Self::new(this.nullifier.commitment.as_known(compiler))
     }
 }
 
-impl<C> Independence<utxo::NullifierIndependence> for Nullifier<C>
+impl<C> Independence<utxo::NullifierIndependence> for FullNullifier<C>
 where
-    C: BaseConfiguration<Bool = bool>,
+    C: Configuration<Bool = bool>,
 {
     #[inline]
     fn is_independent(&self, rhs: &Self) -> bool {
-        self.commitment.ne(&rhs.commitment, &mut ())
+        self.nullifier
+            .commitment
+            .ne(&rhs.nullifier.commitment, &mut ())
     }
 }
 
-impl<C> Encode for Nullifier<C>
+impl<C> Encode for FullNullifier<C>
 where
-    C: BaseConfiguration<Bool = bool>,
+    C: Configuration<Bool = bool>,
     NullifierCommitment<C>: Encode,
     OutgoingNote<C>: Encode,
 {
@@ -2577,20 +2650,86 @@ where
     where
         W: Write,
     {
-        self.commitment.encode(&mut writer)?;
+        self.nullifier.commitment.encode(&mut writer)?;
         self.outgoing_note.encode(&mut writer)?;
         Ok(())
     }
 }
 
-impl<C, P> Input<P> for Nullifier<C>
+/// Full Nullifier Decode Error
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Clone, <OutgoingNote<C> as Decode>::Error: Clone"
+    ),
+    Copy(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Copy, <OutgoingNote<C> as Decode>::Error: Copy"
+    ),
+    Debug(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Debug, <OutgoingNote<C> as Decode>::Error: Debug"
+    ),
+    Eq(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Eq, <OutgoingNote<C> as Decode>::Error: Eq"
+    ),
+    Hash(
+        bound = "<NullifierCommitment<C> as Decode>::Error: Hash, <OutgoingNote<C> as Decode>::Error: Hash"
+    ),
+    PartialEq(
+        bound = "<NullifierCommitment<C> as Decode>::Error: cmp::PartialEq, <OutgoingNote<C> as Decode>::Error: cmp::PartialEq"
+    )
+)]
+pub enum FullNullifierDecodeError<C>
 where
-    C: BaseConfiguration<Bool = bool>,
-    P: HasInput<NullifierCommitment<C>> + HasInput<OutgoingNote<C>> + ?Sized,
+    C: Configuration<Bool = bool>,
+    NullifierCommitment<C>: Decode,
+    OutgoingNote<C>: Decode,
+{
+    /// Nullifier Commitment Error
+    CommitmentDecodeError(<NullifierCommitment<C> as Decode>::Error),
+
+    /// Note Error
+    NoteDecodeError(<OutgoingNote<C> as Decode>::Error),
+}
+
+impl<C> Decode for FullNullifier<C>
+where
+    C: Configuration<Bool = bool>,
+    NullifierCommitment<C>: Decode,
+    OutgoingNote<C>: Decode,
+{
+    type Error = FullNullifierDecodeError<C>;
+
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: manta_util::codec::Read,
+    {
+        let nullifier_commitment =
+            NullifierCommitment::<C>::decode(&mut reader).map_err(|e| match e {
+                DecodeError::Decode(r) => {
+                    DecodeError::Decode(FullNullifierDecodeError::CommitmentDecodeError(r))
+                }
+                DecodeError::Read(e) => DecodeError::Read(e),
+            })?;
+        let outgoing_note = OutgoingNote::<C>::decode(&mut reader).map_err(|e| match e {
+            DecodeError::Decode(r) => {
+                DecodeError::Decode(FullNullifierDecodeError::NoteDecodeError(r))
+            }
+            DecodeError::Read(e) => DecodeError::Read(e),
+        })?;
+        Ok(Self {
+            nullifier: Nullifier::new(nullifier_commitment),
+            outgoing_note,
+        })
+    }
+}
+
+impl<C, P> Input<P> for FullNullifier<C>
+where
+    C: Configuration<Bool = bool>,
+    P: HasInput<NullifierCommitment<C>> + ?Sized,
 {
     #[inline]
     fn extend(&self, input: &mut P::Input) {
-        P::extend(input, &self.commitment);
-        P::extend(input, &self.outgoing_note);
+        P::extend(input, &self.nullifier.commitment);
     }
 }

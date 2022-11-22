@@ -36,7 +36,7 @@ use blake2::{
     digest::{Update, VariableOutput},
     Blake2s256, Blake2sVar, Digest,
 };
-use core::{fmt::Debug, marker::PhantomData};
+use core::{convert::Infallible, fmt::Debug, marker::PhantomData};
 use manta_accounting::{
     asset::{self, Asset},
     wallet::ledger,
@@ -46,7 +46,8 @@ use manta_crypto::{
     algebra::HasGenerator,
     arkworks::{
         algebra::{affine_point_as_bytes, ScalarVar},
-        ff::{try_into_u128, PrimeField, ToConstraintField},
+        ec::ProjectiveCurve,
+        ff::{try_into_u128, PrimeField},
         r1cs_std::R1CSVar,
         serialize::CanonicalSerialize,
     },
@@ -163,6 +164,9 @@ pub type NoteVar = utxo::Note<ParametersVar>;
 
 ///
 pub type IncomingNote = protocol::IncomingNote<Config>;
+
+///
+pub type LightIncomingNote = protocol::LightIncomingNote<Config>;
 
 ///
 pub type FullIncomingNote = protocol::FullIncomingNote<Config>;
@@ -732,8 +736,52 @@ pub type AES = aes::FixedNonceAesGcm<AES_PLAINTEXT_SIZE, AES_CIPHERTEXT_SIZE>;
 
 ///
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Default)]
+#[derivative(Clone, Default, Debug)]
 pub struct IncomingAESEncryptionScheme<COM = ()>(PhantomData<COM>);
+
+impl<COM> Constant<COM> for IncomingAESEncryptionScheme<COM> {
+    type Type = IncomingAESEncryptionScheme;
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        let _ = (this, compiler);
+        Default::default()
+    }
+}
+
+impl<COM> Sample for IncomingAESEncryptionScheme<COM> {
+    #[inline]
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        let _ = (distribution, rng);
+        Default::default()
+    }
+}
+
+impl<COM> Decode for IncomingAESEncryptionScheme<COM> {
+    type Error = Infallible;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let _ = reader;
+        Ok(Default::default())
+    }
+}
+
+impl<COM> Encode for IncomingAESEncryptionScheme<COM> {
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        let _ = writer;
+        Ok(())
+    }
+}
 
 impl<COM> encryption::HeaderType for IncomingAESEncryptionScheme<COM> {
     type Header = <AES as encryption::HeaderType>::Header;
@@ -822,14 +870,9 @@ impl encryption::convert::key::Encryption for IncomingAESConverter {
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut ()) -> Self::TargetEncryptionKey {
         let key = source.to_vec();
-        assert_eq!(
-            key.len(),
-            32,
-            "Wrong key length: {}. Expected 32 bytes.",
-            key.len()
-        );
-        key.try_into()
-            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, key);
+        hasher.finalize().into()
     }
 }
 
@@ -838,25 +881,17 @@ impl encryption::convert::key::Encryption<Compiler> for IncomingAESConverter<Com
 
     #[inline]
     fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
-        let key = Fp(*source
+        let mut key = [0u8; 32];
+        source
             .0
             .value()
             .expect("Getting the group element from GroupVar is not allowed to fail.")
-            .to_field_elements()
-            .expect("Getting the field elements from a group element is not allowed to fail.")
-            .get(0)
-            .expect("Vector of group elements in not empty"))
-        .to_vec();
-        // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
-        // to reconstruct source from the key.
-        assert_eq!(
-            key.len(),
-            32,
-            "Wrong key length: {}. Expected 32 bytes.",
-            key.len()
-        );
-        key.try_into()
-            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+            .into_affine()
+            .serialize(&mut key[..])
+            .expect("Serialization error");
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, key);
+        hasher.finalize().into()
     }
 }
 
@@ -874,14 +909,9 @@ impl encryption::convert::key::Decryption for IncomingAESConverter {
     #[inline]
     fn as_target(source: &Self::DecryptionKey, _: &mut ()) -> Self::TargetDecryptionKey {
         let key = source.to_vec();
-        assert_eq!(
-            key.len(),
-            32,
-            "Wrong key length: {}. Expected 32 bytes.",
-            key.len()
-        );
-        key.try_into()
-            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, key);
+        hasher.finalize().into()
     }
 }
 
@@ -890,25 +920,17 @@ impl encryption::convert::key::Decryption<Compiler> for IncomingAESConverter<Com
 
     #[inline]
     fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
-        let key = Fp(*source
+        let mut key = [0u8; 32];
+        source
             .0
             .value()
             .expect("Getting the group element from GroupVar is not allowed to fail.")
-            .to_field_elements()
-            .expect("Getting the field elements from a group element is not allowed to fail.")
-            .get(0)
-            .expect("Vector of group elements in not empty"))
-        .to_vec();
-        // Note: we only keep the `x` coordinate, so we still need 1 bit (the sign of the `y` coordinate)
-        // to reconstruct source from the key.
-        assert_eq!(
-            key.len(),
-            32,
-            "Wrong key length: {}. Expected 32 bytes.",
-            key.len()
-        );
-        key.try_into()
-            .expect("Getting a [u8; 32] array from a vector of length 32 should not fail.")
+            .into_affine()
+            .serialize(&mut key[..])
+            .expect("Serialization error");
+        let mut hasher = Blake2s256::new();
+        Digest::update(&mut hasher, key);
+        hasher.finalize().into()
     }
 }
 
@@ -1990,200 +2012,284 @@ impl From<Checkpoint> for RawCheckpoint {
     }
 }
 
-/// Test
-#[cfg(test)]
-pub mod test {
-    use crate::{
-        config::{
-            utxo::v2::{
-                Config, IncomingAESConverter, IncomingBaseAES, IncomingBaseEncryptionScheme,
-                AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE,
-            },
-            Compiler, ConstraintField, Group, GroupVar,
-        },
-        crypto::constraint::arkworks::Fp,
-    };
-    use manta_accounting::{asset, transfer::utxo::v2 as protocol};
-    use manta_crypto::{
-        arkworks::constraint::FpVar,
-        eclair::{
-            alloc::{mode::Secret, Allocate},
-            num::U128,
-        },
-        encryption::{
-            convert::{
-                key::Encryption,
-                plaintext::{Forward, Reverse},
-            },
-            Decrypt, EmptyHeader, Encrypt,
-        },
-        rand::{OsRng, Sample},
-    };
+// /// Test
+// #[cfg(test)]
+// pub mod test {
+//     use crate::{
+//         config::{
+//             utxo::v2::{
+//                 Config, IncomingAESConverter, IncomingBaseAES, IncomingBaseEncryptionScheme,
+//                 AES_CIPHERTEXT_SIZE, AES_PLAINTEXT_SIZE,
+//             },
+//             Compiler, ConstraintField, EmbeddedScalar, Group, GroupVar,
+//         },
+//         crypto::constraint::arkworks::Fp,
+//     };
+//     use manta_accounting::{
+//         asset,
+//         transfer::utxo::{
+//             address_from_spending_key, v2 as protocol, v2::Visibility, UtxoReconstruct,
+//         },
+//     };
+//     use manta_crypto::{
+//         algebra::{HasGenerator, ScalarMul},
+//         arkworks::constraint::FpVar,
+//         eclair::{
+//             alloc::{mode::Secret, Allocate},
+//             num::U128,
+//         },
+//         encryption::{
+//             convert::{
+//                 key::Encryption,
+//                 plaintext::{Forward, Reverse},
+//             },
+//             Decrypt, EmptyHeader, Encrypt,
+//         },
+//         rand::{OsRng, Sample},
+//     };
+//     use protocol::{
+//         AddressPartitionFunction as AddressPartitionFunctionTrait,
+//         UtxoCommitmentScheme as UtxoCommitmentSchemeTrait,
+//         ViewingKeyDerivationFunction as ViewingKeyDerivationFunctionTrait,
+//     };
 
-    /// Checks that the length of the fixed-nonce AES plaintext is 80. Checks that converting back returns
-    /// what we started with.
-    #[test]
-    fn check_plaintext_conversion() {
-        let mut rng = OsRng;
-        let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
-        let asset_id = Fp::<ConstraintField>::gen(&mut rng);
-        let asset_value = u128::gen(&mut rng);
-        let source_plaintext = protocol::IncomingPlaintext::<Config>::new(
-            utxo_commitment_randomness,
-            asset::Asset {
-                id: asset_id,
-                value: asset_value,
-            },
-        );
-        let final_array = <IncomingAESConverter as Forward>::as_target(&source_plaintext, &mut ());
-        assert_eq!(
-            AES_PLAINTEXT_SIZE,
-            final_array.len(),
-            "Length doesn't match, should be {} but is {}",
-            AES_PLAINTEXT_SIZE,
-            final_array.len()
-        );
-        let new_source = IncomingAESConverter::into_source(Some(final_array), &mut ())
-            .expect("Converting back returns None.");
-        let new_randomness = new_source.utxo_commitment_randomness;
-        let (new_asset_id, new_asset_value) = (new_source.asset.id, new_source.asset.value);
-        assert_eq!(
-            new_randomness, utxo_commitment_randomness,
-            "Randomness is not the same"
-        );
-        assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
-        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
-    }
+//     /// Checks that the length of the fixed-nonce AES plaintext is 80. Checks that converting back returns
+//     /// what we started with.
+//     #[test]
+//     fn check_plaintext_conversion() {
+//         let mut rng = OsRng;
+//         let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_id = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_value = u128::gen(&mut rng);
+//         let source_plaintext = protocol::IncomingPlaintext::<Config>::new(
+//             utxo_commitment_randomness,
+//             asset::Asset {
+//                 id: asset_id,
+//                 value: asset_value,
+//             },
+//         );
+//         let final_array = <IncomingAESConverter as Forward>::as_target(&source_plaintext, &mut ());
+//         assert_eq!(
+//             AES_PLAINTEXT_SIZE,
+//             final_array.len(),
+//             "Length doesn't match, should be {} but is {}",
+//             AES_PLAINTEXT_SIZE,
+//             final_array.len()
+//         );
+//         let new_source = IncomingAESConverter::into_source(Some(final_array), &mut ())
+//             .expect("Converting back returns None.");
+//         let new_randomness = new_source.utxo_commitment_randomness;
+//         let (new_asset_id, new_asset_value) = (new_source.asset.id, new_source.asset.value);
+//         assert_eq!(
+//             new_randomness, utxo_commitment_randomness,
+//             "Randomness is not the same"
+//         );
+//         assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
+//         assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
+//     }
 
-    /// Same but w.r.t. compiler
-    #[test]
-    fn check_plaintext_conversion_r1cs() {
-        let mut cs = Compiler::for_proofs();
-        let mut rng = OsRng;
-        let base_utxo = Fp::<ConstraintField>::gen(&mut rng);
-        let utxo_commitment_randomness =
-            base_utxo.as_known::<Secret, FpVar<ConstraintField>>(&mut cs);
-        let base_asset_id = Fp::<ConstraintField>::gen(&mut rng);
-        let asset_id = base_asset_id.as_known::<Secret, FpVar<ConstraintField>>(&mut cs);
-        let base_asset_value = u128::gen(&mut rng);
-        let asset_value =
-            base_asset_value.as_known::<Secret, U128<FpVar<ConstraintField>>>(&mut cs);
-        let source_plaintext = protocol::IncomingPlaintext::<Config<Compiler>, Compiler>::new(
-            utxo_commitment_randomness,
-            asset::Asset {
-                id: asset_id,
-                value: asset_value,
-            },
-        );
-        let final_array = <IncomingAESConverter<Compiler> as Forward<Compiler>>::as_target(
-            &source_plaintext,
-            &mut cs,
-        );
-        assert_eq!(
-            AES_PLAINTEXT_SIZE,
-            final_array.len(),
-            "Length doesn't match, should be {} but is {}",
-            AES_PLAINTEXT_SIZE,
-            final_array.len()
-        );
-    }
+//     /// Same but w.r.t. compiler
+//     #[test]
+//     fn check_plaintext_conversion_r1cs() {
+//         let mut cs = Compiler::for_proofs();
+//         let mut rng = OsRng;
+//         let base_utxo = Fp::<ConstraintField>::gen(&mut rng);
+//         let utxo_commitment_randomness =
+//             base_utxo.as_known::<Secret, FpVar<ConstraintField>>(&mut cs);
+//         let base_asset_id = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_id = base_asset_id.as_known::<Secret, FpVar<ConstraintField>>(&mut cs);
+//         let base_asset_value = u128::gen(&mut rng);
+//         let asset_value =
+//             base_asset_value.as_known::<Secret, U128<FpVar<ConstraintField>>>(&mut cs);
+//         let source_plaintext = protocol::IncomingPlaintext::<Config<Compiler>, Compiler>::new(
+//             utxo_commitment_randomness,
+//             asset::Asset {
+//                 id: asset_id,
+//                 value: asset_value,
+//             },
+//         );
+//         let final_array = <IncomingAESConverter<Compiler> as Forward<Compiler>>::as_target(
+//             &source_plaintext,
+//             &mut cs,
+//         );
+//         assert_eq!(
+//             AES_PLAINTEXT_SIZE,
+//             final_array.len(),
+//             "Length doesn't match, should be {} but is {}",
+//             AES_PLAINTEXT_SIZE,
+//             final_array.len()
+//         );
+//     }
 
-    /// Checks the encryption key conversion is properly executed.
-    #[test]
-    fn check_encryption_key_conversion() {
-        let mut rng = OsRng;
-        let group_element = Group::gen(&mut rng);
-        <IncomingAESConverter as Encryption>::as_target(&group_element, &mut ());
-    }
+//     /// Checks the encryption key conversion is properly executed.
+//     #[test]
+//     fn check_encryption_key_conversion() {
+//         let mut rng = OsRng;
+//         let group_element = Group::gen(&mut rng);
+//         <IncomingAESConverter as Encryption>::as_target(&group_element, &mut ());
+//     }
 
-    /// Checks the encryption key conversion is properly executed for Compiler.
-    #[test]
-    fn check_encryption_key_conversion_r1cs() {
-        let mut cs = Compiler::for_proofs();
-        let mut rng = OsRng;
-        let base_group = Group::gen(&mut rng);
-        let group = base_group.as_known::<Secret, GroupVar>(&mut cs);
-        <IncomingAESConverter<Compiler> as Encryption<Compiler>>::as_target(&group, &mut cs);
-    }
+//     /// Checks the encryption key conversion is properly executed for Compiler.
+//     #[test]
+//     fn check_encryption_key_conversion_r1cs() {
+//         let mut cs = Compiler::for_proofs();
+//         let mut rng = OsRng;
+//         let base_group = Group::gen(&mut rng);
+//         let group = base_group.as_known::<Secret, GroupVar>(&mut cs);
+//         <IncomingAESConverter<Compiler> as Encryption<Compiler>>::as_target(&group, &mut cs);
+//     }
 
-    /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
-    /// decryption is the inverse of encryption.
-    #[test]
-    fn check_encryption() {
-        let mut rng = OsRng;
-        let encryption_key = Group::gen(&mut rng);
-        let header = EmptyHeader::default();
-        let base_aes = IncomingBaseAES::default();
-        let randomness = ();
-        let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
-        let asset_id = Fp::<ConstraintField>::gen(&mut rng);
-        let asset_value = u128::gen(&mut rng);
-        let plaintext = protocol::IncomingPlaintext::<Config>::new(
-            utxo_commitment_randomness,
-            asset::Asset {
-                id: asset_id,
-                value: asset_value,
-            },
-        );
-        let ciphertext =
-            base_aes.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
-        assert_eq!(
-            AES_CIPHERTEXT_SIZE,
-            ciphertext.len(),
-            "Ciphertext length doesn't match, should be {} but is {}",
-            AES_CIPHERTEXT_SIZE,
-            ciphertext.len()
-        );
-        let decrypted_ciphertext = base_aes
-            .decrypt(&encryption_key, &header, &ciphertext, &mut ())
-            .expect("Decryption returned None.");
-        let new_randomness = decrypted_ciphertext.utxo_commitment_randomness;
-        let (new_asset_id, new_asset_value) = (
-            decrypted_ciphertext.asset.id,
-            decrypted_ciphertext.asset.value,
-        );
-        assert_eq!(
-            new_randomness, utxo_commitment_randomness,
-            "Randomness is not the same"
-        );
-        assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
-        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
-    }
+//     /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
+//     /// decryption is the inverse of encryption.
+//     #[test]
+//     fn check_encryption() {
+//         let mut rng = OsRng;
+//         let encryption_key = Group::gen(&mut rng);
+//         let header = EmptyHeader::default();
+//         let base_aes = IncomingBaseAES::default();
+//         let randomness = ();
+//         let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_id = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_value = u128::gen(&mut rng);
+//         let plaintext = protocol::IncomingPlaintext::<Config>::new(
+//             utxo_commitment_randomness,
+//             asset::Asset {
+//                 id: asset_id,
+//                 value: asset_value,
+//             },
+//         );
+//         let ciphertext =
+//             base_aes.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
+//         assert_eq!(
+//             AES_CIPHERTEXT_SIZE,
+//             ciphertext.len(),
+//             "Ciphertext length doesn't match, should be {} but is {}",
+//             AES_CIPHERTEXT_SIZE,
+//             ciphertext.len()
+//         );
+//         let decrypted_ciphertext = base_aes
+//             .decrypt(&encryption_key, &header, &ciphertext, &mut ())
+//             .expect("Decryption returned None.");
+//         let new_randomness = decrypted_ciphertext.utxo_commitment_randomness;
+//         let (new_asset_id, new_asset_value) = (
+//             decrypted_ciphertext.asset.id,
+//             decrypted_ciphertext.asset.value,
+//         );
+//         assert_eq!(
+//             new_randomness, utxo_commitment_randomness,
+//             "Randomness is not the same"
+//         );
+//         assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
+//         assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
+//     }
 
-    /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
-    /// decryption is the inverse of encryption.
-    #[test]
-    fn check_encryption_poseidon() {
-        let mut rng = OsRng;
-        let encryption_key = Group::gen(&mut rng);
-        let header = EmptyHeader::default();
-        let base_poseidon = IncomingBaseEncryptionScheme::gen(&mut rng);
-        let randomness = ();
-        let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
-        let asset_id = Fp::<ConstraintField>::gen(&mut rng);
-        let asset_value = u128::gen(&mut rng);
-        let plaintext = protocol::IncomingPlaintext::<Config>::new(
-            utxo_commitment_randomness,
-            asset::Asset {
-                id: asset_id,
-                value: asset_value,
-            },
-        );
-        let ciphertext =
-            base_poseidon.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
-        let decrypted_ciphertext = base_poseidon
-            .decrypt(&encryption_key, &header, &ciphertext, &mut ())
-            .expect("Decryption returned None.");
-        let new_randomness = decrypted_ciphertext.utxo_commitment_randomness;
-        let (new_asset_id, new_asset_value) = (
-            decrypted_ciphertext.asset.id,
-            decrypted_ciphertext.asset.value,
-        );
-        assert_eq!(
-            new_randomness, utxo_commitment_randomness,
-            "Randomness is not the same"
-        );
-        assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
-        assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
-    }
-}
+//     /// Checks encryption is properly executed, i.e. that the ciphertext size is consistent with all the parameters, and that
+//     /// decryption is the inverse of encryption.
+//     #[test]
+//     fn check_encryption_poseidon() {
+//         let mut rng = OsRng;
+//         let encryption_key = Group::gen(&mut rng);
+//         let header = EmptyHeader::default();
+//         let base_poseidon = IncomingBaseEncryptionScheme::gen(&mut rng);
+//         let randomness = ();
+//         let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_id = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_value = u128::gen(&mut rng);
+//         let plaintext = protocol::IncomingPlaintext::<Config>::new(
+//             utxo_commitment_randomness,
+//             asset::Asset {
+//                 id: asset_id,
+//                 value: asset_value,
+//             },
+//         );
+//         let ciphertext =
+//             base_poseidon.encrypt(&encryption_key, &randomness, &header, &plaintext, &mut ());
+//         let decrypted_ciphertext = base_poseidon
+//             .decrypt(&encryption_key, &header, &ciphertext, &mut ())
+//             .expect("Decryption returned None.");
+//         let new_randomness = decrypted_ciphertext.utxo_commitment_randomness;
+//         let (new_asset_id, new_asset_value) = (
+//             decrypted_ciphertext.asset.id,
+//             decrypted_ciphertext.asset.value,
+//         );
+//         assert_eq!(
+//             new_randomness, utxo_commitment_randomness,
+//             "Randomness is not the same"
+//         );
+//         assert_eq!(new_asset_id, asset_id, "Asset ID is not the same.");
+//         assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
+//     }
+
+//     /// Checks UTXOs associated with notes are consistent.
+//     /// Checks that address partition function is working correctly, while opening notes.
+//     #[test]
+//     fn check_note_consistency() {
+//         let mut rng = OsRng;
+//         let parameters = protocol::Parameters::<Config>::gen(&mut rng);
+//         let group_generator = parameters.base.group_generator.generator();
+//         let spending_key = EmbeddedScalar::gen(&mut rng);
+//         let receiving_key = address_from_spending_key(&spending_key, &parameters);
+//         let proof_authorization_key = group_generator.scalar_mul(&spending_key, &mut ());
+//         let decryption_key = parameters
+//             .base
+//             .viewing_key_derivation_function
+//             .viewing_key(&proof_authorization_key, &mut ());
+//         let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_id = Fp::<ConstraintField>::gen(&mut rng);
+//         let asset_value = u128::gen(&mut rng);
+//         let asset = asset::Asset {
+//             id: asset_id,
+//             value: asset_value,
+//         };
+//         let is_transparent = bool::gen(&mut rng);
+//         println!("{is_transparent:?}");
+//         let associated_data = if is_transparent {
+//             Visibility::Transparent
+//         } else {
+//             Visibility::Opaque
+//         };
+//         let plaintext =
+//             protocol::IncomingPlaintext::<Config>::new(utxo_commitment_randomness, asset);
+//         let secret = protocol::MintSecret::<Config>::new(
+//             receiving_key.receiving_key,
+//             protocol::IncomingRandomness::<Config>::sample(((), ()), &mut rng),
+//             plaintext.clone(),
+//         );
+//         let base_poseidon = parameters.base.incoming_base_encryption_scheme.clone();
+//         let base_aes = parameters
+//             .base
+//             .light_incoming_base_encryption_scheme
+//             .clone();
+//         let address_partition = parameters
+//             .address_partition_function
+//             .partition(&receiving_key);
+//         let incoming_note = secret.incoming_note(&group_generator, &base_poseidon, &mut ());
+//         let light_incoming_note = secret.light_incoming_note(&group_generator, &base_aes, &mut ());
+//         let full_incoming_note = protocol::FullIncomingNote::<Config>::new(
+//             address_partition,
+//             incoming_note,
+//             light_incoming_note,
+//         );
+//         let utxo_commitment = parameters.base.utxo_commitment_scheme.commit(
+//             &utxo_commitment_randomness,
+//             &associated_data.secret(&asset).id,
+//             &associated_data.secret(&asset).value,
+//             &receiving_key.receiving_key,
+//             &mut (),
+//         );
+//         let utxo = protocol::Utxo::<Config>::new(
+//             is_transparent,
+//             associated_data.public(&asset),
+//             utxo_commitment,
+//         );
+//         let (identifier, new_asset) = parameters
+//             .open_with_check(&decryption_key, &utxo, full_incoming_note)
+//             .expect("Inconsistent note");
+//         assert_eq!(
+//             utxo_commitment_randomness, identifier.utxo_commitment_randomness,
+//             "Randomness is not the same."
+//         );
+//         assert_eq!(asset.value, new_asset.value, "Asset value is not the same.");
+//         assert_eq!(asset.id, new_asset.id, "Asset id is not the same.");
+//     }
+// }
