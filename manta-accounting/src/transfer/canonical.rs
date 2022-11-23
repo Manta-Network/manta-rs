@@ -381,10 +381,10 @@ where
         F: FnOnce(&Asset<C>) -> bool,
     {
         match self {
-            Self::ToPrivate(asset) => Ok(TransactionKind::Deposit(asset)),
+            Self::ToPrivate(asset) => Ok(TransactionKind::Deposit(Box::new(asset.clone()))),
             Self::PrivateTransfer(asset, _) | Self::ToPublic(asset) => {
                 if balance(asset) {
-                    Ok(TransactionKind::Withdraw(asset))
+                    Ok(TransactionKind::Withdraw(Box::new(asset.clone())))
                 } else {
                     Err(asset)
                 }
@@ -445,10 +445,10 @@ where
     serde(
         bound(
             deserialize = r"
-            &'a Asset<C>: Deserialize<'de>,
+            Asset<C>: Deserialize<'de>,
             ",
             serialize = r"
-            &'a Asset<C>: Serialize,
+            Asset<C>: Serialize,
             ",
         ),
         crate = "manta_util::serde",
@@ -457,37 +457,25 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
+    Clone(bound = "Asset<C>: Clone"),
     Debug(bound = "Asset<C>: Debug"),
     Hash(bound = "Asset<C>: Hash"),
     Eq(bound = "Asset<C>: Eq"),
     PartialEq(bound = "Asset<C>: Eq")
 )]
-pub enum TransactionKind<'a, C>
+pub enum TransactionKind<C>
 where
     C: Configuration,
 {
     /// Deposit Transaction
     ///
     /// A transaction of this kind will result in a deposit of `asset`.
-    Deposit(&'a Asset<C>),
+    Deposit(Box<Asset<C>>),
 
     /// Withdraw Transaction
     ///
     /// A transaction of this kind will result in a withdraw of `asset`.
-    Withdraw(&'a Asset<C>),
-}
-
-impl<'a, C> Clone for TransactionKind<'a, C>
-where
-    C: Configuration,
-{
-    #[inline]
-    fn clone(&self) -> Self {
-        match self {
-            Self::Deposit(a) => Self::Deposit(a),
-            Self::Withdraw(a) => Self::Withdraw(a),
-        }
-    }
+    Withdraw(Box<Asset<C>>),
 }
 
 /// Transfer Asset Selection
