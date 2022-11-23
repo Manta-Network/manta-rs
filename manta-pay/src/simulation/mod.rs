@@ -21,6 +21,7 @@ use crate::{
         utxo::protocol_pay::{AssetId, AssetValue},
         Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
     },
+    key::KeySecret,
     signer::base::{Signer, UtxoAccumulator},
     simulation::ledger::{AccountId, Ledger, LedgerConnection},
 };
@@ -56,7 +57,7 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     Signer::new(
-        AccountTable::new(rng.gen()),
+        AccountTable::new(KeySecret::sample(rng)),
         parameters.clone(),
         proving_context.clone(),
         UtxoAccumulator::new(utxo_accumulator_model.clone()),
