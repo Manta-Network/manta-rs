@@ -19,7 +19,7 @@
 //! cargo run --release --all-features --bin process_registration -- path_to_registration_form_v1 path_to_registration_form_v2 path_to_server_registry_file
 
 // for local server test
-// cargo run --release --all-features --bin process_registration -- /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/signups_v1_test.csv /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/signups_v2_test.csv /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/registry.csv
+// cargo run --release --all-features --bin process_registration -- /Users/thomascnorton/Desktop/ts_signups_1.csv /Users/thomascnorton/Desktop/ts_signups_2.csv /Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/registry.csv
 use clap::Parser;
 use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{extract_registry, Config, Record},

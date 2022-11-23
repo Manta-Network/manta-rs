@@ -16,10 +16,23 @@
 
 //! Manta Pay Simulation
 
+use ark_snark::SNARK;
 use clap::{error::ErrorKind, CommandFactory, Parser};
-use manta_accounting::transfer::canonical::generate_context;
-use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::{config::FullParametersRef, simulation::Simulation};
+use manta_accounting::transfer::{
+    canonical::{generate_context, MultiProvingContext, MultiVerifyingContext},
+    Configuration,
+};
+use manta_crypto::{
+    arkworks::serialize::CanonicalDeserialize,
+    constraint::ProofSystem,
+    rand::{OsRng, Rand},
+};
+use manta_pay::{
+    config::{Config, FullParametersRef},
+    crypto::constraint::arkworks::groth16::VerifyingContext,
+    simulation::Simulation,
+};
+use std::{fs::File, path::PathBuf};
 
 // cargo run --release --package manta-pay --all-features --bin simulation 1 1 1 20
 
@@ -29,12 +42,55 @@ pub fn main() {
     let mut rng = OsRng;
     let parameters = rng.gen();
     let utxo_accumulator_model = rng.gen();
-    let (proving_context, verifying_context) = generate_context(
-        &(),
-        FullParametersRef::new(&parameters, &utxo_accumulator_model),
-        &mut rng,
-    )
-    .expect("Failed to generate contexts.");
+    // let (proving_context, verifying_context) = generate_context(
+    //     &(),
+    //     FullParametersRef::new(&parameters, &utxo_accumulator_model),
+    //     &mut rng,
+    // )
+    // .expect("Failed to generate contexts.");
+
+    let to_private_path = PathBuf::from(
+        "/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/to_private_pk",
+    );
+    let to_public_path = PathBuf::from(
+        "/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/to_public_pk",
+    );
+    let private_transfer_path = PathBuf::from("/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/private_transfer_pk");
+
+    let to_private: <<Config as Configuration>::ProofSystem as ProofSystem>::ProvingContext =
+        CanonicalDeserialize::deserialize(File::open(to_private_path).expect("Cannot open file"))
+            .expect("cannot load proving context");
+    let to_public: <<Config as Configuration>::ProofSystem as ProofSystem>::ProvingContext =
+        CanonicalDeserialize::deserialize(File::open(to_public_path).expect("Cannot open file"))
+            .expect("cannot load proving context");
+    let private_transfer: <<Config as Configuration>::ProofSystem as ProofSystem>::ProvingContext =
+        CanonicalDeserialize::deserialize(
+            File::open(private_transfer_path).expect("Cannot open file"),
+        )
+        .expect("cannot load proving context");
+
+    let to_private_verify = to_private.0.vk.clone();
+    let to_public_verify = to_public.0.vk.clone();
+    let private_transfer_verify = private_transfer.0.vk.clone();
+
+    let proving_context = MultiProvingContext::<Config> {
+        to_private,
+        private_transfer,
+        to_public,
+    };
+    let verifying_context = MultiVerifyingContext::<Config> {
+        to_private: VerifyingContext(
+            ark_groth16::Groth16::<_>::process_vk(&to_private_verify)
+                .expect("unable to process vk"),
+        ),
+        private_transfer: VerifyingContext(
+            ark_groth16::Groth16::<_>::process_vk(&private_transfer_verify)
+                .expect("unable to process vk"),
+        ),
+        to_public: VerifyingContext(
+            ark_groth16::Groth16::<_>::process_vk(&to_public_verify).expect("unable to process vk"),
+        ),
+    };
     match tokio::runtime::Builder::new_multi_thread()
         .worker_threads(6)
         .build()
@@ -57,4 +113,98 @@ pub fn main() {
             )
             .exit(),
     }
+}
+
+/// Do the new keys we used in the TS dry run work?
+#[test]
+fn test_new_prover_keys() {
+    use manta_pay::{
+        parameters::load_parameters,
+        signer::base::UtxoAccumulator,
+        test::payment::{
+            private_transfer::prove_full as prove_private_transfer,
+            to_private::prove_full as prove_to_private, to_public::prove_full as prove_to_public,
+        },
+    };
+
+    let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
+    let to_private_path = PathBuf::from(
+        "/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/to_private_pk",
+    );
+    let to_public_path = PathBuf::from(
+        "/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/to_public_pk",
+    );
+    let private_transfer_path = PathBuf::from("/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/private_transfer_pk");
+
+    let to_private_proving: <<Config as Configuration>::ProofSystem as ProofSystem>::ProvingContext =
+        CanonicalDeserialize::deserialize(File::open(to_private_path).expect("Cannot open file"))
+            .expect("cannot load proving context");
+    let to_private_verifying = VerifyingContext(
+        ark_groth16::Groth16::<_>::process_vk(&to_private_proving.0.vk)
+            .expect("unable to process vk"),
+    );
+    let to_public_proving: <<Config as Configuration>::ProofSystem as ProofSystem>::ProvingContext =
+        CanonicalDeserialize::deserialize(File::open(to_public_path).expect("Cannot open file"))
+            .expect("cannot load proving context");
+    let to_public_verifying = VerifyingContext(
+        ark_groth16::Groth16::<_>::process_vk(&to_public_proving.0.vk)
+            .expect("unable to process vk"),
+    );
+    let private_transfer_proving: <<Config as Configuration>::ProofSystem as ProofSystem>::ProvingContext =
+        CanonicalDeserialize::deserialize(File::open(private_transfer_path).expect("Cannot open file"))
+            .expect("cannot load proving context");
+    let private_transfer_verifying = VerifyingContext(
+        ark_groth16::Groth16::<_>::process_vk(&private_transfer_proving.0.vk)
+            .expect("unable to process vk"),
+    );
+
+    let multi_proving_context = MultiProvingContext::<Config> {
+        to_private: to_private_proving,
+        private_transfer: private_transfer_proving,
+        to_public: to_public_proving,
+    };
+    let multi_verifying_context = MultiVerifyingContext::<Config> {
+        to_private: to_private_verifying,
+        to_public: to_public_verifying,
+        private_transfer: private_transfer_verifying,
+    };
+
+    let mut rng = OsRng;
+    let (_, _, parameters, utxo_accumulator_model) =
+        load_parameters(directory.path()).expect("Failed to load parameters");
+
+    // To Private
+    let _ = &prove_to_private(
+        &multi_proving_context.to_private,
+        &parameters,
+        &utxo_accumulator_model,
+        rng.gen(),
+        rng.gen(),
+        &mut rng,
+    )
+    .assert_valid_proof(&multi_verifying_context.to_private);
+
+    // To Public
+    let _ = &prove_to_public(
+        &multi_proving_context.clone(),
+        &parameters,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        rng.gen(),
+        rng.gen(),
+        &mut rng,
+    )
+    .1
+    .assert_valid_proof(&multi_verifying_context.to_public);
+
+    // Private Transfer
+    let _ = &prove_private_transfer(
+        &multi_proving_context,
+        &parameters,
+        &mut UtxoAccumulator::new(utxo_accumulator_model),
+        rng.gen(),
+        rng.gen(),
+        &mut rng,
+    )
+    .1
+    .assert_valid_proof(&multi_verifying_context.private_transfer);
 }

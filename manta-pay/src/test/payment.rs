@@ -192,7 +192,7 @@ pub mod private_transfer {
         let private_transfer = PrivateTransfer::build(
             authorization,
             [sender_0, sender_1],
-            [receiver_1, receiver_0],
+            [receiver_0, receiver_1],
         )
         .into_post(
             FullParametersRef::new(parameters, utxo_accumulator.model()),
