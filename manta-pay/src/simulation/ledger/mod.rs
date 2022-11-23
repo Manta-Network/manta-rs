@@ -231,8 +231,11 @@ impl SenderLedger<Parameters> for Ledger {
         &self,
         output: UtxoAccumulatorOutput<Config>,
     ) -> Option<Self::ValidUtxoAccumulatorOutput> {
+        if output == Default::default() {
+            return Some(Wrap(output));
+        }
         for tree in self.utxo_forest.forest.as_ref() {
-            if tree.root() == &output || output == Default::default() {
+            if tree.root() == &output {
                 return Some(Wrap(output));
             }
         }
