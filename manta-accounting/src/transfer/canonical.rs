@@ -439,6 +439,29 @@ where
 }
 
 /// Transaction Kind
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+            &'a Asset<C>: Deserialize<'de>,
+            ",
+            serialize = r"
+            &'a Asset<C>: Serialize,
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Debug(bound = "Asset<C>: Debug"),
+    Hash(bound = "Asset<C>: Hash"),
+    Eq(bound = "Asset<C>: Eq"),
+    PartialEq(bound = "Asset<C>: Eq")
+)]
 pub enum TransactionKind<'a, C>
 where
     C: Configuration,
@@ -452,6 +475,19 @@ where
     ///
     /// A transaction of this kind will result in a withdraw of `asset`.
     Withdraw(&'a Asset<C>),
+}
+
+impl<'a, C> Clone for TransactionKind<'a, C>
+where
+    C: Configuration,
+{
+    #[inline]
+    fn clone(&self) -> Self {
+        match self {
+            Self::Deposit(a) => Self::Deposit(a),
+            Self::Withdraw(a) => Self::Withdraw(a),
+        }
+    }
 }
 
 /// Transfer Asset Selection

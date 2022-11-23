@@ -19,7 +19,7 @@
 use crate::{
     config::{utxo::protocol_pay, Config},
     signer::{
-        client::network::{Network, Message},
+        client::network::{Message, Network},
         Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
         SyncResponse,
     },

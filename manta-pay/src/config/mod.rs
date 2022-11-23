@@ -85,6 +85,8 @@ pub type ProofSystem = groth16::Groth16<PairingCurve>;
 pub type ProofSystemError = groth16::Error;
 
 /// Transfer Configuration
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Config;
 
 impl transfer::Configuration for Config {
