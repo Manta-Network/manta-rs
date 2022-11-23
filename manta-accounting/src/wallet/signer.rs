@@ -983,10 +983,7 @@ where
                     identifier,
                     Asset::<C>::new(asset_id.clone(), Default::default()),
                 )
-                .upgrade_unchecked(MembershipProof::new(
-                    Default::default(),
-                    self.utxo_accumulator.extract(self.rng.gen()),
-                )), // TODO: don't point at zero root, choose an existing one.
+                .upgrade_unchecked(MembershipProof::new(Default::default(), Default::default())), // TODO: don't point at zero root, choose an existing one.
             );
         }
         Ok(senders)
