@@ -28,7 +28,7 @@ use crate::{
         VerifyingContext,
     },
 };
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{create_seal, seal};

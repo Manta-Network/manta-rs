@@ -983,10 +983,6 @@ impl Config {
             .await;
         let final_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
-        println!(
-            "Conservation of funds: {}",
-            initial_balances == final_balances
-        );
         Ok(initial_balances == final_balances)
     }
 }
