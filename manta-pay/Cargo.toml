@@ -57,6 +57,9 @@ http = ["manta-util/reqwest", "serde"]
 # Key Features
 key = ["bip32", "bip0039"]
 
+# Enable Multiple Network Support
+network = []
+
 # Parameter Loading
 parameters = ["groth16", "manta-crypto/test", "manta-parameters"]
 

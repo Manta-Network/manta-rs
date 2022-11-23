@@ -23,3 +23,7 @@ pub mod http;
 #[cfg(feature = "websocket")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "websocket")))]
 pub mod websocket;
+
+#[cfg(feature = "network")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "network")))]
+pub mod network;
