@@ -76,7 +76,7 @@ pub struct Wallet<
     checkpoint: S::Checkpoint,
 
     /// Signer Connection
-    signer: S,
+    pub signer: S, // This has been made public because of compatibility issues with sdk.
 
     /// Balance State
     assets: B,
