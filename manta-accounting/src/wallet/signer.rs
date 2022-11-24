@@ -573,7 +573,7 @@ where
     /// For now, we only use the default account, and the rest of the storage data is related to
     /// this account. Eventually, we want to have a global `utxo_accumulator` for all accounts and
     /// a local `assets` map for each account.
-    accounts: AccountTable<C>,
+    pub accounts: AccountTable<C>, // This has been made public because of compatibility issues with sdk.
 
     /// UTXO Accumulator
     utxo_accumulator: C::UtxoAccumulator,
