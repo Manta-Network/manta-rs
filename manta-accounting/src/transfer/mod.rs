@@ -100,10 +100,10 @@ pub trait Configuration {
     type Compiler: Assert;
 
     /// Asset Id Type
-    type AssetId: Clone + Ord + Debug;
+    type AssetId: Clone + Ord;
 
     /// Asset Value Type
-    type AssetValue: AddAssign + Clone + Default + PartialOrd + Sum + Debug;
+    type AssetValue: AddAssign + Clone + Default + PartialOrd + Sum;
 
     /// Associated Data Type
     type AssociatedData: Default;
