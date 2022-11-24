@@ -230,7 +230,8 @@ where
         deny_unknown_fields
     )
 )]
-#[derive(Clone)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug(bound = "T: Debug, BalanceUpdate<C>: Debug"))]
 pub struct SyncResponse<C, T>
 where
     C: transfer::Configuration,
@@ -256,7 +257,8 @@ where
         deny_unknown_fields
     )
 )]
-#[derive(Clone)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug(bound = "Asset<C>: Debug"))]
 pub enum BalanceUpdate<C>
 where
     C: transfer::Configuration,
