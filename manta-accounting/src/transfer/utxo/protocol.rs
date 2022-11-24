@@ -1401,7 +1401,6 @@ where
     C: Configuration<Bool = bool>,
     C::LightIncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
-    C::LightIncomingCiphertext: Debug,
     Asset<C>: Clone + Default,
 {
     #[inline]
