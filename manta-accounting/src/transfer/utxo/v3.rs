@@ -2232,6 +2232,18 @@ where
 // }
 
 /// Identifier
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "UtxoCommitmentRandomness<C>: Deserialize<'de>,",
+            serialize = "UtxoCommitmentRandomness<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoCommitmentRandomness<C>: Clone"),
