@@ -174,6 +174,18 @@ pub trait VerifySignature<M>: AuthorizationKeyType + SignatureType {
 }
 
 /// Authorization
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "T::AuthorizationContext: Deserialize<'de>, T::AuthorizationProof: Deserialize<'de>",
+            serialize = "T::AuthorizationContext: Serialize, T::AuthorizationProof: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "T::AuthorizationContext: Clone, T::AuthorizationProof: Clone"),
@@ -205,7 +217,7 @@ where
         Self { context, proof }
     }
 
-    ///
+    /// Builds a new [`Authorization`] from `parameters` and `spending_key`.
     #[inline]
     pub fn from_spending_key<R>(parameters: &T, spending_key: &T::SpendingKey, rng: &mut R) -> Self
     where
@@ -217,7 +229,7 @@ where
         Self::new(context, proof)
     }
 
-    ///
+    /// Verifies that `self` is derived from `spending_key`.
     #[inline]
     pub fn verify(&self, parameters: &T, spending_key: &T::SpendingKey) -> bool
     where
@@ -226,7 +238,7 @@ where
         parameters.verify(spending_key, &self.context, &self.proof)
     }
 
-    ///
+    /// Asserts that `self.context` corresponds to `self.proof`.
     #[inline]
     pub fn assert_authorized<COM>(&self, parameters: &T, compiler: &mut COM)
     where

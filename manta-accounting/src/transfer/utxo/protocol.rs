@@ -20,7 +20,7 @@ use crate::{
     asset,
     transfer::utxo::{
         self,
-        auth::{self, DeriveContext},
+        auth::{self, DeriveContext, SpendingKey},
     },
 };
 use alloc::vec::Vec;
@@ -53,7 +53,7 @@ use manta_crypto::{
 };
 use manta_util::{
     cmp::Independence,
-    codec::{Decode, DecodeError, Encode, Write},
+    codec::{Encode, Write},
     convert::Field,
 };
 
@@ -245,10 +245,10 @@ where
         ViewingKey = Self::Scalar,
     >;
 
-    /// Incoming Light Ciphertext Type
+    /// Light Incoming Ciphertext Type
     type LightIncomingCiphertext: PartialEq<Self::LightIncomingCiphertext, COM>;
 
-    /// Incoming Light Header
+    /// Light Incoming Header
     type LightIncomingHeader: Default + PartialEq<Self::LightIncomingHeader, COM>;
 
     /// Base Encryption Scheme for [`LightIncomingNote`]
@@ -346,6 +346,10 @@ pub type UtxoCommitment<C, COM = ()> =
 pub type UtxoCommitmentRandomness<C, COM = ()> =
     <<C as BaseConfiguration<COM>>::UtxoCommitmentScheme as UtxoCommitmentScheme<COM>>::Randomness;
 
+/// Incoming Base Randomness
+pub type IncomingBaseRandomness<C, COM = ()> =
+    encryption::Randomness<<C as BaseConfiguration<COM>>::IncomingBaseEncryptionScheme>;
+
 /// Incoming Encryption Scheme
 pub type IncomingEncryptionScheme<C, COM = ()> = Hybrid<
     StandardDiffieHellman<
@@ -369,10 +373,6 @@ pub type LightIncomingEncryptionScheme<C, COM = ()> = Hybrid<
     >,
     <C as BaseConfiguration<COM>>::LightIncomingBaseEncryptionScheme,
 >;
-
-/// Incoming Base Randomness
-pub type IncomingBaseRandomness<C, COM = ()> =
-    <<C as BaseConfiguration<COM>>::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness;
 
 /// Light Incoming Randomness
 pub type LightIncomingRandomness<C, COM = ()> =
@@ -400,6 +400,10 @@ pub type UtxoMembershipProof<C, COM = ()> =
 pub type NullifierCommitment<C, COM = ()> =
     <<C as BaseConfiguration<COM>>::NullifierCommitmentScheme as NullifierCommitmentScheme<COM>>::Commitment;
 
+/// Outgoing Base Randomness
+pub type OutgoingBaseRandomness<C, COM = ()> =
+    encryption::Randomness<<C as BaseConfiguration<COM>>::OutgoingBaseEncryptionScheme>;
+
 /// Outgoing Encryption Scheme
 pub type OutgoingEncryptionScheme<C, COM = ()> = Hybrid<
     StandardDiffieHellman<
@@ -423,6 +427,32 @@ pub type AddressPartition<C> =
 pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHashFunction>;
 
 /// UTXO Model Base Parameters
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::GroupGenerator: Deserialize<'de>,
+            C::UtxoCommitmentScheme: Deserialize<'de>,
+            C::IncomingBaseEncryptionScheme: Deserialize<'de>,
+            C::LightIncomingBaseEncryptionScheme: Deserialize<'de>,
+            C::ViewingKeyDerivationFunction: Deserialize<'de>,
+            C::UtxoAccumulatorItemHash: Deserialize<'de>,
+            C::NullifierCommitmentScheme: Deserialize<'de>,
+            C::OutgoingBaseEncryptionScheme: Deserialize<'de>,",
+            serialize = "C::GroupGenerator: Serialize,
+            C::UtxoCommitmentScheme: Serialize,
+            C::IncomingBaseEncryptionScheme: Serialize,
+            C::LightIncomingBaseEncryptionScheme: Serialize,
+            C::ViewingKeyDerivationFunction: Serialize,
+            C::UtxoAccumulatorItemHash: Serialize,
+            C::NullifierCommitmentScheme: Serialize,
+            C::OutgoingBaseEncryptionScheme: Serialize,",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
@@ -434,6 +464,16 @@ pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHash
         C::UtxoAccumulatorItemHash: Clone,
         C::NullifierCommitmentScheme: Clone,
         C::OutgoingBaseEncryptionScheme: Clone,
+    "),
+    Copy(bound = r"
+        C::GroupGenerator: Copy,
+        C::UtxoCommitmentScheme: Copy,
+        C::IncomingBaseEncryptionScheme: Copy,
+        C::LightIncomingBaseEncryptionScheme: Copy,
+        C::ViewingKeyDerivationFunction: Copy,
+        C::UtxoAccumulatorItemHash: Copy,
+        C::NullifierCommitmentScheme: Copy,
+        C::OutgoingBaseEncryptionScheme: Copy,
     "),
     Debug(bound = r"
         C::GroupGenerator: Debug,
@@ -454,6 +494,36 @@ pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHash
         C::UtxoAccumulatorItemHash: Default,
         C::NullifierCommitmentScheme: Default,
         C::OutgoingBaseEncryptionScheme: Default,
+    "),
+    Eq(bound = r"
+        C::GroupGenerator: Eq,
+        C::UtxoCommitmentScheme: Eq,
+        C::IncomingBaseEncryptionScheme: Eq,
+        C::LightIncomingBaseEncryptionScheme: Eq,
+        C::ViewingKeyDerivationFunction: Eq,
+        C::UtxoAccumulatorItemHash: Eq,
+        C::NullifierCommitmentScheme: Eq,
+        C::OutgoingBaseEncryptionScheme: Eq,
+    "),
+    Hash(bound = r"
+        C::GroupGenerator: Hash,
+        C::UtxoCommitmentScheme: Hash,
+        C::IncomingBaseEncryptionScheme: Hash,
+        C::LightIncomingBaseEncryptionScheme: Hash,
+        C::ViewingKeyDerivationFunction: Hash,
+        C::UtxoAccumulatorItemHash: Hash,
+        C::NullifierCommitmentScheme: Hash,
+        C::OutgoingBaseEncryptionScheme: Hash,
+    "),
+    PartialEq(bound = r"
+        C::GroupGenerator: cmp::PartialEq,
+        C::UtxoCommitmentScheme: cmp::PartialEq,
+        C::IncomingBaseEncryptionScheme: cmp::PartialEq,
+        C::LightIncomingBaseEncryptionScheme: cmp::PartialEq,
+        C::ViewingKeyDerivationFunction: cmp::PartialEq,
+        C::UtxoAccumulatorItemHash: cmp::PartialEq,
+        C::NullifierCommitmentScheme: cmp::PartialEq,
+        C::OutgoingBaseEncryptionScheme: cmp::PartialEq,
     ")
 )]
 pub struct BaseParameters<C, COM = ()>
@@ -549,14 +619,6 @@ where
 {
     type Nullifier = Nullifier<C, COM>;
 }
-
-// impl<C, COM> utxo::IdentifierType for BaseParameters<C, COM>
-// where
-//     C: BaseConfiguration<COM>,
-//     COM: Has<bool, Type = C::Bool>,
-// {
-//     type Identifier = Identifier<C, COM>;
-// }
 
 impl<C> utxo::IdentifierType for BaseParameters<C>
 where
@@ -826,6 +888,24 @@ where
             self.base.group_generator.generator().clone(),
         )
     }
+
+    /// Computes the [`Address`] corresponding to `spending_key`.
+    #[inline]
+    pub fn address_from_spending_key(&self, spending_key: &SpendingKey<Self>) -> Address<C>
+    where
+        C: Configuration,
+    {
+        let generator = self.base.group_generator.generator();
+        Address::new(
+            generator.scalar_mul(
+                &self
+                    .base
+                    .viewing_key_derivation_function
+                    .viewing_key(&generator.scalar_mul(spending_key, &mut ()), &mut ()),
+                &mut (),
+            ),
+        )
+    }
 }
 
 impl<C> auth::SpendingKeyType for Parameters<C>
@@ -961,7 +1041,7 @@ where
 impl<C> auth::VerifyAuthorization for Parameters<C>
 where
     C: Configuration<Bool = bool>,
-    C::Group: core::cmp::PartialEq,
+    C::Group: cmp::PartialEq,
 {
     #[inline]
     fn verify(
@@ -1028,25 +1108,6 @@ where
     }
 }
 
-// impl<C> utxo::DeriveAddress<SpendingKey<Self>> for Parameters<C>
-// where
-//     C: Configuration<Bool = bool>,
-// {
-//     #[inline]
-//     fn derive_address(&self, key: &SpendingKey<Self>) -> Self::Address {
-//         let generator = self.base.group_generator.generator();
-//         Address::new(
-//             generator.scalar_mul(
-//                 &self
-//                     .base
-//                     .viewing_key_derivation_function
-//                     .viewing_key(&generator.scalar_mul(key, &mut ()), &mut ()),
-//                 &mut (),
-//             ),
-//         )
-//     }
-// }
-
 impl<C> utxo::Mint for Parameters<C>
 where
     C: Configuration<Bool = bool>,
@@ -1071,14 +1132,9 @@ where
     C: Configuration<Bool = bool>,
     C::AssetId: Clone + Default,
     C::AssetValue: Clone + Default,
-    C::Scalar: Sample,
-    encryption::Randomness<C::IncomingBaseEncryptionScheme>: Sample,
+    IncomingBaseRandomness<C>: Clone,
+    IncomingRandomness<C>: Sample,
     UtxoCommitmentRandomness<C>: Sample,
-    C::Group: Debug,
-    C::Scalar: Debug,
-    C::IncomingCiphertext: Debug,
-    C::LightIncomingCiphertext: Debug,
-    <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone,
 {
     #[inline]
     fn derive_mint<R>(
@@ -1111,7 +1167,7 @@ where
         .encrypt_into(
             &secret.receiving_key,
             &secret.incoming_randomness,
-            C::IncomingHeader::default(),
+            Default::default(),
             &secret.plaintext,
             &mut (),
         );
@@ -1123,7 +1179,7 @@ where
         .encrypt_into(
             &secret.receiving_key,
             &secret.light_incoming_randomness(),
-            C::LightIncomingHeader::default(),
+            Default::default(),
             &secret.plaintext,
             &mut (),
         );
@@ -1158,8 +1214,8 @@ where
     type UtxoAccumulatorWitness = utxo::UtxoAccumulatorWitness<Self>;
     type UtxoAccumulatorOutput = utxo::UtxoAccumulatorOutput<Self>;
     type UtxoAccumulatorModel = C::UtxoAccumulatorModel;
-    type Secret = SpendSecret<C>;
     type UtxoAccumulatorItemHash = C::UtxoAccumulatorItemHash;
+    type Secret = SpendSecret<C>;
 
     #[inline]
     fn utxo_accumulator_item_hash(&self) -> &Self::UtxoAccumulatorItemHash {
@@ -1217,7 +1273,7 @@ where
     C::AssetId: Clone + Default,
     C::AssetValue: Clone + Default,
     C::Scalar: Sample,
-    encryption::Randomness<C::OutgoingBaseEncryptionScheme>: Sample,
+    OutgoingBaseRandomness<C>: Sample,
 {
     #[inline]
     fn derive_spend<R>(
@@ -1305,10 +1361,7 @@ where
     C: Configuration<Bool = bool>,
     C::LightIncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
-    C::Group: Debug,
-    C::LightIncomingCiphertext: Debug,
 {
-    /// opens `note` if the note partition is consistent with the receiving key par
     #[inline]
     fn open(
         &self,
@@ -1348,7 +1401,6 @@ where
     C: Configuration<Bool = bool>,
     C::LightIncomingBaseEncryptionScheme:
         Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<IncomingPlaintext<C>>>,
-    C::Group: Debug,
     C::LightIncomingCiphertext: Debug,
     Asset<C>: Clone + Default,
 {
@@ -1423,6 +1475,7 @@ where
     Clone(bound = "C::Group: Clone"),
     Copy(bound = "C::Group: Copy"),
     Debug(bound = "C::Group: Debug"),
+    Default(bound = "C::Group: Default"),
     Eq(bound = "C::Group: Eq"),
     Hash(bound = "C::Group: Hash"),
     PartialEq(bound = "C::Group: cmp::PartialEq")
@@ -1463,8 +1516,30 @@ where
 }
 
 /// Incoming Note Plaintext
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "UtxoCommitmentRandomness<C, COM>: Deserialize<'de>, Asset<C, COM>: Deserialize<'de>",
+            serialize = "UtxoCommitmentRandomness<C, COM>: Serialize, Asset<C, COM>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = "UtxoCommitmentRandomness<C, COM>: Clone, Asset<C, COM>: Clone"))]
+#[derivative(
+    Clone(bound = "UtxoCommitmentRandomness<C, COM>: Clone, Asset<C, COM>: Clone"),
+    Copy(bound = "UtxoCommitmentRandomness<C, COM>: Copy, Asset<C, COM>: Copy"),
+    Debug(bound = "UtxoCommitmentRandomness<C, COM>: Debug, Asset<C, COM>: Debug"),
+    Default(bound = "UtxoCommitmentRandomness<C, COM>: Default, Asset<C, COM>: Default"),
+    Eq(bound = "UtxoCommitmentRandomness<C, COM>: Eq, Asset<C, COM>: Eq"),
+    Hash(bound = "UtxoCommitmentRandomness<C, COM>: Hash, Asset<C, COM>: Hash"),
+    PartialEq(
+        bound = "UtxoCommitmentRandomness<C, COM>: cmp::PartialEq, Asset<C, COM>: cmp::PartialEq"
+    )
+)]
 pub struct IncomingPlaintext<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
@@ -1539,8 +1614,12 @@ where
     Clone(
         bound = "AddressPartition<C>: Clone, IncomingNote<C>: Clone, LightIncomingNote<C>: Clone"
     ),
+    Copy(bound = "AddressPartition<C>: Copy, IncomingNote<C>: Copy, LightIncomingNote<C>: Copy"),
     Debug(
         bound = "AddressPartition<C>: Debug, IncomingNote<C>: Debug, LightIncomingNote<C>: Debug"
+    ),
+    Default(
+        bound = "AddressPartition<C>: Default, IncomingNote<C>: Default, LightIncomingNote<C>: Default"
     ),
     Eq(bound = "AddressPartition<C>: Eq, IncomingNote<C>: Eq, LightIncomingNote<C>: Eq"),
     Hash(bound = "AddressPartition<C>: Hash, IncomingNote<C>: Hash, LightIncomingNote<C>: Hash"),
@@ -1702,7 +1781,7 @@ where
 
 impl<C, COM> PartialEq<Self, COM> for Utxo<C, COM>
 where
-    C: BaseConfiguration<COM>,
+    C: BaseConfiguration<COM> + ?Sized,
     COM: Has<bool, Type = C::Bool>,
 {
     #[inline]
@@ -1797,6 +1876,40 @@ where
 }
 
 /// Secret required to Mint a UTXO
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::Group: Deserialize<'de>, IncomingRandomness<C, COM>: Deserialize<'de>, IncomingPlaintext<C, COM>: Deserialize<'de>",
+            serialize = "C::Group: Serialize, IncomingRandomness<C, COM>: Serialize, IncomingPlaintext<C, COM>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(
+        bound = "C::Group: Clone, IncomingRandomness<C, COM>: Clone, IncomingPlaintext<C, COM>: Clone"
+    ),
+    Copy(
+        bound = "C::Group: Copy, IncomingRandomness<C, COM>: Copy, IncomingPlaintext<C, COM>: Copy"
+    ),
+    Debug(
+        bound = "C::Group: Debug, IncomingRandomness<C, COM>: Debug, IncomingPlaintext<C, COM>: Debug"
+    ),
+    Default(
+        bound = "C::Group: Default, IncomingRandomness<C, COM>: Default, IncomingPlaintext<C, COM>: Default"
+    ),
+    Eq(bound = "C::Group: Eq, IncomingRandomness<C, COM>: Eq, IncomingPlaintext<C, COM>: Eq"),
+    Hash(
+        bound = "C::Group: Hash, IncomingRandomness<C, COM>: Hash, IncomingPlaintext<C, COM>: Hash"
+    ),
+    PartialEq(
+        bound = "C::Group: cmp::PartialEq, IncomingRandomness<C, COM>: cmp::PartialEq, IncomingPlaintext<C, COM>: cmp::PartialEq"
+    )
+)]
 pub struct MintSecret<C, COM = ()>
 where
     C: BaseConfiguration<COM>,
@@ -1862,7 +1975,7 @@ where
         .encrypt_into(
             &self.receiving_key,
             &self.incoming_randomness,
-            C::IncomingHeader::default(),
+            Default::default(),
             &self.plaintext,
             compiler,
         )
@@ -1877,7 +1990,7 @@ where
         compiler: &mut COM,
     ) -> LightIncomingNote<C, COM>
     where
-        <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone,
+        IncomingBaseRandomness<C, COM>: Clone,
     {
         Hybrid::new(
             StandardDiffieHellman::new(group_generator.clone()),
@@ -1886,7 +1999,7 @@ where
         .encrypt_into(
             &self.receiving_key,
             &self.light_incoming_randomness(),
-            C::LightIncomingHeader::default(),
+            Default::default(),
             &self.plaintext,
             compiler,
         )
@@ -1922,11 +2035,11 @@ where
         asset
     }
 
-    ///
+    /// Returns the [`LightIncomingRandomness`] associated with `self`.
     #[inline]
     fn light_incoming_randomness(&self) -> LightIncomingRandomness<C, COM>
     where
-        <C::IncomingBaseEncryptionScheme as encryption::RandomnessType>::Randomness: Clone,
+        IncomingBaseRandomness<C, COM>: Clone,
     {
         Randomness {
             ephemeral_secret_key: self.incoming_randomness.ephemeral_secret_key.clone(),
@@ -1934,14 +2047,6 @@ where
         }
     }
 }
-
-// impl<C, COM> utxo::IdentifierType for MintSecret<C, COM>
-// where
-//     C: BaseConfiguration<COM>,
-//     COM: Has<bool, Type = C::Bool>,
-// {
-//     type Identifier = Identifier<C, COM>;
-// }
 
 impl<C> utxo::IdentifierType for MintSecret<C>
 where
@@ -2002,8 +2107,26 @@ where
 }
 
 /// Authorization Context
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::Group: Deserialize<'de>, C::Scalar: Deserialize<'de>",
+            serialize = "C::Group: Serialize, C::Scalar: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "C::Group: Debug, C::Scalar: Debug"))]
+#[derivative(
+    Clone(bound = "C::Group: Clone, C::Scalar: Clone"),
+    Copy(bound = "C::Group: Copy, C::Scalar: Copy"),
+    Debug(bound = "C::Group: Debug, C::Scalar: Debug"),
+    Default(bound = "C::Group: Default, C::Scalar: Default"),
+    Hash(bound = "C::Group: Hash, C::Scalar: Hash")
+)]
 pub struct AuthorizationContext<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
@@ -2034,7 +2157,8 @@ where
         }
     }
 
-    ///
+    /// If `viewing_key` is [`Some`], it unwraps it. If not, it computes a viewing key from
+    /// `proof_authorization_key` using `viewing_key_derivation_function`.
     #[inline]
     fn compute_viewing_key<'s>(
         viewing_key: &'s mut Option<C::Scalar>,
@@ -2084,10 +2208,10 @@ where
     }
 }
 
-impl<C> core::cmp::PartialEq for AuthorizationContext<C>
+impl<C> cmp::PartialEq for AuthorizationContext<C>
 where
     C: BaseConfiguration<Bool = bool>,
-    C::Group: core::cmp::PartialEq,
+    C::Group: cmp::PartialEq,
 {
     #[inline]
     fn eq(&self, rhs: &Self) -> bool {
@@ -2116,8 +2240,28 @@ where
 }
 
 /// Authorization Proof
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::Scalar: Deserialize<'de>, C::Group: Deserialize<'de>",
+            serialize = "C::Scalar: Serialize, C::Group: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
-#[derivative(Debug(bound = "C::Scalar: Debug, C::Group: Debug"))]
+#[derivative(
+    Clone(bound = "C::Scalar: Clone, C::Group: Clone"),
+    Copy(bound = "C::Scalar: Copy, C::Group: Copy"),
+    Debug(bound = "C::Scalar: Debug, C::Group: Debug"),
+    Default(bound = "C::Scalar: Default, C::Group: Default"),
+    Eq(bound = "C::Scalar: Eq, C::Group: Eq"),
+    Hash(bound = "C::Scalar: Hash, C::Group: Hash"),
+    PartialEq(bound = "C::Scalar: cmp::PartialEq, C::Group: cmp::PartialEq")
+)]
 pub struct AuthorizationProof<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
@@ -2195,46 +2339,25 @@ where
     }
 }
 
-// /// Identifier
-// #[derive(derivative::Derivative)]
-// #[derivative(
-//     Clone(bound = "C::Bool: Clone, UtxoCommitmentRandomness<C, COM>: Clone"),
-//     Hash(bound = "C::Bool: Hash, UtxoCommitmentRandomness<C, COM>: Hash")
-// )]
-// pub struct Identifier<C, COM = ()>
-// where
-//     C: BaseConfiguration<COM>,
-//     COM: Has<bool, Type = C::Bool>,
-// {
-//     /// Transparency Flag
-//     pub is_transparent: C::Bool,
-
-//     /// UTXO Commitment Randomness
-//     pub utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
-// }
-
-// impl<C, COM> Identifier<C, COM>
-// where
-//     C: BaseConfiguration<COM>,
-//     COM: Has<bool, Type = C::Bool>,
-// {
-//     /// Builds a new [`Identifier`] from `is_transparent` and `utxo_commitment_randomness`.
-//     #[inline]
-//     pub fn new(
-//         is_transparent: C::Bool,
-//         utxo_commitment_randomness: UtxoCommitmentRandomness<C, COM>,
-//     ) -> Self {
-//         Self {
-//             is_transparent,
-//             utxo_commitment_randomness,
-//         }
-//     }
-// }
-
 /// Identifier
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "UtxoCommitmentRandomness<C>: Deserialize<'de>",
+            serialize = "UtxoCommitmentRandomness<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoCommitmentRandomness<C>: Clone"),
+    Copy(bound = "UtxoCommitmentRandomness<C>: Copy"),
+    Debug(bound = "UtxoCommitmentRandomness<C>: Debug"),
+    Default(bound = "UtxoCommitmentRandomness<C>: Default"),
     Eq(bound = "UtxoCommitmentRandomness<C>: Eq"),
     Hash(bound = "UtxoCommitmentRandomness<C>: Hash"),
     PartialEq(
@@ -2279,12 +2402,36 @@ where
     where
         R: RngCore + ?Sized,
     {
-        // FIXME: Should we sample the transparency flag.
-        Self::new(false, rng.gen())
+        Self::new(rng.gen(), rng.gen())
     }
 }
 
 /// Spend Secret
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "OutgoingRandomness<C, COM>: Deserialize<'de>, IncomingPlaintext<C, COM>: Deserialize<'de>",
+            serialize = "OutgoingRandomness<C, COM>: Serialize, IncomingPlaintext<C, COM>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "OutgoingRandomness<C, COM>: Clone, IncomingPlaintext<C, COM>: Clone"),
+    Copy(bound = "OutgoingRandomness<C, COM>: Copy, IncomingPlaintext<C, COM>: Copy"),
+    Debug(bound = "OutgoingRandomness<C, COM>: Debug, IncomingPlaintext<C, COM>: Debug"),
+    Default(bound = "OutgoingRandomness<C, COM>: Default, IncomingPlaintext<C, COM>: Default"),
+    Eq(bound = "OutgoingRandomness<C, COM>: Eq, IncomingPlaintext<C, COM>: Eq"),
+    Hash(bound = "OutgoingRandomness<C, COM>: Hash, IncomingPlaintext<C, COM>: Hash"),
+    PartialEq(
+        bound = "OutgoingRandomness<C, COM>: cmp::PartialEq, IncomingPlaintext<C, COM>: cmp::PartialEq"
+    )
+)]
+
 pub struct SpendSecret<C, COM = ()>
 where
     C: BaseConfiguration<COM>,
@@ -2350,7 +2497,7 @@ where
         .encrypt_into(
             receiving_key,
             &self.outgoing_randomness,
-            C::OutgoingHeader::default(),
+            Default::default(),
             asset,
             compiler,
         )
@@ -2474,7 +2621,9 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "NullifierCommitment<C, COM>: Clone"),
+    Copy(bound = "NullifierCommitment<C, COM>: Copy"),
     Debug(bound = "NullifierCommitment<C, COM>: Debug"),
+    Default(bound = "NullifierCommitment<C, COM>: Default"),
     Eq(bound = "NullifierCommitment<C, COM>: cmp::Eq"),
     Hash(bound = "NullifierCommitment<C, COM>: Hash"),
     PartialEq(bound = "NullifierCommitment<C, COM>: cmp::PartialEq")
@@ -2535,7 +2684,9 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "Nullifier<C>: Clone, OutgoingNote<C>: Clone"),
+    Copy(bound = "Nullifier<C>: Copy, OutgoingNote<C>: Copy"),
     Debug(bound = "Nullifier<C>: Debug, OutgoingNote<C>: Debug"),
+    Default(bound = "Nullifier<C>: Default, OutgoingNote<C>: Default"),
     Eq(bound = "Nullifier<C>: cmp::Eq, OutgoingNote<C>: cmp::Eq"),
     Hash(bound = "Nullifier<C>: Hash, OutgoingNote<C>: Hash"),
     PartialEq(bound = "Nullifier<C>: cmp::PartialEq, OutgoingNote<C>: cmp::PartialEq")
@@ -2590,7 +2741,7 @@ where
     C: Configuration<Bool = bool>,
 {
     #[inline]
-    fn eq(&self, rhs: &Self, compiler: &mut ()) -> C::Bool {
+    fn eq(&self, rhs: &Self, compiler: &mut ()) -> bool {
         self.nullifier
             .commitment
             .eq(&rhs.nullifier.commitment, compiler)
@@ -2653,73 +2804,6 @@ where
         self.nullifier.commitment.encode(&mut writer)?;
         self.outgoing_note.encode(&mut writer)?;
         Ok(())
-    }
-}
-
-/// Full Nullifier Decode Error
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(
-        bound = "<NullifierCommitment<C> as Decode>::Error: Clone, <OutgoingNote<C> as Decode>::Error: Clone"
-    ),
-    Copy(
-        bound = "<NullifierCommitment<C> as Decode>::Error: Copy, <OutgoingNote<C> as Decode>::Error: Copy"
-    ),
-    Debug(
-        bound = "<NullifierCommitment<C> as Decode>::Error: Debug, <OutgoingNote<C> as Decode>::Error: Debug"
-    ),
-    Eq(
-        bound = "<NullifierCommitment<C> as Decode>::Error: Eq, <OutgoingNote<C> as Decode>::Error: Eq"
-    ),
-    Hash(
-        bound = "<NullifierCommitment<C> as Decode>::Error: Hash, <OutgoingNote<C> as Decode>::Error: Hash"
-    ),
-    PartialEq(
-        bound = "<NullifierCommitment<C> as Decode>::Error: cmp::PartialEq, <OutgoingNote<C> as Decode>::Error: cmp::PartialEq"
-    )
-)]
-pub enum FullNullifierDecodeError<C>
-where
-    C: Configuration<Bool = bool>,
-    NullifierCommitment<C>: Decode,
-    OutgoingNote<C>: Decode,
-{
-    /// Nullifier Commitment Error
-    CommitmentDecodeError(<NullifierCommitment<C> as Decode>::Error),
-
-    /// Note Error
-    NoteDecodeError(<OutgoingNote<C> as Decode>::Error),
-}
-
-impl<C> Decode for FullNullifier<C>
-where
-    C: Configuration<Bool = bool>,
-    NullifierCommitment<C>: Decode,
-    OutgoingNote<C>: Decode,
-{
-    type Error = FullNullifierDecodeError<C>;
-
-    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
-    where
-        R: manta_util::codec::Read,
-    {
-        let nullifier_commitment =
-            NullifierCommitment::<C>::decode(&mut reader).map_err(|e| match e {
-                DecodeError::Decode(r) => {
-                    DecodeError::Decode(FullNullifierDecodeError::CommitmentDecodeError(r))
-                }
-                DecodeError::Read(e) => DecodeError::Read(e),
-            })?;
-        let outgoing_note = OutgoingNote::<C>::decode(&mut reader).map_err(|e| match e {
-            DecodeError::Decode(r) => {
-                DecodeError::Decode(FullNullifierDecodeError::NoteDecodeError(r))
-            }
-            DecodeError::Read(e) => DecodeError::Read(e),
-        })?;
-        Ok(Self {
-            nullifier: Nullifier::new(nullifier_commitment),
-            outgoing_note,
-        })
     }
 }
 

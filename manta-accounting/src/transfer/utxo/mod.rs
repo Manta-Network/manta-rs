@@ -25,16 +25,16 @@ use crate::transfer::utxo::auth::AuthorizationContextType;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
 use manta_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
-    algebra::{HasGenerator, ScalarMul},
     eclair::alloc::{Allocate, Constant},
     rand::RngCore,
 };
 use manta_util::cmp::IndependenceContext;
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 pub mod auth;
 pub mod protocol;
-
-use self::protocol::ViewingKeyDerivationFunction;
 
 /// Current UTXO Protocol Version
 pub const VERSION: u8 = protocol::VERSION;
@@ -101,6 +101,18 @@ pub trait IdentifierType {
 pub type Identifier<T> = <T as IdentifierType>::Identifier;
 
 /// Identified Asset
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "T::Identifier: Deserialize<'de>, T::Asset: Deserialize<'de>",
+            serialize = "T::Identifier: Serialize, T::Asset: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "T::Identifier: Clone, T::Asset: Clone"),
@@ -152,6 +164,18 @@ pub trait AssociatedDataType {
 pub type AssociatedData<T> = <T as AssociatedDataType>::AssociatedData;
 
 /// Full Asset
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "T::Asset: Deserialize<'de>, T::AssociatedData: Deserialize<'de>",
+            serialize = "T::Asset: Serialize, T::AssociatedData: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "T::Asset: Clone, T::AssociatedData: Clone"),
@@ -237,8 +261,7 @@ pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType 
 
 /// Utxo Reconstruction
 pub trait UtxoReconstruct: NoteOpen {
-    /// Check if `utxo` is consistent with `asset` and `identifier`, which come from
-    /// decrypting a Note.
+    /// Checks if `utxo` is consistent with `asset` and `identifier`.
     fn utxo_check(
         &self,
         utxo: &Self::Utxo,
@@ -247,8 +270,9 @@ pub trait UtxoReconstruct: NoteOpen {
         decryption_key: &Self::DecryptionKey,
     ) -> bool;
 
-    /// Check if `utxo` is consistent with a `note` and tries to open `note`.
-    /// Mainly used when `note` is of type LightIncomingNote which is computed off-circuit.
+    /// Opens `note` and checks if `utxo` is consistent with it. Returns `None`
+    /// when it fails to open the `note` or when the `note` is inconsistent with the `utxo`.
+    #[inline]
     fn open_with_check(
         &self,
         decryption_key: &Self::DecryptionKey,
@@ -333,7 +357,7 @@ pub trait Spend<COM = ()>: AuthorizationContextType + AssetType + UtxoType + Nul
     /// Spend Secret Type
     type Secret;
 
-    ///
+    /// Returns the [`UtxoAccumulatorItemHash`](Self::UtxoAccumulatorItemHash)
     fn utxo_accumulator_item_hash(&self) -> &Self::UtxoAccumulatorItemHash;
 
     /// Returns the asset and its nullifier inside of `utxo` asserting that `secret` and `utxo` are
@@ -394,6 +418,27 @@ pub type UtxoMembershipProof<S, COM = ()> = MembershipProof<UtxoAccumulatorModel
 ///
 /// This `struct` uses a lifetime marker to tie it down to a particular instance of
 /// [`FullParametersRef`] during allocation.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "P: Deserialize<'de>, P::UtxoAccumulatorModel: Deserialize<'de>",
+            serialize = "P: Serialize, P::UtxoAccumulatorModel: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "P: Clone, P::UtxoAccumulatorModel: Clone"),
+    Copy(bound = "P: Copy, P::UtxoAccumulatorModel: Copy"),
+    Debug(bound = "P: Debug, P::UtxoAccumulatorModel: Debug"),
+    Eq(bound = "P: Eq, P::UtxoAccumulatorModel: Eq"),
+    Hash(bound = "P: Hash, P::UtxoAccumulatorModel: Hash"),
+    PartialEq(bound = "P: PartialEq, P::UtxoAccumulatorModel: PartialEq")
+)]
 pub struct FullParameters<'p, P, COM = ()>
 where
     P: Mint<COM> + Spend<COM>,
@@ -496,25 +541,4 @@ where
     fn deref(&self) -> &Self::Target {
         self.base
     }
-}
-
-/// Computes the address corresponding to `spending_key`.
-#[inline]
-pub fn address_from_spending_key<C>(
-    spending_key: &C::Scalar,
-    parameters: &protocol::Parameters<C>,
-) -> protocol::Address<C>
-where
-    C: protocol::Configuration,
-{
-    let generator = parameters.base.group_generator.generator();
-    protocol::Address::new(
-        generator.scalar_mul(
-            &parameters
-                .base
-                .viewing_key_derivation_function
-                .viewing_key(&generator.scalar_mul(spending_key, &mut ()), &mut ()),
-            &mut (),
-        ),
-    )
 }
