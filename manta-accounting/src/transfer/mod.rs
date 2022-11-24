@@ -64,6 +64,7 @@ mod sender;
 
 pub mod batch;
 pub mod canonical;
+pub mod utxo;
 
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
