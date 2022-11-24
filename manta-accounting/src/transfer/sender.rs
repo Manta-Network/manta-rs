@@ -40,8 +40,14 @@ use manta_util::serde::{Deserialize, Serialize};
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "S::Secret: Deserialize<'de>, S::Utxo: Deserialize<'de>, S::Nullifier: Deserialize<'de>",
-            serialize = "S::Secret: Serialize, S::Utxo: Serialize, S::Nullifier: Serialize",
+            deserialize = r"
+                S::Secret: Deserialize<'de>, 
+                S::Utxo: Deserialize<'de>, 
+                S::Nullifier: Deserialize<'de>",
+            serialize = r"
+                S::Secret: Serialize, 
+                S::Utxo: Serialize, 
+                S::Nullifier: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -204,8 +210,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "UtxoMembershipProof<S>: Deserialize<'de>",
-            serialize = "UtxoMembershipProof<S>: Serialize",
+            deserialize = r"UtxoMembershipProof<S>: Deserialize<'de>",
+            serialize = r"UtxoMembershipProof<S>: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -246,14 +252,16 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "S::Secret: Deserialize<'de>, 
-            S::Utxo: Deserialize<'de>, 
-            UtxoMembershipProof<S, COM>: Deserialize<'de>, 
-            S::Nullifier: Deserialize<'de>",
-            serialize = "S::Secret: Serialize, 
-            S::Utxo: Serialize, 
-            UtxoMembershipProof<S, COM>: Serialize, 
-            S::Nullifier: Serialize",
+            deserialize = r"
+                S::Secret: Deserialize<'de>, 
+                S::Utxo: Deserialize<'de>, 
+                UtxoMembershipProof<S, COM>: Deserialize<'de>, 
+                S::Nullifier: Deserialize<'de>",
+            serialize = r"
+                S::Secret: Serialize, 
+                S::Utxo: Serialize, 
+                UtxoMembershipProof<S, COM>: Serialize, 
+                S::Nullifier: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -261,25 +269,41 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(
-        bound = "S::Secret: Clone, S::Utxo: Clone, UtxoMembershipProof<S, COM>: Clone, S::Nullifier: Clone"
-    ),
-    Copy(
-        bound = "S::Secret: Copy, S::Utxo: Copy, UtxoMembershipProof<S, COM>: Copy, S::Nullifier: Copy"
-    ),
-    Debug(
-        bound = "S::Secret: Debug,S::Utxo: Debug, UtxoMembershipProof<S, COM>: Debug, S::Nullifier: Debug"
-    ),
-    Default(
-        bound = "S::Secret: Default,S::Utxo: Default, UtxoMembershipProof<S, COM>: Default, S::Nullifier: Default"
-    ),
-    Eq(bound = "S::Secret: Eq,S::Utxo: Eq, UtxoMembershipProof<S, COM>: Eq, S::Nullifier: Eq"),
-    Hash(
-        bound = "S::Secret: Hash,S::Utxo: Hash, UtxoMembershipProof<S, COM>: Hash, S::Nullifier: Hash"
-    ),
-    PartialEq(
-        bound = "S::Secret: PartialEq,S::Utxo: PartialEq, UtxoMembershipProof<S, COM>: PartialEq, S::Nullifier: PartialEq"
-    )
+    Clone(bound = r"
+            S::Secret: Clone, 
+            S::Utxo: Clone, 
+            UtxoMembershipProof<S, COM>: Clone, 
+            S::Nullifier: Clone"),
+    Copy(bound = r"
+            S::Secret: Copy, 
+            S::Utxo: Copy, 
+            UtxoMembershipProof<S, COM>: Copy, 
+            S::Nullifier: Copy"),
+    Debug(bound = r"
+            S::Secret: Debug,
+            S::Utxo: Debug, 
+            UtxoMembershipProof<S, COM>: Debug, 
+            S::Nullifier: Debug"),
+    Default(bound = r"
+            S::Secret: Default,
+            S::Utxo: Default, 
+            UtxoMembershipProof<S, COM>: Default, 
+            S::Nullifier: Default"),
+    Eq(bound = r"
+        S::Secret: Eq,
+        S::Utxo: Eq, 
+        UtxoMembershipProof<S, COM>: Eq, 
+        S::Nullifier: Eq"),
+    Hash(bound = r"
+            S::Secret: Hash,
+            S::Utxo: Hash, 
+            UtxoMembershipProof<S, COM>: Hash, 
+            S::Nullifier: Hash"),
+    PartialEq(bound = r"
+            S::Secret: PartialEq,
+            S::Utxo: PartialEq, 
+            UtxoMembershipProof<S, COM>: PartialEq, 
+            S::Nullifier: PartialEq")
 )]
 pub struct Sender<S, COM = ()>
 where
@@ -472,7 +496,7 @@ where
 
     /// Posts the `nullifier` to the ledger, spending the asset.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// This method can only be called once we check that `nullifier` is not already stored on
     /// the ledger. See [`is_unspent`](Self::is_unspent) for more.
@@ -497,7 +521,7 @@ where
 
     /// Posts all of the [`Nullifier`]s to the ledger, spending the assets.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// This method can only be called once we check that all the [`Nullifier`]s are not already
     /// stored on the ledger. See [`is_unspent`](Self::is_unspent) for more.
@@ -556,8 +580,12 @@ pub enum SenderPostError {
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "UtxoAccumulatorOutput<S>: Deserialize<'de>, S::Nullifier: Deserialize<'de>",
-            serialize = "UtxoAccumulatorOutput<S>: Serialize, S::Nullifier: Serialize",
+            deserialize = r"
+                UtxoAccumulatorOutput<S>: Deserialize<'de>, 
+                S::Nullifier: Deserialize<'de>",
+            serialize = r"
+                UtxoAccumulatorOutput<S>: Serialize, 
+                S::Nullifier: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -648,8 +676,12 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "L::ValidUtxoAccumulatorOutput: Deserialize<'de>, L::ValidNullifier: Deserialize<'de>",
-            serialize = "L::ValidUtxoAccumulatorOutput: Serialize, L::ValidNullifier: Serialize",
+            deserialize = r"
+                L::ValidUtxoAccumulatorOutput: Deserialize<'de>, 
+                L::ValidNullifier: Deserialize<'de>",
+            serialize = r"
+                L::ValidUtxoAccumulatorOutput: Serialize, 
+                L::ValidNullifier: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields

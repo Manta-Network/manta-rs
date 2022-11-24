@@ -444,12 +444,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = r"
-            Asset<C>: Deserialize<'de>,
-            ",
-            serialize = r"
-            Asset<C>: Serialize,
-            ",
+            deserialize = "Asset<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -479,6 +475,27 @@ where
 }
 
 /// Transfer Asset Selection
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::AssetValue: Deserialize<'de>, PreSender<C>: Deserialize<'de>",
+            serialize = "C::AssetValue: Serialize, PreSender<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "C::AssetValue: Clone, PreSender<C>: Clone"),
+    Debug(bound = "C::AssetValue: Debug, PreSender<C>: Debug"),
+    Default(bound = "C::AssetValue: Default, PreSender<C>: Default"),
+    Hash(bound = "C::AssetValue: Hash, PreSender<C>: Hash"),
+    Eq(bound = "C::AssetValue: Eq, PreSender<C>: Eq"),
+    PartialEq(bound = "C::AssetValue: PartialEq, PreSender<C>: PartialEq")
+)]
 pub struct Selection<C>
 where
     C: Configuration,
@@ -525,6 +542,18 @@ where
 }
 
 /// Canonical Multi-Proving Contexts
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "ProvingContext<C>: Deserialize<'de>",
+            serialize = "ProvingContext<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "ProvingContext<C>: Clone"),
@@ -565,6 +594,18 @@ where
 }
 
 /// Canonical Multi-Verifying Contexts
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "VerifyingContext<C>: Deserialize<'de>",
+            serialize = "VerifyingContext<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "VerifyingContext<C>: Clone"),

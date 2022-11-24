@@ -23,13 +23,38 @@ use crate::transfer::{
     Parameters, PreSender, Receiver, UtxoAccumulatorItem, UtxoAccumulatorModel,
 };
 use alloc::vec::Vec;
+use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::Accumulator,
     rand::{CryptoRng, RngCore},
 };
 use manta_util::into_array_unchecked;
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Batch Join Structure
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "PreSender<C>: Deserialize<'de>",
+            serialize = "PreSender<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "PreSender<C>: Clone"),
+    Debug(bound = "PreSender<C>: Debug"),
+    Default(bound = "PreSender<C>: Default"),
+    Eq(bound = "PreSender<C>: Eq"),
+    Hash(bound = "PreSender<C>: Hash"),
+    PartialEq(bound = "PreSender<C>: PartialEq")
+)]
 pub struct Join<C>
 where
     C: Configuration,

@@ -210,7 +210,7 @@ where
 
     /// Posts the `utxo` and `note` to the ledger, registering the asset.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// This method can only be called once we check that `utxo` is not already stored on the
     /// ledger. See [`is_not_registered`](Self::is_not_registered) for more.
@@ -235,7 +235,7 @@ where
 
     /// Posts all of the [`Utxo`] and [`Note`] to the ledger, registering the assets.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// This method can only be called once we check that all the [`Utxo`] and [`Note`] are not
     /// already stored on the ledger. See [`is_not_registered`](Self::is_not_registered) for more.

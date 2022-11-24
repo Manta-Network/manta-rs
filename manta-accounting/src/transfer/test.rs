@@ -101,7 +101,8 @@ where
     C: Configuration,
     A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
 {
-    ///
+    /// Builds a new [`TransferDistribution`] from `parameters`, `utxo_accumulator`
+    /// and `authorization`.
     #[inline]
     pub fn new(
         parameters: &'p Parameters<C>,
@@ -115,7 +116,8 @@ where
         }
     }
 
-    ///
+    /// Builds a new [`TransferDistribution`] from `parameters`, `utxo_accumulator`
+    /// and `spending_key`.
     #[inline]
     pub fn from_spending_key<R>(
         parameters: &'p Parameters<C>,
@@ -489,7 +491,8 @@ where
     }
 }
 
-///
+/// Samples a [`ToPrivate`] transfers and returns the corresponding [`TransferPost`]
+/// and [`PreSender`].
 #[inline]
 pub fn sample_to_private<C, R>(
     parameters: FullParametersRef<C>,
