@@ -20,86 +20,95 @@
 //! protocol. Applications which define balances beyond fungible assets should extend these
 //! abstractions.
 
-use crate::{
-    asset::AssetList,
-    transfer::{Asset, Configuration},
-};
+use crate::asset::{Asset, AssetList};
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
-use manta_util::num::CheckedSub;
+use core::ops::AddAssign;
+use manta_util::{
+    iter::{ConvertItemRef, ExactSizeIterable, RefItem},
+    num::CheckedSub,
+};
 
 #[cfg(feature = "std")]
 use std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
+    hash::Hash,
 };
 
 /// Balance State
-pub trait BalanceState<C>: Default
-where
-    C: Configuration,
+pub trait BalanceState<I, V>:
+    Default + ExactSizeIterable + for<'t> ConvertItemRef<'t, (&'t I, &'t V), Item = RefItem<'t, Self>>
 {
     /// Returns the current balance associated with this `id`.
-    fn balance(&self, id: C::AssetId) -> C::AssetValue;
+    fn balance(&self, id: &I) -> V;
 
     /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
     #[inline]
-    fn contains(&self, asset: Asset<C>) -> bool {
-        self.balance(asset.id) >= asset.value
+    fn contains(&self, asset: &Asset<I, V>) -> bool
+    where
+        V: PartialOrd,
+    {
+        self.balance(&asset.id) >= asset.value
     }
 
     /// Deposits `asset` into the balance state, increasing the balance of the asset stored at
     /// `asset.id` by an amount equal to `asset.value`.
-    fn deposit(&mut self, asset: Asset<C>);
+    fn deposit(&mut self, asset: Asset<I, V>);
 
     /// Deposits every asset in `assets` into the balance state.
     #[inline]
-    fn deposit_all<I>(&mut self, assets: I)
+    fn deposit_all<A>(&mut self, assets: A)
     where
-        I: IntoIterator<Item = Asset<C>>,
+        A: IntoIterator<Item = Asset<I, V>>,
     {
         assets.into_iter().for_each(move |a| self.deposit(a));
     }
 
     /// Withdraws `asset` from the balance state returning `false` if it would overdraw the balance.
-    fn withdraw(&mut self, asset: Asset<C>) -> bool;
+    fn withdraw(&mut self, asset: Asset<I, V>) -> bool;
 
     /// Withdraws every asset in `assets` from the balance state, returning `false` if it would
     /// overdraw the balance.
-    #[inline]
-    fn withdraw_all<I>(&mut self, assets: I) -> bool
+    fn withdraw_all<A>(&mut self, assets: A) -> bool
     where
-        I: IntoIterator<Item = Asset<C>>,
-    {
-        for asset in AssetList::from_iter(assets) {
-            if !self.withdraw(asset) {
-                return false;
-            }
-        }
-        true
-    }
+        A: IntoIterator<Item = Asset<I, V>>;
 
     /// Clears the entire balance state.
     fn clear(&mut self);
 }
 
-impl<C> BalanceState<C> for AssetList<C::AssetId, C::AssetValue>
+impl<I, V> BalanceState<I, V> for AssetList<I, V>
 where
-    C: Configuration,
-    for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
+    I: Ord,
+    V: AddAssign + Clone + Default + PartialEq,
+    for<'v> &'v V: CheckedSub<Output = V>,
 {
     #[inline]
-    fn balance(&self, id: C::AssetId) -> C::AssetValue {
-        self.value(&id)
+    fn balance(&self, id: &I) -> V {
+        self.value(id)
     }
 
     #[inline]
-    fn deposit(&mut self, asset: Asset<C>) {
+    fn deposit(&mut self, asset: Asset<I, V>) {
         self.deposit(asset);
     }
 
     #[inline]
-    fn withdraw(&mut self, asset: Asset<C>) -> bool {
+    fn withdraw(&mut self, asset: Asset<I, V>) -> bool {
         self.withdraw(&asset)
+    }
+
+    #[inline]
+    fn withdraw_all<A>(&mut self, assets: A) -> bool
+    where
+        A: IntoIterator<Item = Asset<I, V>>,
+    {
+        for asset in AssetList::from_iter(assets) {
+            if !self.withdraw(&asset) {
+                return false;
+            }
+        }
+        true
     }
 
     #[inline]
@@ -110,15 +119,15 @@ where
 
 /// Adds implementation of [`BalanceState`] for a map type with the given `$entry` type.
 macro_rules! impl_balance_state_map_body {
-    ($entry:tt, $config: ty) => {
+    ($I:ty, $V:ty, $entry:tt) => {
         #[inline]
-        fn balance(&self, id: <$config>::AssetId) -> <$config>::AssetValue {
-            self.get(&id).copied().unwrap_or_default()
+        fn balance(&self, id: &$I) -> $V {
+            self.get(id).cloned().unwrap_or_default()
         }
 
         #[inline]
-        fn deposit(&mut self, asset: Asset<$config>) {
-            if asset.is_zero() {
+        fn deposit(&mut self, asset: Asset<$I, $V>) {
+            if asset.value == Default::default() {
                 return;
             }
             match self.entry(asset.id) {
@@ -130,11 +139,11 @@ macro_rules! impl_balance_state_map_body {
         }
 
         #[inline]
-        fn withdraw(&mut self, asset: Asset<$config>) -> bool {
-            if !asset.is_zero() {
+        fn withdraw(&mut self, asset: Asset<$I, $V>) -> bool {
+            if asset.value != Default::default() {
                 if let $entry::Occupied(mut entry) = self.entry(asset.id) {
                     let balance = entry.get_mut();
-                    if let Some(next_balance) = balance.checked_sub(asset.value) {
+                    if let Some(next_balance) = balance.checked_sub(&asset.value) {
                         if next_balance == Default::default() {
                             entry.remove();
                         } else {
@@ -150,6 +159,19 @@ macro_rules! impl_balance_state_map_body {
         }
 
         #[inline]
+        fn withdraw_all<A>(&mut self, assets: A) -> bool
+        where
+            A: IntoIterator<Item = Asset<I, V>>,
+        {
+            for asset in AssetList::from_iter(assets) {
+                if !self.withdraw(asset) {
+                    return false;
+                }
+            }
+            true
+        }
+
+        #[inline]
         fn clear(&mut self) {
             self.clear();
         }
@@ -157,85 +179,80 @@ macro_rules! impl_balance_state_map_body {
 }
 
 /// B-Tree Map [`BalanceState`] Implementation
-pub type BTreeMapBalanceState<C> =
-    BTreeMap<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
+pub type BTreeMapBalanceState<I, V> = BTreeMap<I, V>;
 
-impl<C> BalanceState<C> for BTreeMapBalanceState<C>
+impl<I, V> BalanceState<I, V> for BTreeMapBalanceState<I, V>
 where
-    C: Configuration,
-    C::AssetValue: CheckedSub<Output = C::AssetValue>,
+    I: Ord,
+    V: AddAssign + Clone + Default + PartialEq,
+    for<'v> &'v V: CheckedSub<Output = V>,
 {
-    impl_balance_state_map_body! { BTreeMapEntry, C }
+    impl_balance_state_map_body! { I, V, BTreeMapEntry }
 }
 
 /// Hash Map [`BalanceState`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashMapBalanceState<C, S = RandomState> =
-    HashMap<<C as Configuration>::AssetId, <C as Configuration>::AssetValue, S>;
+pub type HashMapBalanceState<I, V, S = RandomState> = HashMap<I, V, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<C, S> BalanceState<C> for HashMapBalanceState<C, S>
+impl<I, V, S> BalanceState<I, V> for HashMapBalanceState<I, V, S>
 where
-    C: Configuration,
+    I: Eq + Hash + Ord,
+    V: AddAssign + Clone + Default + PartialEq,
+    for<'v> &'v V: CheckedSub<Output = V>,
     S: BuildHasher + Default,
-    C::AssetValue: CheckedSub<Output = C::AssetValue>,
 {
-    impl_balance_state_map_body! { HashMapEntry, C }
+    impl_balance_state_map_body! { I, V, HashMapEntry }
 }
 
 /// Testing Framework
 #[cfg(any(feature = "test", test))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test {
-
-    use super::*;
-    use crate::asset;
+    use crate::{asset::Asset, wallet::BalanceState};
     use core::{fmt::Debug, ops::Add};
     use manta_crypto::rand::{CryptoRng, RngCore, Sample};
 
     /// Asserts that a random deposit and withdraw is always valid.
     #[inline]
-    pub fn assert_valid_withdraw<C, S, R>(state: &mut S, rng: &mut R)
+    pub fn assert_valid_withdraw<I, V, S, R>(state: &mut S, rng: &mut R)
     where
-        C: Configuration,
-        S: BalanceState<C>,
+        I: Clone + Sample,
+        V: Add<Output = V> + Clone + Debug + PartialEq + Sample,
+        S: BalanceState<I, V>,
         R: CryptoRng + RngCore + ?Sized,
-        C::AssetId: Sample,
-        C::AssetValue: Add<Output = C::AssetValue> + Debug + Sample,
     {
-        let asset = Asset::<C>::gen(rng);
-        let initial_balance = state.balance(asset.clone().id);
+        let asset = Asset::gen(rng);
+        let initial_balance = state.balance(&asset.id);
         state.deposit(asset.clone());
         assert_eq!(
-            initial_balance + asset.value,
-            state.balance(asset.clone().id),
+            initial_balance.clone() + asset.clone().value,
+            state.balance(&asset.id),
             "Current balance and sum of initial balance and new deposit should have been equal."
         );
         state.withdraw(asset.clone());
         assert_eq!(
             initial_balance,
-            state.balance(asset.id),
+            state.balance(&asset.id),
             "Initial and final balances should have been equal."
         );
     }
-
     /// Asserts that a maximal withdraw that leaves the state with no value should delete its memory
     /// for this process.
     #[inline]
-    pub fn assert_full_withdraw_should_remove_entry<C, S, R>(rng: &mut R)
+    pub fn assert_full_withdraw_should_remove_entry<I, V, S, R>(rng: &mut R)
     where
-        C: Configuration,
-        C::AssetId: Sample,
-        C::AssetValue: Sample + Debug,
-        S: BalanceState<C>,
+        I: Clone + Sample,
+        V: Clone + Debug + Default + PartialEq + Sample,
+        S: BalanceState<I, V>,
         for<'s> &'s S: IntoIterator,
         for<'s> <&'s S as IntoIterator>::IntoIter: ExactSizeIterator,
         R: CryptoRng + RngCore + ?Sized,
     {
         let mut state = S::default();
-        let asset = Asset::<C>::gen(rng);
+        let asset = Asset::gen(rng);
         let initial_length = state.into_iter().len();
         state.deposit(asset.clone());
         assert_eq!(
@@ -243,13 +260,13 @@ pub mod test {
             state.into_iter().len(),
             "Length should have increased by one after depositing a new asset."
         );
-        let balance = state.balance(asset.clone().id);
-        state.withdraw(asset::Asset {
+        let balance = state.balance(&asset.id);
+        state.withdraw(Asset {
             id: asset.clone().id,
             value: balance,
         });
         assert_eq!(
-            state.balance(asset.id),
+            state.balance(&asset.id),
             Default::default(),
             "Balance in the removed AssetId should be zero."
         );
@@ -259,16 +276,12 @@ pub mod test {
             "Removed AssetId should remove its entry in the database."
         );
     }
-
-    /*
-
-    Note: the following tests cannot be defined until we specify a transfer configuration.
-
+}
+/* TODO: move these to manta-pay
     /// Defines the tests across multiple different [`BalanceState`] types.
     macro_rules! define_tests {
         ($((
             $type:ty,
-            $config: ty,
             $doc:expr,
             $valid_withdraw:ident,
             $full_withdraw:ident
@@ -282,21 +295,19 @@ pub mod test {
                     let mut state = <$type>::default();
                     let mut rng = OsRng;
                     for _ in 0..0xFFFF {
-                        assert_valid_withdraw::<$config, _, _>(&mut state, &mut rng);
+                        assert_valid_withdraw(&mut state, &mut rng);
                     }
                 }
-
                 #[doc = "Tests that there are no empty entries in"]
                 #[doc = $doc]
                 #[doc = "with no value stored in them."]
                 #[test]
                 fn $full_withdraw() {
-                    assert_full_withdraw_should_remove_entry::<$config, $type, _>(&mut OsRng);
+                    assert_full_withdraw_should_remove_entry::<_, _, $type, _>(&mut OsRng);
                 }
             )*
         }
     }
-
     define_tests!(
         (
             AssetList,
@@ -311,20 +322,16 @@ pub mod test {
             btree_map_full_withdraw,
         ),
     );
-
     /// Tests valid withdrawals for a [`HashMapBalanceState`] balance state.
     #[cfg(feature = "std")]
     #[test]
     fn hash_map_valid_withdraw() {
         assert_valid_withdraw(&mut HashMapBalanceState::new(), &mut OsRng);
     }
-
     ///
     #[cfg(feature = "std")]
     #[test]
     fn hash_map_full_withdraw() {
         assert_full_withdraw_should_remove_entry::<HashMapBalanceState, _>(&mut OsRng);
     }
-
-    */
-}
+*/
