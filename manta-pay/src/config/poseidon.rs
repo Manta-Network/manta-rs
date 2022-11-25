@@ -83,12 +83,9 @@ pub type Spec5 = Spec<5>;
 pub mod test {
     use crate::{
         config::{poseidon::Spec, ConstraintField},
-        crypto::{
-            constraint::arkworks::Fp,
-            poseidon::{
-                encryption::{BlockArray, FixedDuplexer, PlaintextBlock},
-                Constants,
-            },
+        crypto::poseidon::{
+            encryption::{BlockArray, FixedDuplexer, PlaintextBlock},
+            Constants,
         },
     };
     use alloc::boxed::Box;

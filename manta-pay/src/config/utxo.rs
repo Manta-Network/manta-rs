@@ -1996,54 +1996,6 @@ impl From<RawCheckpoint> for Checkpoint {
 
 impl ledger::Checkpoint for Checkpoint {}
 
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl scale_codec::Decode for Checkpoint {
-    #[inline]
-    fn decode<I>(input: &mut I) -> Result<Self, scale_codec::Error>
-    where
-        I: scale_codec::Input,
-    {
-        RawCheckpoint::decode(input).map(Into::into)
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl scale_codec::Encode for Checkpoint {
-    #[inline]
-    fn using_encoded<R, Encoder>(&self, f: Encoder) -> R
-    where
-        Encoder: FnOnce(&[u8]) -> R,
-    {
-        RawCheckpoint::from(*self).using_encoded(f)
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl scale_codec::EncodeLike for Checkpoint {}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl scale_codec::MaxEncodedLen for Checkpoint {
-    #[inline]
-    fn max_encoded_len() -> usize {
-        RawCheckpoint::max_encoded_len()
-    }
-}
-
-#[cfg(feature = "scale")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
-impl scale_info::TypeInfo for Checkpoint {
-    type Identity = RawCheckpoint;
-
-    #[inline]
-    fn type_info() -> scale_info::Type {
-        Self::Identity::type_info()
-    }
-}
-
 /// Raw Checkpoint for Encoding and Decoding
 // #[cfg_attr(
 //     feature = "scale",

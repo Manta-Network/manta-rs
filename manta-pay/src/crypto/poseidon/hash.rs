@@ -191,14 +191,14 @@ where
     }
 }
 
-impl<D, S, T, const ARITY: usize, COM> Sample<D> for Hasher<S, T, ARITY, COM>
+impl<S, T, const ARITY: usize> Sample for Hasher<S, T, ARITY>
 where
-    S: Specification<COM>,
-    S::ParameterField: Field + FieldGeneration + Sample<D>,
+    S: Specification,
+    S::ParameterField: Field + FieldGeneration,
     T: DomainTag<S>,
 {
     #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {

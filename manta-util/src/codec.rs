@@ -18,6 +18,7 @@
 
 // TODO: Deprecate this in favor of pure `serde`.
 
+use crate::Array;
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "alloc")]
@@ -650,6 +651,19 @@ where
             item.encode(&mut writer)?;
         }
         Ok(())
+    }
+}
+
+impl<T, const N: usize> Encode for Array<T, N>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(&mut writer)
     }
 }
 

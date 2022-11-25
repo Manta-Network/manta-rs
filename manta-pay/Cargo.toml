@@ -49,7 +49,7 @@ arkworks = [
 download = ["manta-parameters/download", "std"]
 
 # Enable Groth16 ZKP System
-groth16 = ["ark-groth16", "ark-snark", "arkworks"]
+groth16 = ["manta-crypto/ark-groth16", "ark-snark", "arkworks"]
 
 # Enable HTTP Signer Client
 http = ["manta-util/reqwest", "serde"]

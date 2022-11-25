@@ -24,7 +24,7 @@ use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, mem, slice};
 use manta_crypto::{
     eclair::alloc::{Allocate, Const, Constant},
     permutation::PseudorandomPermutation,
-    rand::{RngCore, Sample},
+    rand::{Rand, RngCore, Sample},
 };
 use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
@@ -188,6 +188,69 @@ where
     #[inline]
     pub fn iter_mut(&mut self) -> slice::IterMut<S::Field> {
         self.0.iter_mut()
+    }
+}
+
+impl<S, COM> Constant<COM> for State<S, COM>
+where
+    S: Specification<COM> + Constant<COM>,
+    S::Field: Constant<COM>,
+    S::Type: Specification<Field = Const<S::Field, COM>>,
+{
+    type Type = State<S::Type>;
+
+    #[inline]
+    fn new_constant(this: &Self::Type, compiler: &mut COM) -> Self {
+        Self(this.0.as_constant(compiler))
+    }
+}
+
+impl<S> Decode for State<S>
+where
+    S: Specification,
+    S::Field: Decode,
+{
+    type Error = Option<<S::Field as Decode>::Error>;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Self(Decode::decode(reader)?))
+    }
+}
+
+impl<S> Encode for State<S>
+where
+    S: Specification,
+    S::Field: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(writer)
+    }
+}
+
+impl<S, D> Sample<D> for State<S>
+where
+    S: Specification,
+    S::Field: Sample<D>,
+    D: Clone,
+{
+    #[inline]
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    where
+        R: RngCore + ?Sized,
+    {
+        Self(
+            iter::repeat_with(|| rng.sample(distribution.clone()))
+                .take(S::WIDTH)
+                .collect(),
+        )
     }
 }
 
@@ -456,13 +519,13 @@ where
     }
 }
 
-impl<D, S, COM> Sample<D> for Permutation<S, COM>
+impl<S> Sample for Permutation<S>
 where
-    S: Specification<COM>,
+    S: Specification,
     S::ParameterField: Field + FieldGeneration,
 {
     #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
+    fn sample<R>(distribution: (), rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {

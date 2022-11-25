@@ -16,10 +16,9 @@
 
 //! Manta-Pay Configuration
 
-use crate::crypto::ecc;
 use manta_accounting::transfer;
 use manta_crypto::arkworks::{
-    algebra::ScalarVar,
+    algebra::{self, ScalarVar},
     bn254::{self, Bn254},
     constraint::{FpVar, R1CS},
     ed_on_bn254::{
@@ -42,7 +41,7 @@ pub type PairingCurve = Bn254;
 pub type EmbeddedScalarField = ed_on_bn254::Fr;
 
 /// Embedded Scalar Type
-pub type EmbeddedScalar = ecc::arkworks::Scalar<GroupCurve>;
+pub type EmbeddedScalar = algebra::Scalar<GroupCurve>;
 
 /// Embedded Scalar Variable Type
 pub type EmbeddedScalarVar = ScalarVar<GroupCurve, GroupCurveVar>;
@@ -57,10 +56,10 @@ pub type GroupCurveAffine = ed_on_bn254::EdwardsAffine;
 pub type GroupCurveVar = Bn254_EdwardsVar;
 
 /// Embedded Group Type
-pub type Group = ecc::arkworks::Group<GroupCurve>;
+pub type Group = algebra::Group<GroupCurve>;
 
 /// Embedded Group Variable Type
-pub type GroupVar = ecc::arkworks::GroupVar<GroupCurve, GroupCurveVar>;
+pub type GroupVar = algebra::GroupVar<GroupCurve, GroupCurveVar>;
 
 /// Constraint Field
 pub type ConstraintField = bn254::Fr;
