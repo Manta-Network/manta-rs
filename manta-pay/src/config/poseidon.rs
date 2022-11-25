@@ -90,6 +90,7 @@ pub mod test {
     };
     use alloc::boxed::Box;
     use manta_crypto::{
+        arkworks::constraint::fp::Fp,
         encryption::{Decrypt, Encrypt},
         rand::{OsRng, Sample},
     };
@@ -108,9 +109,8 @@ pub mod test {
         let key_element_2 = Fp::<ConstraintField>::gen(&mut rng);
         key.push(key_element_1);
         key.push(key_element_2);
-        let randomness = ();
         let header = vec![];
-        let ciphertext = duplexer.encrypt(&key, &randomness, &header, &plaintext, &mut ());
+        let ciphertext = duplexer.encrypt(&key, &(), &header, &plaintext, &mut ());
         let (tag_matches, decrypted_plaintext) =
             duplexer.decrypt(&key, &header, &ciphertext, &mut ());
         assert!(tag_matches, "Tag doesn't match");
