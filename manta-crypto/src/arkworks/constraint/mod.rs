@@ -18,10 +18,12 @@
 
 use crate::{
     arkworks::{
+        algebra::modulus_is_smaller,
         constraint::fp::Fp,
-        ff::{FpParameters, PrimeField},
+        ff::{BigInteger, FpParameters, PrimeField},
         r1cs_std::{
-            alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, ToBitsGadget,
+            alloc::AllocVar, eq::EqGadget, fields::FieldVar, select::CondSelectGadget, R1CSVar,
+            ToBitsGadget,
         },
         relations::{
             ns,
@@ -40,10 +42,12 @@ use crate::{
         },
         bool::{Assert, ConditionalSelect, ConditionalSwap},
         num::{AssertWithinBitRange, Zero},
-        ops::{Add, BitAnd, BitOr},
+        ops::{Add, BitAnd, BitOr, Rem},
         Has, NonNative,
     },
 };
+use core::marker::PhantomData;
+use num_integer::Integer;
 
 pub use crate::arkworks::{
     r1cs_std::{bits::boolean::Boolean, fields::fp::FpVar},
@@ -457,6 +461,90 @@ where
         let _ = compiler;
         FieldVar::is_zero(self).expect("Comparison with zero is not allowed to fail.")
     }
+}
+
+/// Prime Modulus
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct PrimeModulus<F>(PhantomData<F>)
+where
+    F: PrimeField;
+
+impl<F, R> Rem<PrimeModulus<R>, R1CS<F>> for FpVar<F>
+where
+    F: PrimeField,
+    R: PrimeField,
+{
+    type Output = FpVar<F>;
+
+    #[inline]
+    fn rem(self, rhs: PrimeModulus<R>, compiler: &mut R1CS<F>) -> Self::Output {
+        let _ = (rhs, compiler);
+        assert!(
+            modulus_is_smaller::<R, F>(),
+            "The modulus of the embedded scalar field is larger than that of the constraint field."
+        );
+        let (quotient, remainder) = match self.value() {
+            Ok(value) => {
+                let (quotient, remainder) = div_rem_mod_prime::<F, R>(value);
+                (
+                    FpVar::new_witness(self.cs(), full(quotient)).expect(""),
+                    FpVar::new_witness(
+                        self.cs(),
+                        full(F::from_le_bytes_mod_order(&remainder.to_bytes_le())),
+                    )
+                    .expect(""),
+                )
+            }
+            _ => (
+                FpVar::new_witness(self.cs(), empty::<F>).expect(""),
+                FpVar::new_witness(self.cs(), empty::<F>).expect(""),
+            ),
+        };
+        let modulus = FpVar::Constant(F::from_le_bytes_mod_order(
+            &<R::Params as FpParameters>::MODULUS.to_bytes_le(),
+        ));
+        self.enforce_equal(&(quotient * &modulus + &remainder))
+            .expect("");
+        remainder
+            .enforce_cmp(&modulus, core::cmp::Ordering::Less, false)
+            .expect("");
+        remainder
+    }
+}
+
+/// Divides `value` by the modulus of the [`PrimeField`] `R` and returns the quotient and
+/// the remainder.
+#[inline]
+pub fn div_rem_mod_prime<F, R>(value: F) -> (F, R::BigInt)
+where
+    F: PrimeField,
+    R: PrimeField,
+{
+    let modulus = <R::Params as FpParameters>::MODULUS;
+    let (quotient, remainder) = value.into_repr().into().div_rem(&modulus.into());
+    (
+        F::from_le_bytes_mod_order(
+            &F::BigInt::try_from(quotient)
+                .ok()
+                .expect("Unable to compute modular reduction.")
+                .to_bytes_le(),
+        ),
+        R::BigInt::try_from(remainder)
+            .ok()
+            .expect("Unable to compute modular reduction."),
+    )
+}
+
+/// Returns the remainder of `value` divided by the modulus of the [`Primefield`] `R`.
+#[inline]
+pub fn rem_mod_prime<F, R>(value: F) -> R
+where
+    F: PrimeField,
+    R: PrimeField,
+{
+    R::from_repr(div_rem_mod_prime::<F, R>(value).1)
+        .expect("This element is guaranteed to be within the modulus.")
 }
 
 /// Testing Suite

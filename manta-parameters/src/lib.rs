@@ -73,7 +73,7 @@ pub mod github {
     /// Downloads data from `data_path` relative to the given `branch` to a file at `path` without
     /// checking any checksums.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// Prefer the [`download`] method which checks the data against a given checksum.
     #[inline]
