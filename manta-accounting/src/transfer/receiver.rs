@@ -32,6 +32,8 @@ use manta_util::codec::{Encode, Write};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+#[derive(derivative::Derivative)]
+#[derivative(Debug(bound = "M::Secret: Debug, M::Utxo: Debug, M::Note: Debug"))]
 /// Receiver
 pub struct Receiver<M, COM = ()>
 where
@@ -81,6 +83,7 @@ where
         M: DeriveMint,
         R: RngCore + ?Sized,
     {
+        // println!("The asset is {asset:?}");
         let (secret, utxo, note) = parameters.derive_mint(address, asset, associated_data, rng);
         Self::new(secret, utxo, note)
     }

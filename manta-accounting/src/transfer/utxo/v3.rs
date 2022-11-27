@@ -1464,7 +1464,10 @@ where
 
 /// Incoming Note Plaintext
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = "UtxoCommitmentRandomness<C, COM>: Clone, Asset<C, COM>: Clone"))]
+#[derivative(
+    Clone(bound = "UtxoCommitmentRandomness<C, COM>: Clone, Asset<C, COM>: Clone"),
+    Debug(bound = "UtxoCommitmentRandomness<C, COM>: Debug, Asset<C, COM>: Debug")
+)]
 pub struct IncomingPlaintext<C, COM = ()>
 where
     C: BaseConfiguration<COM> + ?Sized,
@@ -1796,6 +1799,10 @@ where
     }
 }
 
+#[derive(derivative::Derivative)]
+#[derivative(Debug(
+    bound = "C::Group: Debug, IncomingRandomness<C, COM>: Debug, IncomingPlaintext<C, COM>: Debug"
+))]
 /// Secret required to Mint a UTXO
 pub struct MintSecret<C, COM = ()>
 where

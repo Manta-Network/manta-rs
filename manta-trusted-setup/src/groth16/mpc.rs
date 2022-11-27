@@ -99,6 +99,16 @@ where
     }
 }
 
+impl<P> From<ProvingKey<P::Pairing>> for State<P>
+where
+    P: Pairing,
+    P::Pairing: PairingEngine,
+{
+    fn from(pk: ProvingKey<P::Pairing>) -> Self {
+        Self(pk)
+    }
+}
+
 /// Checks that `p` is a valid point on the elliptic curve.
 #[inline]
 fn curve_point_checks<P>(p: &GroupAffine<P>) -> Result<(), SerializationError>
@@ -342,7 +352,7 @@ where
 
 /// Initialize [`State`] using the KZG accumulator `powers` and the given `constraint_system`.
 #[inline]
-pub fn initialize<C, S>(powers: Accumulator<C>, constraint_system: S) -> Result<State<C>, Error>
+pub fn initialize<C, S>(powers: &Accumulator<C>, constraint_system: S) -> Result<State<C>, Error>
 where
     C: kzg::Configuration,
     S: ConstraintSynthesizer<C::Scalar>,
