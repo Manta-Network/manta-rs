@@ -36,6 +36,10 @@ required-features = ["clap", "ppot-client", "reqwest", "tokio"]
 name = "groth16_phase2_prepare"
 required-features = ["ppot-client", "serde", "tokio"]
 
+[[bin]]
+name = "process_registration"
+required-features = ["clap", "ppot-client", "serde", "tokio"]
+
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]
