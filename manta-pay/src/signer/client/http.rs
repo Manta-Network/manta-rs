@@ -86,7 +86,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SyncRequest,
     ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
-        Box::pin(async move { self.base.post("sync", &request).await })
+        Box::pin(async move { self.base.post("sync", &self.wrap_request(request)).await })
     }
 
     #[inline]
@@ -94,11 +94,15 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SignRequest,
     ) -> LocalBoxFutureResult<Result<SignResponse, SignError>, Self::Error> {
-        Box::pin(async move { self.base.post("sign", &request).await })
+        Box::pin(async move { self.base.post("sign", &self.wrap_request(request)).await })
     }
 
     #[inline]
     fn address(&mut self) -> LocalBoxFutureResult<protocol_pay::Address, Self::Error> {
-        Box::pin(async move { self.base.post("address", &GetRequest::Get).await })
+        Box::pin(async move {
+            self.base
+                .post("address", &self.wrap_request(GetRequest::Get))
+                .await
+        })
     }
 }
