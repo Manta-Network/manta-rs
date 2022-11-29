@@ -536,7 +536,7 @@ where
     )
 }
 
-/// Returns the remainder of `value` divided by the modulus of the [`Primefield`] `R`.
+/// Returns the remainder of `value` divided by the modulus of the [`PrimeField`] `R`.
 #[inline]
 pub fn rem_mod_prime<F, R>(value: F) -> R
 where

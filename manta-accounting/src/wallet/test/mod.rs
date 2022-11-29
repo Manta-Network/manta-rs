@@ -487,7 +487,7 @@ where
         self.sync().await.map_err(|err| action.label(err))
     }
 
-    /// Posts `transaction` to the ledger, returning a success [`Response`](L::Response) if the
+    /// Posts `transaction` to the ledger, returning a success [`Response`](ledger::Write::Response) if the
     /// `transaction` was successfully posted.
     #[inline]
     async fn post(

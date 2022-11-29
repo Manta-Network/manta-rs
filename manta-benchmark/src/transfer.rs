@@ -47,7 +47,7 @@ pub struct Context {
 
 #[wasm_bindgen]
 impl Context {
-    /// Constructs a new [`Context`] which can be used for proving and verifying [`Proof`].
+    /// Constructs a new [`Context`] which can be used for proving and verifying [`TransferPost`].
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
