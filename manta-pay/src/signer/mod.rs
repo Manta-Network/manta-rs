@@ -24,7 +24,7 @@ use crate::config::{utxo::Checkpoint, Config};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-//pub mod client;
+pub mod client;
 
 #[cfg(feature = "wallet")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]

@@ -19,7 +19,7 @@
 // TODO: Make this code work on WASM and non-WASM by choosing the correct dependency library.
 
 use crate::{
-    config::{Config, PublicKey},
+    config::{utxo::Address, Config},
     signer::{
         Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
         SyncResponse,
@@ -141,7 +141,7 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn receiving_keys(&mut self) -> LocalBoxFutureResult<PublicKey, Self::Error> {
-        Box::pin(async move { self.send("receivingKeys", GetRequest::Get).await })
+    fn address(&mut self) -> LocalBoxFutureResult<Address, Self::Error> {
+        Box::pin(async move { self.send("address", GetRequest::Get).await })
     }
 }

@@ -122,16 +122,18 @@ where
 }
 
 /// Plaintext Block
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(bound(
-        deserialize = "S::Field: Deserialize<'de>",
-        serialize = "S::Field: Serialize"
-    ),)
+    serde(
+        bound(
+            deserialize = "S::Field: Deserialize<'de>",
+            serialize = "S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -232,7 +234,6 @@ where
 }
 
 /// Ciphertext Block
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -245,7 +246,6 @@ where
         deny_unknown_fields
     )
 )]
-*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
