@@ -431,7 +431,12 @@ type ViewingKeyDerivationFunctionType<COM = ()> =
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "ViewingKeyDerivationFunctionType<COM>: Clone"),
-    Debug(bound = "ViewingKeyDerivationFunctionType<COM>: Debug")
+    Copy(bound = "ViewingKeyDerivationFunctionType<COM>: Copy"),
+    Debug(bound = "ViewingKeyDerivationFunctionType<COM>: Debug"),
+    Default(bound = "ViewingKeyDerivationFunctionType<COM>: Default"),
+    Eq(bound = "ViewingKeyDerivationFunctionType<COM>: Eq"),
+    Hash(bound = "ViewingKeyDerivationFunctionType<COM>: core::hash::Hash"),
+    PartialEq(bound = "ViewingKeyDerivationFunctionType<COM>: PartialEq")
 )]
 pub struct ViewingKeyDerivationFunction<COM = ()>(ViewingKeyDerivationFunctionType<COM>)
 where
@@ -521,7 +526,7 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
 
 /// Incoming Encryption Scheme Converter
 #[derive(derivative::Derivative)]
-#[derivative(Default)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IncomingEncryptionSchemeConverter<COM = ()>(PhantomData<COM>);
 
 impl encryption::HeaderType for IncomingEncryptionSchemeConverter {
@@ -943,7 +948,7 @@ impl encryption::convert::plaintext::Forward for IncomingAESConverter {
             target_plaintext.len(),
             AES_PLAINTEXT_SIZE
         );
-        Array::from_unchecked::<Vec<u8>>(target_plaintext)
+        Array::from_unchecked(target_plaintext)
     }
 }
 
@@ -973,7 +978,7 @@ impl encryption::convert::plaintext::Forward<Compiler> for IncomingAESConverter<
             target_plaintext.len(),
             AES_PLAINTEXT_SIZE
         );
-        Array::from_unchecked::<Vec<u8>>(target_plaintext)
+        Array::from_unchecked(target_plaintext)
     }
 }
 
@@ -1678,7 +1683,7 @@ impl encryption::convert::plaintext::Forward for OutgoingAESConverter {
             target_plaintext.len(),
             OUT_AES_PLAINTEXT_SIZE
         );
-        Array::from_unchecked::<Vec<u8>>(target_plaintext)
+        Array::from_unchecked(target_plaintext)
     }
 }
 
@@ -1704,7 +1709,7 @@ impl encryption::convert::plaintext::Forward<Compiler> for OutgoingAESConverter<
             target_plaintext.len(),
             OUT_AES_PLAINTEXT_SIZE
         );
-        Array::from_unchecked::<Vec<u8>>(target_plaintext)
+        Array::from_unchecked(target_plaintext)
     }
 }
 
@@ -2175,7 +2180,6 @@ pub mod test {
             value: asset_value,
         };
         let is_transparent = bool::gen(&mut rng);
-        println!("{is_transparent:?}");
         let associated_data = if is_transparent {
             Visibility::Transparent
         } else {
