@@ -57,7 +57,7 @@ fn compatibility() {
     let _ = &prove_to_public(
         &proving_context,
         &parameters,
-        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        &mut UtxoAccumulator::new(utxo_accumulator_model),
         rng.gen(),
         [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
         &mut rng,

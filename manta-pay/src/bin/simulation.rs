@@ -19,7 +19,10 @@
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use manta_accounting::transfer::canonical::generate_context;
 use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::{config::FullParameters, simulation::Simulation};
+use manta_pay::{config::FullParametersRef, simulation::Simulation};
+
+// cargo run --release --package manta-pay --all-features --bin simulation <number_of_actors> <number_of_steps> <number_of_asset_ids> <initial_balance>
+// cargo run --release --package manta-pay --all-features --bin simulation 5 100000000 3 1000 > simulation_output_1
 
 /// Runs the Manta Pay simulation.
 pub fn main() {
@@ -29,7 +32,7 @@ pub fn main() {
     let utxo_accumulator_model = rng.gen();
     let (proving_context, verifying_context) = generate_context(
         &(),
-        FullParameters::new(&parameters, &utxo_accumulator_model),
+        FullParametersRef::new(&parameters, &utxo_accumulator_model),
         &mut rng,
     )
     .expect("Failed to generate contexts.");

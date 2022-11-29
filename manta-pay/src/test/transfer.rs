@@ -17,9 +17,7 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{
-        FullParametersRef, Parameters, PrivateTransfer, ProofSystem, ToPrivate, ToPublic,
-    },
+    config::{FullParametersRef, Parameters, PrivateTransfer, ProofSystem, ToPrivate, ToPublic},
     test::payment::UtxoAccumulator,
 };
 use manta_crypto::{
