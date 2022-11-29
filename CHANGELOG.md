@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#286](https://github.com/Manta-Network/manta-rs/pull/286) MantaPay v.1.0.0.
 
 ### Changed
 - [\#283](https://github.com/Manta-Network/manta-rs/pull/283) Upgrade asset system.
