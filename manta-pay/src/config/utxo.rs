@@ -1296,7 +1296,7 @@ impl merkle_tree::forest::Configuration for MerkleTreeConfiguration {
     }
 }
 
-#[cfg(any(feature = "parameters", test))]
+#[cfg(feature = "test")]
 impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
     type LeafHashParameterDistribution = ();
     type InnerHashParameterDistribution = ();
