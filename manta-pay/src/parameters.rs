@@ -17,12 +17,17 @@
 //! Generate Parameters and Proving/Verifying Contexts
 
 use crate::config::{
-    FullParameters, Mint, MultiProvingContext, MultiVerifyingContext, NoteEncryptionScheme,
-    Parameters, PrivateTransfer, ProofSystemError, Reclaim, UtxoAccumulatorModel,
-    UtxoCommitmentScheme, VerifyingContext, VoidNumberCommitmentScheme,
+    utxo::protocol::BaseParameters, FullParametersRef, MultiProvingContext, MultiVerifyingContext,
+    Parameters, PrivateTransfer, ProofSystemError, ToPrivate, ToPublic, UtxoAccumulatorModel,
+    VerifyingContext,
 };
+use core::fmt::Debug;
 use manta_crypto::rand::{ChaCha20Rng, Rand, SeedableRng};
+use manta_parameters::Get;
 use manta_util::codec::Decode;
+
+#[cfg(feature = "download")]
+use manta_parameters::Download;
 
 #[cfg(feature = "std")]
 use {
@@ -62,23 +67,23 @@ pub fn generate_from_seed(
     let mut rng = ChaCha20Rng::from_seed(seed);
     let parameters = rng.gen();
     let utxo_accumulator_model: UtxoAccumulatorModel = rng.gen();
-    let full_parameters = FullParameters::new(&parameters, &utxo_accumulator_model);
-    let (mint_proving_context, mint_verifying_context) =
-        Mint::generate_context(&(), full_parameters, &mut rng)?;
+    let full_parameters = FullParametersRef::new(&parameters, &utxo_accumulator_model);
+    let (to_private_proving_context, to_private_verifying_context) =
+        ToPrivate::generate_context(&(), full_parameters, &mut rng)?;
     let (private_transfer_proving_context, private_transfer_verifying_context) =
         PrivateTransfer::generate_context(&(), full_parameters, &mut rng)?;
-    let (reclaim_proving_context, reclaim_verifying_context) =
-        Reclaim::generate_context(&(), full_parameters, &mut rng)?;
+    let (to_public_proving_context, to_public_verifying_context) =
+        ToPublic::generate_context(&(), full_parameters, &mut rng)?;
     Ok((
         MultiProvingContext {
-            mint: mint_proving_context,
+            to_private: to_private_proving_context,
             private_transfer: private_transfer_proving_context,
-            reclaim: reclaim_proving_context,
+            to_public: to_public_proving_context,
         },
         MultiVerifyingContext {
-            mint: mint_verifying_context,
+            to_private: to_private_verifying_context,
             private_transfer: private_transfer_verifying_context,
-            reclaim: reclaim_verifying_context,
+            to_public: to_public_verifying_context,
         },
         parameters,
         utxo_accumulator_model,
@@ -117,9 +122,9 @@ pub fn load_parameters(
     Ok((
         load_proving_context(directory),
         MultiVerifyingContext {
-            mint: load_mint_verifying_context(),
+            to_private: load_to_private_verifying_context(),
             private_transfer: load_private_transfer_verifying_context(),
-            reclaim: load_reclaim_verifying_context(),
+            to_public: load_to_public_verifying_context(),
         },
         load_transfer_parameters(),
         load_utxo_accumulator_model(),
@@ -132,16 +137,16 @@ pub fn load_parameters(
 #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
 #[inline]
 pub fn load_proving_context(directory: &Path) -> MultiProvingContext {
-    let mint_path = directory.join("mint.dat");
-    manta_parameters::pay::testnet::proving::Mint::download(&mint_path)
-        .expect("Unable to download MINT proving context.");
+    let to_private_path = directory.join("to-private.dat");
+    manta_parameters::pay::testnet::proving::ToPrivate::download(&to_private_path)
+        .expect("Unable to download ToPrivate proving context.");
     let private_transfer_path = directory.join("private-transfer.dat");
     manta_parameters::pay::testnet::proving::PrivateTransfer::download(&private_transfer_path)
-        .expect("Unable to download PRIVATE_TRANSFER proving context.");
-    let reclaim_path = directory.join("reclaim.dat");
-    manta_parameters::pay::testnet::proving::Reclaim::download(&reclaim_path)
-        .expect("Unable to download RECLAIM proving context.");
-    decode_proving_context(&mint_path, &private_transfer_path, &reclaim_path)
+        .expect("Unable to download PrivateTransfer proving context.");
+    let to_public_path = directory.join("to-public.dat");
+    manta_parameters::pay::testnet::proving::ToPublic::download(&to_public_path)
+        .expect("Unable to download ToPublic proving context.");
+    decode_proving_context(&to_private_path, &private_transfer_path, &to_public_path)
 }
 
 /// Loads the [`MultiProvingContext`] from [`manta_parameters`], using `directory` as
@@ -154,93 +159,108 @@ pub fn load_proving_context(directory: &Path) -> MultiProvingContext {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
 #[inline]
 pub fn try_load_proving_context(directory: &Path) -> MultiProvingContext {
-    let mint_path = directory.join("mint.dat");
-    manta_parameters::pay::testnet::proving::Mint::download_if_invalid(&mint_path)
-        .expect("Unable to download MINT proving context.");
+    let to_private_path = directory.join("to-private.dat");
+    manta_parameters::pay::testnet::proving::ToPrivate::download_if_invalid(&to_private_path)
+        .expect("Unable to download ToPrivate proving context.");
     let private_transfer_path = directory.join("private-transfer.dat");
     manta_parameters::pay::testnet::proving::PrivateTransfer::download_if_invalid(
         &private_transfer_path,
     )
-    .expect("Unable to download PRIVATE_TRANSFER proving context.");
-    let reclaim_path = directory.join("reclaim.dat");
-    manta_parameters::pay::testnet::proving::Reclaim::download_if_invalid(&reclaim_path)
-        .expect("Unable to download RECLAIM proving context.");
-    decode_proving_context(&mint_path, &private_transfer_path, &reclaim_path)
+    .expect("Unable to download PrivateTransfer proving context.");
+    let to_public_path = directory.join("to-public.dat");
+    manta_parameters::pay::testnet::proving::ToPublic::download_if_invalid(&to_public_path)
+        .expect("Unable to download ToPublic proving context.");
+    decode_proving_context(&to_private_path, &private_transfer_path, &to_public_path)
 }
 
-/// Decodes [`MultiProvingContext`] by loading from `mint_path`, `private_transfer_path`, and `reclaim_path`.
+/// Decodes [`MultiProvingContext`] by loading from `to_private_path`, `private_transfer_path`, and
+/// `to_public_path`.
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 #[inline]
 pub fn decode_proving_context(
-    mint_path: &Path,
+    to_private_path: &Path,
     private_transfer_path: &Path,
-    reclaim_path: &Path,
+    to_public_path: &Path,
 ) -> MultiProvingContext {
     MultiProvingContext {
-        mint: ProvingContext::decode(IoReader(
-            File::open(mint_path).expect("Unable to open MINT proving context file."),
+        to_private: ProvingContext::decode(IoReader(
+            File::open(to_private_path).expect("Unable to open ToPrivate proving context file."),
         ))
-        .expect("Unable to decode MINT proving context."),
+        .expect("Unable to decode ToPrivate proving context."),
         private_transfer: ProvingContext::decode(IoReader(
             File::open(private_transfer_path)
-                .expect("Unable to open PRIVATE_TRANSFER proving context file."),
+                .expect("Unable to open PrivateTransfer proving context file."),
         ))
-        .expect("Unable to decode PRIVATE_TRANSFER proving context."),
-        reclaim: ProvingContext::decode(IoReader(
-            File::open(reclaim_path).expect("Unable to open RECLAIM proving context file."),
+        .expect("Unable to decode PrivateTransfer proving context."),
+        to_public: ProvingContext::decode(IoReader(
+            File::open(to_public_path).expect("Unable to open ToPublic proving context file."),
         ))
-        .expect("Unable to decode RECLAIM proving context."),
+        .expect("Unable to decode ToPublic proving context."),
     }
 }
 
-/// Loads the `Mint` verifying contexts from [`manta_parameters`].
+/// Loads the [`ToPrivate`] verifying contexts from [`manta_parameters`].
 #[inline]
-pub fn load_mint_verifying_context() -> VerifyingContext {
+pub fn load_to_private_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
-        manta_parameters::pay::testnet::verifying::Mint::get().expect("Checksum did not match."),
+        manta_parameters::pay::testnet::verifying::ToPrivate::get()
+            .expect("Checksum did not match."),
     )
-    .expect("Unable to decode MINT verifying context.")
+    .expect("Unable to decode To-Private verifying context.")
 }
 
-/// Loads the `PrivateTransfer` verifying context from [`manta_parameters`].
+/// Loads the [`PrivateTransfer`] verifying context from [`manta_parameters`].
 #[inline]
 pub fn load_private_transfer_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
         manta_parameters::pay::testnet::verifying::PrivateTransfer::get()
             .expect("Checksum did not match."),
     )
-    .expect("Unable to decode PRIVATE_TRANSFER verifying context.")
+    .expect("Unable to decode PrivateTransfer verifying context.")
 }
 
-/// Loads the `Reclaim` verifying context from [`manta_parameters`].
+/// Loads the [`ToPublic`] verifying context from [`manta_parameters`].
 #[inline]
-pub fn load_reclaim_verifying_context() -> VerifyingContext {
+pub fn load_to_public_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
-        manta_parameters::pay::testnet::verifying::Reclaim::get().expect("Checksum did not match."),
+        manta_parameters::pay::testnet::verifying::ToPublic::get()
+            .expect("Checksum did not match."),
     )
-    .expect("Unable to decode RECLAIM verifying context.")
+    .expect("Unable to decode ToPublic verifying context.")
+}
+
+/// Load a [`Get`] object into an object of type `T`.
+#[inline]
+pub fn load_get_object<G, T>() -> T
+where
+    G: Get,
+    T: Decode,
+    T::Error: Debug,
+{
+    Decode::decode(G::get().expect("Mismatch of checksum.")).expect("Unable to decode object.")
 }
 
 /// Loads the transfer [`Parameters`] from [`manta_parameters`].
 #[inline]
 pub fn load_transfer_parameters() -> Parameters {
+    use manta_parameters::pay::testnet::parameters::*;
     Parameters {
-        note_encryption_scheme: NoteEncryptionScheme::decode(
-            manta_parameters::pay::testnet::parameters::NoteEncryptionScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode NOTE_ENCRYPTION_SCHEME parameters."),
-        utxo_commitment: UtxoCommitmentScheme::decode(
-            manta_parameters::pay::testnet::parameters::UtxoCommitmentScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode UTXO_COMMITMENT_SCHEME parameters."),
-        void_number_commitment: VoidNumberCommitmentScheme::decode(
-            manta_parameters::pay::testnet::parameters::VoidNumberCommitmentScheme::get()
-                .expect("Checksum did not match."),
-        )
-        .expect("Unable to decode VOID_NUMBER_COMMITMENT_SCHEME parameters."),
+        base: BaseParameters {
+            group_generator: load_get_object::<GroupGenerator, _>(),
+            utxo_commitment_scheme: load_get_object::<UtxoCommitmentScheme, _>(),
+            incoming_base_encryption_scheme: load_get_object::<IncomingBaseEncryptionScheme, _>(),
+            light_incoming_base_encryption_scheme: load_get_object::<
+                LightIncomingBaseEncryptionScheme,
+                _,
+            >(),
+            viewing_key_derivation_function: load_get_object::<ViewingKeyDerivationFunction, _>(),
+            utxo_accumulator_item_hash: load_get_object::<UtxoAccumulatorItemHash, _>(),
+            nullifier_commitment_scheme: load_get_object::<NullifierCommitmentScheme, _>(),
+            outgoing_base_encryption_scheme: load_get_object::<OutgoingBaseEncryptionScheme, _>(),
+        },
+        address_partition_function: load_get_object::<AddressPartitionFunction, _>(),
+        schnorr_hash_function: load_get_object::<SchnorrHashFunction, _>(),
     }
 }
 

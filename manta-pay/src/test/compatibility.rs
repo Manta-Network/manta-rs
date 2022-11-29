@@ -15,13 +15,17 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Manta Pay UTXO Binary Compatibility
+//!
 //! Checks if the current circuit implementation is compatible with precomputed parameters.
 
 use crate::{
     parameters::load_parameters,
-    test::payment::{prove_mint, prove_private_transfer, prove_reclaim},
+    signer::base::UtxoAccumulator,
+    test::payment::{
+        private_transfer::prove_full as prove_private_transfer,
+        to_private::prove_full as prove_to_private, to_public::prove_full as prove_to_public,
+    },
 };
-use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::{OsRng, Rand};
 
 /// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
@@ -31,32 +35,33 @@ fn compatibility() {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         load_parameters(directory.path()).expect("Failed to load parameters");
-    assert_valid_proof(
-        &verifying_context.mint,
-        &prove_mint(
-            &proving_context.mint,
-            &parameters,
-            &utxo_accumulator_model,
-            rng.gen(),
-            &mut rng,
-        ),
-    );
-    assert_valid_proof(
-        &verifying_context.private_transfer,
-        &prove_private_transfer(
-            &proving_context,
-            &parameters,
-            &utxo_accumulator_model,
-            &mut rng,
-        ),
-    );
-    assert_valid_proof(
-        &verifying_context.reclaim,
-        &prove_reclaim(
-            &proving_context,
-            &parameters,
-            &utxo_accumulator_model,
-            &mut rng,
-        ),
-    );
+    let _ = &prove_to_private(
+        &proving_context.to_private,
+        &parameters,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        rng.gen(),
+        rng.gen(),
+        &mut rng,
+    )
+    .assert_valid_proof(&verifying_context.to_private);
+    let _ = &prove_private_transfer(
+        &proving_context,
+        &parameters,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        rng.gen(),
+        [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
+        &mut rng,
+    )
+    .1
+    .assert_valid_proof(&verifying_context.private_transfer);
+    let _ = &prove_to_public(
+        &proving_context,
+        &parameters,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        rng.gen(),
+        [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
+        &mut rng,
+    )
+    .1
+    .assert_valid_proof(&verifying_context.to_public);
 }

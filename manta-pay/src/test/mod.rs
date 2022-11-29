@@ -16,13 +16,6 @@
 
 //! Manta Pay Testing
 
-// TODO: This is the old simulation. We need to integrate its features into the new asynchronous
-//       simulation.
-//
-// #[cfg(feature = "simulation")]
-// #[cfg_attr(doc_cfg, doc(cfg(feature = "simulation")))]
-// pub mod simulation;
-
 #[cfg(test)]
 pub mod compatibility;
 

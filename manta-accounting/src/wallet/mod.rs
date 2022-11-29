@@ -344,7 +344,7 @@ where
     /// This method is already called by [`post`](Self::post), but can be used by custom
     /// implementations to perform checks elsewhere.
     #[inline]
-    pub fn check<'s>(
+    fn check<'s>(
         &'s self,
         transaction: &'s Transaction<C>,
     ) -> Result<TransactionKind<C>, Asset<C>> {
