@@ -17,20 +17,26 @@
 //! Private Transfer Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_accounting::transfer::test::assert_valid_proof;
-use manta_crypto::rand::OsRng;
-use manta_pay::{parameters, test::payment::prove_private_transfer};
+use manta_crypto::rand::{OsRng, Rand};
+use manta_pay::{
+    parameters,
+    test::payment::{private_transfer::prove_full, UtxoAccumulator},
+};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
     let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
     group.bench_function("private transfer prove", |b| {
+        let asset_id = black_box(rng.gen());
+        let asset_value = black_box(rng.gen());
         b.iter(|| {
-            prove_private_transfer(
+            prove_full(
                 &proving_context,
                 &parameters,
-                &utxo_accumulator_model,
+                &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+                asset_id,
+                asset_value,
                 &mut rng,
             );
         })
@@ -42,15 +48,20 @@ fn verify(c: &mut Criterion) {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
-    let private_transfer = black_box(prove_private_transfer(
-        &proving_context,
-        &parameters,
-        &utxo_accumulator_model,
-        &mut rng,
-    ));
+    let private_transfer = black_box(
+        prove_full(
+            &proving_context,
+            &parameters,
+            &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+            rng.gen(),
+            rng.gen(),
+            &mut rng,
+        )
+        .1,
+    );
     group.bench_function("private transfer verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
+            private_transfer.assert_valid_proof(&verifying_context.private_transfer);
         })
     });
 }

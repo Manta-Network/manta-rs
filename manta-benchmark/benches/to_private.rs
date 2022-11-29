@@ -14,26 +14,30 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Mint Benchmarks
+//! To Private Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::{parameters, test::payment::prove_mint};
+use manta_pay::{
+    parameters,
+    test::payment::{to_private::prove_full, UtxoAccumulator},
+};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let (proving_context, _verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
     let mut rng = OsRng;
-    group.bench_function("mint prove", |b| {
-        let asset = black_box(rng.gen());
+    group.bench_function("to_private prove", |b| {
+        let asset_id = black_box(rng.gen());
+        let asset_value = black_box(rng.gen());
         b.iter(|| {
-            prove_mint(
-                &proving_context.mint,
+            prove_full(
+                &proving_context.to_private,
                 &parameters,
-                &utxo_accumulator_model,
-                asset,
+                &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+                asset_id,
+                asset_value,
                 &mut rng,
             );
         })
@@ -45,19 +49,20 @@ fn verify(c: &mut Criterion) {
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
     let mut rng = OsRng;
-    let mint = black_box(prove_mint(
-        &proving_context.mint,
+    let transferpost = black_box(prove_full(
+        &proving_context.to_private,
         &parameters,
-        &utxo_accumulator_model,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        rng.gen(),
         rng.gen(),
         &mut rng,
     ));
     group.bench_function("mint verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.mint, &mint);
+            transferpost.assert_valid_proof(&verifying_context.to_private);
         })
     });
 }
 
-criterion_group!(mint, prove, verify);
-criterion_main!(mint);
+criterion_group!(to_private, prove, verify);
+criterion_main!(to_private);

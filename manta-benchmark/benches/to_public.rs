@@ -14,23 +14,29 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Reclaim Benchmarks
+//! To Public Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_accounting::transfer::test::assert_valid_proof;
-use manta_crypto::rand::OsRng;
-use manta_pay::{parameters, test::payment::prove_reclaim};
+use manta_crypto::rand::{OsRng, Rand};
+use manta_pay::{
+    parameters,
+    test::payment::{to_public::prove_full, UtxoAccumulator},
+};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
     let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
-    group.bench_function("reclaim prove", |b| {
+    group.bench_function("to public prove", |b| {
+        let asset_id = black_box(rng.gen());
+        let asset_value = black_box(rng.gen());
         b.iter(|| {
-            prove_reclaim(
+            prove_full(
                 &proving_context,
                 &parameters,
-                &utxo_accumulator_model,
+                &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+                asset_id,
+                asset_value,
                 &mut rng,
             );
         })
@@ -42,18 +48,23 @@ fn verify(c: &mut Criterion) {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
-    let reclaim = black_box(prove_reclaim(
-        &proving_context,
-        &parameters,
-        &utxo_accumulator_model,
-        &mut rng,
-    ));
-    group.bench_function("reclaim verify", |b| {
+    let to_public = black_box(
+        prove_full(
+            &proving_context,
+            &parameters,
+            &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+            rng.gen(),
+            rng.gen(),
+            &mut rng,
+        )
+        .1,
+    );
+    group.bench_function("to public verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.reclaim, &reclaim);
+            to_public.assert_valid_proof(&verifying_context.to_public);
         })
     });
 }
 
-criterion_group!(reclaim, prove, verify);
-criterion_main!(reclaim);
+criterion_group!(to_public, prove, verify);
+criterion_main!(to_public);
