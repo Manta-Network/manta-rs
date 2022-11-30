@@ -28,7 +28,7 @@ use manta_pay::{config::FullParametersRef, simulation::Simulation};
 pub fn main() {
     let simulation = Simulation::parse();
     let mut rng = OsRng;
-    let parameters = rng.gen();
+    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
     let utxo_accumulator_model = rng.gen();
     let (proving_context, verifying_context) = generate_context(
         &(),

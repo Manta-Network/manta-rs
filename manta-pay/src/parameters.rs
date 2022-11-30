@@ -65,7 +65,7 @@ pub fn generate_from_seed(
     ProofSystemError,
 > {
     let mut rng = ChaCha20Rng::from_seed(seed);
-    let parameters = rng.gen();
+    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
     let utxo_accumulator_model: UtxoAccumulatorModel = rng.gen();
     let full_parameters = FullParametersRef::new(&parameters, &utxo_accumulator_model);
     let (to_private_proving_context, to_private_verifying_context) =

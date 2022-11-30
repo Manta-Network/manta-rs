@@ -519,13 +519,13 @@ where
     }
 }
 
-impl<S> Sample for Permutation<S>
+impl<D, S, COM> Sample<D> for Permutation<S, COM>
 where
-    S: Specification,
+    S: Specification<COM>,
     S::ParameterField: Field + FieldGeneration,
 {
     #[inline]
-    fn sample<R>(distribution: (), rng: &mut R) -> Self
+    fn sample<R>(distribution: D, rng: &mut R) -> Self
     where
         R: RngCore + ?Sized,
     {
