@@ -66,3 +66,66 @@ pub enum GetRequest {
     #[default]
     Get,
 }
+
+/// Testing Framework
+#[cfg(test)]
+pub mod test {
+    /* TODO: move these to manta-pay
+        /// Defines the tests across multiple different [`BalanceState`] types.
+        macro_rules! define_tests {
+            ($((
+                $type:ty,
+                $doc:expr,
+                $valid_withdraw:ident,
+                $full_withdraw:ident
+            $(,)?)),*$(,)?) => {
+                $(
+                    #[doc = "Tests valid withdrawals for an"]
+                    #[doc = $doc]
+                    #[doc = "balance state."]
+                    #[test]
+                    fn $valid_withdraw() {
+                        let mut state = <$type>::default();
+                        let mut rng = OsRng;
+                        for _ in 0..0xFFFF {
+                            assert_valid_withdraw(&mut state, &mut rng);
+                        }
+                    }
+                    #[doc = "Tests that there are no empty entries in"]
+                    #[doc = $doc]
+                    #[doc = "with no value stored in them."]
+                    #[test]
+                    fn $full_withdraw() {
+                        assert_full_withdraw_should_remove_entry::<_, _, $type, _>(&mut OsRng);
+                    }
+                )*
+            }
+        }
+        define_tests!(
+            (
+                AssetList,
+                "[`AssetList`]",
+                asset_list_valid_withdraw,
+                asset_list_full_withdraw,
+            ),
+            (
+                BTreeMapBalanceState,
+                "[`BTreeMapBalanceState`]",
+                btree_map_valid_withdraw,
+                btree_map_full_withdraw,
+            ),
+        );
+        /// Tests valid withdrawals for a [`HashMapBalanceState`] balance state.
+        #[cfg(feature = "std")]
+        #[test]
+        fn hash_map_valid_withdraw() {
+            assert_valid_withdraw(&mut HashMapBalanceState::new(), &mut OsRng);
+        }
+        ///
+        #[cfg(feature = "std")]
+        #[test]
+        fn hash_map_full_withdraw() {
+            assert_full_withdraw_should_remove_entry::<HashMapBalanceState, _>(&mut OsRng);
+        }
+    */
+}

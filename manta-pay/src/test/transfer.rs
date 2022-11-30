@@ -23,14 +23,17 @@ use crate::{
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    rand::{OsRng, Rand, Sample},
+    rand::{OsRng, Rand},
 };
 
 /// Tests the generation of proving/verifying contexts for [`ToPrivate`].
 #[test]
 fn sample_to_private_context() {
     let mut rng = OsRng;
-    let cs = ToPrivate::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
+    let cs = ToPrivate::unknown_constraints(FullParametersRef::new(
+        &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+        &rng.gen(),
+    ));
     println!("ToPrivate: {:?}", cs.measure());
     ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate ToPrivate context.");
 }
@@ -39,7 +42,10 @@ fn sample_to_private_context() {
 #[test]
 fn sample_private_transfer_context() {
     let mut rng = OsRng;
-    let cs = PrivateTransfer::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
+    let cs = PrivateTransfer::unknown_constraints(FullParametersRef::new(
+        &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+        &rng.gen(),
+    ));
     println!("PrivateTransfer: {:?}", cs.measure());
     ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate PrivateTransfer context.");
 }
@@ -48,7 +54,10 @@ fn sample_private_transfer_context() {
 #[test]
 fn sample_to_public_context() {
     let mut rng = OsRng;
-    let cs = ToPublic::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
+    let cs = ToPublic::unknown_constraints(FullParametersRef::new(
+        &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+        &rng.gen(),
+    ));
     println!("ToPublic: {:?}", cs.measure());
     ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate ToPublic context.");
 }
@@ -60,7 +69,7 @@ fn to_private() {
     assert!(
         ToPrivate::sample_and_check_proof(
             &(),
-            &rng.gen(),
+            &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
             &mut UtxoAccumulator::new(rng.gen()),
             None,
             &mut rng
@@ -77,7 +86,7 @@ fn private_transfer() {
     assert!(
         PrivateTransfer::sample_and_check_proof(
             &(),
-            &rng.gen(),
+            &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
             &mut UtxoAccumulator::new(rng.gen()),
             Some(&rng.gen()),
             &mut rng
@@ -94,7 +103,7 @@ fn to_public() {
     assert!(
         ToPublic::sample_and_check_proof(
             &(),
-            &rng.gen(),
+            &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
             &mut UtxoAccumulator::new(rng.gen()),
             Some(&rng.gen()),
             &mut rng
@@ -110,7 +119,8 @@ fn check_empty_message_signature() {
     let mut rng = OsRng;
     assert!(
         manta_crypto::signature::test::correctness(
-            &Parameters::gen(&mut rng).signature_scheme(),
+            &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), Parameters>()
+                .signature_scheme(),
             &rng.gen(),
             &rng.gen(),
             &vec![],
@@ -124,7 +134,7 @@ fn check_empty_message_signature() {
 #[test]
 fn private_transfer_check_signature() {
     let mut rng = OsRng;
-    let parameters = rng.gen();
+    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = PrivateTransfer::generate_context(
         &(),
@@ -155,7 +165,7 @@ fn private_transfer_check_signature() {
 #[test]
 fn to_public_check_signature() {
     let mut rng = OsRng;
-    let parameters = rng.gen();
+    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = ToPublic::generate_context(
         &(),
@@ -191,7 +201,7 @@ fn to_private_generate_proof_input_is_compatibile() {
         matches!(
             ToPrivate::sample_and_check_generate_proof_input_compatibility(
                 &(),
-                &rng.gen(),
+                &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
                 &mut UtxoAccumulator::new(rng.gen()),
                 None,
                 &mut rng
@@ -211,7 +221,7 @@ fn private_transfer_generate_proof_input_is_compatibile() {
         matches!(
             PrivateTransfer::sample_and_check_generate_proof_input_compatibility(
                 &(),
-                &rng.gen(),
+                &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
                 &mut UtxoAccumulator::new(rng.gen()),
                 Some(&rng.gen()),
                 &mut rng
@@ -231,7 +241,7 @@ fn to_public_generate_proof_input_is_compatibile() {
         matches!(
             ToPublic::sample_and_check_generate_proof_input_compatibility(
                 &(),
-                &rng.gen(),
+                &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
                 &mut UtxoAccumulator::new(rng.gen()),
                 Some(&rng.gen()),
                 &mut rng

@@ -2080,7 +2080,7 @@ pub mod test {
         algebra::{HasGenerator, ScalarMul},
         arkworks::constraint::fp::Fp,
         encryption::{Decrypt, EmptyHeader, Encrypt},
-        rand::{OsRng, Sample},
+        rand::{OsRng, Rand, Sample},
     };
 
     /// Checks that encryption of light incoming notes is well-executed for [`Config`].
@@ -2130,7 +2130,7 @@ pub mod test {
         let mut rng = OsRng;
         let encryption_key = Group::gen(&mut rng);
         let header = EmptyHeader::default();
-        let base_poseidon = IncomingBaseEncryptionScheme::gen(&mut rng);
+        let base_poseidon = rng.gen::<((), ()), IncomingBaseEncryptionScheme>();
         let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
         let asset_id = Fp::<ConstraintField>::gen(&mut rng);
         let asset_value = u128::gen(&mut rng);
@@ -2163,7 +2163,9 @@ pub mod test {
     #[test]
     fn check_note_consistency() {
         let mut rng = OsRng;
-        let parameters = protocol::Parameters::<Config>::gen(&mut rng);
+        let parameters = rng
+            .gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), protocol::Parameters<Config>>(
+            );
         let group_generator = parameters.base.group_generator.generator();
         let spending_key = EmbeddedScalar::gen(&mut rng);
         let receiving_key = parameters.address_from_spending_key(&spending_key);
