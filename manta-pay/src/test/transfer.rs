@@ -153,11 +153,14 @@ fn private_transfer_check_signature() {
     .expect("Random Private Transfer should have produced a proof.")
     .expect("");
     post.assert_valid_proof(&verifying_context);
-    manta_accounting::transfer::utxo::auth::test::signature_correctness(
-        &parameters,
-        &spending_key,
-        &post.body,
-        &mut rng,
+    assert!(
+        manta_accounting::transfer::utxo::auth::test::signature_correctness(
+            &parameters,
+            &spending_key,
+            &post.body,
+            &mut rng,
+        ),
+        "Invalid signature"
     );
 }
 
@@ -184,11 +187,82 @@ fn to_public_check_signature() {
     .expect("Random To-Public should have produced a proof.")
     .expect("");
     post.assert_valid_proof(&verifying_context);
-    manta_accounting::transfer::utxo::auth::test::signature_correctness(
-        &parameters,
-        &spending_key,
-        &post.body,
+    assert!(
+        manta_accounting::transfer::utxo::auth::test::signature_correctness(
+            &parameters,
+            &spending_key,
+            &post.body,
+            &mut rng,
+        ),
+        "Invalid signature."
+    );
+}
+
+/// Checks that the zero signature is rejected for a random [`PrivateTransfer`].
+#[test]
+fn private_transfer_check_zero_signature() {
+    let mut rng = OsRng;
+    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = PrivateTransfer::generate_context(
+        &(),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
         &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let spending_key = Default::default();
+    let post = PrivateTransfer::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        Some(&spending_key),
+        &mut rng,
+    )
+    .expect("Random Private Transfer should have produced a proof.")
+    .expect("");
+    post.assert_valid_proof(&verifying_context);
+    assert!(
+        !manta_accounting::transfer::utxo::auth::test::signature_correctness(
+            &parameters,
+            &spending_key,
+            &post.body,
+            &mut rng,
+        ),
+        "Zero signature can't be valid!"
+    );
+}
+
+/// Checks that the zero signature is rejected for a random [`ToPublic`].
+#[test]
+fn to_public_check_zero_signature() {
+    let mut rng = OsRng;
+    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, verifying_context) = ToPublic::generate_context(
+        &(),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let spending_key = Default::default();
+    let post = ToPublic::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        Some(&spending_key),
+        &mut rng,
+    )
+    .expect("Random To-Public should have produced a proof.")
+    .expect("");
+    post.assert_valid_proof(&verifying_context);
+    assert!(
+        !manta_accounting::transfer::utxo::auth::test::signature_correctness(
+            &parameters,
+            &spending_key,
+            &post.body,
+            &mut rng,
+        ),
+        "Zero signature can't be valid!"
     );
 }
 

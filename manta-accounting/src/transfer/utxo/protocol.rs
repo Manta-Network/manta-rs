@@ -1095,6 +1095,7 @@ impl<C, M> auth::VerifySignature<M> for Parameters<C>
 where
     C: Configuration<Bool = bool>,
     M: Encode,
+    C::Group: cmp::PartialEq,
 {
     #[inline]
     fn verify(
@@ -1103,8 +1104,18 @@ where
         message: &M,
         signature: &Self::Signature,
     ) -> bool {
-        self.signature_scheme()
-            .verify(authorization_key, &message.to_vec(), signature, &mut ())
+        if self
+            .base
+            .group_generator
+            .generator()
+            .scalar_mul(&signature.scalar, &mut ())
+            == signature.nonce_point
+        {
+            false
+        } else {
+            self.signature_scheme()
+                .verify(authorization_key, &message.to_vec(), signature, &mut ())
+        }
     }
 }
 

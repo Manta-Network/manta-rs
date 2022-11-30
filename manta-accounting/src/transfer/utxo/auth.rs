@@ -433,7 +433,8 @@ pub mod test {
         spending_key: &T::SpendingKey,
         message: &M,
         rng: &mut R,
-    ) where
+    ) -> bool
+    where
         T: DeriveContext
             + DeriveSigningKey
             + ProveAuthorization
@@ -445,9 +446,6 @@ pub mod test {
         let authorization = Authorization::from_spending_key(parameters, spending_key, rng);
         let signature = sign(parameters, spending_key, authorization, message, rng)
             .expect("Unable to sign message.");
-        assert!(
-            signature.verify(parameters, message),
-            "Unable to verify message."
-        )
+        signature.verify(parameters, message)
     }
 }
