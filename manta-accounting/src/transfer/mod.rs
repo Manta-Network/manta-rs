@@ -1019,7 +1019,7 @@ where
         &self,
         asset_id: &C::AssetId,
         sources: I,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<C, Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSourceAccount>, SourceUpdateErrors<C, Self::AccountId>>
     where
         I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
@@ -1106,18 +1106,13 @@ pub enum InvalidAuthorizationSignature {
     Hash(bound = "AccountId: Hash, C::AssetId: Hash, C::AssetValue: Hash"),
     PartialEq(bound = "AccountId: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq")
 )]
-pub struct InvalidSourceAccount<C, AccountId>
+
+pub enum SourceUpdateErrors<C, AccountId>
 where
     C: Configuration + ?Sized,
 {
-    /// Account Id
-    pub account_id: AccountId,
-
-    /// Asset Id
-    pub asset_id: C::AssetId,
-
-    /// Amount Attempting to Withdraw
-    pub withdraw: C::AssetValue,
+    InvalidSourceAccount(AccountId, C::AssetId, C::AssetValue),
+    InvalidAssetIdConversion(C::AssetId),
 }
 
 /// Invalid Sink Accounts
@@ -1187,7 +1182,10 @@ where
     InvalidAuthorizationSignature(InvalidAuthorizationSignature),
 
     /// Invalid Source Accounts
-    InvalidSourceAccount(InvalidSourceAccount<C, AccountId>),
+    InvalidSourceAccount(SourceUpdateErrors<C, AccountId>),
+
+    /// Invalid AssetId Conversion
+    InvalidAssetIdConversion(SourceUpdateErrors<C, AccountId>),
 
     /// Invalid Sink Accounts
     InvalidSinkAccount(InvalidSinkAccount<C, AccountId>),
@@ -1226,14 +1224,17 @@ where
     }
 }
 
-impl<C, AccountId, UpdateError> From<InvalidSourceAccount<C, AccountId>>
+impl<C, AccountId, UpdateError> From<SourceUpdateErrors<C, AccountId>>
     for TransferPostError<C, AccountId, UpdateError>
 where
     C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: InvalidSourceAccount<C, AccountId>) -> Self {
-        Self::InvalidSourceAccount(err)
+    fn from(err: SourceUpdateErrors<C, AccountId>) -> Self {
+        match err {
+            SourceUpdateErrors::InvalidSourceAccount(..) => Self::InvalidSourceAccount(err),
+            SourceUpdateErrors::InvalidAssetIdConversion(..) => Self::InvalidAssetIdConversion(err),
+        }
     }
 }
 
