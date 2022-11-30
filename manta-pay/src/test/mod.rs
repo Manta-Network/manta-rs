@@ -17,6 +17,9 @@
 //! Manta Pay Testing
 
 #[cfg(test)]
+pub mod balance;
+
+#[cfg(test)]
 pub mod compatibility;
 
 #[cfg(test)]
