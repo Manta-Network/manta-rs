@@ -110,7 +110,7 @@ pub mod github {
     pub const CRATE: &str = "manta-parameters";
 
     /// Default GitHub Branch
-    pub const DEFAULT_BRANCH: &str = "feat/new-circuits";
+    pub const DEFAULT_BRANCH: &str = "feat/mantapay-v1";
 
     /// Returns the Git-LFS URL for GitHub content at the given `branch` and `data_path`.
     #[inline]
