@@ -17,10 +17,10 @@
 //! To Public Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_crypto::rand::{OsRng, Rand};
+use manta_crypto::rand::OsRng;
 use manta_pay::{
     parameters,
-    test::payment::{to_public::prove_full, UtxoAccumulator},
+    test::payment::{to_public::prove as prove_to_public, UtxoAccumulator},
 };
 
 fn prove(c: &mut Criterion) {
@@ -28,15 +28,11 @@ fn prove(c: &mut Criterion) {
     let mut rng = OsRng;
     let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
     group.bench_function("to public prove", |b| {
-        let asset_id = black_box(rng.gen());
-        let asset_value = black_box(rng.gen());
         b.iter(|| {
-            prove_full(
-                &proving_context,
+            prove_to_public(
+                &proving_context.to_public,
                 &parameters,
                 &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
-                asset_id,
-                asset_value,
                 &mut rng,
             );
         })
@@ -48,20 +44,15 @@ fn verify(c: &mut Criterion) {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
-    let to_public = black_box(
-        prove_full(
-            &proving_context,
-            &parameters,
-            &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
-            rng.gen(),
-            rng.gen(),
-            &mut rng,
-        )
-        .1,
-    );
+    let transferpost = black_box(prove_to_public(
+        &proving_context.to_public,
+        &parameters,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        &mut rng,
+    ));
     group.bench_function("to public verify", |b| {
         b.iter(|| {
-            to_public.assert_valid_proof(&verifying_context.to_public);
+            transferpost.assert_valid_proof(&verifying_context.to_public);
         })
     });
 }

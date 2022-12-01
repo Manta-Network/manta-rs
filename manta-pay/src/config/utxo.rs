@@ -21,8 +21,8 @@ use crate::{
         poseidon::{
             Spec2 as Poseidon2, Spec3 as Poseidon3, Spec4 as Poseidon4, Spec5 as Poseidon5,
         },
-        utxo_utilities, Compiler, ConstraintField, EmbeddedScalar, EmbeddedScalarField,
-        EmbeddedScalarVar, Group, GroupCurve, GroupVar,
+        Compiler, ConstraintField, EmbeddedScalar, EmbeddedScalarField, EmbeddedScalarVar, Group,
+        GroupCurve, GroupVar,
     },
     crypto::{
         encryption::aes,
@@ -45,9 +45,7 @@ use manta_crypto::{
     arkworks::{
         algebra::{affine_point_as_bytes, ScalarVar},
         constraint::{fp::Fp, rem_mod_prime, Boolean, FpVar},
-        ec::ProjectiveCurve,
         ff::{try_into_u128, PrimeField},
-        r1cs_std::R1CSVar,
         serialize::{CanonicalSerialize, SerializationError},
     },
     eclair::{
@@ -870,18 +868,11 @@ impl encryption::convert::key::Encryption<Compiler> for IncomingAESConverter<Com
     type TargetEncryptionKey = encryption::EncryptionKey<IncomingAESEncryptionScheme<Compiler>>;
 
     #[inline]
-    fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
-        let mut key = [0u8; 32];
-        source
-            .0
-            .value()
-            .expect("Getting the group element from GroupVar is not allowed to fail.")
-            .into_affine()
-            .serialize(&mut key[..])
-            .expect("Serialization error");
-        let mut hasher = Blake2s256::new();
-        Digest::update(&mut hasher, key);
-        hasher.finalize().into()
+    fn as_target(_: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
+        // TODO: Remove the requirement to implement this trait.
+        unimplemented!(
+            "ECLAIR Compiler requires this implementation to exist but it is never called."
+        )
     }
 }
 
@@ -909,18 +900,11 @@ impl encryption::convert::key::Decryption<Compiler> for IncomingAESConverter<Com
     type TargetDecryptionKey = encryption::DecryptionKey<IncomingAESEncryptionScheme<Compiler>>;
 
     #[inline]
-    fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
-        let mut key = [0u8; 32];
-        source
-            .0
-            .value()
-            .expect("Getting the group element from GroupVar is not allowed to fail.")
-            .into_affine()
-            .serialize(&mut key[..])
-            .expect("Serialization error");
-        let mut hasher = Blake2s256::new();
-        Digest::update(&mut hasher, key);
-        hasher.finalize().into()
+    fn as_target(_: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
+        // TODO: Remove the requirement to implement this trait.
+        unimplemented!(
+            "ECLAIR Compiler requires this implementation to exist but it is never called."
+        )
     }
 }
 
@@ -956,29 +940,11 @@ impl encryption::convert::plaintext::Forward<Compiler> for IncomingAESConverter<
     type TargetPlaintext = encryption::Plaintext<IncomingAESEncryptionScheme<Compiler>>;
 
     #[inline]
-    fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
-        let mut target_plaintext = Vec::<u8>::with_capacity(AES_PLAINTEXT_SIZE);
-        target_plaintext.extend(
-            utxo_utilities::bytes_from_gadget(&source.utxo_commitment_randomness)
-                .expect("Converting FpVar into bytes is not allowed to fail."),
-        );
-        target_plaintext.extend(
-            utxo_utilities::bytes_from_gadget(&source.asset.id)
-                .expect("Converting FpVar into bytes is not allowed to fail."),
-        );
-        target_plaintext.extend(utxo_utilities::from_little_endian(
-            utxo_utilities::bytes_from_unsigned(&source.asset.value)
-                .expect("Converting U128 into bytes is not allowed to fail."),
-            16,
-        ));
-        assert_eq!(
-            target_plaintext.len(),
-            AES_PLAINTEXT_SIZE,
-            "Wrong plaintext length: {}. Expected {} bytes",
-            target_plaintext.len(),
-            AES_PLAINTEXT_SIZE
-        );
-        Array::from_unchecked(target_plaintext)
+    fn as_target(_: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
+        // TODO: Remove the requirement to implement this trait.
+        unimplemented!(
+            "ECLAIR Compiler requires this implementation to exist but it is never called."
+        )
     }
 }
 
@@ -1606,18 +1572,11 @@ impl encryption::convert::key::Encryption<Compiler> for OutgoingAESConverter<Com
     type TargetEncryptionKey = encryption::EncryptionKey<OutgoingAESEncryptionScheme<Compiler>>;
 
     #[inline]
-    fn as_target(source: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
-        let mut key = [0u8; 32];
-        source
-            .0
-            .value()
-            .expect("Getting the group element from GroupVar is not allowed to fail.")
-            .into_affine()
-            .serialize(&mut key[..])
-            .expect("Serialization error");
-        let mut hasher = Blake2s256::new();
-        Digest::update(&mut hasher, key);
-        hasher.finalize().into()
+    fn as_target(_: &Self::EncryptionKey, _: &mut Compiler) -> Self::TargetEncryptionKey {
+        // TODO: Remove the requirement to implement this trait.
+        unimplemented!(
+            "ECLAIR Compiler requires this implementation to exist but it is never called."
+        )
     }
 }
 
@@ -1645,18 +1604,11 @@ impl encryption::convert::key::Decryption<Compiler> for OutgoingAESConverter<Com
     type TargetDecryptionKey = encryption::DecryptionKey<OutgoingAESEncryptionScheme<Compiler>>;
 
     #[inline]
-    fn as_target(source: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
-        let mut key = [0u8; 32];
-        source
-            .0
-            .value()
-            .expect("Getting the group element from GroupVar is not allowed to fail.")
-            .into_affine()
-            .serialize(&mut key[..])
-            .expect("Serialization error");
-        let mut hasher = Blake2s256::new();
-        Digest::update(&mut hasher, key);
-        hasher.finalize().into()
+    fn as_target(_: &Self::DecryptionKey, _: &mut Compiler) -> Self::TargetDecryptionKey {
+        // TODO: Remove the requirement to implement this trait.
+        unimplemented!(
+            "ECLAIR Compiler requires this implementation to exist but it is never called."
+        )
     }
 }
 
@@ -1691,25 +1643,11 @@ impl encryption::convert::plaintext::Forward<Compiler> for OutgoingAESConverter<
     type TargetPlaintext = encryption::Plaintext<OutgoingAESEncryptionScheme<Compiler>>;
 
     #[inline]
-    fn as_target(source: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
-        let mut target_plaintext = Vec::<u8>::with_capacity(OUT_AES_PLAINTEXT_SIZE);
-        target_plaintext.extend(
-            utxo_utilities::bytes_from_gadget(&source.id)
-                .expect("Converting FpVar into bytes is not allowed to fail."),
-        );
-        target_plaintext.extend(utxo_utilities::from_little_endian(
-            utxo_utilities::bytes_from_unsigned(&source.value)
-                .expect("Converting U128 into bytes is not allowed to fail."),
-            16,
-        ));
-        assert_eq!(
-            target_plaintext.len(),
-            OUT_AES_PLAINTEXT_SIZE,
-            "Wrong plaintext length: {}. Expected {} bytes",
-            target_plaintext.len(),
-            OUT_AES_PLAINTEXT_SIZE
-        );
-        Array::from_unchecked(target_plaintext)
+    fn as_target(_: &Self::Plaintext, _: &mut Compiler) -> Self::TargetPlaintext {
+        // TODO: Remove the requirement to implement this trait.
+        unimplemented!(
+            "ECLAIR Compiler requires this implementation to exist but it is never called."
+        )
     }
 }
 

@@ -17,11 +17,9 @@
 //! Prove and Verify Functions for Benchmark and Test Purposes
 
 use crate::config::{
-    self,
     utxo::{MerkleTreeConfiguration, UtxoAccumulatorItem, UtxoAccumulatorModel},
-    Asset, AssetId, AssetValue, Authorization, AuthorizationContext, Config, FullParametersRef,
-    MultiProvingContext, Parameters, PrivateTransfer, ProvingContext, Receiver, Sender, ToPrivate,
-    ToPublic, TransferPost,
+    Asset, AssetId, AssetValue, Authorization, Config, FullParametersRef, MultiProvingContext,
+    Parameters, PrivateTransfer, ProvingContext, Receiver, ToPrivate, ToPublic, TransferPost,
 };
 use manta_accounting::transfer::{self, test::value_distribution};
 use manta_crypto::{
@@ -36,28 +34,6 @@ pub type SpendingKey = transfer::SpendingKey<Config>;
 /// UTXO Accumulator for Building Test Circuits
 pub type UtxoAccumulator =
     TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
-
-/// Builds a new internal pair for use in [`private_transfer::prove`] and [`to_public::prove`].
-#[inline]
-fn internal_pair_unchecked<R>(
-    parameters: &Parameters,
-    authorization_context: &mut AuthorizationContext,
-    asset: Asset,
-    rng: &mut R,
-) -> (Receiver, Sender)
-where
-    R: CryptoRng + RngCore + ?Sized,
-{
-    let (receiver, pre_sender) = transfer::internal_pair::<config::Config, _>(
-        parameters,
-        authorization_context,
-        rng.gen(),
-        asset,
-        Default::default(),
-        rng,
-    );
-    (receiver, pre_sender.assign_default_proof_unchecked())
-}
 
 /// Utility Module for [`ToPrivate`]
 pub mod to_private {
@@ -141,6 +117,8 @@ pub mod to_private {
 
 /// Utility Module for [`PrivateTransfer`]
 pub mod private_transfer {
+    use manta_accounting::transfer::internal_pair;
+
     use super::*;
 
     /// Generates a proof for a [`PrivateTransfer`] transaction including pre-requisite
@@ -230,38 +208,50 @@ pub mod private_transfer {
 
     /// Generates a proof for a [`PrivateTransfer`] transaction.
     #[inline]
-    pub fn prove<R>(
+    pub fn prove<A, R>(
         proving_context: &ProvingContext,
         parameters: &Parameters,
-        utxo_accumulator_model: &UtxoAccumulatorModel,
+        utxo_accumulator: &mut A,
         rng: &mut R,
     ) -> TransferPost
     where
+        A: Accumulator<Item = UtxoAccumulatorItem, Model = UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let asset_id = AssetId::gen(rng);
         let values = value_distribution(2, rng.gen(), rng);
         let spending_key = rng.gen();
+        let address = parameters.address_from_spending_key(&spending_key);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
-        let (receiver_0, sender_0) = internal_pair_unchecked(
+        let (receiver_0, presender_0) = internal_pair::<Config, _>(
             parameters,
             &mut authorization.context,
+            address,
             Asset::new(asset_id, values[0]),
+            Default::default(),
             rng,
         );
-        let (receiver_1, sender_1) = internal_pair_unchecked(
+        let sender_0 = presender_0
+            .insert_and_upgrade(parameters, utxo_accumulator)
+            .expect("");
+        let (receiver_1, presender_1) = internal_pair::<Config, _>(
             parameters,
             &mut authorization.context,
+            address,
             Asset::new(asset_id, values[1]),
+            Default::default(),
             rng,
         );
+        let sender_1 = presender_1
+            .insert_and_upgrade(parameters, utxo_accumulator)
+            .expect("");
         PrivateTransfer::build(
             authorization,
             [sender_0, sender_1],
             [receiver_1, receiver_0],
         )
         .into_post(
-            FullParametersRef::new(parameters, utxo_accumulator_model),
+            FullParametersRef::new(parameters, utxo_accumulator.model()),
             proving_context,
             Some(&spending_key),
             rng,
@@ -273,6 +263,8 @@ pub mod private_transfer {
 
 /// Utility Module for [`ToPublic`]
 pub mod to_public {
+    use manta_accounting::transfer::internal_pair;
+
     use super::*;
 
     /// Generates a proof for a [`ToPublic`] transaction including pre-requisite [`ToPrivate`]
@@ -355,31 +347,47 @@ pub mod to_public {
 
     /// Generates a proof for a [`ToPublic`] transaction.
     #[inline]
-    pub fn prove<R>(
+    pub fn prove<A, R>(
         proving_context: &ProvingContext,
         parameters: &Parameters,
-        utxo_accumulator_model: &UtxoAccumulatorModel,
+        utxo_accumulator: &mut A,
         rng: &mut R,
     ) -> TransferPost
     where
+        A: Accumulator<Item = UtxoAccumulatorItem, Model = UtxoAccumulatorModel>,
         R: CryptoRng + RngCore + ?Sized,
     {
         let asset_id = AssetId::gen(rng);
         let values = value_distribution(2, rng.gen(), rng);
         let asset_0 = Asset::new(asset_id, values[0]);
         let spending_key = rng.gen();
+        let address = parameters.address_from_spending_key(&spending_key);
         let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
-        let (_, sender_0) =
-            internal_pair_unchecked(parameters, &mut authorization.context, asset_0, rng);
-        let (receiver_1, sender_1) = internal_pair_unchecked(
+        let (_, presender_0) = internal_pair::<Config, _>(
             parameters,
             &mut authorization.context,
-            Asset::new(asset_id, values[1]),
+            address,
+            asset_0,
+            Default::default(),
             rng,
         );
+        let sender_0 = presender_0
+            .insert_and_upgrade(parameters, utxo_accumulator)
+            .expect("");
+        let (receiver_1, presender_1) = internal_pair::<Config, _>(
+            parameters,
+            &mut authorization.context,
+            address,
+            Asset::new(asset_id, values[1]),
+            Default::default(),
+            rng,
+        );
+        let sender_1 = presender_1
+            .insert_and_upgrade(parameters, utxo_accumulator)
+            .expect("");
         ToPublic::build(authorization, [sender_0, sender_1], [receiver_1], asset_0)
             .into_post(
-                FullParametersRef::new(parameters, utxo_accumulator_model),
+                FullParametersRef::new(parameters, utxo_accumulator.model()),
                 proving_context,
                 Some(&spending_key),
                 rng,
