@@ -28,7 +28,7 @@ use crate::{
         VerifyingContext,
     },
 };
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{create_seal, seal};
@@ -381,10 +381,10 @@ where
         F: FnOnce(&Asset<C>) -> bool,
     {
         match self {
-            Self::ToPrivate(asset) => Ok(TransactionKind::Deposit(Box::new(asset.clone()))),
+            Self::ToPrivate(asset) => Ok(TransactionKind::Deposit(asset.clone())),
             Self::PrivateTransfer(asset, _) | Self::ToPublic(asset) => {
                 if balance(asset) {
-                    Ok(TransactionKind::Withdraw(Box::new(asset.clone())))
+                    Ok(TransactionKind::Withdraw(asset.clone()))
                 } else {
                     Err(asset)
                 }
@@ -454,6 +454,7 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "Asset<C>: Clone"),
+    Copy(bound = "Asset<C>: Copy"),
     Debug(bound = "Asset<C>: Debug"),
     Hash(bound = "Asset<C>: Hash"),
     Eq(bound = "Asset<C>: Eq"),
@@ -466,12 +467,12 @@ where
     /// Deposit Transaction
     ///
     /// A transaction of this kind will result in a deposit of `asset`.
-    Deposit(Box<Asset<C>>),
+    Deposit(Asset<C>),
 
     /// Withdraw Transaction
     ///
     /// A transaction of this kind will result in a withdraw of `asset`.
-    Withdraw(Box<Asset<C>>),
+    Withdraw(Asset<C>),
 }
 
 /// Transfer Asset Selection

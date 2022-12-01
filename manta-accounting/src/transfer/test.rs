@@ -295,7 +295,7 @@ where
             spending_key,
             rng,
         )?
-        .expect("")
+        .expect("Sample post cannot return None.")
         .has_valid_proof(verifying_context)
     }
 
@@ -367,7 +367,7 @@ where
             })
             .collect(),
         (None, false) => Vec::new(),
-        _ => unreachable!(""),
+        _ => unreachable!("Badly shaped transaction."),
     };
     (
         senders,

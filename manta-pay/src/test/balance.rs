@@ -57,7 +57,7 @@ macro_rules! define_tests {
                     assert_valid_withdraw(&mut state, &mut rng);
                 }
             }
-                    
+
             #[doc = "Tests that there are no empty entries in"]
             #[doc = $doc]
             #[doc = "with no value stored in them."]

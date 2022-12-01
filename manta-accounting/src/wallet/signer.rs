@@ -87,7 +87,7 @@ where
         request: SignRequest<C>,
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
-    /// Returns addresses according to the `request`.
+    /// Returns the [`Address`] corresponding to `self`.
     fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error>;
 }
 
@@ -563,13 +563,13 @@ where
     serde(
         bound(
             deserialize = r"
-            AccountTable<C>: Deserialize<'de>,
+                AccountTable<C>: Deserialize<'de>,
                 C::UtxoAccumulator: Deserialize<'de>,
                 C::AssetMap: Deserialize<'de>,
                 C::Checkpoint: Deserialize<'de>
             ",
             serialize = r"
-            AccountTable<C>: Serialize,
+                AccountTable<C>: Serialize,
                 C::UtxoAccumulator: Serialize,
                 C::AssetMap: Serialize,
                 C::Checkpoint: Serialize
@@ -582,35 +582,35 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Debug(bound = r"
-    AccountTable<C>: Debug,
+        AccountTable<C>: Debug,
         C::UtxoAccumulator: Debug,
         C::AssetMap: Debug,
         C::Checkpoint: Debug,
         C::Rng: Debug
     "),
     Default(bound = r"
-    AccountTable<C>: Default,
+        AccountTable<C>: Default,
         C::UtxoAccumulator: Default,
         C::AssetMap: Default,
         C::Checkpoint: Default,
         C::Rng: Default
     "),
     Eq(bound = r"
-    AccountTable<C>: Eq,
+        AccountTable<C>: Eq,
         C::UtxoAccumulator: Eq,
         C::AssetMap: Eq,
         C::Checkpoint: Eq,
         C::Rng: Eq
     "),
     Hash(bound = r"
-    AccountTable<C>: Hash,
+        AccountTable<C>: Hash,
         C::UtxoAccumulator: Hash,
         C::AssetMap: Hash,
         C::Checkpoint: Hash,
         C::Rng: Hash
     "),
     PartialEq(bound = r"
-    AccountTable<C>: PartialEq,
+        AccountTable<C>: PartialEq,
         C::UtxoAccumulator: PartialEq,
         C::AssetMap: PartialEq,
         C::Checkpoint: PartialEq,
@@ -1324,7 +1324,7 @@ where
         result
     }
 
-    /// Returns address according to the `request`.
+    /// Returns the [`Address`] corresponding to `self`.
     #[inline]
     pub fn address(&mut self) -> Address<C> {
         let account = self.state.accounts.get_default();

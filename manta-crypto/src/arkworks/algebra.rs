@@ -703,7 +703,7 @@ mod test {
     use crate::{
         algebra::{test::window_correctness, PrecomputedBaseTable, ScalarMul},
         arkworks::{
-            algebra::scalar_bits, ed_on_bls12_381::EdwardsProjective as Bls12_381_Edwards,
+            algebra::scalar_bits, ed_on_bn254::EdwardsProjective as Bn254_Edwards,
             r1cs_std::groups::curves::twisted_edwards::AffineVar,
         },
         constraint::measure::Measure,
@@ -714,15 +714,14 @@ mod test {
     /// Checks if the fixed base multiplcation is correct.
     #[test]
     fn fixed_base_mul_is_correct() {
-        let mut cs = Compiler::<Bls12_381_Edwards>::for_proofs();
-        let scalar = Scalar::<Bls12_381_Edwards>::gen(&mut OsRng);
-        let base = Group::<Bls12_381_Edwards>::gen(&mut OsRng);
-        const SCALAR_BITS: usize = scalar_bits::<Bls12_381_Edwards>();
+        let mut cs = Compiler::<Bn254_Edwards>::for_proofs();
+        let scalar = Scalar::<Bn254_Edwards>::gen(&mut OsRng);
+        let base = Group::<Bn254_Edwards>::gen(&mut OsRng);
+        const SCALAR_BITS: usize = scalar_bits::<Bn254_Edwards>();
         let precomputed_table = PrecomputedBaseTable::<_, SCALAR_BITS>::from_base(base, &mut ());
-        let base_var =
-            base.as_known::<Secret, GroupVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+        let base_var = base.as_known::<Secret, GroupVar<Bn254_Edwards, AffineVar<_, _>>>(&mut cs);
         let scalar_var =
-            scalar.as_known::<Secret, ScalarVar<Bls12_381_Edwards, AffineVar<_, _>>>(&mut cs);
+            scalar.as_known::<Secret, ScalarVar<Bn254_Edwards, AffineVar<_, _>>>(&mut cs);
         let ctr1 = cs.constraint_count();
         let expected = base_var.scalar_mul(&scalar_var, &mut cs);
         let ctr2 = cs.constraint_count();
@@ -739,8 +738,8 @@ mod test {
     fn windowed_mul_is_correct() {
         window_correctness(
             4,
-            &Scalar::<Bls12_381_Edwards>::gen(&mut OsRng),
-            Group::<Bls12_381_Edwards>::gen(&mut OsRng),
+            &Scalar::<Bn254_Edwards>::gen(&mut OsRng),
+            Group::<Bn254_Edwards>::gen(&mut OsRng),
             |scalar, _| scalar.0.into_repr().to_bits_be(),
             &mut (),
         );

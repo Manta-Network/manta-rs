@@ -284,15 +284,14 @@ impl ReceiverLedger<Parameters> for Ledger {
         utxo: Self::ValidUtxo,
         note: FullIncomingNote,
     ) {
-        let temp = self.parameters.item_hash(&utxo.0, &mut ()); // todo
         let _ = super_key;
-        let shard = self
-            .shards
-            .get_mut(&MerkleTreeConfiguration::tree_index(&temp))
-            .expect("All shards exist when the ledger is constructed.");
-        shard.insert((utxo.0, note));
+        let utxo_hash = self.parameters.item_hash(&utxo.0, &mut ());
+        self.shards
+            .get_mut(&MerkleTreeConfiguration::tree_index(&utxo_hash))
+            .expect("All shards exist when the ledger is constructed.")
+            .insert((utxo.0, note));
         self.utxos.insert(utxo.0);
-        self.utxo_forest.push(&temp);
+        self.utxo_forest.push(&utxo_hash);
     }
 }
 
@@ -308,7 +307,7 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn check_source_accounts<I>(
         &self,
-        asset_id: &<Config as manta_accounting::transfer::Configuration>::AssetId,
+        asset_id: &AssetId,
         sources: I,
     ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Config, Self::AccountId>>
     where
@@ -351,7 +350,7 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn check_sink_accounts<I>(
         &self,
-        asset_id: &<Config as manta_accounting::transfer::Configuration>::AssetId,
+        asset_id: &AssetId,
         sinks: I,
     ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Config, Self::AccountId>>
     where
@@ -398,7 +397,7 @@ impl TransferLedger<Config> for Ledger {
     fn update_public_balances(
         &mut self,
         super_key: &TransferLedgerSuperPostingKey<Config, Self>,
-        asset_id: <Config as manta_accounting::transfer::Configuration>::AssetId,
+        asset_id: AssetId,
         sources: Vec<SourcePostingKey<Config, Self>>,
         sinks: Vec<SinkPostingKey<Config, Self>>,
         proof: Self::ValidProof,

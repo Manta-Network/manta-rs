@@ -488,27 +488,30 @@ where
             Ok(value) => {
                 let (quotient, remainder) = div_rem_mod_prime::<F, R>(value);
                 (
-                    FpVar::new_witness(self.cs(), full(quotient)).expect(""),
+                    FpVar::new_witness(self.cs(), full(quotient))
+                        .expect("Allocating a witness is not allowed to fail."),
                     FpVar::new_witness(
                         self.cs(),
                         full(F::from_le_bytes_mod_order(&remainder.to_bytes_le())),
                     )
-                    .expect(""),
+                    .expect("Allocating a witness is not allowed to fail."),
                 )
             }
             _ => (
-                FpVar::new_witness(self.cs(), empty::<F>).expect(""),
-                FpVar::new_witness(self.cs(), empty::<F>).expect(""),
+                FpVar::new_witness(self.cs(), empty::<F>)
+                    .expect("Allocating a witness is not allowed to fail."),
+                FpVar::new_witness(self.cs(), empty::<F>)
+                    .expect("Allocating a witness is not allowed to fail."),
             ),
         };
         let modulus = FpVar::Constant(F::from_le_bytes_mod_order(
             &<R::Params as FpParameters>::MODULUS.to_bytes_le(),
         ));
         self.enforce_equal(&(quotient * &modulus + &remainder))
-            .expect("");
+            .expect("This equality holds because of the Euclidean algorithm.");
         remainder
             .enforce_cmp(&modulus, core::cmp::Ordering::Less, false)
-            .expect("");
+            .expect("This inequality holds because of the Euclidean algorithm.");
         remainder
     }
 }

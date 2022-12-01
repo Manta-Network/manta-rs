@@ -151,7 +151,6 @@ impl Simulation {
         GS: FnMut(usize) -> S,
         Error<Config, L, S>: Debug,
     {
-        // FIXME: rng
         assert!(
             self.config()
                 .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |_| ChaCha20Rng::from_entropy(), |event| {

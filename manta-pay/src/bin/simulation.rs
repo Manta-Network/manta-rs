@@ -21,8 +21,6 @@ use manta_accounting::transfer::canonical::generate_context;
 use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{config::FullParametersRef, simulation::Simulation};
 
-// cargo run --release --package manta-pay --all-features --bin simulation <number_of_actors> <number_of_steps> <number_of_asset_ids> <initial_balance>
-
 /// Runs the Manta Pay simulation.
 pub fn main() {
     let simulation = Simulation::parse();
