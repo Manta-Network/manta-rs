@@ -38,34 +38,37 @@ type HashMapBalanceState = balance::HashMapBalanceState<AssetId, AssetValue>;
 
 /// Defines the tests across multiple different [`BalanceState`] types.
 macro_rules! define_tests {
-            ($((
-                $type:ty,
-                $doc:expr,
-                $valid_withdraw:ident,
-                $full_withdraw:ident
-            $(,)?)),*$(,)?) => {
-                $(
-                    #[doc = "Tests valid withdrawals for an"]
-                    #[doc = $doc]
-                    #[doc = "balance state."]
-                    #[test]
-                    fn $valid_withdraw() {
-                        let mut state = <$type>::default();
-                        let mut rng = OsRng;
-                        for _ in 0..0xFFFF {
-                            assert_valid_withdraw(&mut state, &mut rng);
-                        }
-                    }
-                    #[doc = "Tests that there are no empty entries in"]
-                    #[doc = $doc]
-                    #[doc = "with no value stored in them."]
-                    #[test]
-                    fn $full_withdraw() {
-                        assert_full_withdraw_should_remove_entry::<_, _, $type, _>(&mut OsRng);
-                    }
-                )*
+    ($((
+        $type:ty,
+        $doc:expr,
+        $valid_withdraw:ident,
+        $full_withdraw:ident
+        $(,)?)),*
+     $(,)?) => {
+        $(
+            #[doc = "Tests valid withdrawals for an"]
+            #[doc = $doc]
+            #[doc = "balance state."]
+            #[test]
+            fn $valid_withdraw() {
+                let mut state = <$type>::default();
+                let mut rng = OsRng;
+                for _ in 0..0xFFFF {
+                    assert_valid_withdraw(&mut state, &mut rng);
+                }
             }
-        }
+                    
+            #[doc = "Tests that there are no empty entries in"]
+            #[doc = $doc]
+            #[doc = "with no value stored in them."]
+            #[test]
+            fn $full_withdraw() {
+                assert_full_withdraw_should_remove_entry::<_, _, $type, _>(&mut OsRng);
+            }
+        )*
+    }
+}
+
 define_tests!(
     (
         AssetList,
@@ -80,12 +83,14 @@ define_tests!(
         btree_map_full_withdraw,
     ),
 );
+
 /// Tests valid withdrawals for a [`HashMapBalanceState`] balance state.
 #[cfg(feature = "std")]
 #[test]
 fn hash_map_valid_withdraw() {
     assert_valid_withdraw(&mut HashMapBalanceState::new(), &mut OsRng);
 }
+
 /// Tests that there are no empty entries in [`HashMapBalanceState`] with no value stored in them.
 #[cfg(feature = "std")]
 #[test]

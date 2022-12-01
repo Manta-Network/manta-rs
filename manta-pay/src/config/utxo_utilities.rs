@@ -27,7 +27,11 @@ use manta_crypto::{
 };
 
 /// From a little endian vector `v` of a certain length, it returns a vector of length `n` after removing some zeroes.
-/// Panics if things go wrong.
+///
+/// # Panics
+///
+/// Panics if `vec` length is not at least equal to `n` or if any of it's elements
+/// beyond index `n` are non-zero.
 pub fn from_little_endian<T>(vec: Vec<T>, n: usize) -> Vec<T>
 where
     T: manta_crypto::eclair::num::Zero + PartialEq + Clone,

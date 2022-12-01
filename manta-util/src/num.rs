@@ -125,24 +125,24 @@ impl_checked!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 
 impl<A> CheckedAdd for &A
 where
-    A: CheckedAdd + Copy,
+    A: Clone + CheckedAdd,
 {
     type Output = A::Output;
 
     #[inline]
     fn checked_add(self, rhs: Self) -> Option<Self::Output> {
-        (*self).checked_add(*rhs)
+        self.clone().checked_add(rhs.clone())
     }
 }
 
 impl<A> CheckedSub for &A
 where
-    A: CheckedSub + Copy,
+    A: Clone + CheckedSub,
 {
     type Output = A::Output;
 
     #[inline]
     fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
-        (*self).checked_sub(*rhs)
+        self.clone().checked_sub(rhs.clone())
     }
 }
