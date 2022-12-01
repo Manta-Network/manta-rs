@@ -98,7 +98,7 @@ pub struct Wallet<
     checkpoint: S::Checkpoint,
 
     /// Signer Connection
-    pub signer: S, // This has been made public because of compatibility issues with sdk.
+    signer: S,
 
     /// Balance State
     assets: B,
@@ -141,6 +141,17 @@ where
     #[inline]
     pub fn new(ledger: L, signer: S) -> Self {
         Self::new_unchecked(ledger, Default::default(), signer, Default::default())
+    }
+
+    /// Returns a mutable reference to the [`Connection`](signer::Connection).
+    ///
+    /// # Crypto Safety
+    ///
+    /// Calls to this function cannot modify the signer in any way that would leave the
+    /// [`BalanceState`] invalid.
+    #[inline]
+    pub fn signer_mut(&mut self) -> &mut S {
+        &mut self.signer
     }
 
     /// Starts a new wallet with `ledger` and `signer` connections.

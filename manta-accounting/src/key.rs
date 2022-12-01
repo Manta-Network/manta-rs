@@ -327,7 +327,7 @@ where
     M: AccountMap<Account = AccountIndex>,
 {
     /// Account Collection
-    pub keys: H, // This has been made public because of compatibility issues with sdk.
+    keys: H,
 
     /// Account Map
     accounts: M,

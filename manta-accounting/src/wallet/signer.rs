@@ -628,7 +628,7 @@ where
     /// For now, we only use the default account, and the rest of the storage data is related to
     /// this account. Eventually, we want to have a global `utxo_accumulator` for all accounts and
     /// a local `assets` map for each account.
-    pub accounts: AccountTable<C>, // This has been made public because of compatibility issues with sdk.
+    accounts: AccountTable<C>,
 
     /// UTXO Accumulator
     utxo_accumulator: C::UtxoAccumulator,
@@ -678,6 +678,12 @@ where
             Default::default(),
             FromEntropy::from_entropy(),
         )
+    }
+
+    /// Returns the [`AccountTable`].
+    #[inline]
+    pub fn accounts(&self) -> &AccountTable<C> {
+        &self.accounts
     }
 
     /// Returns the default account for `self`.
