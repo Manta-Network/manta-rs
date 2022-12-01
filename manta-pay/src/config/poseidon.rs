@@ -31,8 +31,8 @@ impl poseidon::Constants for Spec<2> {
 
 impl poseidon::Constants for Spec<3> {
     const WIDTH: usize = 4;
-    const FULL_ROUNDS: usize = 8; // FIXME
-    const PARTIAL_ROUNDS: usize = 55; // FIXME
+    const FULL_ROUNDS: usize = 8;
+    const PARTIAL_ROUNDS: usize = 55;
 }
 
 impl poseidon::Constants for Spec<4> {
@@ -43,8 +43,8 @@ impl poseidon::Constants for Spec<4> {
 
 impl poseidon::Constants for Spec<5> {
     const WIDTH: usize = 6;
-    const FULL_ROUNDS: usize = 8; // FIXME:
-    const PARTIAL_ROUNDS: usize = 56; // FIXME
+    const FULL_ROUNDS: usize = 8;
+    const PARTIAL_ROUNDS: usize = 56;
 }
 
 impl<const ARITY: usize> poseidon::arkworks::Specification for Spec<ARITY>
