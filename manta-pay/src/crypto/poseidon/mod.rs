@@ -31,7 +31,6 @@ use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-pub mod compat;
 pub mod constants;
 pub mod encryption;
 pub mod hash;
