@@ -1781,7 +1781,7 @@ impl schnorr::HashFunction for SchnorrHashFunction {
         _: &mut (),
     ) -> EmbeddedScalar {
         let mut hasher = Blake2s256::new();
-        Digest::update(&mut hasher, b"domain tag"); // FIXME: Use specific domain tag
+        Digest::update(&mut hasher, b"manta-pay/1.0.0/Schnorr-hash");
         Digest::update(
             &mut hasher,
             affine_point_as_bytes::<GroupCurve>(&verifying_key.0),
@@ -2018,7 +2018,7 @@ pub mod test {
         algebra::{HasGenerator, ScalarMul},
         arkworks::constraint::fp::Fp,
         encryption::{Decrypt, EmptyHeader, Encrypt},
-        rand::{OsRng, Rand, Sample},
+        rand::{OsRng, Sample},
     };
 
     /// Checks that encryption of light incoming notes is well-executed for [`Config`].
@@ -2068,7 +2068,7 @@ pub mod test {
         let mut rng = OsRng;
         let encryption_key = Group::gen(&mut rng);
         let header = EmptyHeader::default();
-        let base_poseidon = rng.gen::<((), ()), IncomingBaseEncryptionScheme>();
+        let base_poseidon = IncomingBaseEncryptionScheme::gen(&mut rng);
         let utxo_commitment_randomness = Fp::<ConstraintField>::gen(&mut rng);
         let asset_id = Fp::<ConstraintField>::gen(&mut rng);
         let asset_value = u128::gen(&mut rng);
@@ -2101,9 +2101,7 @@ pub mod test {
     #[test]
     fn check_note_consistency() {
         let mut rng = OsRng;
-        let parameters = rng
-            .gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), protocol::Parameters<Config>>(
-            );
+        let parameters = protocol::Parameters::<Config>::gen(&mut rng);
         let group_generator = parameters.base.group_generator.generator();
         let spending_key = EmbeddedScalar::gen(&mut rng);
         let receiving_key = parameters.address_from_spending_key(&spending_key);

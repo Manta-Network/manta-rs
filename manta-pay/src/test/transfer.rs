@@ -20,20 +20,18 @@ use crate::{
     config::{FullParametersRef, Parameters, PrivateTransfer, ProofSystem, ToPrivate, ToPublic},
     test::payment::UtxoAccumulator,
 };
+use manta_accounting::transfer::test::validity_check_with_fuzzing;
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    rand::{OsRng, Rand},
+    rand::{OsRng, Rand, Sample},
 };
 
 /// Tests the generation of proving/verifying contexts for [`ToPrivate`].
 #[test]
 fn sample_to_private_context() {
     let mut rng = OsRng;
-    let cs = ToPrivate::unknown_constraints(FullParametersRef::new(
-        &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
-        &rng.gen(),
-    ));
+    let cs = ToPrivate::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
     println!("ToPrivate: {:?}", cs.measure());
     ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate ToPrivate context.");
 }
@@ -42,10 +40,7 @@ fn sample_to_private_context() {
 #[test]
 fn sample_private_transfer_context() {
     let mut rng = OsRng;
-    let cs = PrivateTransfer::unknown_constraints(FullParametersRef::new(
-        &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
-        &rng.gen(),
-    ));
+    let cs = PrivateTransfer::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
     println!("PrivateTransfer: {:?}", cs.measure());
     ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate PrivateTransfer context.");
 }
@@ -54,10 +49,7 @@ fn sample_private_transfer_context() {
 #[test]
 fn sample_to_public_context() {
     let mut rng = OsRng;
-    let cs = ToPublic::unknown_constraints(FullParametersRef::new(
-        &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
-        &rng.gen(),
-    ));
+    let cs = ToPublic::unknown_constraints(FullParametersRef::new(&rng.gen(), &rng.gen()));
     println!("ToPublic: {:?}", cs.measure());
     ProofSystem::compile(&(), cs, &mut rng).expect("Unable to generate ToPublic context.");
 }
@@ -69,7 +61,7 @@ fn to_private() {
     assert!(
         ToPrivate::sample_and_check_proof(
             &(),
-            &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+            &rng.gen(),
             &mut UtxoAccumulator::new(rng.gen()),
             None,
             &mut rng
@@ -86,7 +78,7 @@ fn private_transfer() {
     assert!(
         PrivateTransfer::sample_and_check_proof(
             &(),
-            &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+            &rng.gen(),
             &mut UtxoAccumulator::new(rng.gen()),
             Some(&rng.gen()),
             &mut rng
@@ -103,7 +95,7 @@ fn to_public() {
     assert!(
         ToPublic::sample_and_check_proof(
             &(),
-            &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+            &rng.gen(),
             &mut UtxoAccumulator::new(rng.gen()),
             Some(&rng.gen()),
             &mut rng
@@ -119,8 +111,7 @@ fn check_empty_message_signature() {
     let mut rng = OsRng;
     assert!(
         manta_crypto::signature::test::correctness(
-            &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), Parameters>()
-                .signature_scheme(),
+            &Parameters::gen(&mut rng).signature_scheme(),
             &rng.gen(),
             &rng.gen(),
             &vec![],
@@ -134,7 +125,7 @@ fn check_empty_message_signature() {
 #[test]
 fn private_transfer_check_signature() {
     let mut rng = OsRng;
-    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
+    let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = PrivateTransfer::generate_context(
         &(),
@@ -168,7 +159,7 @@ fn private_transfer_check_signature() {
 #[test]
 fn to_public_check_signature() {
     let mut rng = OsRng;
-    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
+    let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = ToPublic::generate_context(
         &(),
@@ -202,7 +193,7 @@ fn to_public_check_signature() {
 #[test]
 fn private_transfer_check_zero_signature() {
     let mut rng = OsRng;
-    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
+    let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = PrivateTransfer::generate_context(
         &(),
@@ -236,7 +227,7 @@ fn private_transfer_check_zero_signature() {
 #[test]
 fn to_public_check_zero_signature() {
     let mut rng = OsRng;
-    let parameters = rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>();
+    let parameters = rng.gen();
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = ToPublic::generate_context(
         &(),
@@ -275,7 +266,7 @@ fn to_private_generate_proof_input_is_compatibile() {
         matches!(
             ToPrivate::sample_and_check_generate_proof_input_compatibility(
                 &(),
-                &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+                &rng.gen(),
                 &mut UtxoAccumulator::new(rng.gen()),
                 None,
                 &mut rng
@@ -295,7 +286,7 @@ fn private_transfer_generate_proof_input_is_compatibile() {
         matches!(
             PrivateTransfer::sample_and_check_generate_proof_input_compatibility(
                 &(),
-                &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+                &rng.gen(),
                 &mut UtxoAccumulator::new(rng.gen()),
                 Some(&rng.gen()),
                 &mut rng
@@ -315,7 +306,7 @@ fn to_public_generate_proof_input_is_compatibile() {
         matches!(
             ToPublic::sample_and_check_generate_proof_input_compatibility(
                 &(),
-                &rng.gen::<(((), (), ((), ()), (), (), (), (), ()), (), ()), _>(),
+                &rng.gen(),
                 &mut UtxoAccumulator::new(rng.gen()),
                 Some(&rng.gen()),
                 &mut rng
@@ -326,38 +317,6 @@ fn to_public_generate_proof_input_is_compatibile() {
     );
 }
 
-/* TODO: fix the fuzzing test bug, then uncomment.
-/// Checks that a [`TransferPost`] is valid, and that its proof cannot be verified when tested against a fuzzed
-/// or randomized `public_input`.
-#[inline]
-fn validity_check_with_fuzzing<C, R, A, M>(
-    verifying_context: &VerifyingContext<C>,
-    post: &TransferPost<C>,
-    rng: &mut R,
-) where
-    A: Clone + Sample + Fuzz<M>,
-    C: Configuration,
-    C::ProofSystem: constraint::ProofSystem<Input = Vec<A>>,
-    ProofSystemError<C>: Debug,
-    R: RngCore + ?Sized,
-    TransferPost<C>: Debug,
-{
-    let public_input = post.generate_proof_input();
-    let proof = &post.validity_proof;
-    assert_valid_proof(verifying_context, post);
-    verify_fuzz_public_input::<C::ProofSystem, _>(
-        verifying_context,
-        &public_input,
-        proof,
-        |input| input.fuzz(rng),
-    );
-    verify_fuzz_public_input::<C::ProofSystem, _>(
-        verifying_context,
-        &public_input,
-        proof,
-        |input| (0..input.len()).map(|_| rng.gen()).collect(),
-    );
-}
 /// Tests a [`ToPrivate`] proof is valid verified against the right public input and invalid
 /// when the public input has been fuzzed or randomly generated.
 #[test]
@@ -367,7 +326,7 @@ fn to_private_proof_validity() {
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = ToPrivate::generate_context(
         &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
@@ -375,11 +334,14 @@ fn to_private_proof_validity() {
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
+        None,
         &mut rng,
     )
-    .expect("Random ToPrivate should have produced a proof.");
+    .expect("Random ToPrivate should have produced a proof.")
+    .expect("Random ToPrivate should have generated a TransferPost.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
+
 /// Tests a [`PrivateTransfer`] proof is valid verified against the right public input and invalid
 /// when the public input has been fuzzed or randomly generated.
 #[test]
@@ -389,7 +351,7 @@ fn private_transfer_proof_validity() {
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = PrivateTransfer::generate_context(
         &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
@@ -397,11 +359,14 @@ fn private_transfer_proof_validity() {
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
+        Some(&rng.gen()),
         &mut rng,
     )
-    .expect("Random Private Transfer should have produced a proof.");
+    .expect("Random Private Transfer should have produced a proof.")
+    .expect("Random Private Transfer should have generated a TransferPost.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
+
 /// Tests a [`ToPublic`] proof is valid verified against the right public input and invalid
 /// when the public input has been fuzzed or randomly generated.
 #[test]
@@ -411,7 +376,7 @@ fn to_public_proof_validity() {
     let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
     let (proving_context, verifying_context) = ToPublic::generate_context(
         &(),
-        FullParameters::new(&parameters, utxo_accumulator.model()),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
         &mut rng,
     )
     .expect("Unable to create proving and verifying contexts.");
@@ -419,9 +384,10 @@ fn to_public_proof_validity() {
         &proving_context,
         &parameters,
         &mut utxo_accumulator,
+        Some(&rng.gen()),
         &mut rng,
     )
-    .expect("Random ToPublic should have produced a proof.");
+    .expect("Random ToPublic should have produced a proof.")
+    .expect("Random ToPublic should have generated a TransferPost.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
-*/

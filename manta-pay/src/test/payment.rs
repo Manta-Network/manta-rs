@@ -21,7 +21,7 @@ use crate::config::{
     Asset, AssetId, AssetValue, Authorization, Config, FullParametersRef, MultiProvingContext,
     Parameters, PrivateTransfer, ProvingContext, Receiver, ToPrivate, ToPublic, TransferPost,
 };
-use manta_accounting::transfer::{self, test::value_distribution};
+use manta_accounting::transfer::{self, internal_pair, test::value_distribution};
 use manta_crypto::{
     accumulator::Accumulator,
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
@@ -117,8 +117,6 @@ pub mod to_private {
 
 /// Utility Module for [`PrivateTransfer`]
 pub mod private_transfer {
-    use manta_accounting::transfer::internal_pair;
-
     use super::*;
 
     /// Generates a proof for a [`PrivateTransfer`] transaction including pre-requisite
@@ -263,8 +261,6 @@ pub mod private_transfer {
 
 /// Utility Module for [`ToPublic`]
 pub mod to_public {
-    use manta_accounting::transfer::internal_pair;
-
     use super::*;
 
     /// Generates a proof for a [`ToPublic`] transaction including pre-requisite [`ToPrivate`]

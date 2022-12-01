@@ -30,7 +30,8 @@ use core::{
 };
 use manta_crypto::{
     accumulator::Accumulator,
-    rand::{CryptoRng, Rand, RngCore, Sample},
+    constraint::{test::verify_fuzz_public_input, ProofSystem},
+    rand::{fuzz::Fuzz, CryptoRng, Rand, RngCore, Sample},
 };
 use manta_util::into_array_unchecked;
 
@@ -521,4 +522,36 @@ where
             .expect("The `ToPrivate` transaction does not require authorization."),
         pre_sender,
     ))
+}
+
+/// Checks that a [`TransferPost`] is valid, and that its proof cannot be verified when tested against a fuzzed
+/// or randomized `public_input`.
+#[inline]
+pub fn validity_check_with_fuzzing<C, R, A, M>(
+    verifying_context: &VerifyingContext<C>,
+    post: &TransferPost<C>,
+    rng: &mut R,
+) where
+    A: Clone + Sample + Fuzz<M>,
+    C: Configuration,
+    C::ProofSystem: ProofSystem<Input = Vec<A>>,
+    ProofSystemError<C>: Debug,
+    R: RngCore + ?Sized,
+    TransferPost<C>: Debug,
+{
+    let public_input = post.generate_proof_input();
+    let proof = &post.body.proof;
+    post.assert_valid_proof(verifying_context);
+    verify_fuzz_public_input::<C::ProofSystem, _>(
+        verifying_context,
+        &public_input,
+        proof,
+        |input| input.fuzz(rng),
+    );
+    verify_fuzz_public_input::<C::ProofSystem, _>(
+        verifying_context,
+        &public_input,
+        proof,
+        |input| (0..input.len()).map(|_| rng.gen()).collect(),
+    );
 }

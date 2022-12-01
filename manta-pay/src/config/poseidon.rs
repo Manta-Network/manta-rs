@@ -92,7 +92,7 @@ pub mod test {
     use manta_crypto::{
         arkworks::constraint::fp::Fp,
         encryption::{Decrypt, Encrypt},
-        rand::{OsRng, Rand, Sample},
+        rand::{OsRng, Sample},
     };
 
     /// Tests Poseidon duplexer encryption works.
@@ -100,7 +100,7 @@ pub mod test {
     fn poseidon_duplexer_test() {
         const N: usize = 3;
         let mut rng = OsRng;
-        let duplexer = rng.gen::<((), ()), FixedDuplexer<1, Spec<N>>>();
+        let duplexer = FixedDuplexer::<1, Spec<N>>::gen(&mut rng);
         let field_elements = <[Fp<ConstraintField>; Spec::<N>::WIDTH - 1]>::gen(&mut rng);
         let plaintext_block = PlaintextBlock(Box::new(field_elements));
         let plaintext = BlockArray::<_, 1>([plaintext_block].into());
