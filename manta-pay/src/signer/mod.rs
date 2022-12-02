@@ -125,8 +125,8 @@ impl AssetMetadata {
             TokenType::NFT => None,
         }
     }
-    /// Returns a string formatting of only the `value` interpreted using `self` as the metadata
-    /// using `symbol`.
+    /// Returns a string formatting of `value` interpreted using `self` as the metadata including
+    /// the symbol.
     #[inline]
     pub fn display<V>(&self, value: V) -> String
     where
