@@ -83,7 +83,8 @@ pub struct AssetMetadata {
     pub symbol: String,
 }
 
-impl asset::AssetMetadata for AssetMetadata {
+impl AssetMetadata {
+    /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
     #[inline]
     fn display_value<V>(&self, value: V) -> String
     where
@@ -97,7 +98,9 @@ impl asset::AssetMetadata for AssetMetadata {
             % (10u128.pow(FRACTIONAL_DIGITS));
         format!("{value_base_units}.{fractional_digits:0>3}")
     }
+}
 
+impl asset::AssetMetadata for AssetMetadata {
     #[inline]
     fn display<V>(&self, value: V) -> String
     where

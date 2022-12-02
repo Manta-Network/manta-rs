@@ -1058,13 +1058,7 @@ impl<'s, I, V, M> FusedIterator for SelectionKeys<'s, I, V, M> where M: AssetMap
 
 /// Asset Metadata
 pub trait AssetMetadata {
-    /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
-    fn display_value<V>(&self, value: V) -> String
-    where
-        for<'v> &'v V: Div<u128, Output = u128>;
-
-    /// Returns a string formatting of `value` interpreted using `self` as the metadata including
-    /// the symbol.
+    /// Returns a string formatting of `value` interpreted using `self` as the metadata.
     fn display<V>(&self, value: V) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>;
