@@ -22,7 +22,7 @@ use crate::{
         Config,
     },
     key::{CoinType, KeySecret, Testnet},
-    signer::Checkpoint,
+    signer::{AssetMetadata, Checkpoint},
 };
 use alloc::collections::BTreeMap;
 use core::{cmp, mem};
@@ -88,6 +88,7 @@ impl wallet::signer::Configuration for Config {
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
+    type AssetMetadata = AssetMetadata;
     type Rng = ChaCha20Rng;
 }
 

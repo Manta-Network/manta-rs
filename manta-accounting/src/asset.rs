@@ -25,7 +25,6 @@
 
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
-    string::String,
     vec,
     vec::Vec,
 };
@@ -34,7 +33,7 @@ use core::{
     fmt::Debug,
     hash::Hash,
     iter::{self, FusedIterator},
-    ops::{Add, AddAssign, Deref, Div, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, Sub, SubAssign},
     slice,
 };
 use derive_more::{Display, From};
@@ -1055,66 +1054,3 @@ where
 }
 
 impl<'s, I, V, M> FusedIterator for SelectionKeys<'s, I, V, M> where M: AssetMap<I, V> + ?Sized {}
-
-/// Asset Metadata
-pub trait AssetMetadata {
-    /// Returns a string formatting of `value` interpreted using `self` as the metadata.
-    fn display<V>(&self, value: V) -> String
-    where
-        for<'v> &'v V: Div<u128, Output = u128>;
-}
-
-/// Metadata Display
-pub trait MetadataDisplay<A>
-where
-    A: AssetMetadata,
-{
-    /// Returns a string representation of `self` given the asset `metadata`.
-    fn display(&self, metadata: &A) -> String;
-}
-
-/// Asset Manager
-pub trait AssetManager<I, A>
-where
-    A: AssetMetadata,
-{
-    /// Returns the metadata associated to `id`.
-    fn metadata(&self, id: &I) -> Option<&A>;
-}
-
-/// Implements [`AssetManager`] for map types.
-macro_rules! impl_asset_manager_for_maps_body {
-    ($I:ident, $A: ident) => {
-        #[inline]
-        fn metadata(&self, id: &$I) -> Option<&A> {
-            self.get(id)
-        }
-    };
-}
-
-/// B-Tree Map [`AssetManager`] Implementation
-pub type BTreeAssetManager<I, A> = BTreeMap<I, A>;
-
-impl<I, A> AssetManager<I, A> for BTreeAssetManager<I, A>
-where
-    I: Ord,
-    A: AssetMetadata,
-{
-    impl_asset_manager_for_maps_body! { I, A }
-}
-
-/// Hash Map [`AssetManager`] Implementation
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetManager<I, A, S = RandomState> = HashMap<I, A, S>;
-
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<I, A, S> AssetManager<I, A> for HashAssetManager<I, A, S>
-where
-    I: Eq + Hash,
-    A: AssetMetadata,
-    S: BuildHasher + Default,
-{
-    impl_asset_manager_for_maps_body! { I, A }
-}

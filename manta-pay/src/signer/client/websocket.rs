@@ -126,7 +126,8 @@ impl Client {
     }
 }
 
-impl signer::Connection<AssetMetadata, Config> for Client {
+impl signer::Connection<Config> for Client {
+    type AssetMetadata = AssetMetadata;
     type Checkpoint = Checkpoint;
     type Error = Error;
 

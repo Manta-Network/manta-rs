@@ -18,7 +18,7 @@
 
 use alloc::{format, string::String};
 use core::ops::Div;
-use manta_accounting::{asset, wallet::signer};
+use manta_accounting::wallet::signer;
 
 #[cfg(feature = "groth16")]
 use crate::config::{utxo::Checkpoint, Config};
@@ -108,7 +108,7 @@ pub struct AssetMetadata {
 impl AssetMetadata {
     /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
     #[inline]
-    fn display_value<V>(&self, value: V) -> Option<String>
+    pub fn display_value<V>(&self, value: V) -> Option<String>
     where
         for<'v> &'v V: Div<u128, Output = u128>,
     {
@@ -125,11 +125,10 @@ impl AssetMetadata {
             TokenType::NFT => None,
         }
     }
-}
-
-impl asset::AssetMetadata for AssetMetadata {
+    /// Returns a string formatting of only the `value` interpreted using `self` as the metadata
+    /// using `symbol`.
     #[inline]
-    fn display<V>(&self, value: V) -> String
+    pub fn display<V>(&self, value: V) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
     {

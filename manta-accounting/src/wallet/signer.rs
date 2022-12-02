@@ -26,7 +26,7 @@
 //        internally.
 
 use crate::{
-    asset::{AssetMap, AssetMetadata},
+    asset::AssetMap,
     key::{self, Account, AccountCollection, DeriveAddress, DeriveAddresses},
     transfer::{
         self,
@@ -59,11 +59,13 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Signer Connection
-pub trait Connection<A, C>
+pub trait Connection<C>
 where
-    A: AssetMetadata,
     C: transfer::Configuration,
 {
+    /// Asset Metadata Type
+    type AssetMetadata;
+
     /// Checkpoint Type
     ///
     /// This checkpoint is used by the signer to stay synchronized with wallet and the ledger.
@@ -85,7 +87,7 @@ where
     /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
         &mut self,
-        request: SignRequest<A, C>,
+        request: SignRequest<Self::AssetMetadata, C>,
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
     /// Returns the [`Address`] corresponding to `self`.
@@ -352,7 +354,6 @@ pub type SyncResult<C, T> = Result<SyncResponse<C, T>, SyncError<T>>;
 )]
 pub struct SignRequest<A, C>
 where
-    A: AssetMetadata,
     C: transfer::Configuration,
 {
     /// Transaction Data
@@ -504,6 +505,9 @@ pub trait Configuration: transfer::Configuration {
 
     /// Asset Map Type
     type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
+
+    /// Asset Metadata Type
+    type AssetMetadata;
 
     /// Random Number Generator Type
     type Rng: CryptoRng + FromEntropy + RngCore;
@@ -1340,11 +1344,11 @@ where
     }
 }
 
-impl<A, C> Connection<A, C> for Signer<C>
+impl<C> Connection<C> for Signer<C>
 where
-    A: AssetMetadata,
     C: Configuration,
 {
+    type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;
     type Error = Infallible;
 
@@ -1362,7 +1366,7 @@ where
     #[inline]
     fn sign(
         &mut self,
-        request: SignRequest<A, C>,
+        request: SignRequest<Self::AssetMetadata, C>,
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error> {
         Box::pin(async move { Ok(self.sign(request.transaction)) })
     }
