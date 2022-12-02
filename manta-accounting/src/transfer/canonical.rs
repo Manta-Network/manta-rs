@@ -423,10 +423,11 @@ where
 
     /// Returns a display for the asset and address internal to `self` given the asset `metadata`.
     #[inline]
-    pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> (String, Option<String>)
+    pub fn display<A, F>(&self, metadata: &A, f: F) -> (String, Option<String>)
     where
+        A: AssetMetadata,
         F: FnOnce(&Address<C>) -> String,
-        C::AssetValue: MetadataDisplay,
+        C::AssetValue: MetadataDisplay<A>,
     {
         match self {
             Self::ToPrivate(asset) => (asset.value.display(metadata), None),

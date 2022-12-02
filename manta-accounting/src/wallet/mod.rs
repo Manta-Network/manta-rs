@@ -81,14 +81,16 @@ pub mod test;
     PartialEq(bound = "L: PartialEq, S::Checkpoint: PartialEq, S: PartialEq, B: PartialEq")
 )]
 pub struct Wallet<
+    A,
     C,
     L,
     S = signer::Signer<C>,
     B = BTreeMapBalanceState<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>,
 > where
+    A: AssetMetadata,
     C: Configuration,
     L: ledger::Connection,
-    S: signer::Connection<C>,
+    S: signer::Connection<A, C>,
     B: BalanceState<C::AssetId, C::AssetValue>,
 {
     /// Ledger Connection
@@ -107,11 +109,12 @@ pub struct Wallet<
     __: PhantomData<C>,
 }
 
-impl<C, L, S, B> Wallet<C, L, S, B>
+impl<A, C, L, S, B> Wallet<A, C, L, S, B>
 where
+    A: AssetMetadata,
     C: Configuration,
     L: ledger::Connection,
-    S: signer::Connection<C>,
+    S: signer::Connection<A, C>,
     B: BalanceState<C::AssetId, C::AssetValue>,
 {
     /// Builds a new [`Wallet`] without checking if `ledger`, `checkpoint`, `signer`, and `assets`
@@ -156,7 +159,7 @@ where
 
     /// Starts a new wallet with `ledger` and `signer` connections.
     #[inline]
-    pub async fn start(ledger: L, signer: S) -> Result<Self, Error<C, L, S>>
+    pub async fn start(ledger: L, signer: S) -> Result<Self, Error<A, C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -187,11 +190,11 @@ where
     /// Returns `true` if `self` contains at least every asset in `assets`. Assets are combined
     /// first by asset id before checking for membership.
     #[inline]
-    pub fn contains_all<A>(&self, assets: A) -> bool
+    pub fn contains_all<I>(&self, assets: I) -> bool
     where
         C::AssetId: Ord,
         C::AssetValue: AddAssign + Default,
-        A: IntoIterator<Item = Asset<C>>,
+        I: IntoIterator<Item = Asset<C>>,
     {
         AssetList::from_iter(assets)
             .into_iter()
@@ -227,7 +230,7 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn restart(&mut self) -> Result<(), Error<C, L, S>>
+    pub async fn restart(&mut self) -> Result<(), Error<A, C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -241,7 +244,7 @@ where
     /// [`restart`](Self::restart) to avoid querying the ledger at genesis when a known later
     /// checkpoint exists.
     #[inline]
-    async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
+    async fn load_initial_state(&mut self) -> Result<(), Error<A, C, L, S>> {
         self.signer_sync(Default::default()).await
     }
 
@@ -256,7 +259,7 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn sync(&mut self) -> Result<(), Error<C, L, S>>
+    pub async fn sync(&mut self) -> Result<(), Error<A, C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -275,7 +278,7 @@ where
     /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
     /// how to resolve them.
     #[inline]
-    pub async fn sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>>
+    pub async fn sync_partial(&mut self) -> Result<ControlFlow, Error<A, C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -284,7 +287,7 @@ where
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state.
     #[inline]
-    async fn sync_with(&mut self) -> Result<ControlFlow, Error<C, L, S>>
+    async fn sync_with(&mut self) -> Result<ControlFlow, Error<A, C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -309,7 +312,7 @@ where
     async fn signer_sync(
         &mut self,
         request: SyncRequest<C, S::Checkpoint>,
-    ) -> Result<(), Error<C, L, S>> {
+    ) -> Result<(), Error<A, C, L, S>> {
         match self
             .signer
             .sync(request)
@@ -371,8 +374,8 @@ where
     pub async fn sign(
         &mut self,
         transaction: Transaction<C>,
-        metadata: Option<AssetMetadata>,
-    ) -> Result<SignResponse<C>, Error<C, L, S>> {
+        metadata: Option<A>,
+    ) -> Result<SignResponse<C>, Error<A, C, L, S>> {
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
         self.signer
@@ -408,8 +411,8 @@ where
     pub async fn post(
         &mut self,
         transaction: Transaction<C>,
-        metadata: Option<AssetMetadata>,
-    ) -> Result<L::Response, Error<C, L, S>>
+        metadata: Option<A>,
+    ) -> Result<L::Response, Error<A, C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>
             + ledger::Write<Vec<TransferPost<C>>>,
@@ -502,11 +505,12 @@ pub enum InconsistencyError {
         bound = "Asset<C>: PartialEq, SignError<C>: PartialEq, L::Error: PartialEq, S::Error: PartialEq"
     )
 )]
-pub enum Error<C, L, S>
+pub enum Error<A, C, L, S>
 where
+    A: AssetMetadata,
     C: Configuration,
     L: ledger::Connection,
-    S: signer::Connection<C>,
+    S: signer::Connection<A, C>,
 {
     /// Insufficient Balance
     InsufficientBalance(Asset<C>),
@@ -526,11 +530,12 @@ where
     LedgerConnectionError(L::Error),
 }
 
-impl<C, L, S> From<InconsistencyError> for Error<C, L, S>
+impl<A, C, L, S> From<InconsistencyError> for Error<A, C, L, S>
 where
+    A: AssetMetadata,
     C: Configuration,
     L: ledger::Connection,
-    S: signer::Connection<C>,
+    S: signer::Connection<A, C>,
 {
     #[inline]
     fn from(err: InconsistencyError) -> Self {

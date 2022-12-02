@@ -16,7 +16,8 @@
 
 //! Manta Pay Signer Tools
 
-use manta_accounting::wallet::signer;
+use core::ops::Div;
+use manta_accounting::{asset, wallet::signer};
 
 #[cfg(feature = "groth16")]
 use crate::config::{utxo::Checkpoint, Config};
@@ -43,7 +44,7 @@ pub type SyncError = signer::SyncError<Checkpoint>;
 pub type SyncResult = signer::SyncResult<Config, Checkpoint>;
 
 /// Signing Request
-pub type SignRequest = signer::SignRequest<Config>;
+pub type SignRequest = signer::SignRequest<AssetMetadata, Config>;
 
 /// Signing Response
 pub type SignResponse = signer::SignResponse<Config>;
@@ -65,4 +66,43 @@ pub enum GetRequest {
     /// GET
     #[default]
     Get,
+}
+
+/// Asset Metadata
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde")
+)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub struct AssetMetadata {
+    /// Number of Decimals
+    pub decimals: u32,
+
+    /// Asset Symbol
+    pub symbol: String,
+}
+
+impl asset::AssetMetadata for AssetMetadata {
+    #[inline]
+    fn display_value<V>(&self, value: V) -> String
+    where
+        for<'v> &'v V: Div<u128, Output = u128>,
+    {
+        // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
+        //       more general?
+        const FRACTIONAL_DIGITS: u32 = 3;
+        let value_base_units = &value / (10u128.pow(self.decimals));
+        let fractional_digits = &value / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
+            % (10u128.pow(FRACTIONAL_DIGITS));
+        format!("{value_base_units}.{fractional_digits:0>3}")
+    }
+
+    #[inline]
+    fn display<V>(&self, value: V) -> String
+    where
+        for<'v> &'v V: Div<u128, Output = u128>,
+    {
+        format!("{} {}", self.display_value(value), self.symbol)
+    }
 }

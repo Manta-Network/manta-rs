@@ -22,7 +22,10 @@ use crate::{
         Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
     },
     key::KeySecret,
-    signer::base::{Signer, UtxoAccumulator},
+    signer::{
+        base::{Signer, UtxoAccumulator},
+        AssetMetadata,
+    },
     simulation::ledger::{AccountId, Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
@@ -145,15 +148,15 @@ impl Simulation {
     pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
     where
         L: wallet::test::Ledger<Config> + PublicBalanceOracle<Config>,
-        S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
+        S: wallet::signer::Connection<AssetMetadata, Config, Checkpoint = L::Checkpoint>,
         S::Error: Debug,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
-        Error<Config, L, S>: Debug,
+        Error<AssetMetadata, Config, L, S>: Debug,
     {
         assert!(
             self.config()
-                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |_| ChaCha20Rng::from_entropy(), |event| {
+                .run::<_, _, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |_| ChaCha20Rng::from_entropy(), |event| {
                     let event = format!("{event:?}\n");
                     async move {
                         let _ = write_stdout(event.as_bytes()).await;

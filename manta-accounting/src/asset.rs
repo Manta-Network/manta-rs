@@ -25,7 +25,6 @@
 
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
-    format,
     string::String,
     vec,
     vec::Vec,
@@ -1058,90 +1057,70 @@ where
 impl<'s, I, V, M> FusedIterator for SelectionKeys<'s, I, V, M> where M: AssetMap<I, V> + ?Sized {}
 
 /// Asset Metadata
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde")
-)]
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct AssetMetadata {
-    /// Number of Decimals
-    pub decimals: u32,
-
-    /// Asset Symbol
-    pub symbol: String,
-}
-
-impl AssetMetadata {
+pub trait AssetMetadata {
     /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
-    #[inline]
-    pub fn display_value<V>(&self, value: V) -> String
+    fn display_value<V>(&self, value: V) -> String
     where
-        for<'v> &'v V: Div<u128, Output = u128>,
-    {
-        // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
-        //       more general?
-        const FRACTIONAL_DIGITS: u32 = 3;
-        let value_base_units = &value / (10u128.pow(self.decimals));
-        let fractional_digits = &value / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
-            % (10u128.pow(FRACTIONAL_DIGITS));
-        format!("{value_base_units}.{fractional_digits:0>3}")
-    }
+        for<'v> &'v V: Div<u128, Output = u128>;
 
     /// Returns a string formatting of `value` interpreted using `self` as the metadata including
     /// the symbol.
-    #[inline]
-    pub fn display<V>(&self, value: V) -> String
+    fn display<V>(&self, value: V) -> String
     where
-        for<'v> &'v V: Div<u128, Output = u128>,
-    {
-        format!("{} {}", self.display_value(value), self.symbol)
-    }
+        for<'v> &'v V: Div<u128, Output = u128>;
 }
 
 /// Metadata Display
-pub trait MetadataDisplay {
+pub trait MetadataDisplay<A>
+where
+    A: AssetMetadata,
+{
     /// Returns a string representation of `self` given the asset `metadata`.
-    fn display(&self, metadata: &AssetMetadata) -> String;
+    fn display(&self, metadata: &A) -> String;
 }
 
 /// Asset Manager
-pub trait AssetManager<I> {
+pub trait AssetManager<I, A>
+where
+    A: AssetMetadata,
+{
     /// Returns the metadata associated to `id`.
-    fn metadata(&self, id: &I) -> Option<&AssetMetadata>;
+    fn metadata(&self, id: &I) -> Option<&A>;
 }
 
 /// Implements [`AssetManager`] for map types.
 macro_rules! impl_asset_manager_for_maps_body {
-    ($I:ident) => {
+    ($I:ident, $A: ident) => {
         #[inline]
-        fn metadata(&self, id: &$I) -> Option<&AssetMetadata> {
+        fn metadata(&self, id: &$I) -> Option<&A> {
             self.get(id)
         }
     };
 }
 
 /// B-Tree Map [`AssetManager`] Implementation
-pub type BTreeAssetManager<I> = BTreeMap<I, AssetMetadata>;
+pub type BTreeAssetManager<I, A> = BTreeMap<I, A>;
 
-impl<I> AssetManager<I> for BTreeAssetManager<I>
+impl<I, A> AssetManager<I, A> for BTreeAssetManager<I, A>
 where
     I: Ord,
+    A: AssetMetadata,
 {
-    impl_asset_manager_for_maps_body! { I }
+    impl_asset_manager_for_maps_body! { I, A }
 }
 
 /// Hash Map [`AssetManager`] Implementation
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetManager<I, S = RandomState> = HashMap<I, AssetMetadata, S>;
+pub type HashAssetManager<I, A, S = RandomState> = HashMap<I, A, S>;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<I, S> AssetManager<I> for HashAssetManager<I, S>
+impl<I, A, S> AssetManager<I, A> for HashAssetManager<I, A, S>
 where
     I: Eq + Hash,
+    A: AssetMetadata,
     S: BuildHasher + Default,
 {
-    impl_asset_manager_for_maps_body! { I }
+    impl_asset_manager_for_maps_body! { I, A }
 }

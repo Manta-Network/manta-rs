@@ -21,8 +21,8 @@
 use crate::{
     config::{utxo::Address, Config},
     signer::{
-        Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
-        SyncResponse,
+        AssetMetadata, Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError,
+        SyncRequest, SyncResponse,
     },
 };
 use alloc::boxed::Box;
@@ -126,7 +126,7 @@ impl Client {
     }
 }
 
-impl signer::Connection<Config> for Client {
+impl signer::Connection<AssetMetadata, Config> for Client {
     type Checkpoint = Checkpoint;
     type Error = Error;
 
