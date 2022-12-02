@@ -68,6 +68,27 @@ pub enum GetRequest {
     Get,
 }
 
+/// Asset Type
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde")
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TokenType {
+    /// Fungible Token
+    FT(u32),
+
+    /// Non-fungible Token
+    NFT,
+}
+
+impl Default for TokenType {
+    fn default() -> Self {
+        TokenType::FT(Default::default())
+    }
+}
+
 /// Asset Metadata
 #[cfg_attr(
     feature = "serde",
@@ -76,8 +97,8 @@ pub enum GetRequest {
 )]
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct AssetMetadata {
-    /// Number of Decimals
-    pub decimals: u32,
+    /// TokenType
+    pub token_type: TokenType,
 
     /// Asset Symbol
     pub symbol: String,
@@ -86,17 +107,22 @@ pub struct AssetMetadata {
 impl AssetMetadata {
     /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
     #[inline]
-    fn display_value<V>(&self, value: V) -> String
+    fn display_value<V>(&self, value: V) -> Option<String>
     where
         for<'v> &'v V: Div<u128, Output = u128>,
     {
         // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
         //       more general?
-        const FRACTIONAL_DIGITS: u32 = 3;
-        let value_base_units = &value / (10u128.pow(self.decimals));
-        let fractional_digits = &value / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
-            % (10u128.pow(FRACTIONAL_DIGITS));
-        format!("{value_base_units}.{fractional_digits:0>3}")
+        match self.token_type {
+            TokenType::FT(decimals) => {
+                const FRACTIONAL_DIGITS: u32 = 3;
+                let value_base_units = &value / (10u128.pow(decimals));
+                let fractional_digits = &value / (10u128.pow(decimals - FRACTIONAL_DIGITS))
+                    % (10u128.pow(FRACTIONAL_DIGITS));
+                Some(format!("{value_base_units}.{fractional_digits:0>3}"))
+            }
+            TokenType::NFT => None,
+        }
     }
 }
 
@@ -106,6 +132,9 @@ impl asset::AssetMetadata for AssetMetadata {
     where
         for<'v> &'v V: Div<u128, Output = u128>,
     {
-        format!("{} {}", self.display_value(value), self.symbol)
+        match self.display_value(value) {
+            Some(str) => format!("{} {}", str, self.symbol),
+            _ => format!("{} {}", "NFT", self.symbol),
+        }
     }
 }
