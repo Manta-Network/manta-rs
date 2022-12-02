@@ -90,7 +90,9 @@ impl Default for TokenType {
     }
 }
 
-/// Asset Metadata
+/// Asset Metadata. To describe an [`Asset`](manta_accounting::asset::Asset) with a
+/// particular `AssetId` we use [`AssetMetadata`] to assign a symbol and distinguish between
+/// FTs and NFTs. For FTs we assign decimals for human-readable display purposes.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),

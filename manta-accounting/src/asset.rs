@@ -17,9 +17,7 @@
 //! Assets
 //!
 //! This module defines the data structures and canonical encodings of a standard notion of "asset".
-//! Assets are defined by an `AssetId` field and an `AssetValue` field. For describing an [`Asset`]
-//! with a particular `AssetId` we use [`AssetMetadata`] to assign a symbol and decimals for
-//! human-readable display purposes.
+//! Assets are defined by an `AssetId` field and an `AssetValue` field.
 
 #![allow(clippy::uninlined_format_args)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9715 on Display implementation on Asset below
 
