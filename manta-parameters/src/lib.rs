@@ -257,7 +257,7 @@ macro_rules! define_dat {
 #[cfg(feature = "download")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "download")))]
 pub trait Download: HasChecksum {
-    /// Downlaods the data for this type from GitHub. This method automatically verifies the
+    /// Downloads the data for this type from GitHub. This method automatically verifies the
     /// checksum while downloading. See [`github::download`] for more.
     fn download<P>(path: P) -> Result<()>
     where

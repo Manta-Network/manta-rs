@@ -716,7 +716,10 @@ where
     }
 
     /// Converts `self` into its [`TransferPost`] by building the [`Transfer`] validity proof and
-    /// signing the [`TransferPostBody`] payload.
+    /// signing the [`TransferPostBody`] payload. 
+    /// 
+    /// Returns `Ok(None)` when the authorization required by this [`Transfer`] is invalid or not
+    /// provided. Returns `Err` when proof generation fails.
     #[inline]
     pub fn into_post<R>(
         self,
@@ -1331,24 +1334,24 @@ where
     }
 }
 
-impl<C, AccountId, UpdateError> From<sender::SenderPostError>
+impl<C, AccountId, UpdateError> From<SenderPostError>
     for TransferPostError<C, AccountId, UpdateError>
 where
     C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: sender::SenderPostError) -> Self {
+    fn from(err: SenderPostError) -> Self {
         Self::Sender(err)
     }
 }
 
-impl<C, AccountId, UpdateError> From<receiver::ReceiverPostError>
+impl<C, AccountId, UpdateError> From<ReceiverPostError>
     for TransferPostError<C, AccountId, UpdateError>
 where
     C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: receiver::ReceiverPostError) -> Self {
+    fn from(err: ReceiverPostError) -> Self {
         Self::Receiver(err)
     }
 }
@@ -1911,7 +1914,6 @@ where
             L::ValidProof: PartialEq, 
             L::Event: PartialEq")
 )]
-
 pub struct TransferPostingKey<C, L>
 where
     C: Configuration + ?Sized,
