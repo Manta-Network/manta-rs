@@ -1162,12 +1162,6 @@ where
         let secret = MintSecret::<C>::new(
             address.receiving_key,
             rng.gen(),
-            /*
-            Randomness {
-                ephemeral_secret_key: rng.gen(),
-                randomness: rng.gen(),
-            }, // FIXME: manta-pay doesn't compile when I simply use rng.gen() here.
-            */
             IncomingPlaintext::new(rng.gen(), associated_data.secret(&asset)),
         );
         let utxo_commitment = self.base.utxo_commitment_scheme.commit(
