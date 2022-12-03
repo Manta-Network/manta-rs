@@ -187,7 +187,6 @@ where
     /// Returns the [`SecretKey`].
     #[inline]
     pub fn xpr_secret_key(&self, index: &AccountIndex) -> SecretKey {
-        // TODO: This function should be made private in the following PRs.
         SecretKey::derive_from_path(
             self.seed,
             &path_string::<C>(*index)

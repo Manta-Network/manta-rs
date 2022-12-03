@@ -19,7 +19,7 @@
 // TODO: Make this code work on WASM and non-WASM by choosing the correct dependency library.
 
 use crate::{
-    config::{Config, PublicKey},
+    config::{utxo::Address, Config},
     signer::{
         Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
         SyncResponse,
@@ -68,8 +68,12 @@ from_variant!(Error, SerializationError, serde_json::Error);
 from_variant!(Error, WebSocket, WebSocketError);
 
 /// Request
-#[derive(derivative::Derivative, Deserialize, Serialize)]
-#[serde(crate = "manta_util::serde")]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Request<R> {
     /// Request Command
@@ -86,6 +90,8 @@ pub struct Request<R> {
 pub type Wallet<L> = wallet::Wallet<Config, L, Client>;
 
 /// WebSocket Client
+#[derive(derivative::Derivative)]
+#[derivative(Debug)]
 pub struct Client(WebSocketStream<MaybeTlsStream<TcpStream>>);
 
 impl Client {
@@ -141,7 +147,7 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn receiving_keys(&mut self) -> LocalBoxFutureResult<PublicKey, Self::Error> {
-        Box::pin(async move { self.send("receivingKeys", GetRequest::Get).await })
+    fn address(&mut self) -> LocalBoxFutureResult<Address, Self::Error> {
+        Box::pin(async move { self.send("address", GetRequest::Get).await })
     }
 }

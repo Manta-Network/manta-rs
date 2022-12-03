@@ -82,7 +82,7 @@ where
 {
     /// Builds a new [`InnerPath`] from `leaf_index` and `path`.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// In order for paths to compute the correct root, they should always have a `path` with
     /// length given by [`path_length`].
@@ -280,7 +280,7 @@ where
 {
     /// Builds a new [`CurrentInnerPath`] from `leaf_index` and `path`.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// In order for paths to compute the correct root, they should always have a `path` with
     /// length given by [`path_length`]. For [`CurrentInnerPath`], we also have the invariant
@@ -657,7 +657,7 @@ where
 {
     /// Builds a new [`Path`] from `sibling_digest`, `leaf_index`, and `path`.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// See [`InnerPath::new`] for the invariants on `path` assumed by this method.
     #[inline]
@@ -807,7 +807,7 @@ where
 {
     /// Builds a new [`CurrentPath`] from `sibling_digest`, `leaf_index`, and `path`.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// See [`CurrentInnerPath::new`] for the invariants on `path` assumed by this method.
     #[inline]

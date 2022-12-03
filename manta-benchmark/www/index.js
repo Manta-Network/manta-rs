@@ -1,4 +1,4 @@
-import { Context, prove_mint, prove_private_transfer, prove_reclaim} from "wasm-prover";
+import { Context, prove_to_private, prove_private_transfer, prove_to_public} from "wasm-prover";
 
 const pre = document.getElementById("wasm-prover");
 
@@ -11,18 +11,18 @@ const median = arr => {
     return arr.length % 2 !== 0 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
   };
 
-function bench_prove_mint() {
+function bench_prove_to_private() {
   const context = new Context();
   const perf = Array.from(
       {length: REPEAT},
       (_, i) => {
         const t0 = performance.now();
-        prove_mint(context);
+        prove_to_private(context);
         const t1 = performance.now();
         return t1 - t0;
       }
   );
-  return `prove mint performance: ${median(perf)} ms \n`;
+  return `prove to_private performance: ${median(perf)} ms \n`;
 }
 
 function bench_prove_private_transfer() {
@@ -39,25 +39,25 @@ function bench_prove_private_transfer() {
   return `prove private transfer performance: ${median(perf)} ms \n`;
 }
 
-function bench_prove_reclaim() {
+function bench_prove_to_public() {
   const context = new Context();
   const perf = Array.from(
       {length: REPEAT},
       (_, i) => {
         const t0 = performance.now();
-        prove_reclaim(context);
+        prove_to_public(context);
         const t1 = performance.now();
         return t1 - t0;
       }
   );
-  return `prove reclaim performance: ${median(perf)} ms \n`;
+  return `prove to_public performance: ${median(perf)} ms \n`;
 }
 
-// benchmarks proof time for mint
-pre.textContent = bench_prove_mint();
+// benchmarks proof time for to_private
+pre.textContent = bench_prove_to_private();
 
 // benchmarks proof time for private transfer
 pre.textContent += bench_prove_private_transfer();
 
-// benchmarks proof time for reclaim
-pre.textContent += bench_prove_reclaim();
+// benchmarks proof time for to_public
+pre.textContent += bench_prove_to_public();

@@ -17,7 +17,10 @@
 //! Ledger Simulation Client
 
 use crate::{
-    config::{Config, TransferPost},
+    config::{
+        utxo::{AssetId, AssetValue},
+        Config, TransferPost,
+    },
     simulation::ledger::{http::Request, AccountId, Checkpoint},
 };
 use manta_accounting::{
@@ -104,9 +107,9 @@ impl ledger::Write<Vec<TransferPost>> for Client {
     }
 }
 
-impl PublicBalanceOracle for Client {
+impl PublicBalanceOracle<Config> for Client {
     #[inline]
-    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
+    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList<AssetId, AssetValue>>> {
         Box::pin(async move {
             self.client
                 .post("publicBalances", &self.account)

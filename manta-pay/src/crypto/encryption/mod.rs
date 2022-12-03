@@ -17,34 +17,3 @@
 //! Encryption Implementations
 
 pub mod aes;
-
-/// Testing Suite
-#[cfg(test)]
-mod test {
-    use crate::config::NoteSymmetricEncryptionScheme;
-    use manta_crypto::{
-        encryption,
-        rand::{OsRng, Rand},
-    };
-
-    /// Tests if symmetric encryption of [`Note`] decrypts properly.
-    #[test]
-    fn note_symmetric_encryption() {
-        let mut rng = OsRng;
-        let key = rng.gen();
-        encryption::test::correctness::<NoteSymmetricEncryptionScheme, _>(
-            &rng.gen(),
-            &key,
-            &key,
-            &(),
-            &(),
-            &rng.gen(),
-            |plaintext, decrypted_plaintext| {
-                assert_eq!(
-                    plaintext,
-                    &decrypted_plaintext.expect("Unable to decrypt ciphertext.")
-                );
-            },
-        );
-    }
-}

@@ -47,7 +47,9 @@ std = ["manta-crypto/std", "manta-util/std"]
 test = [
     "futures",
     "indexmap",
+    "manta-crypto/arkworks",
     "manta-crypto/rand",
+    "manta-crypto/test",
     "parking_lot",
     "statrs"
 ]

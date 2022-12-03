@@ -22,6 +22,9 @@ use futures::stream::{self, SelectAll, Stream};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::future::LocalBoxFuture;
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Abstract Simulation
 pub trait Simulation {
     /// Actor Type
@@ -64,6 +67,18 @@ where
 }
 
 /// Simulation Event
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "S::Event: Deserialize<'de>",
+            serialize = "S::Event: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Event: Clone"),
@@ -100,6 +115,18 @@ where
 }
 
 /// Simulator
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "S: Deserialize<'de>, S::Actor: Deserialize<'de>",
+            serialize = "S: Serialize, S::Actor: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S: Clone, S::Actor: Clone"),
@@ -135,12 +162,12 @@ where
     pub fn run<'s, R, F>(&'s mut self, mut rng: F) -> impl 's + Stream<Item = Event<S>>
     where
         R: 's + CryptoRng + RngCore,
-        F: FnMut() -> R,
+        F: FnMut(usize) -> R,
     {
         let mut actors = SelectAll::new();
         for (i, actor) in self.actors.iter_mut().enumerate() {
             actors.push(stream::unfold(
-                ActorStream::new(&self.simulation, i, actor, rng()),
+                ActorStream::new(&self.simulation, i, actor, rng(i)),
                 move |mut s| Box::pin(async move { s.next().await.map(move |e| (e, s)) }),
             ));
         }
@@ -159,6 +186,13 @@ where
 }
 
 /// Actor Stream
+#[derive(derivative::Derivative)]
+#[derivative(
+    Debug(bound = "S: Debug, S::Actor: Debug, R: Debug"),
+    Eq(bound = "S: Eq, S::Actor: Eq, R: Eq"),
+    Hash(bound = "S: Hash, S::Actor: Hash, R: Hash"),
+    PartialEq(bound = "S: PartialEq, S::Actor: PartialEq, R: PartialEq")
+)]
 struct ActorStream<'s, S, R>
 where
     S: Simulation,
@@ -250,6 +284,11 @@ pub trait ActionSimulation {
 ///
 /// This `struct` wraps an implementation of [`ActionSimulation`] and implements [`Simulation`] for
 /// use in some [`Simulator`].
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ActionSim<S>(pub S)
 where
