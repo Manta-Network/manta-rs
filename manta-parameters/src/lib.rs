@@ -67,7 +67,7 @@ pub mod git {
             match self {
                 Self::NotBranch => write!(f, "CurrentBranchError: Not a Branch"),
                 Self::MissingShorthand => write!(f, "Current Branch Error: Missing Shorthand"),
-                Self::Git(err) => write!(f, "Current Branch Error: Git Error: {}", err),
+                Self::Git(err) => write!(f, "Current Branch Error: Git Error: {err}"),
             }
         }
     }
@@ -481,7 +481,7 @@ mod test {
         let path = path.as_ref();
         checksums
             .get(path)
-            .ok_or_else(|| anyhow!("Unable to get checksum for path: {:?}", path))
+            .ok_or_else(|| anyhow!("Unable to get checksum for path: {path:?}"))
     }
 
     /// Downloads all data from GitHub and checks if they are the same as the data known locally to
@@ -509,9 +509,7 @@ mod test {
                 )?;
                 assert!(
                     equal_files(&mut File::open(path)?, &mut File::open(&target)?)?,
-                    "The files at {:?} and {:?} are not equal.",
-                    path,
-                    target
+                    "The files at {path:?} and {target:?} are not equal.",
                 );
             }
         }

@@ -313,8 +313,7 @@ pub fn register(twitter_account: String, email: String) {
         &keypair.0,
         Default::default(),
         &format!(
-            "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
-            twitter_account, email
+            "manta-trusted-setup-twitter:{twitter_account}, manta-trusted-setup-email:{email}",
         ),
     )
     .expect("Signing message should succeed.");
