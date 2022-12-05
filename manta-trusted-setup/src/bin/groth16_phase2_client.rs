@@ -16,6 +16,9 @@
 
 //! Trusted Setup Ceremony Client
 
+// local test
+// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client http://localhost:8080 contribute
+
 extern crate alloc;
 
 use clap::{Parser, Subcommand};
