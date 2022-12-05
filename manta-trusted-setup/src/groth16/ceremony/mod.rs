@@ -31,13 +31,14 @@ use core::{
     fmt::{self, Debug, Display},
     time::Duration,
 };
-use manta_crypto::arkworks::{constraint::R1CS, pairing::Pairing};
+use manta_crypto::arkworks::{constraint::R1CS, ff::PrimeField, pairing::Pairing};
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
 };
 
 pub mod config;
+pub mod log;
 pub mod message;
 
 #[cfg(feature = "reqwest")]
@@ -85,12 +86,12 @@ pub trait Ceremony: Configuration + SignatureScheme {
 }
 
 /// Specifies R1CS circuit descriptions and names for a ceremony.
-pub trait Circuits<C>
+pub trait Circuits<F>
 where
-    C: Ceremony,
+    F: PrimeField,
 {
     /// Returns representations of the circuits used in this ceremony, each named.
-    fn circuits() -> Vec<(R1CS<C::Scalar>, String)>;
+    fn circuits() -> Vec<(R1CS<F>, String)>;
 }
 
 /// Parallel Round Alias
@@ -214,7 +215,8 @@ where
                 f,
                 "Unexpected error occurred. \
                 Please contact us at trusted-setup@manta.network and \
-                paste the following error message in the email:\n{err:?}",
+                paste the following error message in the email:\n{:?}",
+                err
             ),
         }
     }
@@ -238,7 +240,10 @@ where
 #[derive(Debug)]
 pub enum UnexpectedError {
     /// Serialization Error
-    Serialization,
+    Serialization {
+        /// Optional Error Message Display String
+        message: String,
+    },
 
     /// Failed to generate a valid Contribution
     FailedContribution,

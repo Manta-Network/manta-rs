@@ -342,7 +342,7 @@ where
 
 /// Initialize [`State`] using the KZG accumulator `powers` and the given `constraint_system`.
 #[inline]
-pub fn initialize<C, S>(powers: Accumulator<C>, constraint_system: S) -> Result<State<C>, Error>
+pub fn initialize<C, S>(powers: &Accumulator<C>, constraint_system: S) -> Result<State<C>, Error>
 where
     C: kzg::Configuration,
     S: ConstraintSynthesizer<C::Scalar>,

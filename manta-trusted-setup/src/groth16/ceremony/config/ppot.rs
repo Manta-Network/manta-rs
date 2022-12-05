@@ -18,8 +18,8 @@
 
 use crate::{
     ceremony::{
-        participant,
-        registry::{self, csv},
+        participant, registry,
+        registry::csv::append_only_csv_writer,
         signature::{sign, verify, Nonce as _, RawMessage, SignatureScheme},
     },
     groth16::{
@@ -39,6 +39,7 @@ use blake2::Digest;
 use colored::Colorize;
 use console::{style, Term};
 use core::fmt::{self, Debug, Display};
+use csv::{Reader, StringRecord};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     arkworks::{
@@ -63,7 +64,7 @@ use manta_util::{
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     Array,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, path::PathBuf};
 
 type Signature = Ed25519<RawMessage<u64>>;
 type VerifyingKey = signature::VerifyingKey<Signature>;
@@ -90,6 +91,33 @@ impl From<Priority> for usize {
         match priority {
             Priority::High => 0,
             Priority::Normal => 1,
+        }
+    }
+}
+
+impl From<Priority> for String {
+    #[inline]
+    fn from(value: Priority) -> Self {
+        match value {
+            Priority::High => "high".to_string(),
+            _ => "normal".to_string(),
+        }
+    }
+}
+
+impl From<&Priority> for String {
+    #[inline]
+    fn from(value: &Priority) -> Self {
+        Self::from(*value)
+    }
+}
+
+impl From<String> for Priority {
+    #[inline]
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "high" => Priority::High,
+            _ => Priority::Normal,
         }
     }
 }
@@ -125,6 +153,13 @@ pub struct Participant {
 
     /// Boolean on whether this participant has contributed
     contributed: bool,
+}
+
+impl fmt::Display for Participant {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.twitter())
+    }
 }
 
 impl Participant {
@@ -227,7 +262,26 @@ pub struct Record {
     signature: String,
 }
 
-impl csv::Record<VerifyingKey, Participant> for Record {
+impl Record {
+    /// Constructor
+    pub fn new(
+        twitter: String,
+        email: String,
+        priority: String,
+        verifying_key: String,
+        signature: String,
+    ) -> Self {
+        Self {
+            twitter,
+            email,
+            priority,
+            verifying_key,
+            signature,
+        }
+    }
+}
+
+impl registry::csv::Record<VerifyingKey, Participant> for Record {
     type Error = String;
 
     #[inline]
@@ -235,18 +289,32 @@ impl csv::Record<VerifyingKey, Participant> for Record {
         let verifying_key = ed25519::public_key_from_bytes(
             bs58::decode(self.verifying_key)
                 .into_vec()
-                .map_err(|_| "Cannot decode verifying key.".to_string())?
+                .map_err(|e| {
+                    println!("Error decoding verifying key {e:?}");
+                    "Cannot decode signature.".to_string()
+                })?
                 .try_into()
-                .map_err(|_| "Cannot decode to array.".to_string())?,
-        );
+                .map_err(|e| {
+                    println!("Array conversion failed on verifying key {e:?}");
+                    "Cannot decode to array.".to_string()
+                })?,
+        )
+        .map_err(|_| "Byte conversion failed on verifying key.".to_string())?;
         let verifying_key = Array::from_unchecked(*verifying_key.as_bytes());
         let signature: ed25519::Signature = ed25519::signature_from_bytes(
             bs58::decode(self.signature)
                 .into_vec()
-                .map_err(|_| "Cannot decode signature.".to_string())?
+                .map_err(|e| {
+                    println!("Error decoding signature {e:?}");
+                    "Cannot decode signature.".to_string()
+                })?
                 .try_into()
-                .map_err(|_| "Cannot decode to array.".to_string())?,
-        );
+                .map_err(|e| {
+                    println!("Array conversion failed on signature {e:?}");
+                    "Cannot decode to array.".to_string()
+                })?,
+        )
+        .map_err(|_| "Byte conversion failed on signature.".to_string())?;
         verify::<Signature, _>(
             &verifying_key,
             0,
@@ -257,28 +325,121 @@ impl csv::Record<VerifyingKey, Participant> for Record {
             &signature,
         )
         .map_err(|_| "Cannot verify signature.".to_string())?;
-        let priority = match self.priority.as_str() {
-            "TRUE" => "true",
-            "FALSE" => "false",
-            str => str,
-        };
         Ok((
             verifying_key,
             Participant::new(
                 verifying_key,
                 self.twitter,
-                match priority
-                    .parse::<bool>()
-                    .map_err(|_| "Cannot parse priority.".to_string())?
-                {
-                    true => Priority::High,
-                    false => Priority::Normal,
-                },
+                self.priority.into(),
                 OsRng.gen::<_, u16>() as u64,
                 false,
             ),
         ))
     }
+}
+
+/// Errors that may occur when processing raw registration data.
+#[derive(Debug)]
+pub enum RegistrationProcessingError {
+    /// Raw data headers don't match expected
+    WrongHeaders,
+
+    /// Attempted to process data in unsupported format
+    BadDataFormat,
+
+    /// Error when writing processed data
+    WriteError,
+
+    /// Standard IO Error
+    StdIoError(std::io::Error),
+}
+
+impl From<std::io::Error> for RegistrationProcessingError {
+    fn from(e: std::io::Error) -> Self {
+        Self::StdIoError(e)
+    }
+}
+
+/// Sets the header (column names) of this CSV Reader. Error if
+/// the existing field names do not match the given expected names.
+pub fn set_header(
+    reader: &mut Reader<&File>,
+    expected_headers: Vec<&str>,
+    short_headers: Vec<&str>,
+) -> Result<(), RegistrationProcessingError> {
+    match reader.byte_headers() {
+        Ok(headers) => {
+            if headers != expected_headers {
+                println!("Actual headers were \n{headers:?}");
+                Err(RegistrationProcessingError::WrongHeaders)
+            } else {
+                assert_eq!(expected_headers.len(), short_headers.len());
+                reader.set_headers(StringRecord::from(short_headers));
+                Ok(())
+            }
+        }
+        _ => Err(RegistrationProcessingError::BadDataFormat),
+    }
+}
+
+/// Extracts all [`Record`]s from a CSV file of raw registration
+/// data and appends these to a CSV file containing only these `Record`s
+/// at the specified path. A [`Registry`] can be loaded from the
+/// output file. Appends to another CSV file of malformed registry entries
+/// in case ceremony coordinators wish to examine these.
+/// Returns the pair (number successfully parsed, number malformed).
+/// Participants are given default priority.
+/// NOTE: This function does not truncate the output files, it appends.
+pub fn extract_registry<R>(
+    path_to_in: PathBuf,
+    path_to_out: PathBuf,
+    expected_headers: Vec<&str>,
+    short_headers: Vec<&str>,
+    priority_list: HashMap<Array<u8, 32>, Priority>,
+) -> Result<(usize, usize), RegistrationProcessingError>
+where
+    R: DeserializeOwned + Into<Record> + Clone,
+{
+    let file_in = File::open(path_to_in).expect("Unable to open raw registry data");
+    let mut reader = Reader::from_reader(&file_in);
+    set_header(&mut reader, expected_headers, short_headers)?;
+
+    let mut writer = append_only_csv_writer::<RegistrationProcessingError, _>(path_to_out.clone())
+        .expect("Error opening output file");
+    let mut writer_malformed = append_only_csv_writer::<RegistrationProcessingError, _>(
+        path_to_out
+            .parent()
+            .expect("Path should have a parent")
+            .join("malformed_registry_submissions.csv"),
+    )
+    .expect("Error opening output file");
+
+    let mut num_successful = 0;
+    let mut num_malformed = 0;
+    for (i, record) in reader.deserialize::<R>().flatten().enumerate() {
+        match <Record as registry::csv::Record<_, _>>::parse(record.clone().into()) {
+            Ok((verifying_key, _)) => {
+                let mut record: Record = record.into();
+                if let Some(priority) = priority_list.get(&verifying_key) {
+                    record.priority = priority.into();
+                } else {
+                    record.priority = Priority::Normal.into();
+                }
+                num_successful += 1;
+                writer
+                    .serialize(record)
+                    .map_err(|_| RegistrationProcessingError::WriteError)?
+            }
+            Err(e) => {
+                println!("Encountered error {e:?} when reading entry {}", i + 2);
+                num_malformed += 1;
+                writer_malformed
+                    .serialize(record.into())
+                    .map_err(|_| RegistrationProcessingError::WriteError)?
+            }
+        }
+    }
+    Ok((num_successful, num_malformed))
 }
 
 /// The registry used in this ceremony
@@ -313,7 +474,8 @@ pub fn register(twitter_account: String, email: String) {
         &keypair.0,
         Default::default(),
         &format!(
-            "manta-trusted-setup-twitter:{twitter_account}, manta-trusted-setup-email:{email}",
+            "manta-trusted-setup-twitter:{}, manta-trusted-setup-email:{}",
+            twitter_account, email
         ),
     )
     .expect("Signing message should succeed.");
@@ -411,6 +573,7 @@ where
     C::Identifier: Serialize,
     C::Nonce: Clone + Debug + DeserializeOwned + Serialize,
     C::Signature: Serialize,
+    C::ContributionHash: AsRef<[u8]>,
 {
     println!(
         "{} Retrieving ceremony metadata from server.",
@@ -718,7 +881,7 @@ impl Ceremony for Config {
     }
 }
 
-impl Circuits<Self> for Config {
+impl Circuits<<Self as Pairing>::Scalar> for Config {
     #[inline]
     fn circuits() -> Vec<(R1CS<<Self as Pairing>::Scalar>, String)> {
         let mut circuits = Vec::new();
