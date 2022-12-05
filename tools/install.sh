@@ -71,7 +71,7 @@ main() {
             ;;
     esac
 
-    local _url="https://github.com/manta-network/manta-rs/releases/download/v0.5.5/manta-trusted-setup-${_arch}${_ext}"
+    local _url="https://github.com/manta-network/manta-rs/releases/download/v0.5.6/manta-trusted-setup-${_arch}${_ext}"
 
     printf "[INFO] Installing manta-trusted-setup for the ${_arch} target ... "
 

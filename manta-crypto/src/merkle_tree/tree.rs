@@ -54,7 +54,7 @@ use manta_util::serde::{Deserialize, Serialize};
 /// Merkle Tree Leaf Hash
 pub trait LeafHash<COM = ()> {
     /// Leaf Type
-    type Leaf: ?Sized;
+    type Leaf;
 
     /// Leaf Hash Parameters Type
     type Parameters;

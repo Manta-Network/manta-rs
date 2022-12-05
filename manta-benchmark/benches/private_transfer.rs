@@ -17,9 +17,11 @@
 //! Private Transfer Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::OsRng;
-use manta_pay::{parameters, test::payment::prove_private_transfer};
+use manta_pay::{
+    parameters,
+    test::payment::{private_transfer::prove as prove_private_transfer, UtxoAccumulator},
+};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
@@ -28,9 +30,9 @@ fn prove(c: &mut Criterion) {
     group.bench_function("private transfer prove", |b| {
         b.iter(|| {
             prove_private_transfer(
-                &proving_context,
+                &proving_context.private_transfer,
                 &parameters,
-                &utxo_accumulator_model,
+                &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
                 &mut rng,
             );
         })
@@ -42,15 +44,15 @@ fn verify(c: &mut Criterion) {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
-    let private_transfer = black_box(prove_private_transfer(
-        &proving_context,
+    let transferpost = black_box(prove_private_transfer(
+        &proving_context.private_transfer,
         &parameters,
-        &utxo_accumulator_model,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
         &mut rng,
     ));
     group.bench_function("private transfer verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.private_transfer, &private_transfer);
+            transferpost.assert_valid_proof(&verifying_context.private_transfer);
         })
     });
 }

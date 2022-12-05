@@ -19,22 +19,22 @@
 // TODO: How to model existential deposits and fee payments?
 // TODO: Add in some concurrency (and measure how much we need it).
 
-use crate::{
-    config::{
-        Config, EncryptedNote, MerkleTreeConfiguration, MultiVerifyingContext, ProofSystem,
-        TransferPost, Utxo, UtxoAccumulatorModel, VoidNumber,
+use crate::config::{
+    utxo::{
+        AssetId, AssetValue, Checkpoint, FullIncomingNote, MerkleTreeConfiguration, Parameters,
     },
-    signer::Checkpoint,
+    Config, MultiVerifyingContext, Nullifier, ProofSystem, TransferPost, Utxo,
+    UtxoAccumulatorModel,
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
 use indexmap::IndexSet;
 use manta_accounting::{
-    asset::{Asset, AssetId, AssetList, AssetValue},
+    asset::{Asset, AssetList},
     transfer::{
-        canonical::TransferShape, InvalidSinkAccount, InvalidSourceAccount, Proof, ReceiverLedger,
-        ReceiverPostingKey, SenderLedger, SenderPostingKey, SinkPostingKey, SourcePostingKey,
-        TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKey, UtxoAccumulatorOutput,
+        canonical::TransferShape, receiver::ReceiverLedger, sender::SenderLedger,
+        InvalidSinkAccount, InvalidSourceAccount, SinkPostingKey, SourcePostingKey, TransferLedger,
+        TransferLedgerSuperPostingKey, TransferPostingKeyRef, UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, ReadResponse},
@@ -43,6 +43,7 @@ use manta_accounting::{
     },
 };
 use manta_crypto::{
+    accumulator::ItemHashFunction,
     constraint::ProofSystem as _,
     merkle_tree::{
         self,
@@ -71,7 +72,12 @@ pub type UtxoMerkleForest = merkle_tree::forest::TreeArrayMerkleForest<
 >;
 
 /// Wrap Type
-#[derive(Clone, Copy)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Wrap<T>(T);
 
 impl<T> AsRef<T> for Wrap<T> {
@@ -82,7 +88,12 @@ impl<T> AsRef<T> for Wrap<T> {
 }
 
 /// Wrap Pair Type
-#[derive(Clone, Copy)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct WrapPair<L, R>(L, R);
 
 impl<L, R> AsRef<R> for WrapPair<L, R> {
@@ -104,14 +115,14 @@ pub struct AccountId(pub u64);
 /// Ledger
 #[derive(Debug)]
 pub struct Ledger {
-    /// Void Numbers
-    void_numbers: IndexSet<VoidNumber>,
+    /// Nullifier
+    nullifiers: IndexSet<Nullifier>,
 
     /// UTXOs
     utxos: HashSet<Utxo>,
 
     /// Shards
-    shards: HashMap<MerkleForestIndex, IndexSet<(Utxo, EncryptedNote)>>,
+    shards: HashMap<MerkleForestIndex, IndexSet<(Utxo, FullIncomingNote)>>,
 
     /// UTXO Forest
     utxo_forest: UtxoMerkleForest,
@@ -121,6 +132,9 @@ pub struct Ledger {
 
     /// Verifying Contexts
     verifying_context: MultiVerifyingContext,
+
+    /// UTXO Configuration Parameters
+    parameters: Parameters,
 }
 
 impl Ledger {
@@ -129,9 +143,10 @@ impl Ledger {
     pub fn new(
         utxo_accumulator_model: UtxoAccumulatorModel,
         verifying_context: MultiVerifyingContext,
+        parameters: Parameters,
     ) -> Self {
         Self {
-            void_numbers: Default::default(),
+            nullifiers: Default::default(),
             utxos: Default::default(),
             shards: (0..MerkleTreeConfiguration::FOREST_WIDTH)
                 .map(move |i| (MerkleForestIndex::from_index(i), Default::default()))
@@ -139,12 +154,13 @@ impl Ledger {
             utxo_forest: UtxoMerkleForest::new(utxo_accumulator_model),
             accounts: Default::default(),
             verifying_context,
+            parameters,
         }
     }
 
     /// Returns the public balances of `account` if it exists.
     #[inline]
-    pub fn public_balances(&self, account: AccountId) -> Option<AssetList> {
+    pub fn public_balances(&self, account: AccountId) -> Option<AssetList<AssetId, AssetValue>> {
         Some(
             self.accounts
                 .get(&account)?
@@ -157,6 +173,7 @@ impl Ledger {
     /// Sets the public balance of `account` in assets with `id` to `value`.
     #[inline]
     pub fn set_public_balance(&mut self, account: AccountId, id: AssetId, value: AssetValue) {
+        assert_ne!(id, Default::default(), "Asset id can't be zero!");
         self.accounts.entry(account).or_default().insert(id, value);
     }
 
@@ -167,19 +184,22 @@ impl Ledger {
         for (i, mut index) in checkpoint.receiver_index.iter().copied().enumerate() {
             let shard = &self.shards[&MerkleForestIndex::from_index(i)];
             while let Some(entry) = shard.get_index(index) {
-                receivers.push(*entry);
+                receivers.push(entry.clone());
                 index += 1;
             }
         }
         let senders = self
-            .void_numbers
+            .nullifiers
             .iter()
             .skip(checkpoint.sender_index)
-            .copied()
+            .cloned()
             .collect();
         ReadResponse {
             should_continue: false,
-            data: SyncData { receivers, senders },
+            data: SyncData {
+                utxo_note_data: receivers,
+                nullifier_data: senders,
+            },
         }
     }
 
@@ -188,13 +208,13 @@ impl Ledger {
     pub fn push(&mut self, account: AccountId, posts: Vec<TransferPost>) -> bool {
         for post in posts {
             let (sources, sinks) = match TransferShape::from_post(&post) {
-                Some(TransferShape::Mint) => (vec![account], vec![]),
+                Some(TransferShape::ToPrivate) => (vec![account], vec![]),
                 Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
-                Some(TransferShape::Reclaim) => (vec![], vec![account]),
+                Some(TransferShape::ToPublic) => (vec![], vec![account]),
                 _ => return false,
             };
-            match post.validate(sources, sinks, &*self) {
-                Ok(posting_key) => posting_key.post(&(), &mut *self).unwrap(),
+            match post.validate(&self.parameters, &*self, sources, sinks) {
+                Ok(posting_key) => posting_key.post(&mut *self, &()).unwrap(),
                 _ => return false,
             }
         }
@@ -202,17 +222,17 @@ impl Ledger {
     }
 }
 
-impl SenderLedger<Config> for Ledger {
-    type ValidVoidNumber = Wrap<VoidNumber>;
+impl SenderLedger<Parameters> for Ledger {
+    type ValidNullifier = Wrap<Nullifier>;
     type ValidUtxoAccumulatorOutput = Wrap<UtxoAccumulatorOutput<Config>>;
     type SuperPostingKey = (Wrap<()>, ());
 
     #[inline]
-    fn is_unspent(&self, void_number: VoidNumber) -> Option<Self::ValidVoidNumber> {
-        if self.void_numbers.contains(&void_number) {
+    fn is_unspent(&self, nullifier: Nullifier) -> Option<Self::ValidNullifier> {
+        if self.nullifiers.contains(&nullifier) {
             None
         } else {
-            Some(Wrap(void_number))
+            Some(Wrap(nullifier))
         }
     }
 
@@ -221,6 +241,9 @@ impl SenderLedger<Config> for Ledger {
         &self,
         output: UtxoAccumulatorOutput<Config>,
     ) -> Option<Self::ValidUtxoAccumulatorOutput> {
+        if output == Default::default() {
+            return Some(Wrap(output));
+        }
         for tree in self.utxo_forest.forest.as_ref() {
             if tree.root() == &output {
                 return Some(Wrap(output));
@@ -232,16 +255,16 @@ impl SenderLedger<Config> for Ledger {
     #[inline]
     fn spend(
         &mut self,
-        utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
-        void_number: Self::ValidVoidNumber,
         super_key: &Self::SuperPostingKey,
+        utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
+        nullifier: Self::ValidNullifier,
     ) {
         let _ = (utxo_accumulator_output, super_key);
-        self.void_numbers.insert(void_number.0);
+        self.nullifiers.insert(nullifier.0);
     }
 }
 
-impl ReceiverLedger<Config> for Ledger {
+impl ReceiverLedger<Parameters> for Ledger {
     type ValidUtxo = Wrap<Utxo>;
     type SuperPostingKey = (Wrap<()>, ());
 
@@ -257,18 +280,18 @@ impl ReceiverLedger<Config> for Ledger {
     #[inline]
     fn register(
         &mut self,
-        utxo: Self::ValidUtxo,
-        note: EncryptedNote,
         super_key: &Self::SuperPostingKey,
+        utxo: Self::ValidUtxo,
+        note: FullIncomingNote,
     ) {
         let _ = super_key;
-        let shard = self
-            .shards
-            .get_mut(&MerkleTreeConfiguration::tree_index(&utxo.0))
-            .expect("All shards exist when the ledger is constructed.");
-        shard.insert((utxo.0, note));
+        let utxo_hash = self.parameters.item_hash(&utxo.0, &mut ());
+        self.shards
+            .get_mut(&MerkleTreeConfiguration::tree_index(&utxo_hash))
+            .expect("All shards exist when the ledger is constructed.")
+            .insert((utxo.0, note));
         self.utxos.insert(utxo.0);
-        self.utxo_forest.push(&utxo.0);
+        self.utxo_forest.push(&utxo_hash);
     }
 }
 
@@ -284,23 +307,23 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn check_source_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: &AssetId,
         sources: I,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Config, Self::AccountId>>
     where
         I: Iterator<Item = (Self::AccountId, AssetValue)>,
     {
         sources
             .map(|(account_id, withdraw)| {
                 match self.accounts.get(&account_id) {
-                    Some(map) => match map.get(&asset_id) {
+                    Some(map) => match map.get(asset_id) {
                         Some(balance) => {
                             if balance >= &withdraw {
                                 Ok(WrapPair(account_id, withdraw))
                             } else {
                                 Err(InvalidSourceAccount {
                                     account_id,
-                                    asset_id,
+                                    asset_id: *asset_id,
                                     withdraw,
                                 })
                             }
@@ -309,14 +332,14 @@ impl TransferLedger<Config> for Ledger {
                             // FIXME: What about zero values in `sources`?
                             Err(InvalidSourceAccount {
                                 account_id,
-                                asset_id,
+                                asset_id: *asset_id,
                                 withdraw,
                             })
                         }
                     },
                     _ => Err(InvalidSourceAccount {
                         account_id,
-                        asset_id,
+                        asset_id: *asset_id,
                         withdraw,
                     }),
                 }
@@ -327,9 +350,9 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn check_sink_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: &AssetId,
         sinks: I,
-    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Config, Self::AccountId>>
     where
         I: Iterator<Item = (Self::AccountId, AssetValue)>,
     {
@@ -340,7 +363,7 @@ impl TransferLedger<Config> for Ledger {
                 } else {
                     Err(InvalidSinkAccount {
                         account_id,
-                        asset_id,
+                        asset_id: *asset_id,
                         deposit,
                     })
                 }
@@ -351,24 +374,20 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn is_valid(
         &self,
-        asset_id: Option<AssetId>,
-        sources: &[SourcePostingKey<Config, Self>],
-        senders: &[SenderPostingKey<Config, Self>],
-        receivers: &[ReceiverPostingKey<Config, Self>],
-        sinks: &[SinkPostingKey<Config, Self>],
-        proof: Proof<Config>,
+        posting_key: TransferPostingKeyRef<Config, Self>,
     ) -> Option<(Self::ValidProof, Self::Event)> {
         let verifying_context = self.verifying_context.select(TransferShape::select(
-            asset_id.is_some(),
-            sources.len(),
-            senders.len(),
-            receivers.len(),
-            sinks.len(),
+            posting_key.authorization_key.is_some(),
+            posting_key.asset_id.is_some(),
+            posting_key.sources.len(),
+            posting_key.senders.len(),
+            posting_key.receivers.len(),
+            posting_key.sinks.len(),
         )?);
         ProofSystem::verify(
             verifying_context,
-            &TransferPostingKey::generate_proof_input(asset_id, sources, senders, receivers, sinks),
-            &proof,
+            &posting_key.generate_proof_input(),
+            &posting_key.proof,
         )
         .ok()?
         .then_some((Wrap(()), ()))
@@ -377,11 +396,11 @@ impl TransferLedger<Config> for Ledger {
     #[inline]
     fn update_public_balances(
         &mut self,
+        super_key: &TransferLedgerSuperPostingKey<Config, Self>,
         asset_id: AssetId,
         sources: Vec<SourcePostingKey<Config, Self>>,
         sinks: Vec<SinkPostingKey<Config, Self>>,
         proof: Self::ValidProof,
-        super_key: &TransferLedgerSuperPostingKey<Config, Self>,
     ) -> Result<(), Self::UpdateError> {
         let _ = (proof, super_key);
         for WrapPair(account_id, withdraw) in sources {
@@ -408,6 +427,7 @@ impl TransferLedger<Config> for Ledger {
 pub type SharedLedger = Arc<RwLock<Ledger>>;
 
 /// Ledger Connection
+#[derive(Clone, Debug)]
 pub struct LedgerConnection {
     /// Ledger Account
     account: AccountId,
@@ -452,9 +472,9 @@ impl ledger::Write<Vec<TransferPost>> for LedgerConnection {
     }
 }
 
-impl PublicBalanceOracle for LedgerConnection {
+impl PublicBalanceOracle<Config> for LedgerConnection {
     #[inline]
-    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>> {
+    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList<AssetId, AssetValue>>> {
         Box::pin(async move { self.ledger.read().await.public_balances(self.account) })
     }
 }

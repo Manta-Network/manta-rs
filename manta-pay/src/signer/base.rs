@@ -17,59 +17,59 @@
 //! Manta Pay Signer Configuration
 
 use crate::{
-    config::{Bls12_381_Edwards, Config, MerkleTreeConfiguration, SecretKey},
-    crypto::constraint::arkworks::Fp,
-    key::{CoinType, KeySecret, Testnet, TestnetKeySecret},
+    config::{
+        utxo::{self, MerkleTreeConfiguration},
+        Config,
+    },
+    key::{CoinType, KeySecret, Testnet},
     signer::Checkpoint,
 };
 use alloc::collections::BTreeMap;
-use core::{cmp, marker::PhantomData, mem};
+use core::{cmp, mem};
 use manta_accounting::{
     asset::HashAssetMap,
-    key::{self, HierarchicalKeyDerivationScheme},
+    key::{AccountCollection, AccountIndex, DeriveAddresses},
+    transfer::{utxo::protocol, Identifier, SpendingKey},
     wallet::{
         self,
-        signer::{self, AssetMapKey, SyncData},
+        signer::{self, SyncData},
     },
 };
 use manta_crypto::{
-    arkworks::{ec::ProjectiveCurve, ff::PrimeField},
-    key::kdf::KeyDerivationFunction,
+    accumulator::ItemHashFunction,
+    arkworks::{
+        constraint::fp::Fp,
+        ed_on_bn254::FrParameters,
+        ff::{Fp256, PrimeField},
+    },
     merkle_tree::{self, forest::Configuration},
     rand::ChaCha20Rng,
 };
 
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
-
-/// Hierarchical Key Derivation Function
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct HierarchicalKeyDerivationFunction<C = Testnet>(PhantomData<C>)
-where
-    C: CoinType;
-
-impl<C> KeyDerivationFunction for HierarchicalKeyDerivationFunction<C>
+impl<C> AccountCollection for KeySecret<C>
 where
     C: CoinType,
 {
-    type Key = <KeySecret<C> as HierarchicalKeyDerivationScheme>::SecretKey;
-    type Output = SecretKey;
+    type SpendingKey = SpendingKey<crate::config::Config>;
 
     #[inline]
-    fn derive(&self, key: &Self::Key, _: &mut ()) -> Self::Output {
-        // FIXME: Check that this conversion is logical/safe.
-        let bytes: [u8; 32] = key
-            .private_key()
-            .to_bytes()
-            .try_into()
-            .expect("The secret key has 32 bytes.");
-        Fp(<Bls12_381_Edwards as ProjectiveCurve>::ScalarField::from_le_bytes_mod_order(&bytes))
+    fn spending_key(&self, index: &AccountIndex) -> Self::SpendingKey {
+        Fp(Fp256::<FrParameters>::from_le_bytes_mod_order(
+            &self.xpr_secret_key(index).to_bytes(),
+        ))
+    }
+}
+
+impl<C> DeriveAddresses for KeySecret<C>
+where
+    C: CoinType,
+{
+    type Address = protocol::Address<utxo::Config>;
+    type Parameters = protocol::Parameters<utxo::Config>;
+
+    #[inline]
+    fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address {
+        parameters.address_from_spending_key(&AccountCollection::spending_key(&self, &index))
     }
 }
 
@@ -84,19 +84,19 @@ pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
 >;
 
 impl wallet::signer::Configuration for Config {
+    type Account = KeySecret<Testnet>;
     type Checkpoint = Checkpoint;
-    type HierarchicalKeyDerivationScheme =
-        key::Map<TestnetKeySecret, HierarchicalKeyDerivationFunction>;
     type UtxoAccumulator = UtxoAccumulator;
-    type AssetMap = HashAssetMap<AssetMapKey<Self>>;
+    type AssetMap = HashAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
     type Rng = ChaCha20Rng;
 }
 
 impl signer::Checkpoint<Config> for Checkpoint {
     type UtxoAccumulator = UtxoAccumulator;
+    type UtxoAccumulatorItemHash = utxo::UtxoAccumulatorItemHash;
 
     #[inline]
-    fn update_from_void_numbers(&mut self, count: usize) {
+    fn update_from_nullifiers(&mut self, count: usize) {
         self.sender_index += count;
     }
 
@@ -116,17 +116,23 @@ impl signer::Checkpoint<Config> for Checkpoint {
     /// index or by global void number index until we reach some pruned data that is at least newer
     /// than `signer_checkpoint`.
     #[inline]
-    fn prune(data: &mut SyncData<Config>, origin: &Self, signer_checkpoint: &Self) -> bool {
+    fn prune(
+        parameters: &Self::UtxoAccumulatorItemHash,
+        data: &mut SyncData<Config>,
+        origin: &Self,
+        signer_checkpoint: &Self,
+    ) -> bool {
         const PRUNE_PANIC_MESSAGE: &str = "ERROR: Invalid pruning conditions";
         if signer_checkpoint <= origin {
             return false;
         }
         let mut updated_origin = *origin;
-        for receiver in &data.receivers {
-            let key = MerkleTreeConfiguration::tree_index(&receiver.0);
+        for receiver in &data.utxo_note_data {
+            let key =
+                MerkleTreeConfiguration::tree_index(&parameters.item_hash(&receiver.0, &mut ()));
             updated_origin.receiver_index[key as usize] += 1;
         }
-        updated_origin.sender_index += data.senders.len();
+        updated_origin.sender_index += data.nullifier_data.len();
         if signer_checkpoint > &updated_origin {
             *data = Default::default();
             return true;
@@ -137,19 +143,19 @@ impl signer::Checkpoint<Config> for Checkpoint {
             .checked_sub(origin.sender_index)
         {
             Some(diff) => {
-                drop(data.senders.drain(0..diff));
+                drop(data.nullifier_data.drain(0..diff));
                 if diff > 0 {
                     has_pruned = true;
                 }
             }
             _ => panic!(
-                "{}: Sender Pruning: {:?} {:?} {:?}",
-                PRUNE_PANIC_MESSAGE, data, origin, signer_checkpoint
+                "{PRUNE_PANIC_MESSAGE}: Sender Pruning: {data:?} {origin:?} {signer_checkpoint:?}",
             ),
         }
         let mut data_map = BTreeMap::<_, Vec<_>>::new();
-        for receiver in mem::take(&mut data.receivers) {
-            let key = MerkleTreeConfiguration::tree_index(&receiver.0);
+        for receiver in mem::take(&mut data.utxo_note_data) {
+            let key =
+                MerkleTreeConfiguration::tree_index(&parameters.item_hash(&receiver.0, &mut ()));
             match data_map.get_mut(&key) {
                 Some(entry) => entry.push(receiver),
                 _ => {
@@ -166,15 +172,14 @@ impl signer::Checkpoint<Config> for Checkpoint {
             match index.checked_sub(origin_index) {
                 Some(diff) => {
                     if let Some(entries) = data_map.remove(&(i as u8)) {
-                        data.receivers.extend(entries.into_iter().skip(diff));
+                        data.utxo_note_data.extend(entries.into_iter().skip(diff));
                         if diff > 0 {
                             has_pruned = true;
                         }
                     }
                 }
                 _ => panic!(
-                    "{}: Receiver Pruning: {:?} {:?} {:?}",
-                    PRUNE_PANIC_MESSAGE, data, origin, signer_checkpoint
+                    "{PRUNE_PANIC_MESSAGE}: Receiver Pruning: {data:?} {origin:?} {signer_checkpoint:?}",
                 ),
             }
         }

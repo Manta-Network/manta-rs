@@ -41,7 +41,7 @@ use crate::{
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use manta_util::{
-    codec::{self, Encode},
+    codec::{self, Decode, DecodeError, Encode},
     iter::{BorrowIterator, Iterable},
 };
 
@@ -317,6 +317,52 @@ where
             this.permutation.as_constant(compiler),
             this.configuration.as_constant(compiler),
         )
+    }
+}
+
+/// Duplexer Decode Error
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum DuplexerDecodeError<P, C> {
+    /// Permutation Error
+    Permutation(P),
+
+    /// Configuration Error
+    Configuration(C),
+}
+
+impl<P, C> Decode for Duplexer<P, C>
+where
+    P: Decode + PseudorandomPermutation,
+    C: Decode + Types<P>,
+{
+    type Error = DuplexerDecodeError<P::Error, C::Error>;
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: codec::Read,
+    {
+        Ok(Self::new(
+            Decode::decode(&mut reader).map_err(|err| err.map_decode(Self::Error::Permutation))?,
+            Decode::decode(&mut reader)
+                .map_err(|err| err.map_decode(Self::Error::Configuration))?,
+        ))
+    }
+}
+
+impl<P, C> Encode for Duplexer<P, C>
+where
+    P: Encode + PseudorandomPermutation,
+    C: Encode + Types<P>,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.permutation.encode(&mut writer)?;
+        self.configuration.encode(&mut writer)?;
+        Ok(())
     }
 }
 

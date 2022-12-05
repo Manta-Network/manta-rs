@@ -1,6 +1,6 @@
 [package]
 name = "manta-benchmark"
-version = "0.5.6"
+version = "0.5.7"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
@@ -32,7 +32,7 @@ name = "ecc"
 harness = false
 
 [[bench]]
-name = "mint"
+name = "to_private"
 harness = false
 
 [[bench]]
@@ -40,16 +40,16 @@ name = "private_transfer"
 harness = false
 
 [[bench]]
-name = "reclaim"
+name = "to_public"
 harness = false
 
 [dependencies]
 criterion = { version = "0.3.4", default-features = false }
-getrandom = { version = "0.2.6", default-features = false, features = ["js"] }
+getrandom = { version = "0.2.8", default-features = false, features = ["js"] }
 instant = { version = "0.1.12", default-features = false, features = [ "wasm-bindgen" ] }
 manta-accounting = { path = "../manta-accounting", default-features = false, features = ["test"] }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["ark-bls12-381", "getrandom", "test"] }
-manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "test"] }
+manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "parameters", "test"] }
 wasm-bindgen = { version = "0.2.83", default-features = false }
 wasm-bindgen-test = { version = "0.3.33", default-features = false }
 web-sys = { version = "0.3.59", default-features = false, features = ["console"] }

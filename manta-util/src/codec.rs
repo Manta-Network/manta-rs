@@ -18,10 +18,14 @@
 
 // TODO: Deprecate this in favor of pure `serde`.
 
+use crate::Array;
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "alloc")]
-use crate::{into_array_unchecked, vec::Vec};
+use {
+    crate::{into_array_unchecked, vec::Vec},
+    alloc::boxed::Box,
+};
 
 /// Implements [`Decode`] and [`Encode`] for a type with no data that implements [`Default`].
 #[macro_export]
@@ -650,6 +654,19 @@ where
     }
 }
 
+impl<T, const N: usize> Encode for Array<T, N>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(&mut writer)
+    }
+}
+
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<T> Encode for Vec<T>
@@ -663,6 +680,25 @@ where
     {
         (self.len() as u64).encode(&mut writer)?;
         for item in self {
+            item.encode(&mut writer)?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+impl<T> Encode for Box<[T]>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        (self.len() as u64).encode(&mut writer)?;
+        for item in self.iter() {
             item.encode(&mut writer)?;
         }
         Ok(())
@@ -823,6 +859,23 @@ impl Decode for u64 {
     }
 }
 
+impl Decode for u128 {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let mut bytes = [0; 16];
+        match reader.read_exact(&mut bytes) {
+            Ok(()) => Ok(Self::from_le_bytes(bytes)),
+            Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),
+            _ => Err(DecodeError::Decode(())),
+        }
+    }
+}
+
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<T, const N: usize> Decode for [T; N]
@@ -863,6 +916,23 @@ where
             results.push(T::decode(&mut reader).map_err(|err| err.map_decode(Some))?);
         }
         Ok(results)
+    }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
+impl<T> Decode for Box<[T]>
+where
+    T: Decode,
+{
+    type Error = Option<T::Error>;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        Ok(Vec::decode(reader)?.into())
     }
 }
 

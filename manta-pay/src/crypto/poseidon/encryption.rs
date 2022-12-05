@@ -39,7 +39,7 @@ use manta_crypto::{
     rand::{Rand, RngCore, Sample},
 };
 use manta_util::{
-    codec::{self, Encode},
+    codec::{self, Decode, DecodeError, Encode},
     vec::padded_chunks_with,
     BoxArray,
 };
@@ -122,16 +122,18 @@ where
 }
 
 /// Plaintext Block
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(bound(
-        deserialize = "S::Field: Deserialize<'de>",
-        serialize = "S::Field: Serialize"
-    ),)
+    serde(
+        bound(
+            deserialize = "S::Field: Deserialize<'de>",
+            serialize = "S::Field: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -232,7 +234,6 @@ where
 }
 
 /// Ciphertext Block
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -245,7 +246,6 @@ where
         deny_unknown_fields
     )
 )]
-*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -267,10 +267,12 @@ where
 
     #[inline]
     fn write(&self, state: &mut State<S, COM>, compiler: &mut COM) -> Self::Output {
+        let mut plaintext = Vec::new();
         for (i, elem) in state.iter_mut().skip(1).enumerate() {
-            *elem = self.0[i].sub(elem, compiler);
+            plaintext.push(self.0[i].sub(elem, compiler));
+            *elem = self.0[i].clone();
         }
-        PlaintextBlock(state.iter().skip(1).cloned().collect())
+        PlaintextBlock(plaintext.into())
     }
 }
 
@@ -346,6 +348,15 @@ where
 }
 
 /// Block Array
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(deserialize = "B: Deserialize<'de>", serialize = "B: Serialize"),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "B: Clone"),
@@ -454,7 +465,6 @@ pub type FixedPlaintext<const N: usize, S, COM = ()> = BlockArray<PlaintextBlock
 pub type FixedCiphertext<const N: usize, S, COM = ()> = BlockArray<CiphertextBlock<S, COM>, N>;
 
 /// Authentication Tag
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -467,7 +477,6 @@ pub type FixedCiphertext<const N: usize, S, COM = ()> = BlockArray<CiphertextBlo
         deny_unknown_fields
     )
 )]
-*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),
@@ -592,6 +601,38 @@ where
         Self {
             initial_state: this.initial_state.as_constant(compiler),
         }
+    }
+}
+
+impl<const N: usize, S> Decode for FixedEncryption<N, S>
+where
+    S: Specification,
+    State<S>: Decode,
+{
+    type Error = <State<S> as Decode>::Error;
+
+    #[inline]
+    fn decode<R>(reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: codec::Read,
+    {
+        Ok(Self {
+            initial_state: Decode::decode(reader)?,
+        })
+    }
+}
+
+impl<const N: usize, S> Encode for FixedEncryption<N, S>
+where
+    S: Specification,
+    State<S>: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, writer: W) -> Result<(), W::Error>
+    where
+        W: codec::Write,
+    {
+        self.initial_state.encode(writer)
     }
 }
 

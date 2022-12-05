@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-use manta_benchmark::{prove_mint, prove_private_transfer, prove_reclaim, Context, Proof};
+use manta_benchmark::transfer::{
+    prove_private_transfer, prove_to_private, prove_to_public, Context, TransferPost,
+};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 use web_sys::console;
 
@@ -24,7 +26,7 @@ static REPEAT: usize = 3;
 
 fn bench<F>(mut f: F, operation: &str)
 where
-    F: FnMut(&Context) -> Proof,
+    F: FnMut(&Context) -> TransferPost,
 {
     let context = Context::new();
     let start_time = instant::Instant::now();
@@ -43,8 +45,8 @@ where
 }
 
 #[wasm_bindgen_test]
-fn bench_prove_mint() {
-    bench(prove_mint, "Prove Mint");
+fn bench_prove_to_private() {
+    bench(prove_to_private, "Prove ToPrivate");
 }
 
 #[wasm_bindgen_test]
@@ -53,6 +55,6 @@ fn bench_prove_private_transfer() {
 }
 
 #[wasm_bindgen_test]
-fn bench_prove_reclaim() {
-    bench(prove_reclaim, "Prove Reclaim");
+fn bench_prove_to_public() {
+    bench(prove_to_public, "Prove ToPublic");
 }

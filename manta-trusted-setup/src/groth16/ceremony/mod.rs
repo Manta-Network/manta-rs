@@ -31,8 +31,7 @@ use core::{
     fmt::{self, Debug, Display},
     time::Duration,
 };
-use manta_crypto::arkworks::pairing::Pairing;
-use manta_pay::crypto::constraint::arkworks::R1CS;
+use manta_crypto::arkworks::{constraint::R1CS, pairing::Pairing};
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
@@ -215,8 +214,7 @@ where
                 f,
                 "Unexpected error occurred. \
                 Please contact us at trusted-setup@manta.network and \
-                paste the following error message in the email:\n{:?}",
-                err
+                paste the following error message in the email:\n{err:?}",
             ),
         }
     }
