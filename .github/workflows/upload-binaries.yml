@@ -1,0 +1,52 @@
+name: Upload Binaries
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+jobs:
+  build:
+    name: Build Release Binaries
+    strategy:
+      fail-fast: false
+      matrix:
+        os: 
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup update stable
+      - run: rustup default stable
+      - run: cargo build --release --all-features --workspace
+      - id: get_release
+        uses: bruceadams/get-release@v1.3.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - if: matrix.os == 'macos-latest'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: ./target/release/groth16_phase2_client
+          asset_name: groth16-phase2-client-macos-latest
+          asset_content_type: application/binary
+      - if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: ./target/release/groth16_phase2_client
+          asset_name: groth16-phase2-client-ubuntu-latest
+          asset_content_type: application/binary
+      - if: matrix.os == 'windows-latest'
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: ./target/release/groth16_phase2_client
+          asset_name: groth16-phase2-client-windows-latest
+          asset_content_type: application/binary

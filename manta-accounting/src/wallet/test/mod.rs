@@ -20,25 +20,22 @@
 // TODO: Generalize `PushResponse` so that we can test against more general wallet setups.
 
 use crate::{
-    asset::{Asset, AssetList},
-    transfer::{self, canonical::Transaction, PublicKey, ReceivingKey, TransferPost},
+    asset::{AssetList, AssetMetadata},
+    transfer::{canonical::Transaction, Address, Asset, Configuration, TransferPost},
     wallet::{
         ledger,
-        signer::{self, ReceivingKeyRequest, SyncData},
+        signer::{self, SyncData},
         BalanceState, Error, Wallet,
     },
 };
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
-use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData, ops::AddAssign};
 use futures::StreamExt;
 use indexmap::IndexSet;
-use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample};
-use manta_util::{future::LocalBoxFuture, vec::VecExt};
+use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample, SampleUniform};
+use manta_util::{future::LocalBoxFuture, iter::Iterable, num::CheckedSub};
 use parking_lot::Mutex;
-use statrs::{
-    distribution::{Categorical, Poisson},
-    StatsError,
-};
+use statrs::{distribution::Categorical, StatsError};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -46,9 +43,30 @@ use manta_util::serde::{Deserialize, Serialize};
 pub mod sim;
 
 /// Simulation Action Space
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Transaction<C>: Deserialize<'de>",
+            serialize = "Transaction<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Transaction<C>: Clone"),
+    Copy(bound = "Transaction<C>: Copy"),
+    Debug(bound = "Transaction<C>: Debug"),
+    Eq(bound = "Transaction<C>: Eq"),
+    Hash(bound = "Transaction<C>: Hash"),
+    PartialEq(bound = "Transaction<C>: PartialEq")
+)]
 pub enum Action<C>
 where
-    C: transfer::Configuration,
+    C: Configuration,
 {
     /// No Action
     Skip,
@@ -67,19 +85,13 @@ where
         transaction: Transaction<C>,
     },
 
-    /// Generate Receiving Keys
-    GenerateReceivingKeys {
-        /// Number of Keys to Generate
-        count: usize,
-    },
-
     /// Restart Wallet
     Restart,
 }
 
 impl<C> Action<C>
 where
-    C: transfer::Configuration,
+    C: Configuration,
 {
     /// Generates a [`Post`](Self::Post) on `transaction` self-pointed if `is_self` is `true` and
     /// maximal if `is_maximal` is `true`.
@@ -99,23 +111,23 @@ where
         Self::post(true, is_maximal, transaction)
     }
 
-    /// Generates a [`Transaction::Mint`] for `asset`.
+    /// Generates a [`Transaction::ToPrivate`] for `asset`.
     #[inline]
-    pub fn mint(asset: Asset) -> Self {
-        Self::self_post(false, Transaction::Mint(asset))
+    pub fn to_private(asset: Asset<C>) -> Self {
+        Self::self_post(false, Transaction::ToPrivate(asset))
     }
 
-    /// Generates a [`Transaction::PrivateTransfer`] for `asset` to `key` self-pointed if `is_self`
-    /// is `true`.
+    /// Generates a [`Transaction::PrivateTransfer`] for `asset` to `address` self-pointed if
+    /// `is_self` is `true`.
     #[inline]
-    pub fn private_transfer(is_self: bool, asset: Asset, key: ReceivingKey<C>) -> Self {
-        Self::post(is_self, false, Transaction::PrivateTransfer(asset, key))
+    pub fn private_transfer(is_self: bool, asset: Asset<C>, address: Address<C>) -> Self {
+        Self::post(is_self, false, Transaction::PrivateTransfer(asset, address))
     }
 
-    /// Generates a [`Transaction::Reclaim`] for `asset` which is maximal if `is_maximal` is `true`.
+    /// Generates a [`Transaction::ToPublic`] for `asset` which is maximal if `is_maximal` is `true`.
     #[inline]
-    pub fn reclaim(is_maximal: bool, asset: Asset) -> Self {
-        Self::self_post(is_maximal, Transaction::Reclaim(asset))
+    pub fn to_public(is_maximal: bool, asset: Asset<C>) -> Self {
+        Self::self_post(is_maximal, Transaction::ToPublic(asset))
     }
 
     /// Computes the [`ActionType`] for a [`Post`](Self::Post) type with the `is_self`,
@@ -128,15 +140,15 @@ where
     ) -> ActionType {
         use Transaction::*;
         match (is_self, is_maximal, transaction.is_zero(), transaction) {
-            (_, _, true, Mint { .. }) => ActionType::MintZero,
-            (_, _, false, Mint { .. }) => ActionType::Mint,
+            (_, _, true, ToPrivate { .. }) => ActionType::ToPrivateZero,
+            (_, _, false, ToPrivate { .. }) => ActionType::ToPrivate,
             (true, _, true, PrivateTransfer { .. }) => ActionType::SelfTransferZero,
             (true, _, false, PrivateTransfer { .. }) => ActionType::SelfTransfer,
             (false, _, true, PrivateTransfer { .. }) => ActionType::PrivateTransferZero,
             (false, _, false, PrivateTransfer { .. }) => ActionType::PrivateTransfer,
-            (_, true, _, Reclaim { .. }) => ActionType::FlushToPublic,
-            (_, false, true, Reclaim { .. }) => ActionType::ReclaimZero,
-            (_, false, false, Reclaim { .. }) => ActionType::Reclaim,
+            (_, true, _, ToPublic { .. }) => ActionType::FlushToPublic,
+            (_, false, true, ToPublic { .. }) => ActionType::ToPublicZero,
+            (_, false, false, ToPublic { .. }) => ActionType::ToPublic,
         }
     }
 
@@ -150,13 +162,17 @@ where
                 is_maximal,
                 transaction,
             } => Self::as_post_type(*is_self, *is_maximal, transaction),
-            Self::GenerateReceivingKeys { .. } => ActionType::GenerateReceivingKeys,
             Self::Restart => ActionType::Restart,
         }
     }
 }
 
 /// Action Labelled Data
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ActionLabelled<T> {
     /// Action Type
@@ -166,23 +182,28 @@ pub struct ActionLabelled<T> {
     pub value: T,
 }
 
-/// [ActionLabelled`] Error Type
+/// [`ActionLabelled`] Error Type
 pub type ActionLabelledError<C, L, S> = ActionLabelled<Error<C, L, S>>;
 
 /// Possible [`Action`] or an [`ActionLabelledError`] Variant
 pub type MaybeAction<C, L, S> = Result<Action<C>, ActionLabelledError<C, L, S>>;
 
 /// Action Types
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ActionType {
     /// No Action
     Skip,
 
-    /// Mint Action
-    Mint,
+    /// To-Private Action
+    ToPrivate,
 
-    /// Mint Zero Action
-    MintZero,
+    /// To-Private Zero Action
+    ToPrivateZero,
 
     /// Private Transfer Action
     PrivateTransfer,
@@ -190,11 +211,11 @@ pub enum ActionType {
     /// Private Transfer Zero Action
     PrivateTransferZero,
 
-    /// Reclaim Action
-    Reclaim,
+    /// To-Public Action
+    ToPublic,
 
-    /// Reclaim Zero Action
-    ReclaimZero,
+    /// To-Public Zero Action
+    ToPublicZero,
 
     /// Self Private Transfer Action
     SelfTransfer,
@@ -204,9 +225,6 @@ pub enum ActionType {
 
     /// Flush-to-Public Transfer Action
     FlushToPublic,
-
-    /// Generate Receiving Keys Action
-    GenerateReceivingKeys,
 
     /// Restart Wallet Action
     Restart,
@@ -234,11 +252,11 @@ pub struct ActionDistributionPMF<T = u64> {
     /// No Action Weight
     pub skip: T,
 
-    /// Mint Action Weight
-    pub mint: T,
+    /// To-Private Action Weight
+    pub to_private: T,
 
-    /// Mint Zero Action Weight
-    pub mint_zero: T,
+    /// To-Private Zero Action Weight
+    pub to_private_zero: T,
 
     /// Private Transfer Action Weight
     pub private_transfer: T,
@@ -246,11 +264,11 @@ pub struct ActionDistributionPMF<T = u64> {
     /// Private Transfer Zero Action Weight
     pub private_transfer_zero: T,
 
-    /// Reclaim Action Weight
-    pub reclaim: T,
+    /// To-Public Action Weight
+    pub to_public: T,
 
-    /// Reclaim Action Zero Weight
-    pub reclaim_zero: T,
+    /// To-Public Action Zero Weight
+    pub to_public_zero: T,
 
     /// Self Private Transfer Action Weight
     pub self_transfer: T,
@@ -261,9 +279,6 @@ pub struct ActionDistributionPMF<T = u64> {
     /// Flush-to-Public Transfer Action Weight
     pub flush_to_public: T,
 
-    /// Generate Receiving Keys Action Weight
-    pub generate_receiving_keys: T,
-
     /// Restart Wallet Action Weight
     pub restart: T,
 }
@@ -273,16 +288,15 @@ impl Default for ActionDistributionPMF {
     fn default() -> Self {
         Self {
             skip: 2,
-            mint: 5,
-            mint_zero: 1,
+            to_private: 5,
+            to_private_zero: 1,
             private_transfer: 9,
             private_transfer_zero: 1,
-            reclaim: 3,
-            reclaim_zero: 1,
+            to_public: 3,
+            to_public_zero: 1,
             self_transfer: 2,
             self_transfer_zero: 1,
             flush_to_public: 1,
-            generate_receiving_keys: 3,
             restart: 4,
         }
     }
@@ -311,16 +325,15 @@ impl TryFrom<ActionDistributionPMF> for ActionDistribution {
         Ok(Self {
             distribution: Categorical::new(&[
                 pmf.skip as f64,
-                pmf.mint as f64,
-                pmf.mint_zero as f64,
+                pmf.to_private as f64,
+                pmf.to_private_zero as f64,
                 pmf.private_transfer as f64,
                 pmf.private_transfer_zero as f64,
-                pmf.reclaim as f64,
-                pmf.reclaim_zero as f64,
+                pmf.to_public as f64,
+                pmf.to_public_zero as f64,
                 pmf.self_transfer as f64,
                 pmf.self_transfer_zero as f64,
                 pmf.flush_to_public as f64,
-                pmf.generate_receiving_keys as f64,
                 pmf.restart as f64,
             ])?,
         })
@@ -335,17 +348,16 @@ impl Distribution<ActionType> for ActionDistribution {
     {
         match self.distribution.sample(rng) as usize {
             0 => ActionType::Skip,
-            1 => ActionType::Mint,
-            2 => ActionType::MintZero,
+            1 => ActionType::ToPrivate,
+            2 => ActionType::ToPrivateZero,
             3 => ActionType::PrivateTransfer,
             4 => ActionType::PrivateTransferZero,
-            5 => ActionType::Reclaim,
-            6 => ActionType::ReclaimZero,
+            5 => ActionType::ToPublic,
+            6 => ActionType::ToPublicZero,
             7 => ActionType::SelfTransfer,
             8 => ActionType::SelfTransferZero,
             9 => ActionType::FlushToPublic,
-            10 => ActionType::GenerateReceivingKeys,
-            11 => ActionType::Restart,
+            10 => ActionType::Restart,
             _ => unreachable!(),
         }
     }
@@ -362,9 +374,12 @@ impl Sample<ActionDistribution> for ActionType {
 }
 
 /// Public Balance Oracle
-pub trait PublicBalanceOracle {
+pub trait PublicBalanceOracle<C>
+where
+    C: Configuration,
+{
     /// Returns the public balances of `self`.
-    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList>>;
+    fn public_balances(&self) -> LocalBoxFuture<Option<AssetList<C::AssetId, C::AssetValue>>>;
 }
 
 /// Ledger Alias Trait
@@ -374,26 +389,35 @@ pub trait PublicBalanceOracle {
 pub trait Ledger<C>:
     ledger::Read<SyncData<C>> + ledger::Write<Vec<TransferPost<C>>, Response = bool>
 where
-    C: transfer::Configuration,
+    C: Configuration,
 {
 }
 
 impl<C, L> Ledger<C> for L
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: ledger::Read<SyncData<C>> + ledger::Write<Vec<TransferPost<C>>, Response = bool>,
 {
 }
 
 /// Actor
-pub struct Actor<C, L, S>
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Wallet<C, L, S, B>: Clone"),
+    Debug(bound = "Wallet<C, L, S, B>: Debug"),
+    Default(bound = "Wallet<C, L, S, B>: Default"),
+    Eq(bound = "Wallet<C, L, S, B>: Eq"),
+    PartialEq(bound = "Wallet<C, L, S, B>: PartialEq")
+)]
+pub struct Actor<C, L, S, B>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    B: BalanceState<C::AssetId, C::AssetValue>,
 {
     /// Wallet
-    pub wallet: Wallet<C, L, S>,
+    pub wallet: Wallet<C, L, S, B>,
 
     /// Action Distribution
     pub distribution: ActionDistribution,
@@ -402,15 +426,20 @@ where
     pub lifetime: usize,
 }
 
-impl<C, L, S> Actor<C, L, S>
+impl<C, L, S, B> Actor<C, L, S, B>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+    B: BalanceState<C::AssetId, C::AssetValue>,
 {
     /// Builds a new [`Actor`] with `wallet`, `distribution`, and `lifetime`.
     #[inline]
-    pub fn new(wallet: Wallet<C, L, S>, distribution: ActionDistribution, lifetime: usize) -> Self {
+    pub fn new(
+        wallet: Wallet<C, L, S, B>,
+        distribution: ActionDistribution,
+        lifetime: usize,
+    ) -> Self {
         Self {
             wallet,
             distribution,
@@ -425,39 +454,62 @@ where
         Some(())
     }
 
-    /// Returns the default receiving key for `self`.
+    /// Returns the default address for `self`.
     #[inline]
-    async fn default_receiving_key(&mut self) -> Result<ReceivingKey<C>, Error<C, L, S>> {
+    async fn default_address(&mut self) -> Result<Address<C>, Error<C, L, S>> {
         self.wallet
-            .receiving_keys(ReceivingKeyRequest::Get {
-                index: Default::default(),
-            })
+            .address()
             .await
             .map_err(Error::SignerConnectionError)
-            .map(Vec::take_first)
     }
 
     /// Returns the latest public balances from the ledger.
     #[inline]
-    async fn public_balances(&mut self) -> Result<Option<AssetList>, Error<C, L, S>>
+    async fn public_balances(
+        &mut self,
+    ) -> Result<Option<AssetList<C::AssetId, C::AssetValue>>, Error<C, L, S>>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
     {
         self.wallet.sync().await?;
         Ok(self.wallet.ledger().public_balances().await)
     }
 
+    /// Synchronizes the [`Wallet`] in `self`.
+    #[inline]
+    async fn sync(&mut self) -> Result<(), Error<C, L, S>> {
+        self.wallet.sync().await
+    }
+
     /// Synchronizes with the ledger, attaching the `action` marker for the possible error branch.
     #[inline]
     async fn sync_with(&mut self, action: ActionType) -> Result<(), ActionLabelledError<C, L, S>> {
-        self.wallet.sync().await.map_err(|err| action.label(err))
+        self.sync().await.map_err(|err| action.label(err))
+    }
+
+    /// Posts `transaction` to the ledger, returning a success [`Response`](ledger::Write::Response) if the
+    /// `transaction` was successfully posted.
+    #[inline]
+    async fn post(
+        &mut self,
+        transaction: Transaction<C>,
+        metadata: Option<AssetMetadata>,
+    ) -> Result<L::Response, Error<C, L, S>> {
+        self.wallet.post(transaction, metadata).await
+    }
+
+    /// Returns the [`Address`].
+    #[inline]
+    pub async fn address(&mut self) -> Result<Address<C>, S::Error> {
+        self.wallet.address().await
     }
 
     /// Samples a deposit from `self` using `rng` returning `None` if no deposit is possible.
     #[inline]
-    async fn sample_deposit<R>(&mut self, rng: &mut R) -> Result<Option<Asset>, Error<C, L, S>>
+    async fn sample_deposit<R>(&mut self, rng: &mut R) -> Result<Option<Asset<C>>, Error<C, L, S>>
     where
-        L: PublicBalanceOracle,
+        C::AssetValue: SampleUniform,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
         let assets = match self.public_balances().await? {
@@ -465,7 +517,10 @@ where
             _ => return Ok(None),
         };
         match rng.select_item(assets) {
-            Some(asset) => Ok(Some(asset.id.sample_up_to(asset.value, rng))),
+            Some(asset) => Ok(Some(Asset::<C>::new(
+                asset.id,
+                rng.gen_range(Default::default()..asset.value),
+            ))),
             _ => Ok(None),
         }
     }
@@ -477,13 +532,17 @@ where
     /// This method samples from a uniform distribution over the asset IDs and asset values present
     /// in the balance state of `self`.
     #[inline]
-    async fn sample_withdraw<R>(&mut self, rng: &mut R) -> Result<Option<Asset>, Error<C, L, S>>
+    async fn sample_withdraw<R>(&mut self, rng: &mut R) -> Result<Option<Asset<C>>, Error<C, L, S>>
     where
+        C::AssetValue: SampleUniform,
         R: RngCore + ?Sized,
     {
-        self.wallet.sync().await?;
-        match rng.select_item(self.wallet.assets()) {
-            Some((id, value)) => Ok(Some(id.sample_up_to(*value, rng))),
+        self.sync().await?;
+        match rng.select_item(self.wallet.assets().convert_iter()) {
+            Some((id, value)) => Ok(Some(Asset::<C>::new(
+                id.clone(),
+                rng.gen_range(Default::default()..value.clone()),
+            ))),
             _ => Ok(None),
         }
     }
@@ -495,73 +554,74 @@ where
         &mut self,
         action: ActionType,
         rng: &mut R,
-    ) -> Result<Option<Asset>, ActionLabelledError<C, L, S>>
+    ) -> Result<Option<Asset<C>>, ActionLabelledError<C, L, S>>
     where
         R: RngCore + ?Sized,
     {
         self.sync_with(action).await?;
         Ok(rng
-            .select_item(self.wallet.assets())
-            .map(|(id, value)| Asset::new(*id, *value)))
+            .select_item(self.wallet.assets().convert_iter())
+            .map(|(id, value)| Asset::<C>::new(id.clone(), value.clone())))
     }
 
-    /// Samples a [`Mint`] against `self` using `rng`, returning a [`Skip`] if [`Mint`] is
+    /// Samples a [`ToPrivate`] against `self` using `rng`, returning a [`Skip`] if [`ToPrivate`] is
     /// impossible.
     ///
-    /// [`Mint`]: ActionType::Mint
+    /// [`ToPrivate`]: ActionType::ToPrivate
     /// [`Skip`]: ActionType::Skip
     #[inline]
-    async fn sample_mint<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
+    async fn sample_to_private<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        C::AssetValue: SampleUniform,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
         match self.sample_deposit(rng).await {
-            Ok(Some(asset)) => Ok(Action::mint(asset)),
+            Ok(Some(asset)) => Ok(Action::to_private(asset)),
             Ok(_) => Ok(Action::Skip),
-            Err(err) => Err(ActionType::Mint.label(err)),
+            Err(err) => Err(ActionType::ToPrivate.label(err)),
         }
     }
 
-    /// Samples a [`MintZero`] against `self` using `rng` to select the [`AssetId`], returning
-    /// a [`Skip`] if [`MintZero`] is impossible.
+    /// Samples a [`ToPrivateZero`] against `self` using `rng` to select the `AssetId`, returning
+    /// a [`Skip`] if [`ToPrivateZero`] is impossible.
     ///
-    /// [`MintZero`]: ActionType::MintZero
-    /// [`AssetId`]: crate::asset::AssetId
+    /// [`ToPrivateZero`]: ActionType::ToPrivateZero
     /// [`Skip`]: ActionType::Skip
     #[inline]
-    async fn sample_zero_mint<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
+    async fn sample_zero_to_private<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
         match self.public_balances().await {
             Ok(Some(assets)) => match rng.select_item(assets) {
-                Some(asset) => Ok(Action::mint(asset.id.value(0))),
+                Some(asset) => Ok(Action::to_private(Asset::<C>::zero(asset.id))),
                 _ => Ok(Action::Skip),
             },
             Ok(_) => Ok(Action::Skip),
-            Err(err) => Err(ActionType::MintZero.label(err)),
+            Err(err) => Err(ActionType::ToPrivateZero.label(err)),
         }
     }
 
-    /// Samples a [`PrivateTransfer`] against `self` using `rng`, returning a [`Mint`] if
-    /// [`PrivateTransfer`] is impossible and then a [`Skip`] if the [`Mint`] is impossible.
+    /// Samples a [`PrivateTransfer`] against `self` using `rng`, returning a [`ToPrivate`] if
+    /// [`PrivateTransfer`] is impossible and then a [`Skip`] if the [`ToPrivate`] is impossible.
     ///
     /// [`PrivateTransfer`]: ActionType::PrivateTransfer
-    /// [`Mint`]: ActionType::Mint
+    /// [`ToPrivate`]: ActionType::ToPrivate
     /// [`Skip`]: ActionType::Skip
     #[inline]
-    async fn sample_private_transfer<K, R>(
+    async fn sample_private_transfer<A, R>(
         &mut self,
         is_self: bool,
         rng: &mut R,
-        key: K,
+        address: A,
     ) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        C::AssetValue: SampleUniform,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
-        K: FnOnce(&mut R) -> Result<Option<ReceivingKey<C>>, Error<C, L, S>>,
+        A: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
     {
         let action = if is_self {
             ActionType::SelfTransfer
@@ -569,34 +629,34 @@ where
             ActionType::PrivateTransfer
         };
         match self.sample_withdraw(rng).await {
-            Ok(Some(asset)) => match key(rng) {
-                Ok(Some(key)) => Ok(Action::private_transfer(is_self, asset, key)),
-                Ok(_) => Ok(Action::GenerateReceivingKeys { count: 1 }),
+            Ok(Some(asset)) => match address(rng) {
+                Ok(Some(address)) => Ok(Action::private_transfer(is_self, asset, address)),
+                Ok(_) => Ok(Action::Skip),
                 Err(err) => Err(action.label(err)),
             },
-            Ok(_) => self.sample_mint(rng).await,
+            Ok(_) => self.sample_to_private(rng).await,
             Err(err) => Err(action.label(err)),
         }
     }
 
-    /// Samples a [`PrivateTransferZero`] against `self` using an `rng`, returning a [`Mint`] if
-    /// [`PrivateTransfer`] is impossible and then a [`Skip`] if the [`Mint`] is impossible.
+    /// Samples a [`PrivateTransferZero`] against `self` using an `rng`, returning a [`ToPrivate`]
+    /// if [`PrivateTransfer`] is impossible and then a [`Skip`] if the [`ToPrivate`] is impossible.
     ///
     /// [`PrivateTransferZero`]: ActionType::PrivateTransferZero
     /// [`PrivateTransfer`]: ActionType::PrivateTransfer
-    /// [`Mint`]: ActionType::Mint
+    /// [`ToPrivate`]: ActionType::ToPrivate
     /// [`Skip`]: ActionType::Skip
     #[inline]
-    async fn sample_zero_private_transfer<K, R>(
+    async fn sample_zero_private_transfer<A, R>(
         &mut self,
         is_self: bool,
         rng: &mut R,
-        key: K,
+        address: A,
     ) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
-        K: FnOnce(&mut R) -> Result<Option<ReceivingKey<C>>, Error<C, L, S>>,
+        A: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
     {
         let action = if is_self {
             ActionType::SelfTransfer
@@ -604,55 +664,59 @@ where
             ActionType::PrivateTransfer
         };
         match self.sample_asset(action, rng).await {
-            Ok(Some(asset)) => match key(rng) {
-                Ok(Some(key)) => Ok(Action::private_transfer(is_self, asset.id.value(0), key)),
-                Ok(_) => Ok(Action::GenerateReceivingKeys { count: 1 }),
+            Ok(Some(asset)) => match address(rng) {
+                Ok(Some(address)) => Ok(Action::private_transfer(
+                    is_self,
+                    Asset::<C>::zero(asset.id),
+                    address,
+                )),
+                Ok(_) => Ok(Action::Skip),
                 Err(err) => Err(action.label(err)),
             },
-            Ok(_) => Ok(self.sample_zero_mint(rng).await?),
+            Ok(_) => Ok(self.sample_zero_to_private(rng).await?),
             Err(err) => Err(err),
         }
     }
 
-    /// Samples a [`Reclaim`] against `self` using `rng`, returning a [`Skip`] if [`Reclaim`] is
+    /// Samples a [`ToPublic`] against `self` using `rng`, returning a [`Skip`] if [`ToPublic`] is
     /// impossible.
     ///
-    /// [`Reclaim`]: ActionType::Reclaim
+    /// [`ToPublic`]: ActionType::ToPublic
     /// [`Skip`]: ActionType::Skip
     #[inline]
-    async fn sample_reclaim<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
+    async fn sample_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
-        L: PublicBalanceOracle,
+        C::AssetValue: SampleUniform,
+        L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
     {
         match self.sample_withdraw(rng).await {
-            Ok(Some(asset)) => Ok(Action::reclaim(false, asset)),
-            Ok(_) => self.sample_mint(rng).await,
-            Err(err) => Err(ActionType::Reclaim.label(err)),
+            Ok(Some(asset)) => Ok(Action::to_public(false, asset)),
+            Ok(_) => self.sample_to_private(rng).await,
+            Err(err) => Err(ActionType::ToPublic.label(err)),
         }
     }
 
-    /// Samples a [`ReclaimZero`] against `self` using `rng`, returning a [`Skip`] if
-    /// [`ReclaimZero`] is impossible.
+    /// Samples a [`ToPublicZero`] against `self` using `rng`, returning a [`Skip`] if
+    /// [`ToPublicZero`] is impossible.
     ///
-    /// [`ReclaimZero`]: ActionType::ReclaimZero
+    /// [`ToPublicZero`]: ActionType::ToPublicZero
     /// [`Skip`]: ActionType::Skip
     #[inline]
-    async fn sample_zero_reclaim<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
+    async fn sample_zero_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
     where
         R: RngCore + ?Sized,
     {
         Ok(self
-            .sample_asset(ActionType::ReclaimZero, rng)
+            .sample_asset(ActionType::ToPublicZero, rng)
             .await?
-            .map(|asset| Action::reclaim(false, asset.id.value(0)))
+            .map(|asset| Action::to_public(false, Asset::<C>::zero(asset.id)))
             .unwrap_or(Action::Skip))
     }
 
-    /// Reclaims all of the private balance of a random [`AssetId`] to public balance or [`Skip`] if
+    /// Reclaims all of the private balance of a random `AssetId` to public balance or [`Skip`] if
     /// the private balance is empty.
     ///
-    /// [`AssetId`]: crate::asset::AssetId
     /// [`Skip`]: ActionType::Skip
     #[inline]
     async fn flush_to_public<R>(&mut self, rng: &mut R) -> MaybeAction<C, L, S>
@@ -662,7 +726,7 @@ where
         Ok(self
             .sample_asset(ActionType::FlushToPublic, rng)
             .await?
-            .map(|asset| Action::reclaim(true, asset))
+            .map(|asset| Action::to_public(true, asset))
             .unwrap_or(Action::Skip))
     }
 
@@ -670,8 +734,13 @@ where
     /// that the balance state has the same or more funds than before the restart.
     #[inline]
     async fn restart(&mut self) -> Result<bool, Error<C, L, S>> {
-        self.wallet.sync().await?;
-        let assets = AssetList::from_iter(self.wallet.assets().clone());
+        self.sync().await?;
+        let assets = AssetList::from_iter(
+            self.wallet
+                .assets()
+                .convert_iter()
+                .map(|(i, v)| (i.clone(), v.clone())),
+        );
         self.wallet
             .restart()
             .await
@@ -683,64 +752,67 @@ where
 pub type Event<C, L, S> =
     ActionLabelled<Result<<L as ledger::Write<Vec<TransferPost<C>>>>::Response, Error<C, L, S>>>;
 
-/// Receiving Key Database
-pub type ReceivingKeyDatabase<C> = IndexSet<ReceivingKey<C>>;
+/// Address Database
+pub type AddressDatabase<C> = IndexSet<Address<C>>;
 
-/// Shared Receiving Key Database
-pub type SharedReceivingKeyDatabase<C> = Arc<Mutex<ReceivingKeyDatabase<C>>>;
+/// Shared Address Database
+pub type SharedAddressDatabase<C> = Arc<Mutex<AddressDatabase<C>>>;
 
 /// Simulation
 #[derive(derivative::Derivative)]
-#[derivative(Default(bound = ""))]
-pub struct Simulation<C, L, S>
+#[derivative(Clone, Debug(bound = "Address<C>: Debug"), Default(bound = ""))]
+pub struct Simulation<C, L, S, B>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
-    PublicKey<C>: Eq + Hash,
+    B: BalanceState<C::AssetId, C::AssetValue>,
 {
-    /// Receiving Key Database
-    receiving_keys: SharedReceivingKeyDatabase<C>,
+    /// Address Database
+    addresses: SharedAddressDatabase<C>,
 
     /// Type Parameter Marker
-    __: PhantomData<(L, S)>,
+    __: PhantomData<(L, S, B)>,
 }
 
-impl<C, L, S> Simulation<C, L, S>
+impl<C, L, S, B> Simulation<C, L, S, B>
 where
-    C: transfer::Configuration,
+    C: Configuration,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
-    PublicKey<C>: Eq + Hash,
+    B: BalanceState<C::AssetId, C::AssetValue>,
+    Address<C>: Clone + Eq + Hash,
 {
-    /// Builds a new [`Simulation`] with a starting set of public `keys`.
+    /// Builds a new [`Simulation`] with a starting set of public `addresses`.
     #[inline]
-    pub fn new<const N: usize>(keys: [ReceivingKey<C>; N]) -> Self {
+    pub fn new<const N: usize>(addresses: [Address<C>; N]) -> Self {
         Self {
-            receiving_keys: Arc::new(Mutex::new(keys.into_iter().collect())),
+            addresses: Arc::new(Mutex::new(addresses.into_iter().collect())),
             __: PhantomData,
         }
     }
 
-    /// Samples a random receiving key from
+    /// Samples a random address from `rng`.
     #[inline]
-    pub fn sample_receiving_key<R>(&self, rng: &mut R) -> Option<ReceivingKey<C>>
+    pub fn sample_address<R>(&self, rng: &mut R) -> Option<Address<C>>
     where
         R: RngCore + ?Sized,
     {
-        rng.select_item(self.receiving_keys.lock().iter())
+        rng.select_item(self.addresses.lock().iter())
             .map(Clone::clone)
     }
 }
 
-impl<C, L, S> sim::ActionSimulation for Simulation<C, L, S>
+impl<C, L, S, B> sim::ActionSimulation for Simulation<C, L, S, B>
 where
-    C: transfer::Configuration,
-    L: Ledger<C> + PublicBalanceOracle,
+    C: Configuration,
+    C::AssetValue: SampleUniform,
+    L: Ledger<C> + PublicBalanceOracle<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
-    PublicKey<C>: Eq + Hash,
+    B: BalanceState<C::AssetId, C::AssetValue>,
+    Address<C>: Clone + Eq + Hash,
 {
-    type Actor = Actor<C, L, S>;
+    type Actor = Actor<C, L, S, B>;
     type Action = MaybeAction<C, L, S>;
     type Event = Event<C, L, S>;
 
@@ -758,43 +830,37 @@ where
             let action = actor.distribution.sample(rng);
             Some(match action {
                 ActionType::Skip => Ok(Action::Skip),
-                ActionType::Mint => actor.sample_mint(rng).await,
-                ActionType::MintZero => actor.sample_zero_mint(rng).await,
+                ActionType::ToPrivate => actor.sample_to_private(rng).await,
+                ActionType::ToPrivateZero => actor.sample_zero_to_private(rng).await,
                 ActionType::PrivateTransfer => {
                     actor
-                        .sample_private_transfer(false, rng, |rng| {
-                            Ok(self.sample_receiving_key(rng))
-                        })
+                        .sample_private_transfer(false, rng, |rng| Ok(self.sample_address(rng)))
                         .await
                 }
                 ActionType::PrivateTransferZero => {
                     actor
-                        .sample_zero_private_transfer(false, rng, |rng| {
-                            Ok(self.sample_receiving_key(rng))
-                        })
+                        .sample_zero_private_transfer(
+                            false,
+                            rng,
+                            |rng| Ok(self.sample_address(rng)),
+                        )
                         .await
                 }
-                ActionType::Reclaim => actor.sample_reclaim(rng).await,
-                ActionType::ReclaimZero => actor.sample_zero_reclaim(rng).await,
+                ActionType::ToPublic => actor.sample_to_public(rng).await,
+                ActionType::ToPublicZero => actor.sample_zero_to_public(rng).await,
                 ActionType::SelfTransfer => {
-                    let key = actor.default_receiving_key().await;
+                    let address = actor.default_address().await;
                     actor
-                        .sample_private_transfer(true, rng, |_| key.map(Some))
+                        .sample_private_transfer(true, rng, |_| address.map(Some))
                         .await
                 }
                 ActionType::SelfTransferZero => {
-                    let key = actor.default_receiving_key().await;
+                    let address = actor.default_address().await;
                     actor
-                        .sample_zero_private_transfer(true, rng, |_| key.map(Some))
+                        .sample_zero_private_transfer(true, rng, |_| address.map(Some))
                         .await
                 }
                 ActionType::FlushToPublic => actor.flush_to_public(rng).await,
-                ActionType::GenerateReceivingKeys => Ok(Action::GenerateReceivingKeys {
-                    count: Poisson::new(1.0)
-                        .expect("The Poisson parameter is greater than zero.")
-                        .sample(rng)
-                        .ceil() as usize,
-                }),
                 ActionType::Restart => Ok(Action::Restart),
             })
         })
@@ -823,7 +889,7 @@ where
                         loop {
                             let event = Event {
                                 action,
-                                value: actor.wallet.post(transaction.clone(), None).await,
+                                value: actor.post(transaction.clone(), None).await,
                             };
                             if let Ok(false) = event.value {
                                 if retries == 0 {
@@ -837,22 +903,6 @@ where
                             }
                         }
                     }
-                    Action::GenerateReceivingKeys { count } => Event {
-                        action: ActionType::GenerateReceivingKeys,
-                        value: match actor
-                            .wallet
-                            .receiving_keys(ReceivingKeyRequest::New { count })
-                            .await
-                        {
-                            Ok(keys) => {
-                                for key in keys {
-                                    self.receiving_keys.lock().insert(key);
-                                }
-                                Ok(true)
-                            }
-                            Err(err) => Err(Error::SignerConnectionError(err)),
-                        },
-                    },
                     Action::Restart => Event {
                         action: ActionType::Restart,
                         value: actor.restart().await,
@@ -869,28 +919,40 @@ where
 
 /// Measures the public and secret balances for each wallet, summing them all together.
 #[inline]
-pub async fn measure_balances<'w, C, L, S, I>(wallets: I) -> Result<AssetList, Error<C, L, S>>
+pub async fn measure_balances<'w, C, L, S, B, I>(
+    wallets: I,
+) -> Result<AssetList<C::AssetId, C::AssetValue>, Error<C, L, S>>
 where
-    C: 'w + transfer::Configuration,
-    L: 'w + Ledger<C> + PublicBalanceOracle,
+    C: 'w + Configuration,
+    C::AssetId: Ord,
+    C::AssetValue: AddAssign,
+    for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
+    L: 'w + Ledger<C> + PublicBalanceOracle<C>,
     S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
-    I: IntoIterator<Item = &'w mut Wallet<C, L, S>>,
+    B: 'w + BalanceState<C::AssetId, C::AssetValue>,
+    I: IntoIterator<Item = &'w mut Wallet<C, L, S, B>>,
 {
-    let mut balances = AssetList::new();
-    for wallet in wallets {
+    let mut balances = AssetList::<C::AssetId, C::AssetValue>::new();
+    for wallet in wallets.into_iter() {
         wallet.sync().await?;
-        balances.deposit_all(wallet.ledger().public_balances().await.unwrap());
-        balances.deposit_all(
+        let public_balance = wallet.ledger().public_balances().await.expect("");
+        balances.deposit_all(public_balance);
+        balances.deposit_all({
             wallet
                 .assets()
-                .iter()
-                .map(|(id, value)| Asset::new(*id, *value)),
-        );
+                .convert_iter()
+                .map(|(id, value)| Asset::<C>::new(id.clone(), value.clone()))
+        });
     }
     Ok(balances)
 }
 
 /// Simulation Configuration
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Config {
     /// Actor Count
@@ -907,7 +969,7 @@ impl Config {
     /// Runs the simulation on the configuration defined in `self`, sending events to the
     /// `event_subscriber`.
     #[inline]
-    pub async fn run<C, L, S, R, GL, GS, F, ES, ESFut>(
+    pub async fn run<C, L, S, B, R, GL, GS, F, ES, ESFut>(
         &self,
         mut ledger: GL,
         mut signer: GS,
@@ -915,21 +977,24 @@ impl Config {
         mut event_subscriber: ES,
     ) -> Result<bool, Error<C, L, S>>
     where
-        C: transfer::Configuration,
-        L: Ledger<C> + PublicBalanceOracle,
+        C: Configuration,
+        C::AssetValue: AddAssign + SampleUniform,
+        for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
+        L: Ledger<C> + PublicBalanceOracle<C>,
         S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+        S::Error: Debug,
+        B: BalanceState<C::AssetId, C::AssetValue>,
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
-        F: FnMut() -> R,
-        ES: Copy + FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S>>>) -> ESFut,
+        F: FnMut(usize) -> R,
+        ES: Copy + FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S, B>>>) -> ESFut,
         ESFut: Future<Output = ()>,
-        Error<C, L, S>: Debug,
-        PublicKey<C>: Eq + Hash,
+        Address<C>: Clone + Eq + Hash,
     {
         let action_distribution = ActionDistribution::try_from(self.action_distribution)
             .expect("Unable to sample from action distribution.");
-        let actors = (0..self.actor_count)
+        let mut actors: Vec<_> = (0..self.actor_count)
             .map(|i| {
                 Actor::new(
                     Wallet::new(ledger(i), signer(i)),
@@ -938,7 +1003,16 @@ impl Config {
                 )
             })
             .collect();
-        let mut simulator = sim::Simulator::new(sim::ActionSim(Simulation::default()), actors);
+        let simulation = Simulation::default();
+        for actor in actors.iter_mut() {
+            let address = actor
+                .wallet
+                .address()
+                .await
+                .expect("Wallet should have address");
+            simulation.addresses.lock().insert(address);
+        }
+        let mut simulator = sim::Simulator::new(sim::ActionSim(simulation), actors);
         let initial_balances =
             measure_balances(simulator.actors.iter_mut().map(|actor| &mut actor.wallet)).await?;
         simulator

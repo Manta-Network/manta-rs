@@ -70,7 +70,7 @@ where
 
     /// Converts `self` back into its inner [`Tree`].
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// This method automatically detaches all of the forks associated to this trunk. To attach them
     /// to another trunk, use [`Fork::attach`].
@@ -106,7 +106,7 @@ where
 
     /// Tries to merge `fork` onto `self`, returning `fork` back if it could not be merged.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// If the merge succeeds, this method automatically detaches all of the forks associated to
     /// this trunk. To attach them to another trunk, use [`Fork::attach`]. To attach them to this

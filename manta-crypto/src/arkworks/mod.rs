@@ -19,6 +19,8 @@
 pub use ark_ec as ec;
 pub use ark_r1cs_std as r1cs_std;
 pub use ark_relations as relations;
+pub use ark_snark as snark;
+pub use ark_std as std;
 
 #[cfg(feature = "ark-bls12-381")]
 pub use ark_bls12_381 as bls12_381;
@@ -39,3 +41,7 @@ pub mod pairing;
 pub mod rand;
 pub mod ratio;
 pub mod serialize;
+
+#[cfg(feature = "ark-groth16")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ark-groth16")))]
+pub mod groth16;

@@ -19,7 +19,7 @@
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use manta_accounting::transfer::canonical::generate_context;
 use manta_crypto::rand::{OsRng, Rand};
-use manta_pay::{config::FullParameters, simulation::Simulation};
+use manta_pay::{config::FullParametersRef, simulation::Simulation};
 
 /// Runs the Manta Pay simulation.
 pub fn main() {
@@ -29,7 +29,7 @@ pub fn main() {
     let utxo_accumulator_model = rng.gen();
     let (proving_context, verifying_context) = generate_context(
         &(),
-        FullParameters::new(&parameters, &utxo_accumulator_model),
+        FullParametersRef::new(&parameters, &utxo_accumulator_model),
         &mut rng,
     )
     .expect("Failed to generate contexts.");
@@ -51,7 +51,7 @@ pub fn main() {
         Err(err) => Simulation::command()
             .error(
                 ErrorKind::Io,
-                format_args!("Unable to start `tokio` runtime: {}", err),
+                format_args!("Unable to start `tokio` runtime: {err}"),
             )
             .exit(),
     }

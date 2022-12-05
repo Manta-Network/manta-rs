@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#190](https://github.com/Manta-Network/manta-rs/pull/190) Implement Merkle tree pruning algorithm
+- [\#286](https://github.com/Manta-Network/manta-rs/pull/286) MantaPay v1.0.0
+
+### Changed
+- [\#283](https://github.com/Manta-Network/manta-rs/pull/283) Upgrade asset system.
+- [\#284](https://github.com/Manta-Network/manta-rs/pull/284) Moved `R1CS` implementation to `manta-crypto` 
+- [\#282](https://github.com/Manta-Network/manta-rs/pull/282) Upgrade key system.
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.5.7] - 2022-11-04
+### Added
+- [\#262](https://github.com/Manta-Network/manta-rs/pull/262) Added exporting seed phrase and multiple networks support for signer.
+- [#276](https://github.com/Manta-Network/manta-rs/pull/276) New circuits part 1: manta-crypto abstractions
+
+### Changed
+- [\#274](https://github.com/Manta-Network/manta-rs/pull/274) Update TS client installer script to use release 0.5.6.
+
+## [0.5.6] - 2022-10-27
+### Added
+- [\#267](https://github.com/Manta-Network/manta-rs/pull/267) Add trusted setup client downloader
+
+### Changed
+- [\#268](https://github.com/Manta-Network/manta-rs/pull/268) Trusted Setup Client v2
+
+## [0.5.5] - 2022-10-09
+### Added
+- [\#264](https://github.com/Manta-Network/manta-rs/pull/238) Add trusted setup client binary
 - [\#238](https://github.com/Manta-Network/manta-rs/pull/238) Add trusted setup ceremony primitives for server and client
 - [\#237](https://github.com/Manta-Network/manta-rs/pull/237) Public input fuzzing tests for transfer protocol
 - [\#215](https://github.com/Manta-Network/manta-rs/pull/215) Add windowed multiplication algorithm for groups
@@ -22,15 +55,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#180](https://github.com/Manta-Network/manta-rs/pull/180) Start moving to new `arkworks` backend for `manta-crypto`
 - [\#191](https://github.com/Manta-Network/manta-rs/pull/191) Move HTTP Utilities to `manta-util`
 
-### Deprecated
-
-### Removed
-
 ### Fixed
 - [\#212](https://github.com/Manta-Network/manta-rs/pull/212) Reduce the number of checks when computing `is_identity` and `is_symmetric` on matrices
 - [\#220](https://github.com/Manta-Network/manta-rs/pull/220) Add support for `.gitignore` and `README.md` to `manta-parameters`
-
-### Security
 
 ## [0.5.4] - 2022-07-28
 ### Added
@@ -114,7 +141,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.7...HEAD
+[0.5.7]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.7
+[0.5.6]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.6
+[0.5.5]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.5
 [0.5.4]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.4
 [0.5.3]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.3
 [0.5.2]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.2

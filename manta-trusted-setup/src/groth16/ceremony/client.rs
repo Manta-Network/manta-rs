@@ -20,7 +20,7 @@ use crate::{
     ceremony::signature::{SignedMessage, Signer},
     groth16::{
         ceremony::{
-            message::{ContributeRequest, QueryRequest, QueryResponse},
+            message::{ContributeRequest, ContributeResponse, QueryRequest, QueryResponse},
             Ceremony, CeremonyError, Metadata, Round, UnexpectedError,
         },
         mpc,
@@ -30,6 +30,7 @@ use alloc::vec::Vec;
 use manta_crypto::rand::OsRng;
 use manta_util::{
     http::reqwest::{self, IntoUrl, KnownUrlClient},
+    ops::ControlFlow,
     serde::{de::DeserializeOwned, Serialize},
 };
 
@@ -43,19 +44,33 @@ where
     if err.is_timeout() {
         CeremonyError::Timeout
     } else {
-        CeremonyError::Network
+        CeremonyError::Network {
+            message: format!("{err}"),
+        }
     }
 }
 
-/// Client Update States
+/// Client Continuation States
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum Update {
+pub enum Continue {
+    /// Started
+    Started,
+
     /// Position Updated
     Position(u64),
+
+    /// Computing State Update
+    ComputingUpdate,
+
+    /// Sending State Update
+    SendingUpdate,
 
     /// Timeout
     Timeout,
 }
+
+/// Client Update States
+pub type Update<C> = ControlFlow<ContributeResponse<C>, Continue>;
 
 /// Client
 pub struct Client<C>
@@ -96,7 +111,7 @@ where
         self.signer
             .set_valid_nonce(expected_nonce)
             .then_some(())
-            .ok_or(CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed))
+            .ok_or_else(|| CeremonyError::Unexpected(UnexpectedError::AllNoncesUsed))
     }
 
     /// Signs the `message` with the signer in `self`, incrementing its nonce if the signing was
@@ -117,6 +132,22 @@ where
         Ok(signed_message)
     }
 
+    /// Queries the server for the ceremony starting metadata and client nonce.
+    #[inline]
+    async fn start_data(
+        client: &KnownUrlClient,
+        identifier: &C::Identifier,
+    ) -> Result<Result<(Metadata, C::Nonce), CeremonyError<C>>, CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        C::Nonce: DeserializeOwned,
+    {
+        client
+            .post("start", identifier)
+            .await
+            .map_err(into_ceremony_error)
+    }
+
     /// Builds a new [`Client`] from `signing_key`, `identifier`, and `client` and performs the
     /// initial synchronization procedure with the ceremony server to establish the correct ceremony
     /// parameters and registration status.
@@ -130,10 +161,7 @@ where
         C::Identifier: Serialize,
         C::Nonce: DeserializeOwned,
     {
-        let (metadata, nonce) = client
-            .post("start", &identifier)
-            .await
-            .map_err(into_ceremony_error)?;
+        let (metadata, nonce) = Self::start_data(&client, &identifier).await??;
         Ok(Self::new_unchecked(
             Signer::new(nonce, signing_key, identifier),
             client,
@@ -147,13 +175,13 @@ where
     async fn query(&mut self) -> Result<QueryResponse<C>, CeremonyError<C>>
     where
         C::Identifier: Serialize,
-        C::Nonce: Serialize,
+        C::Nonce: DeserializeOwned + Serialize,
         C::Signature: Serialize,
         QueryResponse<C>: DeserializeOwned,
     {
         let signed_message = self.sign(QueryRequest)?;
         match self.client.post("query", &signed_message).await {
-            Ok(QueryResponse::State(state)) => match state.with_valid_shape() {
+            Ok(Ok(QueryResponse::State(state))) => match state.with_valid_shape() {
                 Some(state) if self.metadata.ceremony_size.matches(&state.state) => {
                     Ok(QueryResponse::State(state))
                 }
@@ -161,67 +189,89 @@ where
                     UnexpectedError::IncorrectStateSize,
                 )),
             },
-            Ok(response) => Ok(response),
+            Ok(Ok(response)) => Ok(response),
+            Ok(Err(err)) => Err(err),
             Err(err) => Err(into_ceremony_error(err)),
         }
     }
 
-    /// Performs the ceremony contribution over `round`, sending the result to the ceremony server.
+    /// Computes the state update for the ceremony and signs the update request message.
     #[inline]
-    async fn contribute(
+    fn compute_update(
         &mut self,
         hasher: &C::Hasher,
         mut round: Round<C>,
-    ) -> Result<(), CeremonyError<C>>
+    ) -> Result<SignedMessage<C, C::Identifier, ContributeRequest<C>>, CeremonyError<C>>
     where
-        C::Identifier: Serialize,
-        C::Nonce: Serialize,
-        C::Signature: Serialize,
         ContributeRequest<C>: Serialize,
     {
         let mut rng = OsRng;
         let mut proof = Vec::new();
         for i in 0..round.state.len() {
             proof.push(
-                mpc::contribute(hasher, &round.challenge[i], &mut round.state[i], &mut rng).ok_or(
-                    CeremonyError::Unexpected(UnexpectedError::FailedContribution),
-                )?,
+                mpc::contribute(hasher, &round.challenge[i], &mut round.state[i], &mut rng)
+                    .ok_or_else(|| {
+                        CeremonyError::Unexpected(UnexpectedError::FailedContribution)
+                    })?,
             );
         }
-        let signed_message = self.sign(ContributeRequest {
+        self.sign(ContributeRequest {
             state: round.state.into(),
             proof,
-        })?;
+        })
+    }
+
+    /// Sends the update `request` to the ceremony server.
+    #[inline]
+    async fn send_update(
+        &self,
+        request: &SignedMessage<C, C::Identifier, ContributeRequest<C>>,
+    ) -> Result<ContributeResponse<C>, CeremonyError<C>>
+    where
+        C::Identifier: Serialize,
+        C::Nonce: DeserializeOwned + Serialize,
+        C::Signature: Serialize,
+        ContributeResponse<C>: DeserializeOwned,
+    {
         self.client
-            .post("update", &signed_message)
+            .post("update", request)
             .await
-            .map_err(into_ceremony_error)
+            .map_err(into_ceremony_error)?
     }
 
     /// Tries to contribute to the ceremony if at the front of the queue. This method returns an
-    /// optional [`Update`] if the status of the unfinalized participant has changed. If the result
-    /// is `Ok(None)` then the ceremony contribution was successful.
+    /// [`Update`] if the status of the unfinalized participant has changed. If the result
+    /// is `Ok(Response::Break)` then the ceremony contribution was successful and the success
+    /// response is returned
     #[inline]
-    pub async fn try_contribute(&mut self) -> Result<Option<Update>, CeremonyError<C>>
+    pub async fn try_contribute<F>(
+        &mut self,
+        mut process_continuation: F,
+    ) -> Result<Update<C>, CeremonyError<C>>
     where
         C::Identifier: Serialize,
-        C::Nonce: Serialize,
+        C::Nonce: DeserializeOwned + Serialize,
         C::Signature: Serialize,
-        ContributeRequest<C>: Serialize,
         QueryResponse<C>: DeserializeOwned,
+        ContributeRequest<C>: Serialize,
+        ContributeResponse<C>: DeserializeOwned,
+        F: FnMut(&Metadata, Continue),
     {
         let state = match self.query().await {
             Ok(QueryResponse::State(state)) => state,
             Ok(QueryResponse::QueuePosition(position)) => {
-                return Ok(Some(Update::Position(position)))
+                return Ok(Update::Continue(Continue::Position(position)))
             }
-            Err(CeremonyError::Timeout) => return Ok(Some(Update::Timeout)),
+            Err(CeremonyError::Timeout) => return Ok(Update::Continue(Continue::Timeout)),
             Err(err) => return Err(err),
         };
-        match self.contribute(&C::Hasher::default(), state).await {
-            Ok(_) => Ok(None),
+        process_continuation(&self.metadata, Continue::ComputingUpdate);
+        let update = self.compute_update(&C::Hasher::default(), state)?;
+        process_continuation(&self.metadata, Continue::SendingUpdate);
+        match self.send_update(&update).await {
+            Ok(response) => Ok(Update::Break(response)),
             Err(CeremonyError::Timeout) | Err(CeremonyError::NotYourTurn) => {
-                Ok(Some(Update::Timeout))
+                Ok(Update::Continue(Continue::Timeout))
             }
             Err(err) => Err(err),
         }
@@ -229,23 +279,24 @@ where
 }
 
 /// Runs the contribution protocol for `signing_key`, `identifier`, and `server_url`, using
-/// `process_update` as the callback for processing [`Update`] messages from the client.
+/// `process_continuation` as the callback for processing [`Continue`] messages from the client.
 #[inline]
 pub async fn contribute<C, U, F>(
     signing_key: C::SigningKey,
     identifier: C::Identifier,
     server_url: U,
-    mut process_update: F,
-) -> Result<(), CeremonyError<C>>
+    mut process_continuation: F,
+) -> Result<ContributeResponse<C>, CeremonyError<C>>
 where
     C: Ceremony,
     C::Identifier: Serialize,
     C::Nonce: DeserializeOwned + Serialize,
     C::Signature: Serialize,
-    ContributeRequest<C>: Serialize,
     QueryResponse<C>: DeserializeOwned,
+    ContributeRequest<C>: Serialize,
+    ContributeResponse<C>: DeserializeOwned,
     U: IntoUrl,
-    F: FnMut(Update),
+    F: FnMut(&Metadata, Continue),
 {
     let mut client = Client::build(
         signing_key,
@@ -253,10 +304,11 @@ where
         KnownUrlClient::new(server_url).map_err(into_ceremony_error)?,
     )
     .await?;
+    process_continuation(&client.metadata, Continue::Started);
     loop {
-        match client.try_contribute().await {
-            Ok(Some(update)) => process_update(update),
-            Ok(None) => return Ok(()),
+        match client.try_contribute(&mut process_continuation).await {
+            Ok(Update::Continue(update)) => process_continuation(&client.metadata, update),
+            Ok(Update::Break(response)) => return Ok(response),
             Err(CeremonyError::InvalidSignature { expected_nonce }) => {
                 client.update_nonce(expected_nonce)?;
             }

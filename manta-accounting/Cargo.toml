@@ -1,6 +1,6 @@
 [package]
 name = "manta-accounting"
-version = "0.5.4"
+version = "0.5.7"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
@@ -47,7 +47,9 @@ std = ["manta-crypto/std", "manta-util/std"]
 test = [
     "futures",
     "indexmap",
+    "manta-crypto/arkworks",
     "manta-crypto/rand",
+    "manta-crypto/test",
     "parking_lot",
     "statrs"
 ]

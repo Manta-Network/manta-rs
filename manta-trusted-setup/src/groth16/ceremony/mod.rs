@@ -21,19 +21,28 @@ use crate::{
         participant::{Participant, Priority},
         signature::SignatureScheme,
     },
-    groth16::mpc::{Configuration, State, StateSize},
+    groth16::{
+        ceremony::message::ContributeResponse,
+        mpc::{Configuration, State, StateSize},
+    },
     mpc,
 };
-use core::{fmt::Debug, time::Duration};
-use manta_crypto::arkworks::pairing::Pairing;
+use core::{
+    fmt::{self, Debug, Display},
+    time::Duration,
+};
+use manta_crypto::arkworks::{constraint::R1CS, pairing::Pairing};
 use manta_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
 };
 
-pub mod client;
 pub mod config;
 pub mod message;
+
+#[cfg(feature = "reqwest")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
+pub mod client;
 
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
@@ -61,6 +70,27 @@ pub trait Ceremony: Configuration + SignatureScheme {
             VerifyingKey = Self::VerifyingKey,
             Nonce = Self::Nonce,
         > + Priority<Priority = Self::Priority>;
+
+    /// State deserialization error type
+    type SerializationError;
+
+    /// Contribution Hash Type
+    type ContributionHash;
+
+    /// Checks state is valid before verifying a contribution.
+    fn check_state(state: &Self::State) -> Result<(), Self::SerializationError>;
+
+    /// Hashes the contribution response.
+    fn contribution_hash(response: &ContributeResponse<Self>) -> Self::ContributionHash;
+}
+
+/// Specifies R1CS circuit descriptions and names for a ceremony.
+pub trait Circuits<C>
+where
+    C: Ceremony,
+{
+    /// Returns representations of the circuits used in this ceremony, each named.
+    fn circuits() -> Vec<(R1CS<C::Scalar>, String)>;
 }
 
 /// Parallel Round Alias
@@ -144,10 +174,59 @@ where
     Timeout,
 
     /// Network Error
-    Network,
+    Network {
+        /// Optional Error Message Display String
+        message: String,
+    },
 
     /// Unexpected Server Error
     Unexpected(UnexpectedError),
+}
+
+impl<C> Display for CeremonyError<C>
+where
+    C: Ceremony,
+    C::Nonce: Debug,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotRegistered => write!(
+                f,
+                "Please make sure you have submitted your registration form. \
+                 Check whether the ceremony has begun at https://ceremony.manta.network.",
+            ),
+            Self::AlreadyContributed => {
+                write!(
+                    f,
+                    "You have already contributed to the ceremony. \
+                     Each participant is only allowed to contribute once.",
+                )
+            }
+            Self::Timeout => write!(
+                f,
+                "Unable to connect to the ceremony server: timeout. Please try again later.",
+            ),
+            Self::Network { message } => {
+                write!(f, "Unable to connect to the ceremony server: {message}")
+            }
+            err => write!(
+                f,
+                "Unexpected error occurred. \
+                Please contact us at trusted-setup@manta.network and \
+                paste the following error message in the email:\n{err:?}",
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+impl<C> std::error::Error for CeremonyError<C>
+where
+    C: Ceremony,
+    C::Nonce: Debug,
+{
 }
 
 /// Unexpected Error
@@ -172,4 +251,7 @@ pub enum UnexpectedError {
 
     /// All Nonces were Used
     AllNoncesUsed,
+
+    /// Task Error
+    TaskError,
 }

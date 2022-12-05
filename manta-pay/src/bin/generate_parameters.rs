@@ -19,7 +19,10 @@
 // TODO: Deduplicate the per-circuit proving context and verifying context serialization code.
 // TODO: Print some statistics about the parameters and circuits and into a stats file as well.
 
-use manta_pay::{config::Parameters, parameters};
+use manta_pay::{
+    config::{utxo::protocol::BaseParameters, Parameters},
+    parameters,
+};
 use manta_util::codec::{Encode, IoWriter};
 use std::{
     env,
@@ -38,32 +41,42 @@ pub fn main() -> io::Result<()> {
         .unwrap_or(env::current_dir()?);
     assert!(
         target_dir.is_dir() || !target_dir.exists(),
-        "Specify a directory to place the generated files: {:?}.",
-        target_dir,
+        "Specify a directory to place the generated files: {target_dir:?}.",
     );
     fs::create_dir_all(&target_dir)?;
 
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        parameters::generate().unwrap();
+        parameters::generate().expect("Unable to generate parameters.");
 
     let Parameters {
-        note_encryption_scheme,
-        utxo_commitment,
-        void_number_commitment,
+        base:
+            BaseParameters {
+                group_generator,
+                utxo_commitment_scheme,
+                incoming_base_encryption_scheme,
+                light_incoming_base_encryption_scheme,
+                viewing_key_derivation_function,
+                utxo_accumulator_item_hash,
+                nullifier_commitment_scheme,
+                outgoing_base_encryption_scheme,
+            },
+        address_partition_function,
+        schnorr_hash_function,
     } = &parameters;
 
     let parameters_dir = target_dir.join("parameters");
     fs::create_dir_all(&parameters_dir)?;
 
-    note_encryption_scheme
+    group_generator
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(parameters_dir.join("note-encryption-scheme.dat"))?,
+                .open(parameters_dir.join("group-generator.dat"))?,
         ))
         .unwrap();
-    utxo_commitment
+
+    utxo_commitment_scheme
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
@@ -71,11 +84,66 @@ pub fn main() -> io::Result<()> {
                 .open(parameters_dir.join("utxo-commitment-scheme.dat"))?,
         ))
         .unwrap();
-    void_number_commitment
+
+    incoming_base_encryption_scheme
         .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
-            parameters_dir.join("void-number-commitment-scheme.dat"),
+            parameters_dir.join("incoming-base-encryption-scheme.dat"),
         )?))
         .unwrap();
+    light_incoming_base_encryption_scheme
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("light-incoming-base-encryption-scheme.dat"),
+        )?))
+        .unwrap();
+
+    viewing_key_derivation_function
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("viewing-key-derivation-function.dat"),
+        )?))
+        .unwrap();
+
+    utxo_accumulator_item_hash
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("utxo-accumulator-item-hash.dat"))?,
+        ))
+        .unwrap();
+
+    nullifier_commitment_scheme
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("nullifier-commitment-scheme.dat"))?,
+        ))
+        .unwrap();
+
+    outgoing_base_encryption_scheme
+        .encode(IoWriter(OpenOptions::new().create(true).write(true).open(
+            parameters_dir.join("outgoing-base-encryption-scheme.dat"),
+        )?))
+        .unwrap();
+
+    address_partition_function
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("address-partition-function.dat"))?,
+        ))
+        .unwrap();
+
+    schnorr_hash_function
+        .encode(IoWriter(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(parameters_dir.join("schnorr-hash-function.dat"))?,
+        ))
+        .unwrap();
+
     utxo_accumulator_model
         .encode(IoWriter(
             OpenOptions::new()
@@ -92,21 +160,21 @@ pub fn main() -> io::Result<()> {
     fs::create_dir_all(&verifying_context_dir)?;
 
     proving_context
-        .mint
+        .to_private
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(proving_context_dir.join("mint.lfs"))?,
+                .open(proving_context_dir.join("to-private.lfs"))?,
         ))
         .unwrap();
     verifying_context
-        .mint
+        .to_private
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(verifying_context_dir.join("mint.dat"))?,
+                .open(verifying_context_dir.join("to-private.dat"))?,
         ))
         .unwrap();
 
@@ -130,21 +198,21 @@ pub fn main() -> io::Result<()> {
         .unwrap();
 
     proving_context
-        .reclaim
+        .to_public
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(proving_context_dir.join("reclaim.lfs"))?,
+                .open(proving_context_dir.join("to-public.lfs"))?,
         ))
         .unwrap();
     verifying_context
-        .reclaim
+        .to_public
         .encode(IoWriter(
             OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(verifying_context_dir.join("reclaim.dat"))?,
+                .open(verifying_context_dir.join("to-public.dat"))?,
         ))
         .unwrap();
 

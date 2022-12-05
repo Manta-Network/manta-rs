@@ -62,10 +62,13 @@ pub trait Data<T>
 where
     T: Checkpoint,
 {
+    /// Parameters Type
+    type Parameters;
+
     /// Prunes the data in `self`, which was retrieved at `origin`, so that it meets the current
     /// `checkpoint`, dropping data that is older than the given `checkpoint`. This method should
     /// return `true` if it dropped data from `self`.
-    fn prune(&mut self, origin: &T, checkpoint: &T) -> bool;
+    fn prune(&mut self, parameters: &Self::Parameters, origin: &T, checkpoint: &T) -> bool;
 }
 
 /// Ledger Connection Reading

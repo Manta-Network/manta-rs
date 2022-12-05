@@ -18,8 +18,10 @@
 
 use crate::{
     config::{
+        utxo::{AssetId, AssetValue},
         Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
     },
+    key::KeySecret,
     signer::base::{Signer, UtxoAccumulator},
     simulation::ledger::{AccountId, Ledger, LedgerConnection},
 };
@@ -27,7 +29,7 @@ use alloc::{format, sync::Arc};
 use core::fmt::Debug;
 use manta_accounting::{
     self,
-    asset::{AssetId, AssetValue, AssetValueType},
+    asset::AssetList,
     key::AccountTable,
     wallet::{
         self,
@@ -55,9 +57,9 @@ where
     R: CryptoRng + RngCore + ?Sized,
 {
     Signer::new(
-        AccountTable::new(rng.gen()),
-        proving_context.clone(),
+        AccountTable::new(KeySecret::sample(rng)),
         parameters.clone(),
+        proving_context.clone(),
         UtxoAccumulator::new(utxo_accumulator_model.clone()),
         rng.seed_rng().expect("Failed to sample PRNG for signer."),
     )
@@ -77,7 +79,7 @@ pub struct Simulation {
     pub asset_id_count: usize,
 
     /// Starting Balance
-    pub starting_balance: AssetValueType,
+    pub starting_balance: AssetValue,
 }
 
 impl Simulation {
@@ -94,11 +96,15 @@ impl Simulation {
     /// Sets the correct public balances for `ledger` to set up the simulation.
     #[inline]
     pub fn setup(&self, ledger: &mut Ledger) {
-        let starting_balance = AssetValue(self.starting_balance);
+        let starting_balance = self.starting_balance;
         for i in 0..self.actor_count {
             let account = AccountId(i as u64);
             for id in 0..self.asset_id_count {
-                ledger.set_public_balance(account, AssetId(id as u32), starting_balance);
+                ledger.set_public_balance(
+                    account,
+                    AssetId::from((id + 1) as u128),
+                    starting_balance,
+                );
             }
         }
     }
@@ -115,7 +121,11 @@ impl Simulation {
     ) where
         R: CryptoRng + RngCore + ?Sized,
     {
-        let mut ledger = Ledger::new(utxo_accumulator_model.clone(), verifying_context);
+        let mut ledger = Ledger::new(
+            utxo_accumulator_model.clone(),
+            verifying_context,
+            parameters.clone(),
+        );
         self.setup(&mut ledger);
         let ledger = Arc::new(RwLock::new(ledger));
         self.run_with(
@@ -134,16 +144,17 @@ impl Simulation {
     #[inline]
     pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
     where
-        L: wallet::test::Ledger<Config> + PublicBalanceOracle,
+        L: wallet::test::Ledger<Config> + PublicBalanceOracle<Config>,
         S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
+        S::Error: Debug,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
         Error<Config, L, S>: Debug,
     {
         assert!(
             self.config()
-                .run(ledger, signer, ChaCha20Rng::from_entropy, |event| {
-                    let event = format!("{:?}\n", event);
+                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |_| ChaCha20Rng::from_entropy(), |event| {
+                    let event = format!("{event:?}\n");
                     async move {
                         let _ = write_stdout(event.as_bytes()).await;
                     }

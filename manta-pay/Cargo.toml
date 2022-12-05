@@ -1,6 +1,6 @@
 [package]
 name = "manta-pay"
-version = "0.5.4"
+version = "0.5.7"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
@@ -26,11 +26,7 @@ maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "generate_parameters"
-required-features = ["groth16", "manta-util/std", "test"]
-
-[[bin]]
-name = "measure"
-required-features = ["groth16", "manta-crypto/getrandom", "test"]
+required-features = ["groth16", "manta-util/std", "parameters", "serde"]
 
 [[bin]]
 name = "simulation"
@@ -39,20 +35,31 @@ required-features = ["clap", "groth16", "simulation"]
 [features]
 # Enable Arkworks Backend
 arkworks = [
-    "ark-std",
     "manta-crypto/ark-bls12-381",
+    "manta-crypto/ark-bn254",
     "manta-crypto/ark-ed-on-bls12-381",
+    "manta-crypto/ark-ed-on-bn254",
     "manta-crypto/arkworks",
+    "num-bigint",
 ]
 
 # Enable Download Parameters
 download = ["manta-parameters/download", "std"]
 
 # Enable Groth16 ZKP System
-groth16 = ["ark-groth16", "ark-snark", "arkworks"]
+groth16 = ["manta-crypto/ark-groth16", "arkworks"]
 
 # Enable HTTP Signer Client
-http = ["manta-util/reqwest", "serde"]
+http = ["manta-util/reqwest", "serde", "network"]
+
+# Key Features
+key = ["bip32", "bip0039"]
+
+# Enable Multiple Network Support
+network = []
+
+# Parameter Loading
+parameters = ["groth16", "manta-crypto/test", "manta-parameters"]
 
 # SCALE Codec and Type Info
 scale = ["scale-codec", "scale-info"]
@@ -79,13 +86,17 @@ simulation = [
 ]
 
 # Standard Library
-std = ["manta-accounting/std", "manta-util/std"]
+std = [
+    "manta-accounting/std",
+    "manta-crypto/std",
+    "manta-util/std",
+]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test", "manta-parameters", "tempfile"]
+test = ["manta-accounting/test", "manta-crypto/test", "manta-parameters/download", "tempfile"]
 
 # Wallet
-wallet = ["bip32", "manta-crypto/getrandom", "std"]
+wallet = ["key", "manta-crypto/getrandom", "std"]
 
 # Enable WebSocket Signer Client
 websocket = [
@@ -100,9 +111,7 @@ websocket = [
 
 [dependencies]
 aes-gcm = { version = "0.9.4", default-features = false, features = ["aes", "alloc"] }
-ark-groth16 = { version = "0.3.0", optional = true, default-features = false }
-ark-snark = { version = "0.3.0", optional = true, default-features = false }
-ark-std = { version = "0.3.0", optional = true, default-features = false }
+bip0039 = { version = "0.10.1", optional = true, default-features = false }
 bip32 = { version = "0.3.0", optional = true, default-features = false, features = ["bip39", "secp256k1"] }
 blake2 = { version = "0.10.4", default-features = false }
 bs58 = { version = "0.4.0", optional = true, default-features = false, features = ["alloc"] }
@@ -114,15 +123,16 @@ manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["rand_chacha"] }
 manta-parameters = { path = "../manta-parameters", optional = true, default-features = false }
 manta-util = { path = "../manta-util", default-features = false }
+num-bigint = { version = "0.4.3", optional = true, default-features = false }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.1.2", optional = true, default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.85", optional = true, default-features = false, features = ["alloc"] }
 tempfile = { version = "3.3.0", optional = true, default-features = false }
-tokio = { version = "1.21.1", optional = true, default-features = false }
+tokio = { version = "1.21.2", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
 ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
-manta-pay = { path = ".", default-features = false, features = ["download", "groth16", "scale", "scale-std", "std", "test"] }
+manta-pay = { path = ".", default-features = false, features = ["download", "parameters", "groth16", "scale", "scale-std", "std", "test", "wallet"] }
