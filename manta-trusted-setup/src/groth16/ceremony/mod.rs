@@ -214,8 +214,7 @@ where
                 f,
                 "Unexpected error occurred. \
                 Please contact us at trusted-setup@manta.network and \
-                paste the following error message in the email:\n{:?}",
-                err
+                paste the following error message in the email:\n{err:?}",
             ),
         }
     }

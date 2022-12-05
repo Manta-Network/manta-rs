@@ -446,40 +446,40 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
-        Authorization<C>: Clone, 
-        C::AssetId: Clone, 
-        C::AssetValue: Clone, 
-        Sender<C>: Clone, 
+        Authorization<C>: Clone,
+        C::AssetId: Clone,
+        C::AssetValue: Clone,
+        Sender<C>: Clone,
         Receiver<C>: Clone"),
     Copy(bound = r"
-        Authorization<C>: Copy, 
-        C::AssetId: Copy, 
-        C::AssetValue: Copy, 
-        Sender<C>: Copy, 
+        Authorization<C>: Copy,
+        C::AssetId: Copy,
+        C::AssetValue: Copy,
+        Sender<C>: Copy,
         Receiver<C>: Copy"),
     Debug(bound = r"
-        Authorization<C>: Debug, 
-        C::AssetId: Debug, 
-        C::AssetValue: Debug, 
-        Sender<C>: Debug, 
+        Authorization<C>: Debug,
+        C::AssetId: Debug,
+        C::AssetValue: Debug,
+        Sender<C>: Debug,
         Receiver<C>: Debug"),
     Eq(bound = r"
-        Authorization<C>: Eq, 
-        C::AssetId: Eq, 
-        C::AssetValue: Eq, 
-        Sender<C>: Eq, 
+        Authorization<C>: Eq,
+        C::AssetId: Eq,
+        C::AssetValue: Eq,
+        Sender<C>: Eq,
         Receiver<C>: Eq"),
     Hash(bound = r"
-        Authorization<C>: Hash, 
-        C::AssetId: Hash, 
-        C::AssetValue: Hash, 
-        Sender<C>: Hash, 
+        Authorization<C>: Hash,
+        C::AssetId: Hash,
+        C::AssetValue: Hash,
+        Sender<C>: Hash,
         Receiver<C>: Hash"),
     PartialEq(bound = r"
-        Authorization<C>: PartialEq, 
-        C::AssetId: PartialEq, 
-        C::AssetValue: PartialEq, 
-        Sender<C>: PartialEq, 
+        Authorization<C>: PartialEq,
+        C::AssetId: PartialEq,
+        C::AssetValue: PartialEq,
+        Sender<C>: PartialEq,
         Receiver<C>: PartialEq")
 )]
 pub struct Transfer<
@@ -717,6 +717,9 @@ where
 
     /// Converts `self` into its [`TransferPost`] by building the [`Transfer`] validity proof and
     /// signing the [`TransferPostBody`] payload.
+    ///
+    /// Returns `Ok(None)` when the authorization required by this [`Transfer`] is invalid or not
+    /// provided. Returns `Err` when proof generation fails.
     #[inline]
     pub fn into_post<R>(
         self,
@@ -791,34 +794,34 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
-            AuthorizationVar<C>: Clone, 
-            C::AssetIdVar: Clone, 
-            C::AssetValueVar: Clone, 
-            SenderVar<C>: Clone, 
+            AuthorizationVar<C>: Clone,
+            C::AssetIdVar: Clone,
+            C::AssetValueVar: Clone,
+            SenderVar<C>: Clone,
             ReceiverVar<C>: Clone"),
     Debug(bound = r"
-            AuthorizationVar<C>: Debug, 
-            C::AssetIdVar: Debug, 
-            C::AssetValueVar: Debug, 
-            SenderVar<C>: Debug, 
+            AuthorizationVar<C>: Debug,
+            C::AssetIdVar: Debug,
+            C::AssetValueVar: Debug,
+            SenderVar<C>: Debug,
             ReceiverVar<C>: Debug"),
     Eq(bound = r"
-            AuthorizationVar<C>: Eq, 
-            C::AssetIdVar: Eq, 
-            C::AssetValueVar: Eq, 
-            SenderVar<C>: Eq, 
+            AuthorizationVar<C>: Eq,
+            C::AssetIdVar: Eq,
+            C::AssetValueVar: Eq,
+            SenderVar<C>: Eq,
             ReceiverVar<C>: Eq"),
     Hash(bound = r"
-            AuthorizationVar<C>: Hash, 
-            C::AssetIdVar: Hash, 
-            C::AssetValueVar: Hash, 
-            SenderVar<C>: Hash, 
+            AuthorizationVar<C>: Hash,
+            C::AssetIdVar: Hash,
+            C::AssetValueVar: Hash,
+            SenderVar<C>: Hash,
             ReceiverVar<C>: Hash"),
     PartialEq(bound = r"
-            AuthorizationVar<C>: PartialEq, 
-            C::AssetIdVar: PartialEq, 
-            C::AssetValueVar: PartialEq, 
-            SenderVar<C>: PartialEq, 
+            AuthorizationVar<C>: PartialEq,
+            C::AssetIdVar: PartialEq,
+            C::AssetValueVar: PartialEq,
+            SenderVar<C>: PartialEq,
             ReceiverVar<C>: PartialEq")
 )]
 struct TransferVar<
@@ -1232,14 +1235,14 @@ where
     serde(
         bound(
             deserialize = r"
-                AccountId: Deserialize<'de>, 
-                UpdateError: Deserialize<'de>, 
-                C::AssetId: Deserialize<'de>, 
+                AccountId: Deserialize<'de>,
+                UpdateError: Deserialize<'de>,
+                C::AssetId: Deserialize<'de>,
                 C::AssetValue: Deserialize<'de>",
             serialize = r"
-                AccountId: Serialize, 
-                UpdateError: Serialize, 
-                C::AssetId: Serialize, 
+                AccountId: Serialize,
+                UpdateError: Serialize,
+                C::AssetId: Serialize,
                 C::AssetValue: Serialize",
         ),
         crate = "manta_util::serde",
@@ -1641,8 +1644,7 @@ where
         assert!(
             self.has_valid_proof(verifying_context)
                 .expect("Unable to verify proof."),
-            "Invalid TransferPost: {:?}.",
-            self,
+            "Invalid TransferPost: {self:?}.",
         );
         &self.body.proof
     }
@@ -1840,20 +1842,20 @@ where
     serde(
         bound(
             deserialize = r"
-                C::AssetId: Deserialize<'de>, 
-                SourcePostingKey<C, L>: Deserialize<'de>, 
-                SenderPostingKey<C, L>: Deserialize<'de>, 
-                ReceiverPostingKey<C, L>: Deserialize<'de>, 
-                SinkPostingKey<C, L>: Deserialize<'de>, 
-                L::ValidProof: Deserialize<'de>, 
+                C::AssetId: Deserialize<'de>,
+                SourcePostingKey<C, L>: Deserialize<'de>,
+                SenderPostingKey<C, L>: Deserialize<'de>,
+                ReceiverPostingKey<C, L>: Deserialize<'de>,
+                SinkPostingKey<C, L>: Deserialize<'de>,
+                L::ValidProof: Deserialize<'de>,
                 L::Event: Deserialize<'de>",
             serialize = r"
-                C::AssetId: Serialize, 
-                SourcePostingKey<C, L>: Serialize, 
-                SenderPostingKey<C, L>: Serialize, 
-                ReceiverPostingKey<C, L>: Serialize, 
-                SinkPostingKey<C, L>: Serialize, 
-                L::ValidProof: Serialize, 
+                C::AssetId: Serialize,
+                SourcePostingKey<C, L>: Serialize,
+                SenderPostingKey<C, L>: Serialize,
+                ReceiverPostingKey<C, L>: Serialize,
+                SinkPostingKey<C, L>: Serialize,
+                L::ValidProof: Serialize,
                 L::Event: Serialize",
         ),
         crate = "manta_util::serde",
@@ -1863,55 +1865,54 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
-            C::AssetId: Clone, 
-            SourcePostingKey<C, L>: Clone, 
-            SenderPostingKey<C, L>: Clone, 
-            ReceiverPostingKey<C, L>: Clone, 
-            SinkPostingKey<C, L>: Clone, 
-            L::ValidProof: Clone, 
+            C::AssetId: Clone,
+            SourcePostingKey<C, L>: Clone,
+            SenderPostingKey<C, L>: Clone,
+            ReceiverPostingKey<C, L>: Clone,
+            SinkPostingKey<C, L>: Clone,
+            L::ValidProof: Clone,
             L::Event: Clone"),
     Debug(bound = r"
-            C::AssetId: Debug, 
-            SourcePostingKey<C, L>: Debug, 
-            SenderPostingKey<C, L>: Debug, 
-            ReceiverPostingKey<C, L>: Debug, 
-            SinkPostingKey<C, L>: Debug, 
-            L::ValidProof: Debug, 
+            C::AssetId: Debug,
+            SourcePostingKey<C, L>: Debug,
+            SenderPostingKey<C, L>: Debug,
+            ReceiverPostingKey<C, L>: Debug,
+            SinkPostingKey<C, L>: Debug,
+            L::ValidProof: Debug,
             L::Event: Debug"),
     Default(bound = r"
-            C::AssetId: Default, 
-            SourcePostingKey<C, L>: Default, 
-            SenderPostingKey<C, L>: Default, 
-            ReceiverPostingKey<C, L>: Default, 
-            SinkPostingKey<C, L>: Default, 
-            L::ValidProof: Default, 
+            C::AssetId: Default,
+            SourcePostingKey<C, L>: Default,
+            SenderPostingKey<C, L>: Default,
+            ReceiverPostingKey<C, L>: Default,
+            SinkPostingKey<C, L>: Default,
+            L::ValidProof: Default,
             L::Event: Default"),
     Eq(bound = r"
-            C::AssetId: Eq, 
-            SourcePostingKey<C, L>: Eq, 
-            SenderPostingKey<C, L>: Eq, 
-            ReceiverPostingKey<C, L>: Eq, 
-            SinkPostingKey<C, L>: Eq, 
-            L::ValidProof: Eq, 
+            C::AssetId: Eq,
+            SourcePostingKey<C, L>: Eq,
+            SenderPostingKey<C, L>: Eq,
+            ReceiverPostingKey<C, L>: Eq,
+            SinkPostingKey<C, L>: Eq,
+            L::ValidProof: Eq,
             L::Event: Eq"),
     Hash(bound = r"
-            C::AssetId: Hash, 
-            SourcePostingKey<C, L>: Hash, 
-            SenderPostingKey<C, L>: Hash, 
-            ReceiverPostingKey<C, L>: Hash, 
-            SinkPostingKey<C, L>: Hash, 
-            L::ValidProof: Hash, 
+            C::AssetId: Hash,
+            SourcePostingKey<C, L>: Hash,
+            SenderPostingKey<C, L>: Hash,
+            ReceiverPostingKey<C, L>: Hash,
+            SinkPostingKey<C, L>: Hash,
+            L::ValidProof: Hash,
             L::Event: Hash"),
     PartialEq(bound = r"
-            C::AssetId: PartialEq, 
-            SourcePostingKey<C, L>: PartialEq, 
-            SenderPostingKey<C, L>: PartialEq, 
-            ReceiverPostingKey<C, L>: PartialEq, 
-            SinkPostingKey<C, L>: PartialEq, 
-            L::ValidProof: PartialEq, 
+            C::AssetId: PartialEq,
+            SourcePostingKey<C, L>: PartialEq,
+            SenderPostingKey<C, L>: PartialEq,
+            ReceiverPostingKey<C, L>: PartialEq,
+            SinkPostingKey<C, L>: PartialEq,
+            L::ValidProof: PartialEq,
             L::Event: PartialEq")
 )]
-
 pub struct TransferPostingKey<C, L>
 where
     C: Configuration + ?Sized,
@@ -1981,36 +1982,36 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Debug(bound = r"
-        AuthorizationKey<C>: Debug, 
-        C::AssetId: Debug, 
-        SourcePostingKey<C, L>: Debug, 
-        SenderPostingKey<C, L>: Debug, 
-        ReceiverPostingKey<C, L>: Debug, 
-        SinkPostingKey<C, L>: Debug, 
+        AuthorizationKey<C>: Debug,
+        C::AssetId: Debug,
+        SourcePostingKey<C, L>: Debug,
+        SenderPostingKey<C, L>: Debug,
+        ReceiverPostingKey<C, L>: Debug,
+        SinkPostingKey<C, L>: Debug,
         Proof<C>: Debug"),
     Eq(bound = r"
-        AuthorizationKey<C>: Eq, 
-        C::AssetId: Eq, 
-        SourcePostingKey<C, L>: Eq, 
-        SenderPostingKey<C, L>: Eq, 
-        ReceiverPostingKey<C, L>: Eq, 
-        SinkPostingKey<C, L>: Eq, 
+        AuthorizationKey<C>: Eq,
+        C::AssetId: Eq,
+        SourcePostingKey<C, L>: Eq,
+        SenderPostingKey<C, L>: Eq,
+        ReceiverPostingKey<C, L>: Eq,
+        SinkPostingKey<C, L>: Eq,
         Proof<C>: Eq"),
     Hash(bound = r"
-        AuthorizationKey<C>: Hash, 
-        C::AssetId: Hash, 
-        SourcePostingKey<C, L>: Hash, 
-        SenderPostingKey<C, L>: Hash, 
-        ReceiverPostingKey<C, L>: Hash, 
-        SinkPostingKey<C, L>: Hash, 
+        AuthorizationKey<C>: Hash,
+        C::AssetId: Hash,
+        SourcePostingKey<C, L>: Hash,
+        SenderPostingKey<C, L>: Hash,
+        ReceiverPostingKey<C, L>: Hash,
+        SinkPostingKey<C, L>: Hash,
         Proof<C>: Hash"),
     PartialEq(bound = r"
-        AuthorizationKey<C>: PartialEq, 
-        C::AssetId: PartialEq, 
-        SourcePostingKey<C, L>: PartialEq, 
-        SenderPostingKey<C, L>: PartialEq, 
-        ReceiverPostingKey<C, L>: PartialEq, 
-        SinkPostingKey<C, L>: PartialEq, 
+        AuthorizationKey<C>: PartialEq,
+        C::AssetId: PartialEq,
+        SourcePostingKey<C, L>: PartialEq,
+        SenderPostingKey<C, L>: PartialEq,
+        ReceiverPostingKey<C, L>: PartialEq,
+        SinkPostingKey<C, L>: PartialEq,
         Proof<C>: PartialEq")
 )]
 pub struct TransferPostingKeyRef<'k, C, L>

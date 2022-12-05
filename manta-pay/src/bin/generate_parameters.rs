@@ -41,8 +41,7 @@ pub fn main() -> io::Result<()> {
         .unwrap_or(env::current_dir()?);
     assert!(
         target_dir.is_dir() || !target_dir.exists(),
-        "Specify a directory to place the generated files: {:?}.",
-        target_dir,
+        "Specify a directory to place the generated files: {target_dir:?}.",
     );
     fs::create_dir_all(&target_dir)?;
 

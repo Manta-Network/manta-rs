@@ -187,11 +187,11 @@ where
     /// Returns `true` if `self` contains at least every asset in `assets`. Assets are combined
     /// first by asset id before checking for membership.
     #[inline]
-    pub fn contains_all<I>(&self, assets: I) -> bool
+    pub fn contains_all<A>(&self, assets: A) -> bool
     where
         C::AssetId: Ord,
         C::AssetValue: AddAssign + Default,
-        I: IntoIterator<Item = Asset<C>>,
+        A: IntoIterator<Item = Asset<C>>,
     {
         AssetList::from_iter(assets)
             .into_iter()

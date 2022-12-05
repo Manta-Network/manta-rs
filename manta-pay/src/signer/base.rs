@@ -150,8 +150,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
                 }
             }
             _ => panic!(
-                "{}: Sender Pruning: {:?} {:?} {:?}",
-                PRUNE_PANIC_MESSAGE, data, origin, signer_checkpoint
+                "{PRUNE_PANIC_MESSAGE}: Sender Pruning: {data:?} {origin:?} {signer_checkpoint:?}",
             ),
         }
         let mut data_map = BTreeMap::<_, Vec<_>>::new();
@@ -181,8 +180,7 @@ impl signer::Checkpoint<Config> for Checkpoint {
                     }
                 }
                 _ => panic!(
-                    "{}: Receiver Pruning: {:?} {:?} {:?}",
-                    PRUNE_PANIC_MESSAGE, data, origin, signer_checkpoint
+                    "{PRUNE_PANIC_MESSAGE}: Receiver Pruning: {data:?} {origin:?} {signer_checkpoint:?}",
                 ),
             }
         }

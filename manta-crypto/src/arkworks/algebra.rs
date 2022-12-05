@@ -161,18 +161,6 @@ where
     }
 }
 
-impl<C, CV> algebra::Group<Compiler<C>> for ScalarVar<C, CV>
-where
-    C: ProjectiveCurve,
-    CV: CurveVar<C, ConstraintField<C>>,
-{
-    #[inline]
-    fn add(&self, rhs: &Self, compiler: &mut Compiler<C>) -> Self {
-        let _ = compiler;
-        Self::new(self.as_ref() + rhs.as_ref())
-    }
-}
-
 impl<C, CV> cmp::PartialEq<Self, Compiler<C>> for ScalarVar<C, CV>
 where
     C: ProjectiveCurve,

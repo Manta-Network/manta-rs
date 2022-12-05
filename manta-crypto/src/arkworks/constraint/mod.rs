@@ -575,8 +575,7 @@ mod tests {
         let satisfied = cs.is_satisfied();
         assert_eq!(
             should_pass, satisfied,
-            "on value {:?}, expect satisfied = {}, but got {}",
-            value, should_pass, satisfied
+            "on value {value:?}, expect satisfied = {should_pass}, but got {satisfied}",
         );
     }
 
