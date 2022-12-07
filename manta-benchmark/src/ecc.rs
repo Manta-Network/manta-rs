@@ -17,13 +17,11 @@
 //! Elliptic Curve Cryptography Utilities
 
 use core::ops::AddAssign;
-use manta_crypto::{
-    arkworks::{
-        ec::{AffineCurve, ProjectiveCurve},
-        ff::UniformRand,
-    },
-    rand::RngCore,
+use openzl_plugin_arkworks::{
+    ec::{AffineCurve, ProjectiveCurve},
+    ff::UniformRand,
 };
+use openzl_util::rand::RngCore;
 
 /// Samples an affine point.
 #[inline]
@@ -131,7 +129,8 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use manta_crypto::{arkworks::bls12_381::G1Affine, rand::OsRng};
+    use openzl_plugin_arkworks::bn254::G1Affine;
+    use openzl_util::rand::OsRng;
 
     /// Tests if affine-affine addition, affine-projective addition, and projective-projective
     /// addition give same results.

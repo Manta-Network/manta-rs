@@ -16,7 +16,6 @@
 
 //! Transfer Benchmarking Suite
 
-use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{
     config::{self, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel},
     parameters,
@@ -26,6 +25,7 @@ use manta_pay::{
         to_public::prove_full as prove_to_public_full, UtxoAccumulator,
     },
 };
+use openzl_util::rand::{OsRng, Rand};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 /// Context Type
