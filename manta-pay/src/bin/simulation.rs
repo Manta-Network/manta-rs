@@ -18,8 +18,8 @@
 
 use clap::{error::ErrorKind, CommandFactory, Parser};
 use manta_accounting::transfer::canonical::generate_context;
-use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{config::FullParametersRef, simulation::Simulation};
+use openzl_util::rand::{OsRng, Rand};
 
 /// Runs the Manta Pay simulation.
 pub fn main() {

@@ -33,7 +33,7 @@ use crate::{
 };
 use alloc::sync::Arc;
 use core::ops::Deref;
-use manta_util::{
+use openzl_util::{
     serde::{de::DeserializeOwned, Serialize},
     BoxArray,
 };

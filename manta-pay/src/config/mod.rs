@@ -17,7 +17,7 @@
 //! Manta-Pay Configuration
 
 use manta_accounting::transfer;
-use manta_crypto::arkworks::{
+use openzl_plugin_arkworks::{
     algebra::{self, ScalarVar},
     bn254::{self, Bn254},
     constraint::{FpVar, R1CS},
@@ -28,7 +28,7 @@ use manta_crypto::arkworks::{
 };
 
 #[cfg(feature = "bs58")]
-use {alloc::string::String, manta_util::codec::Encode};
+use {alloc::string::String, openzl_util::codec::Encode};
 
 pub mod poseidon;
 pub mod utxo;

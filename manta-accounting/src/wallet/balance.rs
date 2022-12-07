@@ -23,7 +23,7 @@
 use crate::asset::{Asset, AssetList};
 use alloc::collections::btree_map::{BTreeMap, Entry as BTreeMapEntry};
 use core::ops::AddAssign;
-use manta_util::{
+use openzl_util::{
     iter::{ConvertItemRef, ExactSizeIterable, RefItem},
     num::CheckedSub,
 };
@@ -213,7 +213,7 @@ where
 pub mod test {
     use crate::{asset::Asset, wallet::BalanceState};
     use core::{fmt::Debug, ops::Add};
-    use manta_crypto::rand::{CryptoRng, RngCore, Sample};
+    use openzl_util::rand::{CryptoRng, RngCore, Sample};
 
     /// Asserts that a random deposit and withdraw is always valid.
     #[inline]

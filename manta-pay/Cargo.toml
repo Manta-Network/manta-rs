@@ -26,7 +26,7 @@ maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "generate_parameters"
-required-features = ["groth16", "manta-util/std", "parameters", "serde"]
+required-features = ["groth16", "openzl-util/std", "parameters", "serde"]
 
 [[bin]]
 name = "simulation"
@@ -35,11 +35,10 @@ required-features = ["clap", "groth16", "simulation"]
 [features]
 # Enable Arkworks Backend
 arkworks = [
-    "manta-crypto/ark-bls12-381",
-    "manta-crypto/ark-bn254",
-    "manta-crypto/ark-ed-on-bls12-381",
-    "manta-crypto/ark-ed-on-bn254",
-    "manta-crypto/arkworks",
+    "openzl-plugin-arkworks/ark-bls12-381",
+    "openzl-plugin-arkworks/ark-bn254",
+    "openzl-plugin-arkworks/ark-ed-on-bls12-381",
+    "openzl-plugin-arkworks/ark-ed-on-bn254",
     "num-bigint",
 ]
 
@@ -47,10 +46,13 @@ arkworks = [
 download = ["manta-parameters/download", "std"]
 
 # Enable Groth16 ZKP System
-groth16 = ["manta-crypto/ark-groth16", "arkworks"]
+groth16 = [
+    "arkworks"
+    # "openzl-plugin-arkworks/ark-groth16",
+]
 
 # Enable HTTP Signer Client
-http = ["manta-util/reqwest", "serde", "network"]
+http = ["openzl-util/reqwest", "serde", "network"]
 
 # Key Features
 key = ["bip32", "bip0039"]
@@ -59,7 +61,7 @@ key = ["bip32", "bip0039"]
 network = []
 
 # Parameter Loading
-parameters = ["groth16", "manta-crypto/test", "manta-parameters"]
+parameters = ["groth16", "openzl-crypto/test", "manta-parameters"]
 
 # SCALE Codec and Type Info
 scale = ["scale-codec", "scale-info"]
@@ -68,15 +70,15 @@ scale = ["scale-codec", "scale-info"]
 scale-std = ["scale", "scale-codec/std", "scale-info/std", "std"]
 
 # Serde
-serde = ["manta-accounting/serde", "manta-crypto/serde"]
+serde = ["manta-accounting/serde", "openzl-crypto/serde"]
 
 # Simulation Framework
 simulation = [
     "indexmap",
     "parking_lot",
-    "manta-util/rayon",
+    "openzl-util/rayon",
     "test",
-    "manta-util/tide",
+    "openzl-util/tide",
     "tokio/io-std",
     "tokio/io-util",
     "tokio/macros",
@@ -88,15 +90,20 @@ simulation = [
 # Standard Library
 std = [
     "manta-accounting/std",
-    "manta-crypto/std",
-    "manta-util/std",
+    "openzl-crypto/std",
+    "openzl-util/std",
 ]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test", "manta-parameters/download", "tempfile"]
+test = [
+    "manta-accounting/test",
+    "manta-parameters/download",
+    "openzl-crypto/test",
+    "tempfile",
+]
 
 # Wallet
-wallet = ["key", "manta-crypto/getrandom", "std"]
+wallet = ["key", "openzl-util/getrandom", "std"]
 
 # Enable WebSocket Signer Client
 websocket = [
@@ -120,9 +127,10 @@ derivative = { version = "2.2.0", default-features = false, features = ["use_cor
 futures = { version = "0.3.24", optional = true, default-features = false }
 indexmap = { version = "1.9.1", optional = true, default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["rand_chacha"] }
+eclair = { path = "../../../openzl/openzl/eclair", default-features = false }
+openzl-crypto = { path = "../../../openzl/openzl/openzl-crypto", default-features = false }
 manta-parameters = { path = "../manta-parameters", optional = true, default-features = false }
-manta-util = { path = "../manta-util", default-features = false }
+openzl-util = { path = "../../../openzl/openzl/openzl-util", default-features = false, features = ["rand_chacha"] }
 num-bigint = { version = "0.4.3", optional = true, default-features = false }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
@@ -132,7 +140,8 @@ tempfile = { version = "3.3.0", optional = true, default-features = false }
 tokio = { version = "1.21.2", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.17.2", optional = true, default-features = false, features = ["native-tls"] }
 ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false }
+openzl-plugin-arkworks = { path = "../../../openzl/openzl/plugins/arkworks", default-features = false }
 
 [dev-dependencies]
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
+openzl-util = { path = "../../../openzl/openzl/openzl-util", default-features = false, features = ["getrandom"] }
 manta-pay = { path = ".", default-features = false, features = ["download", "parameters", "groth16", "scale", "scale-std", "std", "test", "wallet"] }

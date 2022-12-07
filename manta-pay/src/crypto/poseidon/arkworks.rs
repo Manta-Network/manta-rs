@@ -20,13 +20,11 @@ use crate::crypto::poseidon::{
     self, encryption::BlockElement, hash::DomainTag, Constants, Field, FieldGeneration,
     ParameterFieldType,
 };
-use manta_crypto::{
-    arkworks::{
-        constraint::{fp::Fp, FpVar, R1CS},
-        ff::{BigInteger, Field as _, FpParameters, PrimeField},
-        r1cs_std::fields::FieldVar,
-    },
-    eclair::alloc::Constant,
+use eclair::alloc::Constant;
+use openzl_plugin_arkworks::{
+    constraint::{fp::Fp, FpVar, R1CS},
+    ff::{BigInteger, Field as _, FpParameters, PrimeField},
+    r1cs_std::fields::FieldVar,
 };
 
 /// Compiler Type.

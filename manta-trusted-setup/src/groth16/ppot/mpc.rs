@@ -24,10 +24,11 @@ use crate::{
     mpc::{ChallengeType, ContributionType, ProofType, StateType},
     util::BlakeHasher,
 };
-use ark_groth16::ProvingKey;
 use blake2::Digest;
-use manta_crypto::arkworks::{pairing::Pairing, serialize::CanonicalSerialize};
-use manta_util::into_array_unchecked;
+use openzl_plugin_arkworks::{
+    groth16::ProvingKey, pairing::Pairing, serialize::CanonicalSerialize,
+};
+use openzl_util::into_array_unchecked;
 
 impl<S, const POWERS: usize> ChallengeType for PerpetualPowersOfTauCeremony<S, POWERS> {
     type Challenge = [u8; 64];

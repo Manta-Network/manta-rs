@@ -23,15 +23,12 @@
 
 use crate::transfer::utxo::auth::AuthorizationContextType;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
-use manta_crypto::{
-    accumulator::{self, ItemHashFunction, MembershipProof},
-    eclair::alloc::{Allocate, Constant},
-    rand::RngCore,
-};
-use manta_util::cmp::IndependenceContext;
+use eclair::alloc::{Allocate, Constant};
+use openzl_crypto::accumulator::{self, ItemHashFunction, MembershipProof};
+use openzl_util::{cmp::IndependenceContext, rand::RngCore};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 pub mod auth;
 pub mod protocol;
@@ -109,7 +106,7 @@ pub type Identifier<T> = <T as IdentifierType>::Identifier;
             deserialize = "T::Identifier: Deserialize<'de>, T::Asset: Deserialize<'de>",
             serialize = "T::Identifier: Serialize, T::Asset: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -172,7 +169,7 @@ pub type AssociatedData<T> = <T as AssociatedDataType>::AssociatedData;
             deserialize = "T::Asset: Deserialize<'de>, T::AssociatedData: Deserialize<'de>",
             serialize = "T::Asset: Serialize, T::AssociatedData: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -426,7 +423,7 @@ pub type UtxoMembershipProof<S, COM = ()> = MembershipProof<UtxoAccumulatorModel
             deserialize = "P: Deserialize<'de>, P::UtxoAccumulatorModel: Deserialize<'de>",
             serialize = "P: Serialize, P::UtxoAccumulatorModel: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

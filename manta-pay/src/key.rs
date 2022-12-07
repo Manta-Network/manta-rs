@@ -27,11 +27,14 @@
 use alloc::{format, string::String, vec::Vec};
 use core::marker::PhantomData;
 use manta_accounting::key::{self, AccountIndex};
-use manta_crypto::rand::{CryptoRng, RngCore};
-use manta_util::{create_seal, seal, Array};
+use openzl_util::{
+    create_seal,
+    rand::{CryptoRng, RngCore},
+    seal, Array,
+};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize, Serializer};
+use openzl_util::serde::{Deserialize, Serialize, Serializer};
 
 pub use bip0039::{self, Error};
 pub use bip32::{self, XPrv as SecretKey};
@@ -130,7 +133,7 @@ type SeedBytes = Array<u8, { bip32::Seed::SIZE }>;
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
@@ -225,7 +228,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields, try_from = "String")
+    serde(crate = "openzl_util::serde", deny_unknown_fields, try_from = "String")
 )]
 #[derive(Clone)]
 pub struct Mnemonic(

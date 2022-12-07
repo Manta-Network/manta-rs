@@ -24,7 +24,7 @@ use core::{
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Base Index Type
 pub type IndexType = u32;
@@ -33,7 +33,7 @@ pub type IndexType = u32;
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
+    serde(crate = "openzl_util::serde", deny_unknown_fields, transparent)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -242,7 +242,7 @@ pub trait DeriveAddresses {
     derive(Deserialize, Serialize),
     serde(
         bound(deserialize = "H: Deserialize<'de>", serialize = "H: Serialize",),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -310,7 +310,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(

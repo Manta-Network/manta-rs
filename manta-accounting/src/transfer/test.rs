@@ -28,12 +28,14 @@ use core::{
     fmt::Debug,
     ops::{Rem, Sub},
 };
-use manta_crypto::{
+use openzl_crypto::{
     accumulator::Accumulator,
     constraint::{test::verify_fuzz_public_input, ProofSystem},
+};
+use openzl_util::{
+    into_array_unchecked,
     rand::{fuzz::Fuzz, CryptoRng, Rand, RngCore, Sample},
 };
-use manta_util::into_array_unchecked;
 
 /// Samples a distribution over `count`-many values summing to `total`.
 ///

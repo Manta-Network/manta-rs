@@ -26,7 +26,7 @@ use crate::{
 };
 use alloc::boxed::Box;
 use manta_accounting::wallet::{self, signer};
-use manta_util::{
+use openzl_util::{
     future::LocalBoxFutureResult,
     http::reqwest::{self, IntoUrl, KnownUrlClient},
 };

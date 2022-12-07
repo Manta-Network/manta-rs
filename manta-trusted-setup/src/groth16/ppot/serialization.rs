@@ -24,9 +24,8 @@ use crate::{
     util::{from_error, Deserializer, Serializer},
 };
 use alloc::vec::Vec;
-use ark_std::io;
 use core::fmt;
-use manta_crypto::arkworks::{
+use openzl_plugin_arkworks::{
     bn254::{G1Affine, G2Affine, Parameters},
     ec::{
         bn::BnParameters, short_weierstrass_jacobian::GroupAffine, ModelParameters,
@@ -35,11 +34,12 @@ use manta_crypto::arkworks::{
     ff::{PrimeField, ToBytes, Zero},
     pairing::Pairing,
     serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
+    std::{error, io},
 };
-use manta_util::cfg_iter;
+use openzl_util::cfg_iter;
 
 #[cfg(feature = "rayon")]
-use manta_util::rayon::prelude::ParallelIterator;
+use openzl_util::rayon::prelude::ParallelIterator;
 
 /// (De)Serialization used in the original PPoT ceremony
 #[derive(derivative::Derivative)]
@@ -403,7 +403,7 @@ impl alloc::fmt::Display for PointDeserializeError {
     }
 }
 
-impl ark_std::error::Error for PointDeserializeError {}
+impl error::Error for PointDeserializeError {}
 
 impl From<PointDeserializeError> for SerializationError {
     fn from(e: PointDeserializeError) -> Self {
@@ -776,10 +776,8 @@ mod tests {
     /// is identity.
     #[test]
     fn deserialization_test() {
-        use manta_crypto::{
-            arkworks::ec::{AffineCurve, ProjectiveCurve},
-            rand::{ChaCha20Rng, Sample, SeedableRng},
-        };
+        use openzl_plugin_arkworks::ec::{AffineCurve, ProjectiveCurve};
+        use openzl_util::rand::{ChaCha20Rng, Sample, SeedableRng};
 
         // Generate random points from each curve
         const N: usize = 100; // number of samples

@@ -20,19 +20,21 @@ use crate::transfer::utxo::{
     DeriveSpend, QueryAsset, Spend, UtxoAccumulatorItem, UtxoAccumulatorOutput, UtxoMembershipProof,
 };
 use core::{fmt::Debug, hash::Hash, iter};
-use manta_crypto::{
+use eclair::alloc::{
+    mode::{Derived, Public, Secret},
+    Allocate, Allocator, Const, Constant, Var, Variable,
+};
+use openzl_crypto::{
     accumulator::{self, Accumulator, ItemHashFunction},
     constraint::{HasInput, Input},
-    eclair::alloc::{
-        mode::{Derived, Public, Secret},
-        Allocate, Allocator, Const, Constant, Var, Variable,
-    },
+};
+use openzl_util::{
+    codec::{Encode, Write},
     rand::RngCore,
 };
-use manta_util::codec::{Encode, Write};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Pre-Sender
 #[cfg_attr(
@@ -41,15 +43,15 @@ use manta_util::serde::{Deserialize, Serialize};
     serde(
         bound(
             deserialize = r"
-                S::Secret: Deserialize<'de>, 
-                S::Utxo: Deserialize<'de>, 
+                S::Secret: Deserialize<'de>,
+                S::Utxo: Deserialize<'de>,
                 S::Nullifier: Deserialize<'de>",
             serialize = r"
-                S::Secret: Serialize, 
-                S::Utxo: Serialize, 
+                S::Secret: Serialize,
+                S::Utxo: Serialize,
                 S::Nullifier: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -213,7 +215,7 @@ where
             deserialize = r"UtxoMembershipProof<S>: Deserialize<'de>",
             serialize = r"UtxoMembershipProof<S>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -253,56 +255,56 @@ where
     serde(
         bound(
             deserialize = r"
-                S::Secret: Deserialize<'de>, 
-                S::Utxo: Deserialize<'de>, 
-                UtxoMembershipProof<S, COM>: Deserialize<'de>, 
+                S::Secret: Deserialize<'de>,
+                S::Utxo: Deserialize<'de>,
+                UtxoMembershipProof<S, COM>: Deserialize<'de>,
                 S::Nullifier: Deserialize<'de>",
             serialize = r"
-                S::Secret: Serialize, 
-                S::Utxo: Serialize, 
-                UtxoMembershipProof<S, COM>: Serialize, 
+                S::Secret: Serialize,
+                S::Utxo: Serialize,
+                UtxoMembershipProof<S, COM>: Serialize,
                 S::Nullifier: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
-            S::Secret: Clone, 
-            S::Utxo: Clone, 
-            UtxoMembershipProof<S, COM>: Clone, 
+            S::Secret: Clone,
+            S::Utxo: Clone,
+            UtxoMembershipProof<S, COM>: Clone,
             S::Nullifier: Clone"),
     Copy(bound = r"
-            S::Secret: Copy, 
-            S::Utxo: Copy, 
-            UtxoMembershipProof<S, COM>: Copy, 
+            S::Secret: Copy,
+            S::Utxo: Copy,
+            UtxoMembershipProof<S, COM>: Copy,
             S::Nullifier: Copy"),
     Debug(bound = r"
             S::Secret: Debug,
-            S::Utxo: Debug, 
-            UtxoMembershipProof<S, COM>: Debug, 
+            S::Utxo: Debug,
+            UtxoMembershipProof<S, COM>: Debug,
             S::Nullifier: Debug"),
     Default(bound = r"
             S::Secret: Default,
-            S::Utxo: Default, 
-            UtxoMembershipProof<S, COM>: Default, 
+            S::Utxo: Default,
+            UtxoMembershipProof<S, COM>: Default,
             S::Nullifier: Default"),
     Eq(bound = r"
         S::Secret: Eq,
-        S::Utxo: Eq, 
-        UtxoMembershipProof<S, COM>: Eq, 
+        S::Utxo: Eq,
+        UtxoMembershipProof<S, COM>: Eq,
         S::Nullifier: Eq"),
     Hash(bound = r"
             S::Secret: Hash,
-            S::Utxo: Hash, 
-            UtxoMembershipProof<S, COM>: Hash, 
+            S::Utxo: Hash,
+            UtxoMembershipProof<S, COM>: Hash,
             S::Nullifier: Hash"),
     PartialEq(bound = r"
             S::Secret: PartialEq,
-            S::Utxo: PartialEq, 
-            UtxoMembershipProof<S, COM>: PartialEq, 
+            S::Utxo: PartialEq,
+            UtxoMembershipProof<S, COM>: PartialEq,
             S::Nullifier: PartialEq")
 )]
 pub struct Sender<S, COM = ()>
@@ -550,7 +552,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SenderPostError {
@@ -581,13 +583,13 @@ pub enum SenderPostError {
     serde(
         bound(
             deserialize = r"
-                UtxoAccumulatorOutput<S>: Deserialize<'de>, 
+                UtxoAccumulatorOutput<S>: Deserialize<'de>,
                 S::Nullifier: Deserialize<'de>",
             serialize = r"
-                UtxoAccumulatorOutput<S>: Serialize, 
+                UtxoAccumulatorOutput<S>: Serialize,
                 S::Nullifier: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -677,13 +679,13 @@ where
     serde(
         bound(
             deserialize = r"
-                L::ValidUtxoAccumulatorOutput: Deserialize<'de>, 
+                L::ValidUtxoAccumulatorOutput: Deserialize<'de>,
                 L::ValidNullifier: Deserialize<'de>",
             serialize = r"
-                L::ValidUtxoAccumulatorOutput: Serialize, 
+                L::ValidUtxoAccumulatorOutput: Serialize,
                 L::ValidNullifier: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

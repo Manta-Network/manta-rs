@@ -17,10 +17,10 @@
 //! Ledger Connection
 
 use core::{fmt::Debug, hash::Hash};
-use manta_util::future::LocalBoxFutureResult;
+use openzl_util::future::LocalBoxFutureResult;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Ledger Connection
 ///
@@ -91,7 +91,7 @@ pub trait Read<D>: Connection {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct ReadResponse<D> {

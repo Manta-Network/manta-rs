@@ -13,7 +13,7 @@ publish = false
 [workspace]
 resolver = "2"
 members = ["manta-*"]
-exclude = ["forks/cocoon"]
+exclude = ["forks/cocoon", "manta-crypto"]
 
 [patch.crates-io]
 cocoon = { path = "forks/cocoon" }

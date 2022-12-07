@@ -21,18 +21,16 @@ use crate::crypto::poseidon::{
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
-use manta_crypto::{
-    eclair::alloc::{Allocate, Const, Constant},
-    hash::ArrayHashFunction,
-    rand::{Rand, RngCore, Sample},
-};
-use manta_util::{
+use eclair::alloc::{Allocate, Const, Constant};
+use openzl_crypto::hash::ArrayHashFunction;
+use openzl_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
+    rand::{Rand, RngCore, Sample},
     vec::VecExt,
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Domain Tag
 pub trait DomainTag<T>
@@ -52,7 +50,7 @@ where
             deserialize = "Permutation<S, COM>: Deserialize<'de>, S::Field: Deserialize<'de>",
             serialize = "Permutation<S, COM>: Serialize, S::Field: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -212,10 +210,8 @@ where
 mod test {
     use crate::{config::Poseidon2, crypto::constraint::arkworks::Fp};
     use ark_bls12_381::Fr;
-    use manta_crypto::{
-        arkworks::ff::field_new,
-        rand::{OsRng, Sample},
-    };
+    use openzl_plugin_arkworks::ff::field_new;
+    use openzl_util::rand::{OsRng, Sample},
 
     /// Tests if [`Poseidon2`](crate::config::Poseidon2) matches hardcoded sage outputs.
     #[test]

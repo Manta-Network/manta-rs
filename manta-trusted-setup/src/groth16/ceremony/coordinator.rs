@@ -28,10 +28,10 @@ use crate::{
     },
 };
 use core::mem;
-use manta_util::{time::lock::Timed, BoxArray};
+use openzl_util::{time::lock::Timed, BoxArray};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Ceremony Coordinator
 #[cfg_attr(
@@ -50,7 +50,7 @@ use manta_util::serde::{Deserialize, Serialize};
                 C::Participant: Deserialize<'de>,
             "
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

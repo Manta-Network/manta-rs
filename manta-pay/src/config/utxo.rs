@@ -35,37 +35,37 @@ use blake2::{
     Blake2s256, Blake2sVar, Digest,
 };
 use core::{convert::Infallible, fmt::Debug, marker::PhantomData};
+use eclair::{
+    alloc::{Allocate, Constant},
+    num::U128,
+};
 use manta_accounting::{
     asset::{self, Asset},
     wallet::ledger,
 };
-use manta_crypto::{
+use openzl_crypto::{
     accumulator::ItemHashFunction,
     algebra::HasGenerator,
-    arkworks::{
-        algebra::{affine_point_as_bytes, ScalarVar},
-        constraint::{fp::Fp, rem_mod_prime, Boolean, FpVar},
-        ff::{try_into_u128, PrimeField},
-        serialize::{CanonicalSerialize, SerializationError},
-    },
-    eclair::{
-        alloc::{Allocate, Constant},
-        num::U128,
-    },
     encryption::{self, EmptyHeader},
     hash,
     hash::ArrayHashFunction,
     merkle_tree,
-    rand::{Rand, RngCore, Sample},
     signature::schnorr,
 };
-use manta_util::{
+use openzl_plugin_arkworks::{
+    algebra::{affine_point_as_bytes, ScalarVar},
+    constraint::{fp::Fp, rem_mod_prime, Boolean, FpVar},
+    ff::{try_into_u128, PrimeField},
+    serialize::{CanonicalSerialize, SerializationError},
+};
+use openzl_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
+    rand::{Rand, RngCore, Sample},
     Array,
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 pub use manta_accounting::transfer::{
     self,
@@ -199,7 +199,7 @@ pub type SpendSecretVar = protocol::SpendSecret<Config<Compiler>, Compiler>;
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct GroupGenerator(Group);
@@ -960,8 +960,7 @@ impl encryption::convert::plaintext::Reverse for IncomingAESConverter {
         let bytes_vector = target?.0;
         let utxo_randomness_bytes = bytes_vector[0..32].to_vec();
         let asset_id_bytes = bytes_vector[32..64].to_vec();
-        let asset_value_bytes =
-            manta_util::Array::<u8, 16>::from_vec(bytes_vector[64..80].to_vec()).0;
+        let asset_value_bytes = Array::<u8, 16>::from_vec(bytes_vector[64..80].to_vec()).0;
         let utxo_randomness = Fp::<ConstraintField>::from_vec(utxo_randomness_bytes)
             .expect("Error while converting the bytes into a field element.");
         let asset_id = Fp::<ConstraintField>::from_vec(asset_id_bytes)
@@ -1662,10 +1661,8 @@ impl encryption::convert::plaintext::Reverse for OutgoingAESConverter {
     fn into_source(target: Self::TargetDecryptedPlaintext, _: &mut ()) -> Self::DecryptedPlaintext {
         let bytes_vector = target?.0;
         let asset_id_bytes = bytes_vector[0..32].to_vec();
-        let asset_value_bytes = manta_util::Array::<u8, 16>::from_vec(
-            bytes_vector[32..OUT_AES_PLAINTEXT_SIZE].to_vec(),
-        )
-        .0;
+        let asset_value_bytes =
+            Array::<u8, 16>::from_vec(bytes_vector[32..OUT_AES_PLAINTEXT_SIZE].to_vec()).0;
         let asset_id = Fp::<ConstraintField>::from_vec(asset_id_bytes)
             .expect("Error while converting the bytes into a field element.");
         let asset_value = u128::from_le_bytes(asset_value_bytes);
@@ -1909,7 +1906,7 @@ impl protocol::Configuration for Config {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Checkpoint {
@@ -2014,12 +2011,12 @@ pub mod test {
             UtxoReconstruct,
         },
     };
-    use manta_crypto::{
+    use openzl_crypto::{
         algebra::{HasGenerator, ScalarMul},
-        arkworks::constraint::fp::Fp,
         encryption::{Decrypt, EmptyHeader, Encrypt},
-        rand::{OsRng, Sample},
     };
+    use openzl_plugin_arkworks::constraint::fp::Fp;
+    use openzl_util::rand::{OsRng, Sample};
 
     /// Checks that encryption of light incoming notes is well-executed for [`Config`].
     #[test]

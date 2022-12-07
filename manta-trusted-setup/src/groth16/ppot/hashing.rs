@@ -21,16 +21,16 @@ use crate::{
     util::{hash_to_group, BlakeHasher, Serializer},
 };
 use blake2::Digest;
-use manta_crypto::{
-    arkworks::{
-        bn254::{self, Fq, Fq2, G1Affine, G2Affine},
-        ec::{short_weierstrass_jacobian::GroupAffine, ProjectiveCurve, SWModelParameters},
-        ff::{BigInteger256, Fp256, FpParameters, Zero},
-        ratio::HashToGroup,
-    },
+use openzl_plugin_arkworks::{
+    bn254::{self, Fq, Fq2, G1Affine, G2Affine},
+    ec::{short_weierstrass_jacobian::GroupAffine, ProjectiveCurve, SWModelParameters},
+    ff::{BigInteger256, Fp256, FpParameters, Zero},
+    ratio::HashToGroup,
+};
+use openzl_util::{
+    into_array_unchecked,
     rand::{RngCore, Sample},
 };
-use manta_util::into_array_unchecked;
 
 /// The G2 hasher used in the PPoT ceremony
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

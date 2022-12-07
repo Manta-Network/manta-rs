@@ -32,24 +32,23 @@ fs = ["bitflags"]
 cocoon-fs = [
     "cocoon/std",
     "fs",
-    "manta-crypto/getrandom",
-    "rand_chacha",
+    # "manta-crypto/getrandom",
     "std",
 ]
 
 # Serde
-serde = ["manta-crypto/serde"]
+serde = ["openzl-crypto/serde"]
 
 # Standard Library
-std = ["manta-crypto/std", "manta-util/std"]
+std = ["openzl-crypto/std", "openzl-util/std"]
 
 # Testing Frameworks
 test = [
     "futures",
     "indexmap",
-    "manta-crypto/arkworks",
-    "manta-crypto/rand",
-    "manta-crypto/test",
+    # "manta-crypto/arkworks",
+    "openzl-crypto/test",
+    "openzl-util/rand",
     "parking_lot",
     "statrs"
 ]
@@ -59,13 +58,16 @@ bitflags = { version = "1.3.2", optional = true, default-features = false }
 cocoon = { version = "0.3.1", optional = true, default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 derive_more = { version = "0.99.16", default-features = false, features = ["add", "add_assign", "display", "from", "sum"] }
+# eclair = { git = "https://github.com/openzklib/openzl", default-features = false }
+eclair = { path = "../../../openzl/openzl/eclair", default-features = false }
 futures = { version = "0.3.21", optional = true, default-features = false, features = ["alloc"] }
 indexmap = { version = "1.8.0", optional = true, default-features = false }
-manta-crypto = { path = "../manta-crypto", default-features = false }
-manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
+openzl-crypto = { path = "../../../openzl/openzl/openzl-crypto", default-features = false }
+# openzl-crypto = { git = "https://github.com/openzklib/openzl", default-features = false }
+openzl-util = { path = "../../../openzl/openzl/openzl-util", default-features = false, features = ["alloc"] }
+# openzl-util = { git = "https://github.com/openzklib/openzl", default-features = false, features = ["alloc"] }
 parking_lot = { version = "0.12.0", optional = true, default-features = false }
-rand_chacha = { version = "0.3.1", optional = true, default-features = false }
 statrs = { version = "0.15.0", optional = true, default-features = false }
 
 [dev-dependencies]
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
+# manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }

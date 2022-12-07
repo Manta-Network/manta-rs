@@ -17,7 +17,7 @@
 //! Trusted Setup Ceremony Registry CSV Compatibility
 
 use crate::ceremony::registry::Registry;
-use manta_util::serde::de::DeserializeOwned;
+use openzl_util::serde::de::DeserializeOwned;
 use std::{fs::File, path::Path};
 
 /// CSV Record

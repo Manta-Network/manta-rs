@@ -35,16 +35,16 @@ use manta_accounting::{
         signer::{self, SyncData},
     },
 };
-use manta_crypto::{
+use openzl_crypto::{
     accumulator::ItemHashFunction,
-    arkworks::{
-        constraint::fp::Fp,
-        ed_on_bn254::FrParameters,
-        ff::{Fp256, PrimeField},
-    },
     merkle_tree::{self, forest::Configuration},
-    rand::ChaCha20Rng,
 };
+use openzl_plugin_arkworks::{
+    constraint::fp::Fp,
+    ed_on_bn254::FrParameters,
+    ff::{Fp256, PrimeField},
+};
+use openzl_util::rand::ChaCha20Rng;
 
 impl<C> AccountCollection for KeySecret<C>
 where

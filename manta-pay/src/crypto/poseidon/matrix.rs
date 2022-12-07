@@ -22,7 +22,7 @@ use core::{
     ops::{Deref, Index, IndexMut},
     slice,
 };
-use manta_util::vec::{Vec, VecExt};
+use openzl_util::vec::{Vec, VecExt};
 
 /// Allocates a matrix of shape `(num_rows, num_columns)` where `allocate_row` generates default
 /// values.
@@ -627,7 +627,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use manta_crypto::arkworks::{bls12_381::Fr, constraint::fp::Fp};
+    use openzl_plugin_arkworks::{bls12_381::Fr, constraint::fp::Fp};
 
     /// Checks if generating minor matrix is correct.
     #[test]

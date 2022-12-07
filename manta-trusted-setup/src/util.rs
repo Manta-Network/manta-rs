@@ -18,26 +18,27 @@
 
 use crate::groth16::kzg;
 use alloc::{boxed::Box, vec::Vec};
-use ark_std::{
-    error,
-    io::{self, ErrorKind},
-};
 use blake2::{Blake2b512, Digest as Blake2Digest};
 use core::marker::PhantomData;
-use manta_crypto::{
-    arkworks::{
-        ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
-        ff::{BigInteger, PrimeField, UniformRand, Zero},
-        pairing::Pairing,
-        ratio::HashToGroup,
-        serialize::{CanonicalSerialize, Read, SerializationError, Write},
+use openzl_plugin_arkworks::{
+    ec::{wnaf::WnafContext, AffineCurve, ProjectiveCurve},
+    ff::{BigInteger, PrimeField, UniformRand, Zero},
+    pairing::Pairing,
+    ratio::HashToGroup,
+    serialize::{CanonicalSerialize, Read, SerializationError, Write},
+    std::{
+        error,
+        io::{self, ErrorKind},
     },
-    rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
 };
-use manta_util::{cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked, Array};
+use openzl_util::{
+    cfg_into_iter, cfg_iter, cfg_iter_mut, cfg_reduce, into_array_unchecked,
+    rand::{ChaCha20Rng, OsRng, Sample, SeedableRng},
+    Array,
+};
 
 #[cfg(feature = "rayon")]
-use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use openzl_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 /// Distribution Type Extension
 pub trait HasDistribution {
@@ -53,7 +54,7 @@ pub trait HasDistribution {
 /// interface for building a serialization over the type `T`. For deserialization see the
 /// [`Deserializer`] `trait`.
 ///
-/// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
+/// [`CanonicalDeserialize`]: openzl_plugin_arkworks::serialize::CanonicalDeserialize
 pub trait Serializer<T, M = ()> {
     /// Serializes `item` in uncompressed form to the `writer` without performing any
     /// well-formedness checks.
@@ -87,7 +88,7 @@ pub trait Serializer<T, M = ()> {
 /// interface for building a deserialization over the type `T`. For serialization see the
 /// [`Serializer`] `trait`.
 ///
-/// [`CanonicalDeserialize`]: manta_crypto::arkworks::serialize::CanonicalDeserialize
+/// [`CanonicalDeserialize`]: openzl_plugin_arkworks::serialize::CanonicalDeserialize
 pub trait Deserializer<T, M = ()> {
     /// Deserialization Error Type
     type Error: Into<SerializationError>;

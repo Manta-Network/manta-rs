@@ -27,10 +27,10 @@ use crate::{
     },
 };
 use alloc::vec::Vec;
-use manta_crypto::rand::OsRng;
-use manta_util::{
+use openzl_util::{
     http::reqwest::{self, IntoUrl, KnownUrlClient},
     ops::ControlFlow,
+    rand::OsRng,
     serde::{de::DeserializeOwned, Serialize},
 };
 

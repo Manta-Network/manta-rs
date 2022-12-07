@@ -40,26 +40,25 @@ use colored::Colorize;
 use console::{style, Term};
 use core::fmt::{self, Debug, Display};
 use dialoguer::{theme::ColorfulTheme, Input};
-use manta_crypto::{
-    arkworks::{
-        bn254::{self, Fr},
-        constraint::{fp::Fp, FpVar, R1CS},
-        ec::{AffineCurve, PairingEngine},
-        ff::field_new,
-        pairing::Pairing,
-        r1cs_std::eq::EqGadget,
-        serialize::{CanonicalSerialize, SerializationError},
-    },
-    dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
-    eclair::alloc::{
-        mode::{Public, Secret},
-        Allocate,
-    },
-    rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
-    signature,
+use eclair::alloc::{
+    mode::{Public, Secret},
+    Allocate,
 };
-use manta_util::{
+use openzl_crypto::signature;
+use openzl_plugin_arkworks::{
+    bn254::{self, Fr},
+    constraint::{fp::Fp, FpVar, R1CS},
+    ec::{AffineCurve, PairingEngine},
+    ff::field_new,
+    groth16::ProvingKey,
+    pairing::Pairing,
+    r1cs_std::eq::EqGadget,
+    serialize::{CanonicalSerialize, SerializationError},
+};
+use openzl_plugin_dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH};
+use openzl_util::{
     into_array_unchecked,
+    rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     Array,
 };
@@ -73,7 +72,7 @@ type Nonce = <Signature as SignatureScheme>::Nonce;
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(
     bound(deserialize = "", serialize = ""),
-    crate = "manta_util::serde",
+    crate = "openzl_util::serde",
     deny_unknown_fields
 )]
 pub enum Priority {
@@ -107,7 +106,7 @@ impl From<Priority> for usize {
             Nonce: Serialize,
         "
     ),
-    crate = "manta_util::serde",
+    crate = "openzl_util::serde",
     deny_unknown_fields
 )]
 pub struct Participant {
@@ -207,7 +206,7 @@ impl participant::Priority for Participant {
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(
     bound(deserialize = "", serialize = ""),
-    crate = "manta_util::serde",
+    crate = "openzl_util::serde",
     deny_unknown_fields
 )]
 pub struct Record {
@@ -364,7 +363,7 @@ pub fn get_client_keys() -> Result<(ed25519::SecretKey, ed25519::PublicKey), Cli
 
 /// Client Key Error
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
+#[serde(crate = "openzl_util::serde", deny_unknown_fields)]
 pub enum ClientKeyError {
     /// Invalid Secret
     InvalidSecret,
@@ -537,7 +536,7 @@ impl ProvingKeyHasher<Self> for Config {
     type Output = [u8; 64];
 
     #[inline]
-    fn hash(proving_key: &ark_groth16::ProvingKey<<Self as Pairing>::Pairing>) -> Self::Output {
+    fn hash(proving_key: &ProvingKey<<Self as Pairing>::Pairing>) -> Self::Output {
         let mut hasher = BlakeHasher::default();
         proving_key
             .serialize(&mut hasher)
@@ -606,7 +605,7 @@ impl ProofType for Config {
 }
 
 /// Challenge Type
-pub type Challenge = manta_util::Array<u8, 64>;
+pub type Challenge = Array<u8, 64>;
 
 impl ChallengeType for Config {
     type Challenge = Challenge;

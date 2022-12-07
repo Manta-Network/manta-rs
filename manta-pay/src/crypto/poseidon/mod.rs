@@ -21,15 +21,15 @@ use crate::crypto::poseidon::{
 };
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, iter, marker::PhantomData, mem, slice};
-use manta_crypto::{
-    eclair::alloc::{Allocate, Const, Constant},
-    permutation::PseudorandomPermutation,
+use eclair::alloc::{Allocate, Const, Constant};
+use openzl_crypto::permutation::PseudorandomPermutation;
+use openzl_util::{
+    codec::{Decode, DecodeError, Encode, Read, Write},
     rand::{Rand, RngCore, Sample},
 };
-use manta_util::codec::{Decode, DecodeError, Encode, Read, Write};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 pub mod constants;
 pub mod encryption;
@@ -150,7 +150,7 @@ pub trait Specification<COM = ()>: Constants + ParameterFieldType {
             deserialize = "S::Field: Deserialize<'de>",
             serialize = "S::Field: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -262,7 +262,7 @@ where
             deserialize = "S::ParameterField: Deserialize<'de>",
             serialize = "S::ParameterField: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

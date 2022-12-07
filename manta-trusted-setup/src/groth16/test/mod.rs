@@ -25,27 +25,27 @@ use crate::{
     util::{BlakeHasher, HasDistribution, KZGBlakeHasher},
 };
 use alloc::vec::Vec;
-use ark_groth16::{Groth16, ProvingKey};
-use ark_snark::SNARK;
 use blake2::Digest;
-use manta_crypto::{
-    arkworks::{
-        bn254::{Bn254, Fr, G1Affine, G2Affine},
-        constraint::{fp::Fp, FpVar, R1CS},
-        ec::{AffineCurve, PairingEngine},
-        ff::{field_new, UniformRand},
-        pairing::Pairing,
-        r1cs_std::eq::EqGadget,
-        ratio::test::assert_valid_ratio_proof,
-        serialize::CanonicalSerialize,
-    },
-    eclair::alloc::{
-        mode::{Public, Secret},
-        Allocate,
-    },
+use eclair::alloc::{
+    mode::{Public, Secret},
+    Allocate,
+};
+use openzl_plugin_arkworks::{
+    bn254::{Bn254, Fr, G1Affine, G2Affine},
+    constraint::{fp::Fp, FpVar, R1CS},
+    ec::{AffineCurve, PairingEngine},
+    ff::{field_new, UniformRand},
+    groth16::{Groth16, ProvingKey},
+    pairing::Pairing,
+    r1cs_std::eq::EqGadget,
+    ratio::test::assert_valid_ratio_proof,
+    serialize::CanonicalSerialize,
+    SNARK,
+};
+use openzl_util::{
+    into_array_unchecked,
     rand::{CryptoRng, OsRng, RngCore, Sample},
 };
-use manta_util::into_array_unchecked;
 
 /// Test MPC
 #[derive(Clone, Default)]

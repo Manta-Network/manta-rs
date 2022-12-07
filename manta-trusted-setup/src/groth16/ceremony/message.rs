@@ -24,13 +24,13 @@ use alloc::vec::Vec;
 use core::fmt::Debug;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Query Request
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct QueryRequest;
@@ -44,7 +44,7 @@ pub struct QueryRequest;
             deserialize = "Round<C>: Deserialize<'de>",
             serialize = "Round<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -67,7 +67,7 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(deserialize = "", serialize = "",),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -91,7 +91,7 @@ where
             deserialize = "C::Challenge: Deserialize<'de>",
             serialize = "C::Challenge: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

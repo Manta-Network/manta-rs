@@ -25,40 +25,40 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::{cmp, fmt::Debug, hash::Hash};
-use manta_crypto::{
+use eclair::{
+    alloc::{
+        mode::{Derived, Public, Secret},
+        Allocate, Allocator, Const, Constant, Var, Variable,
+    },
+    bool::{Assert, AssertEq, Bool, ConditionalSelect},
+    cmp::PartialEq,
+    num::Zero,
+    ops::{BitAnd, BitOr},
+    Has,
+};
+use openzl_crypto::{
     accumulator::{self, ItemHashFunction, MembershipProof},
     algebra::{
         diffie_hellman::StandardDiffieHellman, security::ComputationalDiffieHellmanHardness,
         HasGenerator, Ring, ScalarMul, ScalarMulGroup,
     },
     constraint::{HasInput, Input},
-    eclair::{
-        alloc::{
-            mode::{Derived, Public, Secret},
-            Allocate, Allocator, Const, Constant, Var, Variable,
-        },
-        bool::{Assert, AssertEq, Bool, ConditionalSelect},
-        cmp::PartialEq,
-        num::Zero,
-        ops::{BitAnd, BitOr},
-        Has,
-    },
     encryption::{
         self,
         hybrid::{Hybrid, Randomness},
         Decrypt, Encrypt, EncryptedMessage,
     },
-    rand::{Rand, RngCore, Sample},
     signature::{self, schnorr, Sign, Verify},
 };
-use manta_util::{
+use openzl_util::{
     cmp::Independence,
     codec::{Encode, Write},
     convert::Field,
+    rand::{Rand, RngCore, Sample},
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// UTXO Version Number
 pub const VERSION: u8 = 1;
@@ -449,7 +449,7 @@ pub type SignatureScheme<C> = schnorr::Schnorr<<C as Configuration>::SchnorrHash
             C::NullifierCommitmentScheme: Serialize,
             C::OutgoingBaseEncryptionScheme: Serialize,",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -834,7 +834,7 @@ where
             deserialize = "BaseParameters<C>: Deserialize<'de>, C::AddressPartitionFunction: Deserialize<'de>, C::SchnorrHashFunction: Deserialize<'de>",
             serialize = "BaseParameters<C>: Serialize, C::AddressPartitionFunction: Serialize, C::SchnorrHashFunction: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1476,7 +1476,7 @@ where
             deserialize = "C::Group: Deserialize<'de>",
             serialize = "C::Group: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1534,7 +1534,7 @@ where
             deserialize = "UtxoCommitmentRandomness<C, COM>: Deserialize<'de>, Asset<C, COM>: Deserialize<'de>",
             serialize = "UtxoCommitmentRandomness<C, COM>: Serialize, Asset<C, COM>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1615,7 +1615,7 @@ where
             deserialize = "AddressPartition<C>: Deserialize<'de>, IncomingNote<C>: Deserialize<'de>, LightIncomingNote<C>: Deserialize<'de>",
             serialize = "AddressPartition<C>: Serialize, IncomingNote<C>: Serialize, LightIncomingNote<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1729,7 +1729,7 @@ where
             deserialize = "C::Bool: Deserialize<'de>, Asset<C, COM>: Deserialize<'de>, UtxoCommitment<C, COM>: Deserialize<'de>",
             serialize = "C::Bool: Serialize, Asset<C, COM>: Serialize, UtxoCommitment<C, COM>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1894,7 +1894,7 @@ where
             deserialize = "C::Group: Deserialize<'de>, IncomingRandomness<C, COM>: Deserialize<'de>, IncomingPlaintext<C, COM>: Deserialize<'de>",
             serialize = "C::Group: Serialize, IncomingRandomness<C, COM>: Serialize, IncomingPlaintext<C, COM>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -2125,7 +2125,7 @@ where
             deserialize = "C::Group: Deserialize<'de>, C::Scalar: Deserialize<'de>",
             serialize = "C::Group: Serialize, C::Scalar: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -2258,7 +2258,7 @@ where
             deserialize = "C::Scalar: Deserialize<'de>, C::Group: Deserialize<'de>",
             serialize = "C::Scalar: Serialize, C::Group: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -2358,7 +2358,7 @@ where
             deserialize = "UtxoCommitmentRandomness<C>: Deserialize<'de>",
             serialize = "UtxoCommitmentRandomness<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -2425,7 +2425,7 @@ where
             deserialize = "OutgoingRandomness<C, COM>: Deserialize<'de>, IncomingPlaintext<C, COM>: Deserialize<'de>",
             serialize = "OutgoingRandomness<C, COM>: Serialize, IncomingPlaintext<C, COM>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -2624,7 +2624,7 @@ where
             deserialize = "NullifierCommitment<C, COM>: Deserialize<'de>",
             serialize = "NullifierCommitment<C, COM>: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -2687,7 +2687,7 @@ where
             deserialize = "Nullifier<C>: Deserialize<'de>, OutgoingNote<C>: Deserialize<'de>",
             serialize = "Nullifier<C>: Serialize, OutgoingNote<C>: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

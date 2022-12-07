@@ -22,9 +22,11 @@ use crate::config::{
     VerifyingContext,
 };
 use core::fmt::Debug;
-use manta_crypto::rand::{ChaCha20Rng, Rand, SeedableRng};
 use manta_parameters::Get;
-use manta_util::codec::Decode;
+use openzl_util::{
+    codec::Decode,
+    rand::{ChaCha20Rng, Rand, SeedableRng},
+};
 
 #[cfg(feature = "download")]
 use manta_parameters::Download;
@@ -32,7 +34,7 @@ use manta_parameters::Download;
 #[cfg(feature = "std")]
 use {
     crate::config::ProvingContext,
-    manta_util::codec::IoReader,
+    openzl_util::codec::IoReader,
     std::{fs::File, path::Path},
 };
 

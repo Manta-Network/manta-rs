@@ -32,13 +32,17 @@ use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{fmt::Debug, future::Future, hash::Hash, marker::PhantomData, ops::AddAssign};
 use futures::StreamExt;
 use indexmap::IndexSet;
-use manta_crypto::rand::{CryptoRng, Distribution, Rand, RngCore, Sample, SampleUniform};
-use manta_util::{future::LocalBoxFuture, iter::Iterable, num::CheckedSub};
+use openzl_util::{
+    future::LocalBoxFuture,
+    iter::Iterable,
+    num::CheckedSub,
+    rand::{CryptoRng, Distribution, Rand, RngCore, Sample, SampleUniform},
+};
 use parking_lot::Mutex;
 use statrs::{distribution::Categorical, StatsError};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 pub mod sim;
 
@@ -51,7 +55,7 @@ pub mod sim;
             deserialize = "Transaction<C>: Deserialize<'de>",
             serialize = "Transaction<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -171,7 +175,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ActionLabelled<T> {
@@ -192,7 +196,7 @@ pub type MaybeAction<C, L, S> = Result<Action<C>, ActionLabelledError<C, L, S>>;
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ActionType {
@@ -245,7 +249,7 @@ impl ActionType {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct ActionDistributionPMF<T = u64> {
@@ -951,7 +955,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Config {

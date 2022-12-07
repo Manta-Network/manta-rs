@@ -30,11 +30,14 @@ use crate::{
 };
 use alloc::{string::String, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::rand::{CryptoRng, RngCore};
-use manta_util::{create_seal, seal};
+use openzl_util::{
+    create_seal,
+    rand::{CryptoRng, RngCore},
+    seal,
+};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 create_seal! {}
 
@@ -227,7 +230,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TransferShape {
@@ -341,7 +344,7 @@ impl TransferShape {
             deserialize = "Asset<C>: Deserialize<'de>, Address<C>: Deserialize<'de>",
             serialize = "Asset<C>: Serialize, Address<C>: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -447,7 +450,7 @@ where
             deserialize = "Asset<C>: Deserialize<'de>",
             serialize = "Asset<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -484,7 +487,7 @@ where
             deserialize = "C::AssetValue: Deserialize<'de>, PreSender<C>: Deserialize<'de>",
             serialize = "C::AssetValue: Serialize, PreSender<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -551,7 +554,7 @@ where
             deserialize = "ProvingContext<C>: Deserialize<'de>",
             serialize = "ProvingContext<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -603,7 +606,7 @@ where
             deserialize = "VerifyingContext<C>: Deserialize<'de>",
             serialize = "VerifyingContext<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

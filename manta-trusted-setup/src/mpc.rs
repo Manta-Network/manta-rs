@@ -23,10 +23,10 @@ use core::{
     ops::{Deref, DerefMut},
     slice,
 };
-use manta_util::assert_all_eq_len;
+use openzl_util::assert_all_eq_len;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// State
 pub trait StateType {
@@ -200,7 +200,7 @@ where
             deserialize = "T::State: Deserialize<'de>, T::Challenge: Deserialize<'de>",
             serialize = "T::State: Serialize, T::Challenge: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -281,7 +281,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Parallel<T>(Vec<T>);

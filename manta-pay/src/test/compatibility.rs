@@ -26,7 +26,7 @@ use crate::{
         to_public::prove as prove_to_public,
     },
 };
-use manta_crypto::rand::OsRng;
+use openzl_util::rand::OsRng;
 
 /// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
 #[ignore = "This would fail because it'd download the data from main before merging."]

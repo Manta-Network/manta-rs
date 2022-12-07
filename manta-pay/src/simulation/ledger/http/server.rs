@@ -29,7 +29,7 @@ use manta_accounting::{
     asset::AssetList,
     wallet::{ledger::ReadResponse, signer::SyncData},
 };
-use manta_util::{
+use openzl_util::{
     http::tide::{self, listener::ToListener, Body, Response},
     serde::{de::DeserializeOwned, Serialize},
 };

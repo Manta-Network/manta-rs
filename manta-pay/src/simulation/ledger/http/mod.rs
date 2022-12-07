@@ -17,14 +17,14 @@
 //! Ledger HTTP Client and Server
 
 use crate::simulation::ledger::AccountId;
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 pub mod client;
 pub mod server;
 
 /// HTTP Request
 #[derive(Deserialize, Serialize)]
-#[serde(crate = "manta_util::serde", deny_unknown_fields)]
+#[serde(crate = "openzl_util::serde", deny_unknown_fields)]
 pub struct Request<T> {
     /// Account Id
     pub account: AccountId,

@@ -22,7 +22,7 @@ use manta_accounting::wallet::signer;
 use crate::config::{utxo::Checkpoint, Config};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 pub mod client;
 
@@ -58,7 +58,7 @@ pub type SignResult = signer::SignResult<Config>;
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum GetRequest {

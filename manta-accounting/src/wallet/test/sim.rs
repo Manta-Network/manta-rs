@@ -19,11 +19,13 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 use futures::stream::{self, SelectAll, Stream};
-use manta_crypto::rand::{CryptoRng, RngCore};
-use manta_util::future::LocalBoxFuture;
+use openzl_util::{
+    future::LocalBoxFuture,
+    rand::{CryptoRng, RngCore},
+};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Abstract Simulation
 pub trait Simulation {
@@ -75,7 +77,7 @@ where
             deserialize = "S::Event: Deserialize<'de>",
             serialize = "S::Event: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -123,7 +125,7 @@ where
             deserialize = "S: Deserialize<'de>, S::Actor: Deserialize<'de>",
             serialize = "S: Serialize, S::Actor: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -287,7 +289,7 @@ pub trait ActionSimulation {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ActionSim<S>(pub S)

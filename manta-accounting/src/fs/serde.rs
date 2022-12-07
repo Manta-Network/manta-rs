@@ -30,7 +30,7 @@ use core::{
     write,
 };
 use derive_more::Display;
-use manta_util::{
+use openzl_util::{
     into_array_unchecked, num,
     serde::{
         self,
@@ -47,7 +47,7 @@ use manta_util::{
 };
 
 #[doc(inline)]
-pub use manta_util::serde::{de::DeserializeOwned, Deserialize, Serialize};
+pub use openzl_util::serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 /// Serialization Module
 pub mod ser {
@@ -1292,7 +1292,7 @@ where
 /// Testing Framework
 pub mod test {
     use super::*;
-    use manta_util::serde::de::DeserializeOwned;
+    use openzl_util::serde::de::DeserializeOwned;
 
     /// Asserts that the encryption and decryption of `data` at a new file `path` with `password`
     /// succeed without error, and that the decrypted value matches the initial data.

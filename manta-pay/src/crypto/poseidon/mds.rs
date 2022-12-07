@@ -22,7 +22,7 @@ use crate::crypto::poseidon::{
 };
 use alloc::vec;
 use core::fmt::Debug;
-use manta_util::vec::{Vec, VecExt};
+use openzl_util::vec::{Vec, VecExt};
 
 /// MDS Matrix for both naive Poseidon Hash and optimized Poseidon Hash
 /// For detailed descriptions, please refer to <https://hackmd.io/8MdoHwoKTPmQfZyIKEYWXQ>
@@ -265,14 +265,12 @@ where
 mod test {
     use super::*;
     use crate::crypto::poseidon::matrix::Matrix;
-    use manta_crypto::{
-        arkworks::{
-            bls12_381::Fr,
-            constraint::fp::Fp,
-            ff::{field_new, UniformRand},
-        },
-        rand::OsRng,
+    use openzl_plugin_arkworks::{
+        bls12_381::Fr,
+        constraint::fp::Fp,
+        ff::{field_new, UniformRand},
     };
+    use openzl_util::rand::OsRng;
 
     /// Checks if creating mds matrices is correct.
     #[test]

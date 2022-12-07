@@ -23,15 +23,13 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use core::convert::Infallible;
-use manta_crypto::{
-    encryption::{
-        CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
-        EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
-    },
-    rand::{RngCore, Sample},
+use openzl_crypto::encryption::{
+    CiphertextType, Decrypt, DecryptedPlaintextType, DecryptionKeyType, Derive, Encrypt,
+    EncryptionKeyType, HeaderType, PlaintextType, RandomnessType,
 };
-use manta_util::{
+use openzl_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
+    rand::{RngCore, Sample},
     Array,
 };
 
