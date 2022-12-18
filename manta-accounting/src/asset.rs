@@ -1075,27 +1075,24 @@ pub struct AssetMetadata {
 impl AssetMetadata {
     /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
     #[inline]
-    pub fn display_value<V>(&self, value: V) -> String
+    pub fn display_value<V>(&self, value: V, digits: u32) -> String
     where
-        for<'v> &'v V: Div<u128, Output = u128>,
+        for<'v> &'v V: Div<u128, Output = u128>
     {
-        // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
-        //       more general?
-        const FRACTIONAL_DIGITS: u32 = 3;
         let value_base_units = &value / (10u128.pow(self.decimals));
-        let fractional_digits = &value / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
-            % (10u128.pow(FRACTIONAL_DIGITS));
-        format!("{value_base_units}.{fractional_digits:0>3}")
+        let fractional_digits = &value / (10u128.pow(self.decimals - digits))
+            % (10u128.pow(digits));
+        format!("{value_base_units}.{fractional_digits}")
     }
 
     /// Returns a string formatting of `value` interpreted using `self` as the metadata including
     /// the symbol.
     #[inline]
-    pub fn display<V>(&self, value: V) -> String
+    pub fn display<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
     {
-        format!("{} {}", self.display_value(value), self.symbol)
+        format!("{} {}", self.display_value(value, digits), self.symbol)
     }
 }
 
