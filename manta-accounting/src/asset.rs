@@ -1073,20 +1073,21 @@ pub struct AssetMetadata {
 }
 
 impl AssetMetadata {
-    /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
+    /// Returns a string formatting of only the `value` with `digits` fractional digits,
+    /// interpreted using `self` as the metadata.
     #[inline]
     pub fn display_value<V>(&self, value: V, digits: u32) -> String
     where
-        for<'v> &'v V: Div<u128, Output = u128>
+        for<'v> &'v V: Div<u128, Output = u128>,
     {
         let value_base_units = &value / (10u128.pow(self.decimals));
-        let fractional_digits = &value / (10u128.pow(self.decimals - digits))
-            % (10u128.pow(digits));
+        let fractional_digits =
+            &value / (10u128.pow(self.decimals - digits)) % (10u128.pow(digits));
         format!("{value_base_units}.{fractional_digits}")
     }
 
-    /// Returns a string formatting of `value` interpreted using `self` as the metadata including
-    /// the symbol.
+    /// Returns a string formatting of `value` with `digits` fractional digits, interpreted using
+    /// `self` as the metadata including the symbol.
     #[inline]
     pub fn display<V>(&self, value: V, digits: u32) -> String
     where
