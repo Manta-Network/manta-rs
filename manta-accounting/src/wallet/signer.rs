@@ -33,8 +33,9 @@ use crate::{
         batch::Join,
         canonical::{
             MultiProvingContext, PrivateTransfer, PrivateTransferShape, Selection, ToPrivate,
-            ToPublic, Transaction,
+            ToPublic, Transaction, TransferShape,
         },
+        receiver::ReceiverPost,
         requires_authorization,
         utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, Spend, UtxoReconstruct},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
@@ -1336,6 +1337,86 @@ where
         let account = self.state.accounts.get_default();
         account.address(&self.parameters.parameters)
     }
+
+    /// Returns the associated [`TransactionData`] of `transferpost`, namely the [`Asset`] and the
+    /// [`Identifier`]. Returns `None` if `transferpost` has an invalid shape,
+    /// or if `self` doesn't own the underlying assets in `transferpost`.
+    #[inline]
+    pub fn transaction_data(&self, transferpost: &TransferPost<C>) -> Option<TransactionData<C>>
+    where
+        Note<C>: Clone,
+    {
+        let shape = TransferShape::from_post(transferpost)?;
+        let parameters = &self.parameters.parameters;
+        let mut authorization_context = self.state.default_authorization_context(parameters);
+        let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
+        match shape {
+            TransferShape::ToPrivate => {
+                let ReceiverPost { utxo, note } = &transferpost.body.receiver_posts[0];
+                let (identifier, asset) =
+                    parameters.open_with_check(&decryption_key, utxo, note.clone())?;
+                Some(TransactionData::<C>::ToPrivate(identifier, asset))
+            }
+            TransferShape::PrivateTransfer => {
+                let mut transaction_data = Vec::new();
+                let receiver_posts = &transferpost.body.receiver_posts;
+                for receiver_post in receiver_posts.iter() {
+                    let ReceiverPost { utxo, note } = receiver_post;
+                    if let Some(identified_asset) =
+                        parameters.open_with_check(&decryption_key, utxo, note.clone())
+                    {
+                        transaction_data.push(identified_asset);
+                    }
+                }
+                if transaction_data.is_empty() {
+                    None
+                } else {
+                    Some(TransactionData::<C>::PrivateTransfer(transaction_data))
+                }
+            }
+            TransferShape::ToPublic => {
+                let ReceiverPost { utxo, note } = &transferpost.body.receiver_posts[0];
+                let (identifier, asset) =
+                    parameters.open_with_check(&decryption_key, utxo, note.clone())?;
+                Some(TransactionData::<C>::ToPublic(identifier, asset))
+            }
+        }
+    }
+}
+
+/// Transaction Data
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Asset<C>: Deserialize<'de>, Identifier<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize, Identifier<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub enum TransactionData<C>
+where
+    C: transfer::Configuration,
+{
+    /// To Private Transaction Data
+    ToPrivate(Identifier<C>, Asset<C>),
+
+    /// Private Transfer Transaction Data
+    PrivateTransfer(Vec<(Identifier<C>, Asset<C>)>),
+
+    /// To Public Transaction Data
+    ToPublic(Identifier<C>, Asset<C>),
 }
 
 impl<C> Connection<C> for Signer<C>
