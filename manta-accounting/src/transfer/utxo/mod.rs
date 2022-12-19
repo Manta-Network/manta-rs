@@ -270,7 +270,7 @@ pub trait DeriveAddress: AddressType {
 
 /// Utxo Reconstruction
 pub trait UtxoReconstruct: NoteOpen + DeriveAddress<SecretKey = Self::DecryptionKey> {
-    /// Builds a [`Utxo`](Self::Utxo) from `asset`, `identifier` and `address`.
+    /// Builds a [`Utxo`] from `asset`, `identifier` and `address`.
     fn utxo_reconstruct(
         &self,
         asset: &Self::Asset,
