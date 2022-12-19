@@ -259,7 +259,7 @@ pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType 
     }
 }
 
-/// Derive Address Type
+/// Derive Address
 pub trait DeriveAddress: AddressType {
     /// Secret Key Type
     type SecretKey;
