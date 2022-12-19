@@ -41,12 +41,12 @@ use manta_util::serde::{Deserialize, Serialize};
     serde(
         bound(
             deserialize = r"
-                S::Secret: Deserialize<'de>, 
-                S::Utxo: Deserialize<'de>, 
+                S::Secret: Deserialize<'de>,
+                S::Utxo: Deserialize<'de>,
                 S::Nullifier: Deserialize<'de>",
             serialize = r"
-                S::Secret: Serialize, 
-                S::Utxo: Serialize, 
+                S::Secret: Serialize,
+                S::Utxo: Serialize,
                 S::Nullifier: Serialize",
         ),
         crate = "manta_util::serde",
@@ -253,14 +253,14 @@ where
     serde(
         bound(
             deserialize = r"
-                S::Secret: Deserialize<'de>, 
-                S::Utxo: Deserialize<'de>, 
-                UtxoMembershipProof<S, COM>: Deserialize<'de>, 
+                S::Secret: Deserialize<'de>,
+                S::Utxo: Deserialize<'de>,
+                UtxoMembershipProof<S, COM>: Deserialize<'de>,
                 S::Nullifier: Deserialize<'de>",
             serialize = r"
-                S::Secret: Serialize, 
-                S::Utxo: Serialize, 
-                UtxoMembershipProof<S, COM>: Serialize, 
+                S::Secret: Serialize,
+                S::Utxo: Serialize,
+                UtxoMembershipProof<S, COM>: Serialize,
                 S::Nullifier: Serialize",
         ),
         crate = "manta_util::serde",
@@ -270,39 +270,39 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = r"
-            S::Secret: Clone, 
-            S::Utxo: Clone, 
-            UtxoMembershipProof<S, COM>: Clone, 
+            S::Secret: Clone,
+            S::Utxo: Clone,
+            UtxoMembershipProof<S, COM>: Clone,
             S::Nullifier: Clone"),
     Copy(bound = r"
-            S::Secret: Copy, 
-            S::Utxo: Copy, 
-            UtxoMembershipProof<S, COM>: Copy, 
+            S::Secret: Copy,
+            S::Utxo: Copy,
+            UtxoMembershipProof<S, COM>: Copy,
             S::Nullifier: Copy"),
     Debug(bound = r"
             S::Secret: Debug,
-            S::Utxo: Debug, 
-            UtxoMembershipProof<S, COM>: Debug, 
+            S::Utxo: Debug,
+            UtxoMembershipProof<S, COM>: Debug,
             S::Nullifier: Debug"),
     Default(bound = r"
             S::Secret: Default,
-            S::Utxo: Default, 
-            UtxoMembershipProof<S, COM>: Default, 
+            S::Utxo: Default,
+            UtxoMembershipProof<S, COM>: Default,
             S::Nullifier: Default"),
     Eq(bound = r"
         S::Secret: Eq,
-        S::Utxo: Eq, 
-        UtxoMembershipProof<S, COM>: Eq, 
+        S::Utxo: Eq,
+        UtxoMembershipProof<S, COM>: Eq,
         S::Nullifier: Eq"),
     Hash(bound = r"
             S::Secret: Hash,
-            S::Utxo: Hash, 
-            UtxoMembershipProof<S, COM>: Hash, 
+            S::Utxo: Hash,
+            UtxoMembershipProof<S, COM>: Hash,
             S::Nullifier: Hash"),
     PartialEq(bound = r"
             S::Secret: PartialEq,
-            S::Utxo: PartialEq, 
-            UtxoMembershipProof<S, COM>: PartialEq, 
+            S::Utxo: PartialEq,
+            UtxoMembershipProof<S, COM>: PartialEq,
             S::Nullifier: PartialEq")
 )]
 pub struct Sender<S, COM = ()>
@@ -478,11 +478,20 @@ where
     /// [`has_matching_utxo_accumulator_output`]: Self::has_matching_utxo_accumulator_output
     type ValidNullifier: AsRef<S::Nullifier>;
 
+    /// Unexpected Error Type
+    ///
+    /// This error describes situations in which ledger invariants have been broken but the system
+    /// must be able to handle them gracefully instead of crashing.
+    type Error;
+
     /// Checks if the ledger already contains the `nullifier` in its set of nullifiers.
     ///
     /// Existence of such a nullifier could indicate a possible double-spend and so the ledger does
     /// not accept duplicates.
-    fn is_unspent(&self, nullifier: S::Nullifier) -> Option<Self::ValidNullifier>;
+    fn is_unspent(
+        &self,
+        nullifier: S::Nullifier,
+    ) -> Result<Option<Self::ValidNullifier>, Self::Error>;
 
     /// Checks if `output` matches the current accumulated value of the UTXO accumulator that is
     /// stored on the ledger.
@@ -492,7 +501,7 @@ where
     fn has_matching_utxo_accumulator_output(
         &self,
         output: UtxoAccumulatorOutput<S>,
-    ) -> Option<Self::ValidUtxoAccumulatorOutput>;
+    ) -> Result<Option<Self::ValidUtxoAccumulatorOutput>, Self::Error>;
 
     /// Posts the `nullifier` to the ledger, spending the asset.
     ///
@@ -515,7 +524,7 @@ where
         super_key: &Self::SuperPostingKey,
         utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
         nullifier: Self::ValidNullifier,
-    ) {
+    ) -> Result<(), Self::Error> {
         self.spend_all(super_key, iter::once((utxo_accumulator_output, nullifier)))
     }
 
@@ -536,13 +545,18 @@ where
     /// [`spend`]: Self::spend
     /// [`spend_all`]: Self::spend_all
     #[inline]
-    fn spend_all<I>(&mut self, super_key: &Self::SuperPostingKey, iter: I)
+    fn spend_all<I>(
+        &mut self,
+        super_key: &Self::SuperPostingKey,
+        iter: I,
+    ) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = (Self::ValidUtxoAccumulatorOutput, Self::ValidNullifier)>,
     {
         for (utxo_accumulator_output, nullifier) in iter {
-            self.spend(super_key, utxo_accumulator_output, nullifier)
+            self.spend(super_key, utxo_accumulator_output, nullifier)?;
         }
+        Ok(())
     }
 }
 
@@ -550,10 +564,25 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = "Error: Deserialize<'de>",
+            serialize = "Error: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum SenderPostError {
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Error: Clone"),
+    Copy(bound = "Error: Copy"),
+    Debug(bound = "Error: Debug"),
+    Eq(bound = "Error: Eq"),
+    Hash(bound = "Error: Hash"),
+    PartialEq(bound = "Error: PartialEq")
+)]
+pub enum SenderPostError<Error> {
     /// Invalid UTXO Accumulator Output Error
     ///
     /// The sender was not constructed under the current state of the UTXO accumulator.
@@ -563,6 +592,9 @@ pub enum SenderPostError {
     ///
     /// The asset has already been spent.
     AssetSpent,
+
+    /// Unexpected Error
+    UnexpectedError(Error),
 }
 
 /// Sender Post
@@ -581,10 +613,10 @@ pub enum SenderPostError {
     serde(
         bound(
             deserialize = r"
-                UtxoAccumulatorOutput<S>: Deserialize<'de>, 
+                UtxoAccumulatorOutput<S>: Deserialize<'de>,
                 S::Nullifier: Deserialize<'de>",
             serialize = r"
-                UtxoAccumulatorOutput<S>: Serialize, 
+                UtxoAccumulatorOutput<S>: Serialize,
                 S::Nullifier: Serialize",
         ),
         crate = "manta_util::serde",
@@ -626,16 +658,21 @@ where
 
     /// Validates `self` on the sender `ledger`.
     #[inline]
-    pub fn validate<L>(self, ledger: &L) -> Result<SenderPostingKey<S, L>, SenderPostError>
+    pub fn validate<L>(
+        self,
+        ledger: &L,
+    ) -> Result<SenderPostingKey<S, L>, SenderPostError<L::Error>>
     where
         L: SenderLedger<S>,
     {
         Ok(SenderPostingKey {
             utxo_accumulator_output: ledger
                 .has_matching_utxo_accumulator_output(self.utxo_accumulator_output)
+                .map_err(SenderPostError::UnexpectedError)?
                 .ok_or(SenderPostError::InvalidUtxoAccumulatorOutput)?,
             nullifier: ledger
                 .is_unspent(self.nullifier)
+                .map_err(SenderPostError::UnexpectedError)?
                 .ok_or(SenderPostError::AssetSpent)?,
         })
     }
@@ -677,10 +714,10 @@ where
     serde(
         bound(
             deserialize = r"
-                L::ValidUtxoAccumulatorOutput: Deserialize<'de>, 
+                L::ValidUtxoAccumulatorOutput: Deserialize<'de>,
                 L::ValidNullifier: Deserialize<'de>",
             serialize = r"
-                L::ValidUtxoAccumulatorOutput: Serialize, 
+                L::ValidUtxoAccumulatorOutput: Serialize,
                 L::ValidNullifier: Serialize",
         ),
         crate = "manta_util::serde",
@@ -716,13 +753,17 @@ where
 {
     /// Posts `self` to the sender `ledger`.
     #[inline]
-    pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) {
-        ledger.spend(super_key, self.utxo_accumulator_output, self.nullifier);
+    pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) -> Result<(), L::Error> {
+        ledger.spend(super_key, self.utxo_accumulator_output, self.nullifier)
     }
 
     /// Posts all of the [`SenderPostingKey`] in `iter` to the sender `ledger`.
     #[inline]
-    pub fn post_all<I>(iter: I, ledger: &mut L, super_key: &L::SuperPostingKey)
+    pub fn post_all<I>(
+        iter: I,
+        ledger: &mut L,
+        super_key: &L::SuperPostingKey,
+    ) -> Result<(), L::Error>
     where
         I: IntoIterator<Item = Self>,
     {
