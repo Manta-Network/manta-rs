@@ -33,8 +33,9 @@ use manta_accounting::{
     asset::{Asset, AssetList},
     transfer::{
         canonical::TransferShape, receiver::ReceiverLedger, sender::SenderLedger,
-        InvalidSinkAccount, InvalidSourceAccount, SinkPostingKey, SourcePostingKey, TransferLedger,
-        TransferLedgerSuperPostingKey, TransferPostingKeyRef, UtxoAccumulatorOutput,
+        InvalidSinkAccount, InvalidSourceAccount, LedgerError, SinkPostingKey, SourcePostingKey,
+        TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKeyRef,
+        UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, ReadResponse},
@@ -226,13 +227,17 @@ impl SenderLedger<Parameters> for Ledger {
     type ValidNullifier = Wrap<Nullifier>;
     type ValidUtxoAccumulatorOutput = Wrap<UtxoAccumulatorOutput<Config>>;
     type SuperPostingKey = (Wrap<()>, ());
+    type Error = LedgerError;
 
     #[inline]
-    fn is_unspent(&self, nullifier: Nullifier) -> Option<Self::ValidNullifier> {
+    fn is_unspent(
+        &self,
+        nullifier: Nullifier,
+    ) -> Result<Option<Self::ValidNullifier>, Self::Error> {
         if self.nullifiers.contains(&nullifier) {
-            None
+            Ok(None)
         } else {
-            Some(Wrap(nullifier))
+            Ok(Some(Wrap(nullifier)))
         }
     }
 
@@ -240,16 +245,16 @@ impl SenderLedger<Parameters> for Ledger {
     fn has_matching_utxo_accumulator_output(
         &self,
         output: UtxoAccumulatorOutput<Config>,
-    ) -> Option<Self::ValidUtxoAccumulatorOutput> {
+    ) -> Result<Option<Self::ValidUtxoAccumulatorOutput>, Self::Error> {
         if output == Default::default() {
-            return Some(Wrap(output));
+            return Ok(Some(Wrap(output)));
         }
         for tree in self.utxo_forest.forest.as_ref() {
             if tree.root() == &output {
-                return Some(Wrap(output));
+                return Ok(Some(Wrap(output)));
             }
         }
-        None
+        Ok(None)
     }
 
     #[inline]
@@ -258,22 +263,24 @@ impl SenderLedger<Parameters> for Ledger {
         super_key: &Self::SuperPostingKey,
         utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
         nullifier: Self::ValidNullifier,
-    ) {
+    ) -> Result<(), Self::Error> {
         let _ = (utxo_accumulator_output, super_key);
         self.nullifiers.insert(nullifier.0);
+        Ok(())
     }
 }
 
 impl ReceiverLedger<Parameters> for Ledger {
     type ValidUtxo = Wrap<Utxo>;
     type SuperPostingKey = (Wrap<()>, ());
+    type Error = LedgerError;
 
     #[inline]
-    fn is_not_registered(&self, utxo: Utxo) -> Option<Self::ValidUtxo> {
+    fn is_not_registered(&self, utxo: Utxo) -> Result<Option<Self::ValidUtxo>, Self::Error> {
         if self.utxos.contains(&utxo) {
-            None
+            Ok(None)
         } else {
-            Some(Wrap(utxo))
+            Ok(Some(Wrap(utxo)))
         }
     }
 
@@ -283,15 +290,16 @@ impl ReceiverLedger<Parameters> for Ledger {
         super_key: &Self::SuperPostingKey,
         utxo: Self::ValidUtxo,
         note: FullIncomingNote,
-    ) {
+    ) -> Result<(), Self::Error> {
         let _ = super_key;
         let utxo_hash = self.parameters.item_hash(&utxo.0, &mut ());
         self.shards
             .get_mut(&MerkleTreeConfiguration::tree_index(&utxo_hash))
-            .expect("All shards exist when the ledger is constructed.")
+            .ok_or(LedgerError::ReceiverLedgerError)?
             .insert((utxo.0, note));
         self.utxos.insert(utxo.0);
         self.utxo_forest.push(&utxo_hash);
+        Ok(())
     }
 }
 
@@ -302,7 +310,7 @@ impl TransferLedger<Config> for Ledger {
     type ValidSinkAccount = WrapPair<Self::AccountId, AssetValue>;
     type ValidProof = Wrap<()>;
     type SuperPostingKey = ();
-    type UpdateError = Infallible;
+    type Error = LedgerError;
 
     #[inline]
     fn check_source_accounts<I>(
@@ -375,22 +383,27 @@ impl TransferLedger<Config> for Ledger {
     fn is_valid(
         &self,
         posting_key: TransferPostingKeyRef<Config, Self>,
-    ) -> Option<(Self::ValidProof, Self::Event)> {
-        let verifying_context = self.verifying_context.select(TransferShape::select(
+    ) -> Result<Option<(Self::ValidProof, Self::Event)>, <Self as TransferLedger<Config>>::Error>
+    {
+        let transfershape = TransferShape::select(
             posting_key.authorization_key.is_some(),
             posting_key.asset_id.is_some(),
             posting_key.sources.len(),
             posting_key.senders.len(),
             posting_key.receivers.len(),
             posting_key.sinks.len(),
-        )?);
-        ProofSystem::verify(
+        );
+        if transfershape.is_none() {
+            return Ok(None);
+        }
+        let verifying_context = self.verifying_context.select(transfershape.unwrap());
+        Ok(ProofSystem::verify(
             verifying_context,
             &posting_key.generate_proof_input(),
             &posting_key.proof,
         )
-        .ok()?
-        .then_some((Wrap(()), ()))
+        .ok()
+        .map(|_| (Wrap(()), ())))
     }
 
     #[inline]
@@ -401,21 +414,21 @@ impl TransferLedger<Config> for Ledger {
         sources: Vec<SourcePostingKey<Config, Self>>,
         sinks: Vec<SinkPostingKey<Config, Self>>,
         proof: Self::ValidProof,
-    ) -> Result<(), Self::UpdateError> {
+    ) -> Result<(), <Self as TransferLedger<Config>>::Error> {
         let _ = (proof, super_key);
         for WrapPair(account_id, withdraw) in sources {
             *self
                 .accounts
                 .get_mut(&account_id)
-                .expect("We checked that this account exists.")
+                .ok_or(LedgerError::TransferLedgerError)?
                 .get_mut(&asset_id)
-                .expect("We checked that this account has enough balance to withdraw.") -= withdraw;
+                .ok_or(LedgerError::TransferLedgerError)? -= withdraw;
         }
         for WrapPair(account_id, deposit) in sinks {
             *self
                 .accounts
                 .get_mut(&account_id)
-                .expect("We checked that this account exists.")
+                .ok_or(LedgerError::TransferLedgerError)?
                 .entry(asset_id)
                 .or_default() += deposit;
         }

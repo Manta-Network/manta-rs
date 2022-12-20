@@ -1223,6 +1223,25 @@ where
     pub deposit: C::AssetValue,
 }
 
+/// Transfer Ledger Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum LedgerError {
+    /// Sender Ledger Error
+    SenderLedgerError,
+
+    /// Receiver Ledger Error
+    ReceiverLedgerError,
+
+    /// Transfer Ledger Error
+    TransferLedgerError,
+}
+
 /// Transfer Ledger Post Error
 pub type TransferLedgerPostError<C, L> = TransferPostError<
     C,
