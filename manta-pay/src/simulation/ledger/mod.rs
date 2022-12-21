@@ -33,9 +33,8 @@ use manta_accounting::{
     asset::{Asset, AssetList},
     transfer::{
         canonical::TransferShape, receiver::ReceiverLedger, sender::SenderLedger,
-        InvalidSinkAccount, InvalidSourceAccount, LedgerError, SinkPostingKey, SourcePostingKey,
-        TransferLedger, TransferLedgerSuperPostingKey, TransferPostingKeyRef,
-        UtxoAccumulatorOutput,
+        InvalidSinkAccount, InvalidSourceAccount, SinkPostingKey, SourcePostingKey, TransferLedger,
+        TransferLedgerSuperPostingKey, TransferPostingKeyRef, UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, ReadResponse},
@@ -221,6 +220,25 @@ impl Ledger {
         }
         true
     }
+}
+
+/// Transfer Ledger Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum LedgerError {
+    /// Sender Ledger Error
+    SenderLedgerError,
+
+    /// Receiver Ledger Error
+    ReceiverLedgerError,
+
+    /// Transfer Ledger Error
+    TransferLedgerError,
 }
 
 impl SenderLedger<Parameters> for Ledger {
