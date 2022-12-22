@@ -1082,7 +1082,7 @@ impl AssetMetadata {
     pub fn display_value<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
-        V: std::fmt::Display,
+        V: manta_crypto::arkworks::std::fmt::Display,
     {
         let value_length: u32 = value.to_string().len().try_into().unwrap();
         if value_length <= digits {
@@ -1102,7 +1102,7 @@ impl AssetMetadata {
     pub fn display<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
-        V: std::fmt::Display,
+        V: manta_crypto::arkworks::std::fmt::Display,
     {
         format!("{} {}", self.display_value(value, digits), self.symbol)
     }
