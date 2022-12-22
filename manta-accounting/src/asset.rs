@@ -67,7 +67,7 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
-use std::{
+use self::std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
 };
