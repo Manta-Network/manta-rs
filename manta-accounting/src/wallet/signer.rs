@@ -277,7 +277,7 @@ where
     Hash(bound = "TransferPost<C>: Hash"),
     PartialEq(bound = "TransferPost<C>: PartialEq")
 )]
-pub struct TransactionDataRequest<C>(Vec<TransferPost<C>>)
+pub struct TransactionDataRequest<C>(pub Vec<TransferPost<C>>)
 where
     C: transfer::Configuration;
 
@@ -303,7 +303,7 @@ where
     Hash(bound = "TransactionData<C>: Hash"),
     PartialEq(bound = "TransactionData<C>: PartialEq")
 )]
-pub struct TransactionDataResponse<C>(Vec<Option<TransactionData<C>>>)
+pub struct TransactionDataResponse<C>(pub Vec<Option<TransactionData<C>>>)
 where
     C: transfer::Configuration;
 
