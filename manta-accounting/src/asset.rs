@@ -26,7 +26,7 @@
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     format,
-    string::String,
+    string::{String, ToString},
     vec,
     vec::Vec,
 };
@@ -40,6 +40,7 @@ use core::{
 };
 use derive_more::{Display, From};
 use manta_crypto::{
+    arkworks::std,
     constraint::{HasInput, Input},
     eclair::{
         self,
@@ -64,7 +65,7 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
-use std::{
+use self::std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
 };
@@ -1079,11 +1080,17 @@ impl AssetMetadata {
     pub fn display_value<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
+        V: manta_crypto::arkworks::std::fmt::Display,
+        V: std::ops::Sub<u128, Output = u128>,
     {
         let value_base_units = &value / (10u128.pow(self.decimals));
         let fractional_digits =
             &value / (10u128.pow(self.decimals - digits)) % (10u128.pow(digits));
-        format!("{value_base_units}.{fractional_digits}")
+
+        let decimals: u128 = value - (value_base_units * 10u128.pow(digits));
+        let decimals_length: u32 = decimals.to_string().len().try_into().unwrap();
+        let leading_zeros = "0".repeat((digits - decimals_length).try_into().unwrap());
+        format!("{value_base_units}.{leading_zeros}{fractional_digits}")
     }
 
     /// Returns a string formatting of `value` with `digits` fractional digits, interpreted using
@@ -1092,6 +1099,8 @@ impl AssetMetadata {
     pub fn display<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
+        V: manta_crypto::arkworks::std::fmt::Display,
+        V: std::ops::Sub<u128, Output = u128>,
     {
         format!("{} {}", self.display_value(value, digits), self.symbol)
     }
