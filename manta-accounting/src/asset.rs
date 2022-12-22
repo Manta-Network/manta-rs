@@ -26,10 +26,8 @@
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     format,
-    string::String,
-    string::ToString,
-    vec,
-    vec::Vec,
+    string::{String, ToString},
+    vec::{self, Vec},
 };
 use core::{
     borrow::Borrow,
