@@ -1082,15 +1082,15 @@ impl AssetMetadata {
     where
         for<'v> &'v V: Div<u128, Output = u128>,
         V: manta_crypto::arkworks::std::fmt::Display,
-        V: std::ops::Sub<u128, Output = u128>
+        V: std::ops::Sub<u128, Output = u128>,
     {
         let value_base_units = &value / (10u128.pow(self.decimals));
         let fractional_digits =
             &value / (10u128.pow(self.decimals - digits)) % (10u128.pow(digits));
 
-        let decimals: u128 = value - (value_base_units*10u128.pow(digits));
+        let decimals: u128 = value - (value_base_units * 10u128.pow(digits));
         let decimals_length: u32 = decimals.to_string().len().try_into().unwrap();
-        let leading_zeros = "0".repeat((digits-decimals_length).try_into().unwrap());
+        let leading_zeros = "0".repeat((digits - decimals_length).try_into().unwrap());
         format!("{value_base_units}.{leading_zeros}{fractional_digits}")
     }
 
@@ -1101,7 +1101,7 @@ impl AssetMetadata {
     where
         for<'v> &'v V: Div<u128, Output = u128>,
         V: manta_crypto::arkworks::std::fmt::Display,
-        V: std::ops::Sub<u128, Output = u128>
+        V: std::ops::Sub<u128, Output = u128>,
     {
         format!("{} {}", self.display_value(value, digits), self.symbol)
     }
