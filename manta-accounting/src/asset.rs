@@ -24,6 +24,7 @@
 #![allow(clippy::uninlined_format_args)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9715 on Display implementation on Asset below
 
 use alloc::{
+    string::ToString,
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     format,
     string::String,
@@ -40,6 +41,7 @@ use core::{
 };
 use derive_more::{Display, From};
 use manta_crypto::{
+    arkworks::std,
     constraint::{HasInput, Input},
     eclair::{
         self,
@@ -59,6 +61,7 @@ use manta_util::{
     num::CheckedSub,
     SizeLimit,
 };
+
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -1079,7 +1082,14 @@ impl AssetMetadata {
     pub fn display_value<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
+        V: std::fmt::Display,
     {
+        let value_length: u32 = value.to_string().len().try_into().unwrap();
+        if value_length <= digits {
+            let difference = digits - value_length;
+            return format!("0.{}{}", "0".repeat(difference.try_into().unwrap()), value);
+        }
+
         let value_base_units = &value / (10u128.pow(self.decimals));
         let fractional_digits =
             &value / (10u128.pow(self.decimals - digits)) % (10u128.pow(digits));
@@ -1092,6 +1102,7 @@ impl AssetMetadata {
     pub fn display<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
+        V: std::fmt::Display,
     {
         format!("{} {}", self.display_value(value, digits), self.symbol)
     }
