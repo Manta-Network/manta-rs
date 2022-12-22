@@ -24,10 +24,10 @@
 #![allow(clippy::uninlined_format_args)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9715 on Display implementation on Asset below
 
 use alloc::{
-    string::ToString,
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     format,
     string::String,
+    string::ToString,
     vec,
     vec::Vec,
 };
@@ -61,7 +61,6 @@ use manta_util::{
     num::CheckedSub,
     SizeLimit,
 };
-
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
