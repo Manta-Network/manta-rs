@@ -49,6 +49,8 @@ use manta_util::ops::ControlFlow;
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use self::signer::{TransactionDataRequest, TransactionDataResponse};
+
 pub mod balance;
 pub mod ledger;
 pub mod signer;
@@ -383,6 +385,18 @@ where
             .await
             .map_err(Error::SignerConnectionError)?
             .map_err(Error::SignError)
+    }
+
+    /// Attempts to process TransferPosts and returns the corresponding TransactionData.
+    #[inline]
+    pub async fn transaction_data(
+        &mut self,
+        transfer_posts: Vec<TransferPost<C>>,
+    ) -> Result<TransactionDataResponse<C>, Error<C, L, S>> {
+        self.signer
+            .transaction_data(TransactionDataRequest(transfer_posts))
+            .await
+            .map_err(Error::SignerConnectionError)
     }
 
     /// Posts a transaction to the ledger, returning a success [`Response`] if the `transaction`
