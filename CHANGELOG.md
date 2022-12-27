@@ -17,7 +17,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#296](https://github.com/Manta-Network/manta-rs/pull/296) Fix AssetMetadata display for values less than 1
 - [\#294](https://github.com/Manta-Network/manta-rs/pull/294) Distinguish between panic-errors and possible-fix-errors
 
-
 ### Security
 
 ## [0.5.8] - 2022-12-03
