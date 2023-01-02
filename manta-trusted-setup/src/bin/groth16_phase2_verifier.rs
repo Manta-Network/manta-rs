@@ -250,3 +250,61 @@ fn contribution_hashes() {
         }
     }
 }
+
+/// The `prepare` method writes a `State`, which is just a wrapper
+/// around a prover key. This deserializes, unwraps, reserializes.
+#[test]
+fn convert_state_to_pk() {
+    use manta_crypto::arkworks::serialize::CanonicalSerialize;
+    use manta_trusted_setup::ceremony::util::deserialize_from_file;
+    use std::{fs::OpenOptions, path::PathBuf};
+
+    let to_private_path = PathBuf::from(
+        "/Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29/to_private_state_4382",
+    );
+    let to_public_path = PathBuf::from(
+        "/Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29/to_public_state_4382",
+    );
+    let private_transfer_path = PathBuf::from("/Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29/private_transfer_state_4382");
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(
+            to_private_path
+                .parent()
+                .expect("should have parent")
+                .join("to_private_pk"),
+        )
+        .expect("unable to create file");
+    let state: State<Config> =
+        deserialize_from_file(to_private_path).expect("unable to load state");
+    CanonicalSerialize::serialize(&state.0, &mut file).expect("Unable to serialize");
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(
+            to_public_path
+                .parent()
+                .expect("should have parent")
+                .join("to_public_pk"),
+        )
+        .expect("unable to create file");
+    let state: State<Config> = deserialize_from_file(to_public_path).expect("unable to load state");
+    CanonicalSerialize::serialize(&state.0, &mut file).expect("Unable to serialize");
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(
+            private_transfer_path
+                .parent()
+                .expect("should have parent")
+                .join("private_transfer_pk"),
+        )
+        .expect("unable to create file");
+    let state: State<Config> =
+        deserialize_from_file(private_transfer_path).expect("unable to load state");
+    CanonicalSerialize::serialize(&state.0, &mut file).expect("Unable to serialize");
+}
