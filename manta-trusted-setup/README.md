@@ -16,7 +16,7 @@ If you have total trust in the Manta Network team then you can simply use the ne
 
 ## High Trust: Hash Checks Only
 
-We have published a list of contribution hashes here (TODO!). These hashes are commitments to each of the 4,382 ceremony contributions. If you trust that Manta has correctly computed these hashes from the ceremony transcript, then it is sufficient to check that the hashes in this list match the published claims from ceremony participants. For example, you or someone you trust may have announced their contribution via twitter:
+We have published a list of contribution hashes [here](https://github.com/Manta-Network/manta-rs/blob/feat/ts_verifier/manta-trusted-setup/contribution_hashes.txt). These hashes are commitments to each of the 4,382 ceremony contributions. If you trust that Manta has correctly computed these hashes from the ceremony transcript, then it is sufficient to check that the hashes in this list match the published claims from ceremony participants. For example, you or someone you trust may have announced their contribution via twitter:
 
 ![tweet](./docs/contribution_hash_announcement.png)
 
@@ -24,9 +24,9 @@ To check whether this contribution is included in the final proving key, you can
 
 ## Medium Trust: Contribution Proof Checks
 
-Instead of trusting that Manta created the contribution hash list correctly, you can generate it yourself from the ceremony data, which is hosted here (TODO!). The ceremony data contains all intermediate states and cryptographic proofs that each contribution obeyed the MPC protocol. This is a little under 140 Gb of data. Before demonstrating how to verify these data, let us explain carefully the trust assumptions:
+Instead of trusting that Manta created the contribution hash list correctly, you can generate it yourself from the ceremony data, which is hosted here (TODO!). The ceremony data contains all intermediate states and cryptographic proofs that each contribution obeyed the MPC protocol. This is a little under 140 Gb of data. Before demonstrating how to verify this data, let us explain carefully the trust assumptions:
 
-This level of verification checks that each state of the MPC is built from the last according to the MPC protocol. However, it does *not* check that the genesis state of the MPC was computed correctly from a Phase 1 KZG trusted setup and the Manta Pay circuit description. That is, you are trusting that Manta generated the initial proving keys correctly from a secure set of KZG parameters. If you use the verification tool we provide, you are also trusting that it is written correctly; the source code is yours to examine, of course.
+This level of verification checks that each state of the MPC is built from the last according to the MPC protocol. However, it does *not* check that the genesis state of the MPC was computed correctly from a Phase 1 KZG trusted setup and the Manta Pay circuit description. That is, you are trusting that Manta generated the initial proving keys correctly from a secure set of KZG parameters. If you use the verification tool we provide, you are also trusting that it is written correctly; the [source code](https://github.com/Manta-Network/manta-rs/blob/feat/ts_verifier/manta-trusted-setup/src/bin/groth16_phase2_verifier.rs) is yours to examine, of course.
 
 To perform this level of verification, clone this branch of the repository and download all the ceremony data to some directory. Use the following command to initiate the verification process:
 ```sh
@@ -36,9 +36,9 @@ The `path_to_ceremony_data` argument should be replaced by the path to the direc
 
 This process will generate four new files in the directory containing ceremony data. These consist of three auxiliary files containing the challenge hashes for contributions to the three individual Manta Pay circuits as well as one file containing the overall contribution hashes. It is this last file (`contribution_hashes.txt`) that contains the hashes that were announced by participants, as in the above tweet.
 
-If the process terminates without error then all contribution proofs were valid, *i.e.* the ceremony obeyed the MPC protocol. The hashes `contribution_hashes.txt` can be checked against those provided in the previous section.
+If the process terminates without error then all contribution proofs were valid, *i.e.* the ceremony obeyed the MPC protocol. The hashes `contribution_hashes.txt` can be compared to those provided in the previous section.
 
-Note that this process may take a long time and require a moderate amount of resources (about 15 hrs on 32 Gb RAM AWS c6i.4xlarge instance).
+Note that this process may take a long time (about 15 hrs on 32 Gb RAM AWS c6i.4xlarge instance).
 
 ## Low Trust: Initial State Check
 
@@ -54,14 +54,14 @@ The `path_to_challenge_0072` is a path to the file containing the PPoT round 72 
 
 This generates the initial MPC state and challenge files. Move these to the directory containing all ceremony data to replace the genesis state with the one you just generated, then perform the check from the previous section.
 
-This level of verification completely eliminates the need to trust Manta Network, but still requires that one trust in the security of the first 72 rounds of the PPoT ceremony.
+This level of verification completely eliminates trust in the ceremony coordinator (Manta Network), but still requires that one trust in the security of the first 72 rounds of the PPoT ceremony.
 
 ## No Trust: PPoT Check (the most hardcore)
 
-To eliminate trust in the PPoT ceremony, one would have to also verify the contribution proofs for the first 72 rounds of PPoT. This is quite an endeavor, as that corresponds to about 7 Tb of data that must be downloaded and checked.
+To eliminate trust in the PPoT ceremony, one must also verify the contribution proofs for the first 72 rounds of PPoT. This is quite an endeavor, as that corresponds to about 7 Tb of data that must be downloaded and checked.
 
 There is a shortcut, however: rather than checking the full parameter set for each round of PPoT, one can check only as many powers as are needed to form the Manta Pay proving keys. This is only $2^{19}$ powers, as opposed to the full $2^{28}$ generated by PPoT. This reduces the verification cost by a factor of about 500 by performing far fewer scalar multiplications. Note however that challenge hashes still must be computed using the full parameter sets, so there is no way to avoid downloading all 7 Tb of parameters.
 
-Manta performed this cheaper verification using tools that can be found in [this repository](https://github.com/Manta-Network/ppot-verifier). We concluded that all the powers of tau needed to generate our proving keys were computed according to the phase 1 MPC protocol.
+Manta performed this cheaper verification using tools that can be found in [this repository](https://github.com/Manta-Network/ppot-verifier). We concluded that all the powers of tau needed to generate our proving keys were computed according to the phase 1 MPC protocol, and are thus secure as long as at least 1 of the 72 participants was honest.
 
 For another PPoT verification tool, see Kobi Gurkan's [repository](https://github.com/kobigurk/phase2-bn254/tree/powers_28).
