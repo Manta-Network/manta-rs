@@ -1,48 +1,67 @@
-# manta-trusted-setup
+# Manta Pay Trusted Setup
 
-For support, please contact us on [Discord](https://discord.gg/AZTZvK7X).
+From November 28, 2022 to December 29, 2022, Manta Network held a trusted setup ceremony to generate the Groth16 proving keys for the Manta Pay protocol circuits. With 4,382 individual contributions, this was the largest trusted setup thus far in web 3 history. 
 
-This guide explains how to install and run the client from source code. Users who do not wish to inspect the source code themselves are encouraged to follow the instructions for a quick download [here](https://docs.manta.network/docs/guides/TrustedSetup). The remainder of this guide assumes that the user wishes to install from source code.
+The results of the ceremony are now available to the public for verification. We have provided the full ceremony history, including all contribution hashes, the state of the proving keys after each contribution, and the validity proofs that each contribution was made according to the multi-party computation (MPC) protocol. By verifying this chain of proofs, users can be certain that the Manta Pay proving keys are the result of a MPC and carry the 1-of-N security guarantee provided by the MPC protocol. For a layperson's explanation of this MPC, see [here](https://docs.manta.network/docs/concepts/TrustedSetup); for a technical description of the protocol, see [here](https://eprint.iacr.org/2017/1050).
 
-To build the trusted setup client from source code you will need the Rust compiler. If you do not have this installed, follow the OS-specific instructions [here](https://www.rust-lang.org/tools/install). If you already have Rust installed make sure you are using the latest version by running the `rustup update` command.
+We have provided tools to help users to verify the ceremony results. The remainder of this document explains how to use these tools.
 
-## Installation
-After installing Rust, clone this repository to your computer. Open a terminal, navigate to the folder where you wish to install the client, and use the command
+# Trust Assumptions
+
+"Ceremony verification" can mean many things depending on the level of trust a user has in the ceremony coordinators. The more a user trusts Manta Network, the less rigorously they may wish to verify the ceremony results. We will explain these varying levels of rigor in order from most to least trust. Note that more rigorous levels of verification require more resources and expertise.
+
+## Total Trust: No Verification
+
+If you have total trust in the Manta Network team then you can simply use the network without verifying the ceremony results. This is a bit like stepping on a bus without checking that the driver has a license and is what the vast majority of users will do.
+
+## High Trust: Hash Checks Only
+
+We have published a list of contribution hashes here (TODO!). These hashes are commitments to each of the 4,382 ceremony contributions. If you trust that Manta has correctly computed these hashes from the ceremony transcript, then it is sufficient to check that the hashes in this list match the published claims from ceremony participants. For example, you or someone you trust may have announced their contribution via twitter:
+
+![tweet](./docs/contribution_hash_announcement.png)
+
+To check whether this contribution is included in the final proving key, you can check its contribution hash against the published list. Of course, this assumes that the list was computed correctly.
+
+## Medium Trust: Contribution Proof Checks
+
+Instead of trusting that Manta created the contribution hash list correctly, you can generate it yourself from the ceremony data, which is hosted here (TODO!). The ceremony data contains all intermediate states and cryptographic proofs that each contribution obeyed the MPC protocol. This is a little under 140 Gb of data. Before demonstrating how to verify these data, let us explain carefully the trust assumptions:
+
+This level of verification checks that each state of the MPC is built from the last according to the MPC protocol. However, it does *not* check that the genesis state of the MPC was computed correctly from a Phase 1 KZG trusted setup and the Manta Pay circuit description. That is, you are trusting that Manta generated the initial proving keys correctly from a secure set of KZG parameters. If you use the verification tool we provide, you are also trusting that it is written correctly; the source code is yours to examine, of course.
+
+To perform this level of verification, clone this branch of the repository and download all the ceremony data to some directory. Use the following command to initiate the verification process:
 ```sh
-git clone https://github.com/Manta-Network/manta-rs.git
+cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_verifier -- path_to_ceremony_data 0
 ```
+The `path_to_ceremony_data` argument should be replaced by the path to the directory where you have downloaded the ceremony data. The `0` argument indicates that you wish to begin verification at round 0 of the ceremony. If for some reason you wish to verify the ceremony data during multiple sessions, this argument can be used to start the verification from round `n` of the ceremony.
 
-## Registration
-To use the client for registration: open a terminal, navigate to the folder where you downloaded the client, and use the command
+This process will generate four new files in the directory containing ceremony data. These consist of three auxiliary files containing the challenge hashes for contributions to the three individual Manta Pay circuits as well as one file containing the overall contribution hashes. It is this last file (`contribution_hashes.txt`) that contains the hashes that were announced by participants, as in the above tweet.
+
+If the process terminates without error then all contribution proofs were valid, *i.e.* the ceremony obeyed the MPC protocol. The hashes `contribution_hashes.txt` can be checked against those provided in the previous section.
+
+Note that this process may take a long time and require a moderate amount of resources (about 15 hrs on 32 Gb RAM AWS c6i.4xlarge instance).
+
+## Low Trust: Initial State Check
+
+In addition to checking the contribution proofs as above, a user may wish to check that the ceremony's genesis state was computed correctly. This requires computing the genesis state from Phase 1 KZG parameters and the circuit description. 
+
+The Phase 1 used in this ceremony was Round 72 of the Perpetual Powers of Tau (PPoT) ceremony. These parameters may be downloaded [here](https://ppot.blob.core.windows.net/public/challenge_0072). Note that due to the large size of the PPoT ceremony this file is approximately 100 Gb.
+
+The genesis state can then be computed using the following command:
 ```sh
-cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client register
+cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_prepare path_to_challenge_0072 path_to_directory
 ```
-You will see a screen like this ![register](./docs/ts_guide_register.png)
+The `path_to_challenge_0072` is a path to the file containing the PPoT round 72 file; the `path_to_directory` is a path to an output directory where the genesis state will be placed. The process takes about 5 minutes (on an M1 Mac with 16 Gb RAM).
 
-The output contains a link (green) that leads you to our registration form. Here you may answer some optional questions, then submit the form to complete your registration.
+This generates the initial MPC state and challenge files. Move these to the directory containing all ceremony data to replace the genesis state with the one you just generated, then perform the check from the previous section.
 
-Take note of the secret passphrase displayed in red. Save this secret phrase somewhere safe and do not share it with anyone. Without this secret you will not be able to participate in the ceremony. You are now registered; please wait until the ceremony begins to proceed to the next step. You will be notified by email when the ceremony is about to begin.
+This level of verification completely eliminates the need to trust Manta Network, but still requires that one trust in the security of the first 72 rounds of the PPoT ceremony.
 
-> **NOTE**: There may be some lag between when you submit your registration info and when it has been uploaded to the server -- we perform some manual screening to prevent abuse. 
+## No Trust: PPoT Check (the most hardcore)
 
-## Contribution
-At any time when the ceremony is open, you may contribute using the same client you already installed. Open a terminal, navigate to the folder where you downloaded the client, and use the command
-```sh
-cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_client contribute
-```
-You will first be prompted for the passphrase you generated above:
-![receiving](./docs/ts_guide_secret_prompt.png)
+To eliminate trust in the PPoT ceremony, one would have to also verify the contribution proofs for the first 72 rounds of PPoT. This is quite an endeavor, as that corresponds to about 7 Tb of data that must be downloaded and checked.
 
-After entering your secret, you will see a screen like this ![queue](./docs/ts_guide_queue.png)
-Most likely you will have to wait in a queue; this is because there are many participants in the ceremony and only one can contribute at a time. Do not take any action. Just leave this terminal open until the process completes.
+There is a shortcut, however: rather than checking the full parameter set for each round of PPoT, one can check only as many powers as are needed to form the Manta Pay proving keys. This is only $2^{19}$ powers, as opposed to the full $2^{28}$ generated by PPoT. This reduces the verification cost by a factor of about 500 by performing far fewer scalar multiplications. Note however that challenge hashes still must be computed using the full parameter sets, so there is no way to avoid downloading all 7 Tb of parameters.
 
-When you reach the front of the queue you will begin downloading data from the server:
-![receiving](./docs/ts_guide_receiving.png)
+Manta performed this cheaper verification using tools that can be found in [this repository](https://github.com/Manta-Network/ppot-verifier). We concluded that all the powers of tau needed to generate our proving keys were computed according to the phase 1 MPC protocol.
 
-Then the client will begin computing your contribution. Once this is complete, the result will be sent to the server:
-![awaiting](./docs/ts_guide_awaiting_confirmation.png)
-The server will check the validity of your contribution. This may take a few minutes. Do not leave this process until you receive confirmation.
-
-Once your contribution has been checked you will receive a confirmation message from the server:
-![success](./docs/ts_guide_success.png)
-Please finish your contribution by tweeting the message we provided (or posting to other public forums). While this step is not strictly necessary, it improves the security of the ceremony by creating a public record of your participation.
+For another PPoT verification tool, see Kobi Gurkan's [repository](https://github.com/kobigurk/phase2-bn254/tree/powers_28).

@@ -17,30 +17,33 @@
 //! Trusted Setup Ceremony Verifier
 
 use clap::Parser;
-use core::{cmp::PartialEq, fmt::Debug};
+use core::fmt::Debug;
 use manta_trusted_setup::{
     ceremony::util::deserialize_from_file,
     groth16::{
         ceremony::{
-            config::ppot::Config, server::filename_format, Ceremony, CeremonyError, UnexpectedError,
+            config::ppot::Config, message::ContributeResponse, server::filename_format, Ceremony,
+            CeremonyError, UnexpectedError,
         },
         mpc::{verify_transform, Proof, State},
     },
 };
-use manta_util::serde::{de::DeserializeOwned, Serialize};
+use manta_util::Array;
 use std::{
     fs::File,
-    io::Write,
-    path::PathBuf,
+    io::{BufRead, BufReader, Write},
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_verifier -- /Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29
-
-/// Server CLI
+/// Verification CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
+    /// Directory containing ceremony transcript
     path: String,
+
+    /// Starting round for verification
+    start: u64,
 }
 
 impl Arguments {
@@ -48,7 +51,9 @@ impl Arguments {
     #[inline]
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
         let path = PathBuf::from(self.path);
-        verify_ceremony(path)
+        verify_ceremony(&path, self.start)?;
+        contribution_hashes(&path);
+        Ok(())
     }
 }
 
@@ -56,43 +61,42 @@ fn main() {
     Arguments::parse().run().unwrap();
 }
 
-fn verify_ceremony<C>(path: PathBuf) -> Result<(), CeremonyError<C>>
+fn verify_ceremony<C>(path: &Path, start: u64) -> Result<(), CeremonyError<C>>
 where
-    C: Ceremony,
-    C::Challenge: DeserializeOwned + PartialEq + Clone + Serialize + Debug + AsRef<[u8]>,
+    C: Ceremony<Challenge = Array<u8, 64>>,
 {
     // Need to read from files, so get circuit names
     let names: Vec<String> =
-        deserialize_from_file(path.join(r"circuit_names")).expect("Cannot open circuit name file.");
+        deserialize_from_file(path.join(r"circuit_names")).expect("Circuit names file is missing.");
     println!("Will verify contributions to {names:?}");
     // Keep track of verification times
     let mut verification_times = Vec::<Duration>::new();
-    // Need to know how many rounds to verify
-    let rounds: u64 = deserialize_from_file(path.join(r"round_number")).map_err(|e| {
-        CeremonyError::Unexpected(UnexpectedError::Serialization {
-            message: format!("{e:?}"),
-        })
-    })?;
-    println!("Checking a ceremony with {rounds:?} contributions");
 
     // Check each circuit
     for name in names.clone() {
         println!("Checking contributions to circuit {}", name.clone());
-
+        let mut challenge_output =
+            File::create(path.join(format!("{}_computed_challenges", name.clone())))
+                .expect("Unable to create output file");
+        let mut round = start;
         let now = Instant::now();
-        // Start by loading the defaults (TODO: This ought to generate them itself from a circuit description)
-        let mut state: State<C> =
-            deserialize_from_file(filename_format(&path, name.clone(), "state".to_string(), 0))
-                .map_err(|e| {
-                    CeremonyError::Unexpected(UnexpectedError::Serialization {
-                        message: format!("{e:?}"),
-                    })
-                })?;
+        // Load starting round
+        let mut state: State<C> = deserialize_from_file(filename_format(
+            path,
+            name.clone(),
+            "state".to_string(),
+            start,
+        ))
+        .map_err(|e| {
+            CeremonyError::Unexpected(UnexpectedError::Serialization {
+                message: format!("{e:?}"),
+            })
+        })?;
         let mut challenge: C::Challenge = deserialize_from_file(filename_format(
-            &path,
+            path,
             name.clone(),
             "challenge".to_string(),
-            0,
+            start,
         ))
         .map_err(|e| {
             CeremonyError::Unexpected(UnexpectedError::Serialization {
@@ -100,80 +104,132 @@ where
             })
         })?;
 
-        let mut challenge_output =
-            File::create(path.join(format!("{:?}_computed_challenges", name.clone())))
-                .expect("Unable to create output file");
-        for i in 1..(rounds + 1) {
-            let proof: Proof<C> =
-                deserialize_from_file(filename_format(&path, name.clone(), "proof".to_string(), i))
-                    .map_err(|e| {
-                        CeremonyError::Unexpected(UnexpectedError::Serialization {
-                            message: format!("{e:?}"),
-                        })
-                    })?;
-            let next_state: State<C> =
-                deserialize_from_file(filename_format(&path, name.clone(), "state".to_string(), i))
-                    .map_err(|e| {
-                        CeremonyError::Unexpected(UnexpectedError::Serialization {
-                            message: format!("{e:?}"),
-                        })
-                    })?;
-
-            // Just a small sanity check to make sure the client really does transform the keys
-            if state.0.delta_g1 == next_state.0.delta_g1 {
-                println!("Warning: Trivial contribution occurred in round {i}");
-            }
-            (challenge, state) =
-                verify_transform(&challenge, &state, next_state, proof).map_err(|e| {
-                    println!("Encountered error {e:?}");
-                    CeremonyError::BadRequest
-                })?;
-
-            writeln!(challenge_output, "{:?}", hex::encode(challenge.clone()))
-                .expect("Unable to write challenge hash to file");
-            // Check that this matches the purported challenge in ceremony transcript
-            let asserted_challenge: C::Challenge = deserialize_from_file(filename_format(
-                &path,
+        // Check until no more files are found
+        loop {
+            round += 1;
+            let proof_result: Result<Proof<C>, _> = deserialize_from_file(filename_format(
+                path,
                 name.clone(),
-                "challenge".to_string(),
-                i,
-            ))
-            .map_err(|e| {
-                CeremonyError::Unexpected(UnexpectedError::Serialization {
-                    message: format!("{e:?}"),
-                })
-            })?;
-            if challenge != asserted_challenge {
-                println!("Warning: Inconsistent challenge hashes.\nComputed challenge is {challenge:?}\nArchived Challenge is {asserted_challenge:?}");
-            }
-            if i % 100 == 0 {
-                println!("Have checked {i} contributions successfully");
+                "proof".to_string(),
+                round,
+            ));
+            let next_state_result: Result<State<C>, _> = deserialize_from_file(filename_format(
+                path,
+                name.clone(),
+                "state".to_string(),
+                round,
+            ));
+            match (proof_result, next_state_result) {
+                (Ok(proof), Ok(next_state)) => {
+                    if round % 50 == 0 {
+                        println!("Verifying round {round}");
+                    }
+                    (challenge, state) = verify_transform(&challenge, &state, next_state, proof)
+                        .map_err(|e| {
+                            println!("Encountered error {e:?} in round {round}");
+                            CeremonyError::BadRequest
+                        })?;
+                    writeln!(challenge_output, "{} round {round}", hex::encode(challenge))
+                        .expect("Unable to write challenge hash to file");
+                }
+                _ => {
+                    break;
+                }
             }
         }
-        writeln!(
-            challenge_output,
-            "Verified {rounds} contributions to {name} in {:?}",
-            now.elapsed()
-        )
-        .expect("Unable to write to file");
+
         verification_times.push(now.elapsed());
-        println!("Checked all contributions in {:?}", now.elapsed());
-        // Write challenges to file
+        println!(
+            "Checked {} contributions to {name} in {:?}",
+            round - 1,
+            now.elapsed()
+        );
     }
     println!("All checks successful.");
     for (name, time) in names.iter().zip(verification_times.iter()) {
-        println!("Verified {rounds} contributions to {name} in {time:?}");
+        println!("Verified contributions to {name} in {time:?}");
     }
     Ok(())
 }
 
+/// Combines the challenge hashes from each individual circuit to form the overall
+/// contribution hash that participants published as a commitment to their
+/// contribution.
+fn contribution_hashes(path: &Path) {
+    let private_transfer_challenges = BufReader::new(
+        File::open(path.join("private_transfer_computed_challenges")).expect("Unable to open file"),
+    )
+    .lines();
+    let to_private_challenges = BufReader::new(
+        File::open(path.join("to_private_computed_challenges")).expect("Unable to open file"),
+    )
+    .lines();
+    let to_public_challenges = BufReader::new(
+        File::open(path.join("to_public_computed_challenges")).expect("Unable to open file"),
+    )
+    .lines();
+    let mut output =
+        File::create(path.join("contribution_hashes.txt")).expect("Unable to create output file");
+
+    for ((private_transfer, to_private), to_public) in private_transfer_challenges
+        .zip(to_private_challenges)
+        .zip(to_public_challenges)
+    {
+        match ((private_transfer, to_private), to_public) {
+            ((Ok(private_transfer), Ok(to_private)), Ok(to_public)) => {
+                // Hashes were written as "hash_as_hex round n"
+                let private_transfer: Vec<&str> = private_transfer.split(' ').into_iter().collect();
+                let to_private: Vec<&str> = to_private.split(' ').into_iter().collect();
+                let to_public: Vec<&str> = to_public.split(' ').into_iter().collect();
+                // Check that all hashes correspond to same contribution round:
+                assert_eq!(to_private[2], to_public[2]);
+                assert_eq!(to_private[2], private_transfer[2]);
+                let index = to_private[2]
+                    .parse::<u64>()
+                    .expect("Unexpected value for round number");
+
+                let contribution_response = ContributeResponse::<Config> {
+                    index,
+                    challenge: Vec::<Array<u8, 64>>::from([
+                        Array::from_vec(hex::decode(to_private[0]).unwrap()),
+                        Array::from_vec(hex::decode(to_public[0]).unwrap()),
+                        Array::from_vec(hex::decode(private_transfer[0]).unwrap()),
+                    ]),
+                };
+                let contribution_hash =
+                    <Config as Ceremony>::contribution_hash(&contribution_response);
+                writeln!(
+                    output,
+                    "{} round {}",
+                    hex::encode(contribution_hash),
+                    private_transfer[2]
+                )
+                .expect("Unable to write challenge hash to file");
+            }
+            _ => println!("Read error occurred"),
+        }
+    }
+}
+
+/// Can be used to compute contribution hashes if the challenge
+/// hashes from individual circuits are already present in the specified directory.
+/// Modify `path` as needed.
+#[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
+#[test]
+fn compute_contribution_hashes() {
+    let path = PathBuf::from("/Users/thomascnorton/Desktop/server_data_test");
+    contribution_hashes(&path);
+}
+
+/// If circuit_names file is missing, this is a way of generating a new one.
+/// Change `path` as desired.
+#[ignore]
 #[test]
 fn create_names_file() {
     use manta_trusted_setup::ceremony::util::serialize_into_file;
     use std::fs::OpenOptions;
-    let path = PathBuf::from(
-        "/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/circuit_names",
-    );
+
+    let path = PathBuf::from("/circuit_names");
     let names = Vec::from([
         "private_transfer".to_string(),
         "to_private".to_string(),
@@ -187,95 +243,27 @@ fn create_names_file() {
     .expect("Unable to serialize names");
 }
 
-#[test]
-fn create_rounds_file() {
-    use manta_trusted_setup::ceremony::util::serialize_into_file;
-    use std::fs::OpenOptions;
-    let path = PathBuf::from(
-        "/Users/thomascnorton/Documents/Manta/manta-rs/manta-trusted-setup/data/round_number",
-    );
-    let rounds = 2u64;
-    serialize_into_file(
-        OpenOptions::new().write(true).truncate(true).create(true),
-        &path,
-        &rounds,
-    )
-    .expect("Unable to serialize rounds");
-}
-
-#[test]
-fn contribution_hashes() {
-    use manta_trusted_setup::groth16::ceremony::message::ContributeResponse;
-    use manta_util::Array;
-    use std::io::{BufRead, BufReader};
-
-    let path = PathBuf::from("/Users/thomascnorton/Documents/Manta/ceremony_hashes_22_12_29");
-
-    let private_transfer_challenges = BufReader::new(
-        File::open(path.join("private_transfer_computed_challenges")).expect("Unable to open file"),
-    )
-    .lines();
-    let to_private_challenges = BufReader::new(
-        File::open(path.join("to_private_computed_challenges")).expect("Unable to open file"),
-    )
-    .lines();
-    let to_public_challenges = BufReader::new(
-        File::open(path.join("to_public_computed_challenges")).expect("Unable to open file"),
-    )
-    .lines();
-
-    for (i, ((private_transfer, to_private), to_public)) in private_transfer_challenges
-        .zip(to_private_challenges)
-        .zip(to_public_challenges)
-        .enumerate()
-    {
-        match ((private_transfer, to_private), to_public) {
-            ((Ok(private_transfer), Ok(to_private)), Ok(to_public)) => {
-                let contribution_response = ContributeResponse::<Config> {
-                    index: (i + 1) as u64,
-                    challenge: Vec::<Array<u8, 64>>::from([
-                        Array::from_vec(hex::decode(&to_private[1..129]).unwrap()),
-                        Array::from_vec(hex::decode(&to_public[1..129]).unwrap()),
-                        Array::from_vec(hex::decode(&private_transfer[1..129]).unwrap()),
-                    ]),
-                };
-                let contribution_hash =
-                    <Config as Ceremony>::contribution_hash(&contribution_response);
-                println!(
-                    "Computed the contribution hash {:?}",
-                    hex::encode(contribution_hash)
-                );
-            }
-            _ => println!("Read error occurred"),
-        }
-    }
-}
-
 /// The `prepare` method writes a `State`, which is just a wrapper
 /// around a prover key. This deserializes, unwraps, reserializes.
+/// Modify the path as appropriate. 4382 refers to the total number
+/// of ceremony contributions.
+#[ignore]
 #[test]
 fn convert_state_to_pk() {
     use manta_crypto::arkworks::serialize::CanonicalSerialize;
     use manta_trusted_setup::ceremony::util::deserialize_from_file;
     use std::{fs::OpenOptions, path::PathBuf};
 
-    let to_private_path = PathBuf::from(
-        "/Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29/to_private_state_4382",
-    );
-    let to_public_path = PathBuf::from(
-        "/Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29/to_public_state_4382",
-    );
-    let private_transfer_path = PathBuf::from("/Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29/private_transfer_state_4382");
+    // Modify this to the appropriate path
+    let directory_path = PathBuf::from("");
+    let to_private_path = directory_path.join("to_private_state_4382");
+    let to_public_path = directory_path.join("to_public_state_4382");
+    let private_transfer_path = directory_path.join("private_transfer_state_4382");
 
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
-        .open(
-            to_private_path
-                .parent()
-                .expect("should have parent")
-                .join("to_private_pk"),
-        )
+        .open(directory_path.join("to_private_pk"))
         .expect("unable to create file");
     let state: State<Config> =
         deserialize_from_file(to_private_path).expect("unable to load state");
@@ -284,12 +272,7 @@ fn convert_state_to_pk() {
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
-        .open(
-            to_public_path
-                .parent()
-                .expect("should have parent")
-                .join("to_public_pk"),
-        )
+        .open(directory_path.join("to_public_pk"))
         .expect("unable to create file");
     let state: State<Config> = deserialize_from_file(to_public_path).expect("unable to load state");
     CanonicalSerialize::serialize(&state.0, &mut file).expect("Unable to serialize");
@@ -297,12 +280,7 @@ fn convert_state_to_pk() {
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)
-        .open(
-            private_transfer_path
-                .parent()
-                .expect("should have parent")
-                .join("private_transfer_pk"),
-        )
+        .open(directory_path.join("private_transfer_pk"))
         .expect("unable to create file");
     let state: State<Config> =
         deserialize_from_file(private_transfer_path).expect("unable to load state");

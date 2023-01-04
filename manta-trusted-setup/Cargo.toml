@@ -25,19 +25,16 @@ is-it-maintained-open-issues = { repository = "Manta-Network/manta-rs" }
 maintenance = { status = "actively-developed" }
 
 [[bin]]
-name = "contribution_hash_calculator"
-required-features = ["clap", "ppot-client", "reqwest", "tokio"]
-
-[[bin]]
-name = "contributor_list_generator"
-
-[[bin]]
 name = "groth16_phase2_client"
 required-features = ["clap", "ppot-client", "reqwest", "tokio"]
 
 [[bin]]
+name = "groth16_phase2_prepare"
+required-features = ["clap", "memmap", "ppot-client", "serde", "tokio"]
+
+[[bin]]
 name = "groth16_phase2_verifier"
-required-features = ["clap", "ppot-client", "reqwest", "tokio"]
+required-features = ["clap", "memmap", "ppot-client", "reqwest", "tokio"]
 
 [features]
 # Bincode for Message Signing
@@ -102,6 +99,7 @@ derivative = { version = "2.2.0", default-features = false, features = ["use_cor
 dialoguer = { version = "0.10.2", optional = true, default-features = false }
 hex = { version = "0.4.3", optional = true, default-features = false }
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["arkworks", "getrandom", "rand_chacha", "dalek"] }
+manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "parameters"] }
 manta-util = { path = "../manta-util", default-features = false }
 memmap = { version = "0.7.0", optional = true, default-features = false }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }

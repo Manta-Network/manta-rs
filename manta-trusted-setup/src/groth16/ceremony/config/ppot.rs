@@ -42,21 +42,19 @@ use core::fmt::{self, Debug, Display};
 use dialoguer::{theme::ColorfulTheme, Input};
 use manta_crypto::{
     arkworks::{
-        bn254::{self, Fr},
-        constraint::{fp::Fp, FpVar, R1CS},
+        bn254,
+        constraint::R1CS,
         ec::{AffineCurve, PairingEngine},
-        ff::field_new,
         pairing::Pairing,
-        r1cs_std::eq::EqGadget,
         serialize::{CanonicalSerialize, SerializationError},
     },
     dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH},
-    eclair::alloc::{
-        mode::{Public, Secret},
-        Allocate,
-    },
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     signature,
+};
+use manta_pay::{
+    config::{FullParametersRef, PrivateTransfer, ToPrivate, ToPublic},
+    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
 };
 use manta_util::{
     into_array_unchecked,
@@ -718,30 +716,33 @@ impl Ceremony for Config {
     }
 }
 
-impl Circuits<Self> for Config {
+impl Circuits<<Self as Pairing>::Scalar> for Config {
     #[inline]
     fn circuits() -> Vec<(R1CS<<Self as Pairing>::Scalar>, String)> {
-        let mut circuits = Vec::new();
-        //
-        // Placeholder:
-        for i in 0..3 {
-            let mut cs = R1CS::for_contexts();
-            dummy_circuit(&mut cs);
-            circuits.push((cs, format!("dummy_{i}")));
-        }
-        circuits
+        vec![
+            (
+                ToPrivate::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "to_private".to_string(),
+            ),
+            (
+                ToPublic::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "to_public".to_string(),
+            ),
+            (
+                PrivateTransfer::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "private_transfer".to_string(),
+            ),
+        ]
     }
-}
-
-/// Generates a dummy R1CS circuit.
-#[inline]
-pub fn dummy_circuit(cs: &mut R1CS<<Config as Pairing>::Scalar>) {
-    let a = Fp(field_new!(Fr, "2")).as_known::<Secret, FpVar<_>>(cs);
-    let b = Fp(field_new!(Fr, "3")).as_known::<Secret, FpVar<_>>(cs);
-    let c = &a * &b;
-    let d = Fp(field_new!(Fr, "6")).as_known::<Public, FpVar<_>>(cs);
-    c.enforce_equal(&d)
-        .expect("enforce_equal is not allowed to fail");
 }
 
 /// Displays whenever `result` is an `Err`-variant and formats the error.
