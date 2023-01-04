@@ -972,9 +972,7 @@ where
             sources: (0..SOURCES)
                 .map(|_| compiler.allocate_unknown::<Public, _>())
                 .collect(),
-            senders: (0..SENDERS)
-                .map(|_| compiler.allocate_unknown())
-                .collect(),
+            senders: (0..SENDERS).map(|_| compiler.allocate_unknown()).collect(),
             receivers: (0..RECEIVERS)
                 .map(|_| compiler.allocate_unknown())
                 .collect(),

@@ -255,8 +255,7 @@ fn convert_state_to_keys() {
     use std::path::PathBuf;
 
     // Modify this to the appropriate path
-    let directory_path =
-        PathBuf::from("/");
+    let directory_path = PathBuf::from("/");
     let to_private_path = directory_path.join("to_private_state_4382");
     let to_public_path = directory_path.join("to_public_state_4382");
     let private_transfer_path = directory_path.join("private_transfer_state_4382");
