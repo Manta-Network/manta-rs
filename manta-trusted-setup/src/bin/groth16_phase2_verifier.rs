@@ -18,6 +18,7 @@
 
 use clap::Parser;
 use core::fmt::Debug;
+use manta_crypto::arkworks::serialize::CanonicalSerialize;
 use manta_trusted_setup::{
     ceremony::util::deserialize_from_file,
     groth16::{
@@ -30,7 +31,7 @@ use manta_trusted_setup::{
 };
 use manta_util::Array;
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -249,40 +250,60 @@ fn create_names_file() {
 /// of ceremony contributions.
 #[ignore]
 #[test]
-fn convert_state_to_pk() {
-    use manta_crypto::arkworks::serialize::CanonicalSerialize;
-    use manta_trusted_setup::ceremony::util::deserialize_from_file;
-    use std::{fs::OpenOptions, path::PathBuf};
+fn convert_state_to_keys() {
+    use std::path::PathBuf;
 
     // Modify this to the appropriate path
-    let directory_path = PathBuf::from("");
+    let directory_path =
+        PathBuf::from("/Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29");
     let to_private_path = directory_path.join("to_private_state_4382");
     let to_public_path = directory_path.join("to_public_state_4382");
     let private_transfer_path = directory_path.join("private_transfer_state_4382");
 
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open(directory_path.join("to_private_pk"))
-        .expect("unable to create file");
-    let state: State<Config> =
-        deserialize_from_file(to_private_path).expect("unable to load state");
-    CanonicalSerialize::serialize(&state.0, &mut file).expect("Unable to serialize");
+    extract_keys(&to_private_path, "to_private".to_string()).expect("Extraction error");
+    extract_keys(&to_public_path, "to_public".to_string()).expect("Extraction error");
+    extract_keys(&private_transfer_path, "private_transfer".to_string()).expect("Extraction error");
+}
 
-    let mut file = OpenOptions::new()
+/// Extracts prover key and verifier key from state located at `path` and writes
+/// them to a file according to the provided `name`. The new files are located
+/// in the same directory as `path`.
+pub fn extract_keys(path: &Path, name: String) -> Result<(), UnexpectedError> {
+    let mut pk_file = OpenOptions::new()
         .write(true)
         .create(true)
-        .open(directory_path.join("to_public_pk"))
-        .expect("unable to create file");
-    let state: State<Config> = deserialize_from_file(to_public_path).expect("unable to load state");
-    CanonicalSerialize::serialize(&state.0, &mut file).expect("Unable to serialize");
-
-    let mut file = OpenOptions::new()
+        .open(
+            path.parent()
+                .expect("Path has no parent")
+                .join(format!("{name}_pk")),
+        )
+        .map_err(|_| UnexpectedError::Serialization {
+            message: "Unable to create file at desired location.".to_string(),
+        })?;
+    let mut vk_file = OpenOptions::new()
         .write(true)
         .create(true)
-        .open(directory_path.join("private_transfer_pk"))
-        .expect("unable to create file");
+        .open(
+            path.parent()
+                .expect("Path has no parent")
+                .join(format!("{name}_vk")),
+        )
+        .map_err(|_| UnexpectedError::Serialization {
+            message: "Unable to create file at desired location.".to_string(),
+        })?;
     let state: State<Config> =
-        deserialize_from_file(private_transfer_path).expect("unable to load state");
-    CanonicalSerialize::serialize(&state.0, &mut file).expect("Unable to serialize");
+        deserialize_from_file(path).map_err(|_| UnexpectedError::Serialization {
+            message: "Unable to deserialize state at provided path".to_string(),
+        })?;
+    CanonicalSerialize::serialize_uncompressed(&state.0, &mut pk_file).map_err(|_| {
+        UnexpectedError::Serialization {
+            message: "Unable to serialize prover key.".to_string(),
+        }
+    })?;
+    CanonicalSerialize::serialize_uncompressed(&state.0.vk, &mut vk_file).map_err(|_| {
+        UnexpectedError::Serialization {
+            message: "Unable to serialize prover key.".to_string(),
+        }
+    })?;
+    Ok(())
 }
