@@ -218,7 +218,8 @@ fn contribution_hashes(path: &Path) {
 #[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
 #[test]
 fn compute_contribution_hashes() {
-    let path = PathBuf::from("/Users/thomascnorton/Desktop/server_data_test");
+    // Modify this to correct path
+    let path = PathBuf::from("/");
     contribution_hashes(&path);
 }
 
@@ -255,7 +256,7 @@ fn convert_state_to_keys() {
 
     // Modify this to the appropriate path
     let directory_path =
-        PathBuf::from("/Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29");
+        PathBuf::from("/");
     let to_private_path = directory_path.join("to_private_state_4382");
     let to_public_path = directory_path.join("to_public_state_4382");
     let private_transfer_path = directory_path.join("private_transfer_state_4382");

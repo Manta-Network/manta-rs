@@ -24,7 +24,7 @@ To check whether this contribution is included in the final proving key, you can
 
 ## Medium Trust: Contribution Proof Checks
 
-Instead of trusting that Manta created the contribution hash list correctly, you can generate it yourself from the ceremony data, which is hosted [here](https://trusted-setup-data-backup.s3.us-east-1.amazonaws.com/index.html). The ceremony data contains all intermediate states and cryptographic proofs that each contribution obeyed the MPC protocol. This is a little under 140 Gb of data. Before demonstrating how to verify this data, let us explain carefully the trust assumptions:
+Instead of trusting that Manta created the contribution hash list correctly, you can generate it yourself from the ceremony data, which is hosted [here](https://trusted-setup-data-backup.s3.us-east-1.amazonaws.com/index.html). The ceremony data contains all intermediate states and cryptographic proofs that each contribution obeyed the MPC protocol. This is a little under 140 Gb of data. Before demonstrating how to verify this data, let us carefully explain the trust assumptions:
 
 This level of verification checks that each state of the MPC is built from the last according to the MPC protocol. However, it does *not* check that the genesis state of the MPC was computed correctly from a Phase 1 KZG trusted setup and the Manta Pay circuit description. That is, you are trusting that Manta generated the initial proving keys correctly from a secure set of KZG parameters. If you use the verification tool we provide, you are also trusting that it is written correctly; the [source code](https://github.com/Manta-Network/manta-rs/blob/feat/ts_verifier/manta-trusted-setup/src/bin/groth16_phase2_verifier.rs) is yours to examine, of course.
 
@@ -36,13 +36,13 @@ The `path_to_ceremony_data` argument should be replaced by the path to the direc
 
 This process will generate four new files in the directory containing ceremony data. These consist of three auxiliary files containing the challenge hashes for contributions to the three individual Manta Pay circuits as well as one file containing the overall contribution hashes. It is this last file (`contribution_hashes.txt`) that contains the hashes that were announced by participants, as in the above tweet.
 
-If the process terminates without error then all contribution proofs were valid, *i.e.* the ceremony obeyed the MPC protocol and the proving keys are secure as long as at least 1 of the 4,382 participants contributed honestly. The hashes `contribution_hashes.txt` can be compared to those provided in the previous section.
+If the process terminates without error then all contribution proofs were valid, *i.e.* the ceremony obeyed the MPC protocol and the proving keys are secure as long as at least 1 of the 4,382 participants contributed honestly. The hashes in `contribution_hashes.txt` can be compared to those provided in the previous section.
 
 Note that this process may take a long time (about 15 hrs on 32 Gb RAM AWS c6i.4xlarge instance).
 
 ## Low Trust: Initial State Check
 
-In addition to checking the contribution proofs as above, a user may wish to check that the ceremony's genesis state was computed correctly. This requires computing the genesis state from Phase 1 KZG parameters and the circuit description. 
+In addition to checking the contribution proofs as above, a user may wish to check that the ceremony's genesis state was computed correctly. This requires computing the genesis state from Phase 1 KZG parameters and the circuit descriptions. 
 
 The Phase 1 used in this ceremony was Round 72 of the Perpetual Powers of Tau (PPoT) ceremony. These parameters may be downloaded [here](https://ppot.blob.core.windows.net/public/challenge_0072). Note that due to the large size of the PPoT ceremony this file is approximately 100 Gb.
 
@@ -54,7 +54,7 @@ The `path_to_challenge_0072` is a path to the file containing the PPoT round 72 
 
 This generates the initial MPC state and challenge files. Move these to the directory containing all ceremony data to replace the genesis state and challenge with the one you just generated, then perform the check from the previous section.
 
-This level of verification completely eliminates trust in the ceremony coordinator (Manta Network), but still requires that one trust in the security of the PPoT Phase 1 parameters used.
+This level of verification completely eliminates trust in the ceremony coordinator (Manta Network), but still implies trust in the security of the PPoT Phase 1 parameters used.
 
 ## No Trust: PPoT Check (the most hardcore)
 
