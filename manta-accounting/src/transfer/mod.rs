@@ -1081,7 +1081,16 @@ where
 
     /// Error Type
     type Error: From<<Self as ReceiverLedger<Parameters<C>>>::Error>
-        + From<<Self as SenderLedger<Parameters<C>>>::Error>;
+        + From<<Self as SenderLedger<Parameters<C>>>::Error>
+        + Into<
+            TransferPostError<
+                C,
+                Self::AccountId,
+                <Self as SenderLedger<Parameters<C>>>::Error,
+                <Self as ReceiverLedger<Parameters<C>>>::Error,
+                <Self as TransferLedger<C>>::Error,
+            >,
+        >;
 
     /// Checks that the balances associated to the source accounts are sufficient to withdraw the
     /// amount given in `sources`.
@@ -1103,11 +1112,10 @@ where
         I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
     /// Checks that the transfer proof stored in `posting_key` is valid.
-    #[allow(clippy::type_complexity)] // NOTE: Clippy is too harsh here.
     fn is_valid(
         &self,
         posting_key: TransferPostingKeyRef<C, Self>,
-    ) -> Result<Option<(Self::ValidProof, Self::Event)>, <Self as TransferLedger<C>>::Error>;
+    ) -> Result<(Self::ValidProof, Self::Event), <Self as TransferLedger<C>>::Error>;
 
     /// Updates the public balances in the ledger, finishing the transaction.
     ///
@@ -1780,19 +1788,17 @@ where
             .into_iter()
             .map(move |r| r.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
-        let (proof, event) = match ledger.is_valid(TransferPostingKeyRef {
-            authorization_key: &self.authorization_signature.map(|s| s.authorization_key),
-            asset_id: &self.body.asset_id,
-            sources: &source_posting_keys,
-            senders: &sender_posting_keys,
-            receivers: &receiver_posting_keys,
-            sinks: &sink_posting_keys,
-            proof: self.body.proof,
-        }) {
-            Ok(Some((proof, event))) => (proof, event),
-            Ok(None) => return Err(TransferPostError::InvalidProof),
-            Err(err) => return Err(TransferPostError::UnexpectedError(err)),
-        };
+        let (proof, event) = ledger
+            .is_valid(TransferPostingKeyRef {
+                authorization_key: &self.authorization_signature.map(|s| s.authorization_key),
+                asset_id: &self.body.asset_id,
+                sources: &source_posting_keys,
+                senders: &sender_posting_keys,
+                receivers: &receiver_posting_keys,
+                sinks: &sink_posting_keys,
+                proof: self.body.proof,
+            })
+            .map_err(|x| x.into())?;
         Ok(TransferPostingKey {
             asset_id: self.body.asset_id,
             source_posting_keys,

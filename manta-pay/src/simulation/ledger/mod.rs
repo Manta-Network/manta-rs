@@ -32,9 +32,12 @@ use indexmap::IndexSet;
 use manta_accounting::{
     asset::{Asset, AssetList},
     transfer::{
-        canonical::TransferShape, receiver::ReceiverLedger, sender::SenderLedger,
-        InvalidSinkAccount, InvalidSourceAccount, SinkPostingKey, SourcePostingKey, TransferLedger,
-        TransferLedgerSuperPostingKey, TransferPostingKeyRef, UtxoAccumulatorOutput,
+        canonical::TransferShape,
+        receiver::{ReceiverLedger, ReceiverPostError},
+        sender::{SenderLedger, SenderPostError},
+        InvalidAuthorizationSignature, InvalidSinkAccount, InvalidSourceAccount, SinkPostingKey,
+        SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostError,
+        TransferPostingKeyRef, UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, ReadResponse},
@@ -222,6 +225,74 @@ impl Ledger {
     }
 }
 
+/// Sender Ledger Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SenderLedgerError {
+    /// Invalid UTXO Accumulator Output Error
+    ///
+    /// The sender was not constructed under the current state of the UTXO accumulator.
+    InvalidUtxoAccumulatorOutput,
+
+    /// Asset Spent Error
+    ///
+    /// The asset has already been spent.
+    AssetSpent,
+
+    /// Unexpected Error
+    UnexpectedError,
+}
+
+impl From<SenderLedgerError> for SenderPostError<SenderLedgerError> {
+    #[inline]
+    fn from(value: SenderLedgerError) -> Self {
+        match value {
+            SenderLedgerError::AssetSpent => SenderPostError::AssetSpent,
+            SenderLedgerError::InvalidUtxoAccumulatorOutput => {
+                SenderPostError::InvalidUtxoAccumulatorOutput
+            }
+            SenderLedgerError::UnexpectedError => {
+                SenderPostError::UnexpectedError(SenderLedgerError::UnexpectedError)
+            }
+        }
+    }
+}
+
+/// Receiver Ledger Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ReceiverLedgerError {
+    /// Asset Registered Error
+    ///
+    /// The asset has already been registered with the ledger.
+    AssetRegistered,
+
+    /// Unexpected Error
+    UnexpectedError,
+}
+
+impl From<ReceiverLedgerError> for ReceiverPostError<ReceiverLedgerError> {
+    #[inline]
+    fn from(value: ReceiverLedgerError) -> Self {
+        match value {
+            ReceiverLedgerError::AssetRegistered => ReceiverPostError::AssetRegistered,
+            ReceiverLedgerError::UnexpectedError => {
+                ReceiverPostError::UnexpectedError(ReceiverLedgerError::UnexpectedError)
+            }
+        }
+    }
+}
+
 /// Transfer Ledger Error
 #[cfg_attr(
     feature = "serde",
@@ -230,32 +301,104 @@ impl Ledger {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum LedgerError {
+pub enum TransferLedgerError {
+    /// Invalid Transfer Post Shape
+    InvalidShape,
+
+    /// Invalid Authorization Signature
+    ///
+    /// The authorization signature for the [`TransferPost`] was not valid.
+    InvalidAuthorizationSignature(InvalidAuthorizationSignature),
+
+    /// Invalid Source Accounts
+    InvalidSourceAccount(InvalidSourceAccount<Config, AccountId>),
+
+    /// Invalid Sink Accounts
+    InvalidSinkAccount(InvalidSinkAccount<Config, AccountId>),
+
     /// Sender Ledger Error
-    SenderLedgerError,
+    Sender(SenderLedgerError),
 
     /// Receiver Ledger Error
-    ReceiverLedgerError,
+    Receiver(ReceiverLedgerError),
 
-    /// Transfer Ledger Error
-    TransferLedgerError,
+    /// Duplicate Spend Error
+    DuplicateSpend,
+
+    /// Duplicate Mint Error
+    DuplicateMint,
+
+    /// Invalid Transfer Proof Error
+    ///
+    /// Validity of the transfer could not be proved by the ledger.
+    InvalidProof,
+
+    /// Unexpected Error
+    ///
+    /// An unexpected error occured.
+    UnexpectedError,
+}
+
+impl From<TransferLedgerError>
+    for TransferPostError<
+        Config,
+        AccountId,
+        SenderLedgerError,
+        ReceiverLedgerError,
+        TransferLedgerError,
+    >
+{
+    #[inline]
+    fn from(value: TransferLedgerError) -> Self {
+        match value {
+            TransferLedgerError::InvalidShape => TransferPostError::InvalidShape,
+            TransferLedgerError::InvalidAuthorizationSignature(err) => {
+                TransferPostError::InvalidAuthorizationSignature(err)
+            }
+            TransferLedgerError::InvalidSourceAccount(err) => {
+                TransferPostError::InvalidSourceAccount(err)
+            }
+            TransferLedgerError::InvalidSinkAccount(err) => {
+                TransferPostError::InvalidSinkAccount(err)
+            }
+            TransferLedgerError::Sender(err) => TransferPostError::Sender(err.into()),
+            TransferLedgerError::Receiver(err) => TransferPostError::Receiver(err.into()),
+            TransferLedgerError::DuplicateSpend => TransferPostError::DuplicateSpend,
+            TransferLedgerError::DuplicateMint => TransferPostError::DuplicateMint,
+            TransferLedgerError::InvalidProof => TransferPostError::InvalidProof,
+            TransferLedgerError::UnexpectedError => {
+                TransferPostError::UnexpectedError(TransferLedgerError::UnexpectedError)
+            }
+        }
+    }
+}
+
+impl From<ReceiverLedgerError> for TransferLedgerError {
+    #[inline]
+    fn from(value: ReceiverLedgerError) -> Self {
+        TransferLedgerError::Receiver(value)
+    }
+}
+
+impl From<SenderLedgerError> for TransferLedgerError {
+    #[inline]
+    fn from(value: SenderLedgerError) -> Self {
+        TransferLedgerError::Sender(value)
+    }
 }
 
 impl SenderLedger<Parameters> for Ledger {
     type ValidNullifier = Wrap<Nullifier>;
     type ValidUtxoAccumulatorOutput = Wrap<UtxoAccumulatorOutput<Config>>;
     type SuperPostingKey = (Wrap<()>, ());
-    type Error = LedgerError;
+    type Error = SenderLedgerError;
 
     #[inline]
-    fn is_unspent(
-        &self,
-        nullifier: Nullifier,
-    ) -> Result<Option<Self::ValidNullifier>, Self::Error> {
+    fn is_unspent(&self, nullifier: Nullifier) -> Result<Self::ValidNullifier, Self::Error> {
         if self.nullifiers.contains(&nullifier) {
-            Ok(None)
+            Err(SenderLedgerError::AssetSpent)
         } else {
-            Ok(Some(Wrap(nullifier)))
+            Ok(Wrap(nullifier))
         }
     }
 
@@ -263,16 +406,16 @@ impl SenderLedger<Parameters> for Ledger {
     fn has_matching_utxo_accumulator_output(
         &self,
         output: UtxoAccumulatorOutput<Config>,
-    ) -> Result<Option<Self::ValidUtxoAccumulatorOutput>, Self::Error> {
+    ) -> Result<Self::ValidUtxoAccumulatorOutput, Self::Error> {
         if output == Default::default() {
-            return Ok(Some(Wrap(output)));
+            return Ok(Wrap(output));
         }
         for tree in self.utxo_forest.forest.as_ref() {
             if tree.root() == &output {
-                return Ok(Some(Wrap(output)));
+                return Ok(Wrap(output));
             }
         }
-        Ok(None)
+        Err(SenderLedgerError::InvalidUtxoAccumulatorOutput)
     }
 
     #[inline]
@@ -291,14 +434,14 @@ impl SenderLedger<Parameters> for Ledger {
 impl ReceiverLedger<Parameters> for Ledger {
     type ValidUtxo = Wrap<Utxo>;
     type SuperPostingKey = (Wrap<()>, ());
-    type Error = LedgerError;
+    type Error = ReceiverLedgerError;
 
     #[inline]
-    fn is_not_registered(&self, utxo: Utxo) -> Result<Option<Self::ValidUtxo>, Self::Error> {
+    fn is_not_registered(&self, utxo: Utxo) -> Result<Self::ValidUtxo, Self::Error> {
         if self.utxos.contains(&utxo) {
-            Ok(None)
+            Err(ReceiverLedgerError::AssetRegistered)
         } else {
-            Ok(Some(Wrap(utxo)))
+            Ok(Wrap(utxo))
         }
     }
 
@@ -313,7 +456,7 @@ impl ReceiverLedger<Parameters> for Ledger {
         let utxo_hash = self.parameters.item_hash(&utxo.0, &mut ());
         self.shards
             .get_mut(&MerkleTreeConfiguration::tree_index(&utxo_hash))
-            .ok_or(LedgerError::ReceiverLedgerError)?
+            .ok_or(ReceiverLedgerError::UnexpectedError)?
             .insert((utxo.0, note));
         self.utxos.insert(utxo.0);
         self.utxo_forest.push(&utxo_hash);
@@ -328,7 +471,7 @@ impl TransferLedger<Config> for Ledger {
     type ValidSinkAccount = WrapPair<Self::AccountId, AssetValue>;
     type ValidProof = Wrap<()>;
     type SuperPostingKey = ();
-    type Error = LedgerError;
+    type Error = TransferLedgerError;
 
     #[inline]
     fn check_source_accounts<I>(
@@ -401,8 +544,7 @@ impl TransferLedger<Config> for Ledger {
     fn is_valid(
         &self,
         posting_key: TransferPostingKeyRef<Config, Self>,
-    ) -> Result<Option<(Self::ValidProof, Self::Event)>, <Self as TransferLedger<Config>>::Error>
-    {
+    ) -> Result<(Self::ValidProof, Self::Event), <Self as TransferLedger<Config>>::Error> {
         let transfershape = TransferShape::select(
             posting_key.authorization_key.is_some(),
             posting_key.asset_id.is_some(),
@@ -412,16 +554,18 @@ impl TransferLedger<Config> for Ledger {
             posting_key.sinks.len(),
         );
         if transfershape.is_none() {
-            return Ok(None);
+            return Err(TransferLedgerError::InvalidShape);
         }
-        let verifying_context = self.verifying_context.select(transfershape.unwrap());
-        Ok(ProofSystem::verify(
+        let verifying_context = self
+            .verifying_context
+            .select(transfershape.expect("This never fails because of the check above."));
+        ProofSystem::verify(
             verifying_context,
             &posting_key.generate_proof_input(),
             &posting_key.proof,
         )
-        .ok()
-        .map(|_| (Wrap(()), ())))
+        .map_err(|_| TransferLedgerError::InvalidProof)?;
+        Ok((Wrap(()), ()))
     }
 
     #[inline]
@@ -438,15 +582,33 @@ impl TransferLedger<Config> for Ledger {
             *self
                 .accounts
                 .get_mut(&account_id)
-                .ok_or(LedgerError::TransferLedgerError)?
+                .ok_or(TransferLedgerError::InvalidSourceAccount(
+                    InvalidSourceAccount {
+                        account_id,
+                        asset_id,
+                        withdraw,
+                    },
+                ))?
                 .get_mut(&asset_id)
-                .ok_or(LedgerError::TransferLedgerError)? -= withdraw;
+                .ok_or(TransferLedgerError::InvalidSourceAccount(
+                    InvalidSourceAccount {
+                        account_id,
+                        asset_id,
+                        withdraw,
+                    },
+                ))? -= withdraw;
         }
         for WrapPair(account_id, deposit) in sinks {
             *self
                 .accounts
                 .get_mut(&account_id)
-                .ok_or(LedgerError::TransferLedgerError)?
+                .ok_or(TransferLedgerError::InvalidSinkAccount(
+                    InvalidSinkAccount {
+                        account_id,
+                        asset_id,
+                        deposit,
+                    },
+                ))?
                 .entry(asset_id)
                 .or_default() += deposit;
         }

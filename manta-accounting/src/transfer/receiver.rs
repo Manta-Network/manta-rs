@@ -207,12 +207,12 @@ where
     ///
     /// This error describes situations in which ledger invariants have been broken but the system
     /// must be able to handle them gracefully instead of crashing.
-    type Error;
+    type Error: Into<ReceiverPostError<Self::Error>>;
 
     /// Checks if the ledger already contains the `utxo` in its set of UTXOs.
     ///
     /// Existence of such a UTXO could indicate a possible double-spend.
-    fn is_not_registered(&self, utxo: M::Utxo) -> Result<Option<Self::ValidUtxo>, Self::Error>;
+    fn is_not_registered(&self, utxo: M::Utxo) -> Result<Self::ValidUtxo, Self::Error>;
 
     /// Posts the `utxo` and `note` to the ledger, registering the asset.
     ///
@@ -359,10 +359,7 @@ where
         L: ReceiverLedger<M>,
     {
         Ok(ReceiverPostingKey {
-            utxo: ledger
-                .is_not_registered(self.utxo)
-                .map_err(ReceiverPostError::UnexpectedError)?
-                .ok_or(ReceiverPostError::AssetRegistered)?,
+            utxo: ledger.is_not_registered(self.utxo).map_err(|x| x.into())?,
             note: self.note,
         })
     }

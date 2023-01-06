@@ -482,16 +482,13 @@ where
     ///
     /// This error describes situations in which ledger invariants have been broken but the system
     /// must be able to handle them gracefully instead of crashing.
-    type Error;
+    type Error: Into<SenderPostError<Self::Error>>;
 
     /// Checks if the ledger already contains the `nullifier` in its set of nullifiers.
     ///
     /// Existence of such a nullifier could indicate a possible double-spend and so the ledger does
     /// not accept duplicates.
-    fn is_unspent(
-        &self,
-        nullifier: S::Nullifier,
-    ) -> Result<Option<Self::ValidNullifier>, Self::Error>;
+    fn is_unspent(&self, nullifier: S::Nullifier) -> Result<Self::ValidNullifier, Self::Error>;
 
     /// Checks if `output` matches the current accumulated value of the UTXO accumulator that is
     /// stored on the ledger.
@@ -501,7 +498,7 @@ where
     fn has_matching_utxo_accumulator_output(
         &self,
         output: UtxoAccumulatorOutput<S>,
-    ) -> Result<Option<Self::ValidUtxoAccumulatorOutput>, Self::Error>;
+    ) -> Result<Self::ValidUtxoAccumulatorOutput, Self::Error>;
 
     /// Posts the `nullifier` to the ledger, spending the asset.
     ///
@@ -668,12 +665,8 @@ where
         Ok(SenderPostingKey {
             utxo_accumulator_output: ledger
                 .has_matching_utxo_accumulator_output(self.utxo_accumulator_output)
-                .map_err(SenderPostError::UnexpectedError)?
-                .ok_or(SenderPostError::InvalidUtxoAccumulatorOutput)?,
-            nullifier: ledger
-                .is_unspent(self.nullifier)
-                .map_err(SenderPostError::UnexpectedError)?
-                .ok_or(SenderPostError::AssetSpent)?,
+                .map_err(|x| x.into())?,
+            nullifier: ledger.is_unspent(self.nullifier).map_err(|x| x.into())?,
         })
     }
 }
