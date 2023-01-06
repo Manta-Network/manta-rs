@@ -24,21 +24,42 @@ To check whether this contribution is included in the final proving key, you can
 
 ## Medium Trust: Contribution Proof Checks
 
-Instead of trusting that Manta created the contribution hash list correctly, you can generate it yourself from the ceremony data, which is hosted [here](https://trusted-setup-data-backup.s3.us-east-1.amazonaws.com/index.html). The ceremony data contains all intermediate states and cryptographic proofs that each contribution obeyed the MPC protocol. This is a little under 140 Gb of data. Before demonstrating how to verify this data, let us carefully explain the trust assumptions:
+Instead of trusting that Manta created the contribution hash list correctly, you can generate it yourself from the ceremony data. The ceremony data contains all intermediate states and cryptographic proofs that each contribution obeyed the MPC protocol. Before demonstrating how to verify this data, let us carefully explain the trust assumptions:
 
 This level of verification checks that each state of the MPC is built from the last according to the MPC protocol. However, it does *not* check that the genesis state of the MPC was computed correctly from a Phase 1 KZG trusted setup and the Manta Pay circuit description. That is, you are trusting that Manta generated the initial proving keys correctly from a secure set of KZG parameters. If you use the verification tool we provide, you are also trusting that it is written correctly; the [source code](https://github.com/Manta-Network/manta-rs/blob/feat/ts_verifier/manta-trusted-setup/src/bin/groth16_phase2_verifier.rs) is yours to examine, of course.
 
-To perform this level of verification, clone this branch of the repository and download all the ceremony data to some directory. Use the following command to initiate the verification process:
-```sh
-cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_verifier -- path_to_ceremony_data 0
+To perform this level of verification, clone this branch of the repository and download all the ceremony data to some directory. 
+<details>
+<summary>Download Instructions</summary>
+
+The ceremony data is currently hosted on an AWS s3 bucket and can be downloaded using the AWS CLI. See [here](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) for instructions on downloading the AWS CLI. The command
 ```
-The `path_to_ceremony_data` argument should be replaced by the path to the directory where you have downloaded the ceremony data. The `0` argument indicates that you wish to begin verification at round 0 of the ceremony. If for some reason you wish to verify the ceremony data during multiple sessions, this argument can be used to start the verification from round `n` of the ceremony.
+aws s3 sync s3://trusted-setup-data-backup /local/path
+```
+Will download all the ceremony data to the directory specified by `/local/path`. Note that this is a little under 140 Gb of data. 
+</details>
+
+After downloading the ceremony data, use the following command to initiate the verification process:
+```
+cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_verifier -- local/path 0
+```
+The `local/path` argument should be replaced by the path to the directory where you have downloaded the ceremony data. The `0` argument indicates that you wish to begin verification at round 0 of the ceremony. If for some reason you wish to verify the ceremony data during multiple sessions, this argument can be used to start the verification from round `n` of the ceremony (see Resource-Constrained Instructions below).
 
 This process will generate four new files in the directory containing ceremony data. These consist of three auxiliary files containing the challenge hashes for contributions to the three individual Manta Pay circuits as well as one file containing the overall contribution hashes. It is this last file (`contribution_hashes.txt`) that contains the hashes that were announced by participants, as in the above tweet.
 
 If the process terminates without error then all contribution proofs were valid, *i.e.* the ceremony obeyed the MPC protocol and the proving keys are secure as long as at least 1 of the 4,382 participants contributed honestly. The hashes in `contribution_hashes.txt` can be compared to those provided in the previous section.
 
 Note that this process may take a long time (about 15 hrs on 32 Gb RAM AWS c6i.4xlarge instance).
+
+<details>
+<summary>Resource-constrained Instructions</summary>
+
+If you do not have disk space for all 140 Gb of ceremony data then it is possible to verify a subset of the ceremony rounds. See the AWS CLI [instructions](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-using.html) to download the `state`, `proof`, and `challenge` files for those rounds that you wish to verify and use the starting round argument of the verification command to start verification from the desired round. The verifier will process as many rounds as it can find in the directory, starting from the specified round. It will create an output file containing the contribution hashes for the rounds it verified.
+
+In this way one can verify the entire ceremony in batches of a manageable size. Each round of the ceremony is about 32 Mb of data.
+
+Note that the verification tool will not automatically manage these files for multiple verification sessions. That is, it will overwrite existing contribution hash files. You are responsible for managing these files.
+</details>
 
 ## Low Trust: Initial State Check
 
