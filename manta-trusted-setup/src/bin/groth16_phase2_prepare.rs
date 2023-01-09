@@ -31,8 +31,10 @@ use std::path::PathBuf;
 /// Preparer CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
+    /// Path to a set of phase 1 KZG parameters
     phase_one_param_path: PathBuf,
 
+    /// Destination for output
     recovery_directory: PathBuf,
 }
 

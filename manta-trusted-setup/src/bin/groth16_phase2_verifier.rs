@@ -37,6 +37,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_verifier /Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29 4380
+
 /// Verification CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
@@ -122,6 +124,7 @@ where
             ));
             match (proof_result, next_state_result) {
                 (Ok(proof), Ok(next_state)) => {
+                    print!("Successfully loaded round {round} state");
                     if round % 50 == 0 {
                         println!("Verifying round {round}");
                     }
@@ -134,6 +137,7 @@ where
                         .expect("Unable to write challenge hash to file");
                 }
                 _ => {
+                    print!("Didn't loaded round {round} state");
                     break;
                 }
             }
@@ -179,9 +183,9 @@ fn contribution_hashes(path: &Path) {
         match ((private_transfer, to_private), to_public) {
             ((Ok(private_transfer), Ok(to_private)), Ok(to_public)) => {
                 // Hashes were written as "hash_as_hex round n"
-                let private_transfer: Vec<&str> = private_transfer.split(' ').into_iter().collect();
-                let to_private: Vec<&str> = to_private.split(' ').into_iter().collect();
-                let to_public: Vec<&str> = to_public.split(' ').into_iter().collect();
+                let private_transfer: Vec<&str> = private_transfer.split(' ').collect();
+                let to_private: Vec<&str> = to_private.split(' ').collect();
+                let to_public: Vec<&str> = to_public.split(' ').collect();
                 // Check that all hashes correspond to same contribution round:
                 assert_eq!(to_private[2], to_public[2]);
                 assert_eq!(to_private[2], private_transfer[2]);
@@ -210,17 +214,6 @@ fn contribution_hashes(path: &Path) {
             _ => println!("Read error occurred"),
         }
     }
-}
-
-/// Can be used to compute contribution hashes if the challenge
-/// hashes from individual circuits are already present in the specified directory.
-/// Modify `path` as needed.
-#[ignore] // NOTE: Adds `ignore` such that CI does NOT run this test while still allowing developers to test.
-#[test]
-fn compute_contribution_hashes() {
-    // Modify this to correct path
-    let path = PathBuf::from("/");
-    contribution_hashes(&path);
 }
 
 /// If circuit_names file is missing, this is a way of generating a new one.

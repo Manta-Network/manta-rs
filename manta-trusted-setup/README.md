@@ -1,8 +1,8 @@
-# Manta Pay Trusted Setup
+# MantaPay Trusted Setup
 
 From November 28, 2022 to December 29, 2022, Manta Network held a trusted setup ceremony to generate the Groth16 proving keys for the Manta Pay protocol circuits. With 4,382 individual contributions, this was the largest trusted setup thus far in web 3 history. 
 
-The results of the ceremony are now available to the public for verification. We have provided the full ceremony history, including all contribution hashes, the state of the proving keys after each contribution, and the validity proofs that each contribution was made according to the multi-party computation (MPC) protocol. By verifying this chain of proofs, users can be certain that the Manta Pay proving keys are the result of a MPC and carry the 1-of-N security guarantee provided by the MPC protocol. For a layperson's explanation of this MPC, see [here](https://docs.manta.network/docs/concepts/TrustedSetup); for a technical description of the protocol, see [here](https://eprint.iacr.org/2017/1050).
+The results of the ceremony are now available to the public for verification. We have provided the full ceremony history, including all contribution hashes, the state of the proving keys after each contribution, and the validity proofs that each contribution was made according to the multi-party computation (MPC) protocol. By verifying this chain of proofs, users can be certain that the Manta Pay proving keys are the result of a MPC and carry the 1-of-N security guarantee provided by the MPC protocol. For a layperson's explanation of this MPC, see [here](https://docs.manta.network/docs/concepts/TrustedSetup); for a technical description of the protocol, see [here](https://github.com/Manta-Network/spec/blob/feat/trusted-setup/trusted-setup/spec.pdf). The design is a modification of [this protocol](https://eprint.iacr.org/2017/1050).
 
 We have provided tools to help users to verify the ceremony results. The remainder of this document explains how to use these tools.
 
