@@ -970,19 +970,13 @@ where
             asset_id: has_public_participants(SOURCES, SINKS)
                 .then(|| compiler.allocate_unknown::<Public, _>()),
             sources: (0..SOURCES)
-                .into_iter()
                 .map(|_| compiler.allocate_unknown::<Public, _>())
                 .collect(),
-            senders: (0..SENDERS)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown())
-                .collect(),
+            senders: (0..SENDERS).map(|_| compiler.allocate_unknown()).collect(),
             receivers: (0..RECEIVERS)
-                .into_iter()
                 .map(|_| compiler.allocate_unknown())
                 .collect(),
             sinks: (0..SINKS)
-                .into_iter()
                 .map(|_| compiler.allocate_unknown::<Public, _>())
                 .collect(),
         }
