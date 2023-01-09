@@ -203,7 +203,7 @@ where
     /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
     type ValidUtxo: AsRef<M::Utxo>;
 
-    /// Unexpected Error Type
+    /// Error Type
     ///
     /// This error describes situations in which ledger invariants have been broken but the system
     /// must be able to handle them gracefully instead of crashing.

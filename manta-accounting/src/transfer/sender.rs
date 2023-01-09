@@ -478,7 +478,7 @@ where
     /// [`has_matching_utxo_accumulator_output`]: Self::has_matching_utxo_accumulator_output
     type ValidNullifier: AsRef<S::Nullifier>;
 
-    /// Unexpected Error Type
+    /// Error Type
     ///
     /// This error describes situations in which ledger invariants have been broken but the system
     /// must be able to handle them gracefully instead of crashing.
