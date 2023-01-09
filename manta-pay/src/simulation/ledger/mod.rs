@@ -252,12 +252,10 @@ impl From<SenderLedgerError> for SenderPostError<SenderLedgerError> {
     #[inline]
     fn from(value: SenderLedgerError) -> Self {
         match value {
-            SenderLedgerError::AssetSpent => SenderPostError::AssetSpent,
-            SenderLedgerError::InvalidUtxoAccumulatorOutput => {
-                SenderPostError::InvalidUtxoAccumulatorOutput
-            }
+            SenderLedgerError::AssetSpent => Self::AssetSpent,
+            SenderLedgerError::InvalidUtxoAccumulatorOutput => Self::InvalidUtxoAccumulatorOutput,
             SenderLedgerError::UnexpectedError => {
-                SenderPostError::UnexpectedError(SenderLedgerError::UnexpectedError)
+                Self::UnexpectedError(SenderLedgerError::UnexpectedError)
             }
         }
     }
@@ -285,9 +283,9 @@ impl From<ReceiverLedgerError> for ReceiverPostError<ReceiverLedgerError> {
     #[inline]
     fn from(value: ReceiverLedgerError) -> Self {
         match value {
-            ReceiverLedgerError::AssetRegistered => ReceiverPostError::AssetRegistered,
+            ReceiverLedgerError::AssetRegistered => Self::AssetRegistered,
             ReceiverLedgerError::UnexpectedError => {
-                ReceiverPostError::UnexpectedError(ReceiverLedgerError::UnexpectedError)
+                Self::UnexpectedError(ReceiverLedgerError::UnexpectedError)
             }
         }
     }
@@ -351,23 +349,19 @@ impl From<TransferLedgerError>
     #[inline]
     fn from(value: TransferLedgerError) -> Self {
         match value {
-            TransferLedgerError::InvalidShape => TransferPostError::InvalidShape,
+            TransferLedgerError::InvalidShape => Self::InvalidShape,
             TransferLedgerError::InvalidAuthorizationSignature(err) => {
-                TransferPostError::InvalidAuthorizationSignature(err)
+                Self::InvalidAuthorizationSignature(err)
             }
-            TransferLedgerError::InvalidSourceAccount(err) => {
-                TransferPostError::InvalidSourceAccount(err)
-            }
-            TransferLedgerError::InvalidSinkAccount(err) => {
-                TransferPostError::InvalidSinkAccount(err)
-            }
-            TransferLedgerError::Sender(err) => TransferPostError::Sender(err.into()),
-            TransferLedgerError::Receiver(err) => TransferPostError::Receiver(err.into()),
-            TransferLedgerError::DuplicateSpend => TransferPostError::DuplicateSpend,
-            TransferLedgerError::DuplicateMint => TransferPostError::DuplicateMint,
-            TransferLedgerError::InvalidProof => TransferPostError::InvalidProof,
+            TransferLedgerError::InvalidSourceAccount(err) => Self::InvalidSourceAccount(err),
+            TransferLedgerError::InvalidSinkAccount(err) => Self::InvalidSinkAccount(err),
+            TransferLedgerError::Sender(err) => Self::Sender(err.into()),
+            TransferLedgerError::Receiver(err) => Self::Receiver(err.into()),
+            TransferLedgerError::DuplicateSpend => Self::DuplicateSpend,
+            TransferLedgerError::DuplicateMint => Self::DuplicateMint,
+            TransferLedgerError::InvalidProof => Self::InvalidProof,
             TransferLedgerError::UnexpectedError => {
-                TransferPostError::UnexpectedError(TransferLedgerError::UnexpectedError)
+                Self::UnexpectedError(TransferLedgerError::UnexpectedError)
             }
         }
     }
@@ -376,14 +370,14 @@ impl From<TransferLedgerError>
 impl From<ReceiverLedgerError> for TransferLedgerError {
     #[inline]
     fn from(value: ReceiverLedgerError) -> Self {
-        TransferLedgerError::Receiver(value)
+        Self::Receiver(value)
     }
 }
 
 impl From<SenderLedgerError> for TransferLedgerError {
     #[inline]
     fn from(value: SenderLedgerError) -> Self {
-        TransferLedgerError::Sender(value)
+        Self::Sender(value)
     }
 }
 
