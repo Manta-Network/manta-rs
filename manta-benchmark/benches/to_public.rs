@@ -14,23 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Reclaim Benchmarks
+//! To Public Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_accounting::transfer::test::assert_valid_proof;
 use manta_crypto::rand::OsRng;
-use manta_pay::{parameters, test::payment::prove_reclaim};
+use manta_pay::{
+    parameters,
+    test::payment::{to_public::prove as prove_to_public, UtxoAccumulator},
+};
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
     let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
-    group.bench_function("reclaim prove", |b| {
+    group.bench_function("to public prove", |b| {
         b.iter(|| {
-            prove_reclaim(
-                &proving_context,
+            prove_to_public(
+                &proving_context.to_public,
                 &parameters,
-                &utxo_accumulator_model,
+                &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
                 &mut rng,
             );
         })
@@ -42,18 +44,18 @@ fn verify(c: &mut Criterion) {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
-    let reclaim = black_box(prove_reclaim(
-        &proving_context,
+    let transferpost = black_box(prove_to_public(
+        &proving_context.to_public,
         &parameters,
-        &utxo_accumulator_model,
+        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
         &mut rng,
     ));
-    group.bench_function("reclaim verify", |b| {
+    group.bench_function("to public verify", |b| {
         b.iter(|| {
-            assert_valid_proof(&verifying_context.reclaim, &reclaim);
+            transferpost.assert_valid_proof(&verifying_context.to_public);
         })
     });
 }
 
-criterion_group!(reclaim, prove, verify);
-criterion_main!(reclaim);
+criterion_group!(to_public, prove, verify);
+criterion_main!(to_public);

@@ -9,14 +9,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [#276](https://github.com/Manta-Network/manta-rs/pull/276) New circuits part 1: manta-crypto abstractions
 
 ### Changed
+- [\#293](https://github.com/Manta-Network/manta-rs/pull/293) Add decimals argument to AssetMetadata display
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+- [\#296](https://github.com/Manta-Network/manta-rs/pull/296) Fix AssetMetadata display for values less than 1
 
 ### Security
+
+## [0.5.8] - 2022-12-03
+### Added
+- [\#286](https://github.com/Manta-Network/manta-rs/pull/286) MantaPay v1.0.0
+
+### Changed
+- [\#283](https://github.com/Manta-Network/manta-rs/pull/283) Upgrade asset system.
+- [\#284](https://github.com/Manta-Network/manta-rs/pull/284) Moved `R1CS` implementation to `manta-crypto` 
+- [\#282](https://github.com/Manta-Network/manta-rs/pull/282) Upgrade key system.
 
 ## [0.5.7] - 2022-11-04
 ### Added
@@ -138,7 +149,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.7...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.8...HEAD
+[0.5.8]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.8
 [0.5.7]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.7
 [0.5.6]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.6
 [0.5.5]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.5

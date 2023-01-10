@@ -24,18 +24,17 @@
 extern crate alloc;
 
 pub mod crypto;
-pub mod util;
 
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod config;
 
-#[cfg(feature = "bip32")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "bip32")))]
+#[cfg(feature = "key")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "key")))]
 pub mod key;
 
-#[cfg(all(feature = "groth16", feature = "test"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "test"))))]
+#[cfg(all(feature = "parameters"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "parameters"))))]
 pub mod parameters;
 
 #[cfg(feature = "groth16")]
@@ -49,3 +48,17 @@ pub mod simulation;
 #[cfg(any(test, feature = "test"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
+
+#[doc(inline)]
+pub use manta_accounting;
+
+#[doc(inline)]
+pub use manta_crypto;
+
+#[cfg(any(test, feature = "manta-parameters"))]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "manta-parameters")))]
+#[doc(inline)]
+pub use manta_parameters;
+
+#[doc(inline)]
+pub use manta_util;

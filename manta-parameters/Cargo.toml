@@ -1,6 +1,6 @@
 [package]
 name = "manta-parameters"
-version = "0.5.7"
+version = "0.5.8"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
@@ -28,23 +28,26 @@ maintenance = { status = "actively-developed" }
 # Download Data from GitHub
 download = ["anyhow", "attohttpc", "std"]
 
+# Git Utilities
+git = ["anyhow", "git2", "std"]
+
 # Enable Standard Library
 std = ["anyhow?/std"]
 
 [dependencies]
-anyhow = { version = "1.0.65", optional = true, default-features = false }
+anyhow = { version = "1.0.66", optional = true, default-features = false }
 attohttpc = { version = "0.22.0", optional = true }
 blake3 = { version = "1.3.1", default-features = false }
+git2 = { version = "0.15.0", optional = true, default-features = false }
 
 [dev-dependencies]
-git2 = { version = "0.15.0", default-features = false }
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
-manta-parameters = { path = ".", default-features = false, features = ["download"] }
+manta-parameters = { path = ".", default-features = false, features = ["download", "git"] }
 tempfile = { version = "3.3.0", default-features = false }
 walkdir = { version = "2.3.2", default-features = false }
 
 [build-dependencies]
-anyhow = { version = "1.0.65", default-features = false, features = ["std"] }
+anyhow = { version = "1.0.66", default-features = false, features = ["std"] }
 blake3 = { version = "1.3.1", default-features = false, features = ["std"] }
 gitignore = { version = "1.0.7", default-features = false }
 hex = { version = "0.4.3", default-features = false, features = ["std"] }

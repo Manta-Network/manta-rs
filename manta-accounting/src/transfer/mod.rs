@@ -20,8 +20,8 @@
 //! following structures:
 //!
 //! - Global Configuration: [`Configuration`]
-//! - Sender Abstraction: [`Sender`], [`SenderVar`], [`SenderPost`], [`SenderLedger`]
-//! - Receiver Abstraction: [`Receiver`], [`ReceiverVar`], [`ReceiverPost`], [`ReceiverLedger`]
+//! - Sender Abstraction: [`Sender`], [`SenderPost`], [`SenderLedger`](
+//! - Receiver Abstraction: [`Receiver`], [`ReceiverPost`], [`ReceiverLedger`]
 //! - Transfer Abstraction: [`Transfer`], [`TransferPost`], [`TransferLedger`]
 //! - Canonical Transactions: [`canonical`]
 //! - Batched Transactions: [`batch`]
@@ -29,43 +29,51 @@
 //! See the [`crate::wallet`] module for more on how this transfer protocol is used in a wallet
 //! protocol for the keeping of accounts for private assets.
 
-use crate::asset::{Asset, AssetId, AssetValue};
-use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Deref};
+use crate::{
+    asset,
+    transfer::{
+        receiver::{ReceiverLedger, ReceiverPostError},
+        sender::{SenderLedger, SenderPostError},
+        utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence},
+    },
+};
+use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
 use manta_crypto::{
-    accumulator::{self, AssertValidVerification, MembershipProof, Model},
-    constraint::{HasInput, ProofSystem},
+    accumulator::{self, ItemHashFunction},
+    constraint::{HasInput, Input, ProofSystem},
     eclair::{
         self,
         alloc::{
             mode::{Derived, Public, Secret},
-            Allocate, Allocator, Constant, Variable,
+            Allocate, Allocator, Constant, Var, Variable,
         },
-        bool::{AssertEq, Bool},
+        bool::{Assert, AssertEq},
         ops::Add,
     },
-    encryption::{self, hybrid::Hybrid, EncryptedMessage},
-    key::{self, agreement::Derive},
     rand::{CryptoRng, RngCore, Sample},
 };
-use manta_util::SizeLimit;
+use manta_util::{
+    cmp::Independence,
+    codec::{Encode, Write},
+    convert::Field,
+    vec::{all_unequal, Vec},
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-mod receiver;
-mod sender;
-
 pub mod batch;
 pub mod canonical;
+pub mod receiver;
+pub mod sender;
+pub mod utxo;
 
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
 
+#[doc(inline)]
 pub use canonical::Shape;
-pub use receiver::*;
-pub use sender::*;
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
@@ -73,134 +81,115 @@ pub const fn has_public_participants(sources: usize, sinks: usize) -> bool {
     (sources + sinks) > 0
 }
 
-/// UTXO Commitment Scheme
-pub trait UtxoCommitmentScheme<COM = ()> {
-    /// Ephemeral Secret Key Type
-    type EphemeralSecretKey;
-
-    /// Public Spend Key Type
-    type PublicSpendKey;
-
-    /// Asset Type
-    type Asset;
-
-    /// Unspent Transaction Output Type
-    type Utxo;
-
-    /// Commits to the `ephemeral_secret_key`, `public_spend_key`, and `asset` for a UTXO.
-    fn commit(
-        &self,
-        ephemeral_secret_key: &Self::EphemeralSecretKey,
-        public_spend_key: &Self::PublicSpendKey,
-        asset: &Self::Asset,
-        compiler: &mut COM,
-    ) -> Self::Utxo;
+/// Returns `true` if the [`Transfer`] with this shape would have secret participants.
+#[inline]
+pub const fn has_secret_participants(senders: usize, receivers: usize) -> bool {
+    (senders + receivers) > 0
 }
 
-/// Void Number Commitment Scheme
-pub trait VoidNumberCommitmentScheme<COM = ()> {
-    /// Secret Spend Key Type
-    type SecretSpendKey;
-
-    /// Unspent Transaction Output Type
-    type Utxo;
-
-    /// Void Number Type
-    type VoidNumber;
-
-    /// Commits to the `secret_spend_key` and `utxo` for a Void Number.
-    fn commit(
-        &self,
-        secret_spend_key: &Self::SecretSpendKey,
-        utxo: &Self::Utxo,
-        compiler: &mut COM,
-    ) -> Self::VoidNumber;
+/// Returns `true` if the [`Transfer`] with this shape would require an authorization.
+#[inline]
+pub const fn requires_authorization(senders: usize) -> bool {
+    senders > 0
 }
 
-/// Transfer Configuration
+/// Configuration
 pub trait Configuration {
-    /// Secret Key Type
-    type SecretKey: Clone + Sample + SizeLimit;
+    /// Compiler Type
+    type Compiler: Assert;
 
-    /// Public Key Type
-    type PublicKey: Clone;
+    /// Asset Id Type
+    type AssetId: Clone + Ord;
 
-    /// Key Agreement Scheme Type
-    type KeyAgreementScheme: key::agreement::SecretKeyType<SecretKey = SecretKey<Self>>
-        + key::agreement::PublicKeyType<PublicKey = PublicKey<Self>>
-        + key::agreement::EphemeralPublicKeyType<EphemeralPublicKey = PublicKey<Self>>
-        + key::agreement::EphemeralSecretKeyType<EphemeralSecretKey = SecretKey<Self>>
-        + key::agreement::ReconstructSecret
-        + key::agreement::Agree
-        + key::agreement::Derive
-        + key::agreement::DeriveEphemeral
-        + key::agreement::GenerateSecret;
+    /// Asset Value Type
+    type AssetValue: AddAssign + Clone + Default + PartialOrd + Sum;
 
-    /// Secret Key Variable Type
-    type SecretKeyVar: Variable<Secret, Self::Compiler, Type = SecretKey<Self>>;
-
-    /// Public Key Variable Type
-    type PublicKeyVar: Variable<Secret, Self::Compiler, Type = PublicKey<Self>>
-        + eclair::cmp::PartialEq<Self::PublicKeyVar, Self::Compiler>;
-
-    /// Key Agreement Scheme Variable Type
-    type KeyAgreementSchemeVar: Constant<Self::Compiler, Type = Self::KeyAgreementScheme>
-        + key::agreement::SecretKeyType<SecretKey = SecretKeyVar<Self>>
-        + key::agreement::PublicKeyType<PublicKey = PublicKeyVar<Self>>
-        + key::agreement::Agree<Self::Compiler>
-        + key::agreement::Derive<Self::Compiler>;
+    /// Associated Data Type
+    type AssociatedData: Default;
 
     /// Unspent Transaction Output Type
-    type Utxo: PartialEq;
+    type Utxo: Independence<UtxoIndependence>;
 
-    /// UTXO Commitment Scheme Type
-    type UtxoCommitmentScheme: UtxoCommitmentScheme<
-        EphemeralSecretKey = SecretKey<Self>,
-        PublicSpendKey = PublicKey<Self>,
-        Asset = Asset,
-        Utxo = Utxo<Self>,
+    /// Nullifier Type
+    type Nullifier: Independence<NullifierIndependence>;
+
+    /// Identifier Type
+    type Identifier: Clone + Sample;
+
+    /// Address Type
+    type Address: Clone;
+
+    /// Note Type
+    type Note: AsRef<BaseNote<Self>> + Into<BaseNote<Self>>;
+
+    /// Mint Secret Type
+    type MintSecret: utxo::QueryIdentifier<Identifier = Identifier<Self>, Utxo = Self::Utxo>;
+
+    /// Spend Secret Type
+    type SpendSecret: utxo::QueryAsset<Asset = Asset<Self>, Utxo = Self::Utxo>;
+
+    /// [`Utxo`] Accumulator Witness Type
+    type UtxoAccumulatorWitness: Default;
+
+    /// [`Utxo`] Accumulator Output Type
+    type UtxoAccumulatorOutput: Default;
+
+    /// [`Utxo`] Accumulator Item Hash Type
+    type UtxoAccumulatorItemHash: ItemHashFunction<Utxo<Self>, Item = UtxoAccumulatorItem<Self>>;
+
+    /// Parameters Type
+    type Parameters: auth::DeriveContext
+        + auth::ProveAuthorization
+        + auth::VerifyAuthorization
+        + auth::DeriveSigningKey
+        + auth::Sign<TransferPostBody<Self>>
+        + auth::VerifySignature<TransferPostBody<Self>>
+        + utxo::AssetType<Asset = Asset<Self>>
+        + utxo::AssociatedDataType<AssociatedData = Self::AssociatedData>
+        + utxo::DeriveMint<
+            Secret = Self::MintSecret,
+            Utxo = Self::Utxo,
+            Address = Self::Address,
+            Note = Self::Note,
+        > + utxo::DeriveSpend<
+            UtxoAccumulatorWitness = Self::UtxoAccumulatorWitness,
+            UtxoAccumulatorOutput = Self::UtxoAccumulatorOutput,
+            UtxoAccumulatorItemHash = Self::UtxoAccumulatorItemHash,
+            Secret = Self::SpendSecret,
+            Nullifier = Self::Nullifier,
+            Identifier = Self::Identifier,
+        > + utxo::UtxoReconstruct;
+
+    /// Authorization Context Variable Type
+    type AuthorizationContextVar: Variable<
+        Secret,
+        Self::Compiler,
+        Type = AuthorizationContext<Self>,
     >;
 
-    /// UTXO Variable Type
-    type UtxoVar: Variable<Public, Self::Compiler, Type = Utxo<Self>>
-        + Variable<Secret, Self::Compiler, Type = Utxo<Self>>
-        + eclair::cmp::PartialEq<Self::UtxoVar, Self::Compiler>;
+    /// Authorization Proof Variable Type
+    type AuthorizationProofVar: Variable<Derived, Self::Compiler, Type = AuthorizationProof<Self>>;
 
-    /// UTXO Commitment Scheme Variable Type
-    type UtxoCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::UtxoCommitmentScheme>
-        + UtxoCommitmentScheme<
-            Self::Compiler,
-            EphemeralSecretKey = SecretKeyVar<Self>,
-            PublicSpendKey = PublicKeyVar<Self>,
-            Asset = AssetVar<Self>,
-            Utxo = UtxoVar<Self>,
-        >;
+    /// Asset Id Variable Type
+    type AssetIdVar: Variable<Secret, Self::Compiler, Type = Self::AssetId>
+        + Variable<Public, Self::Compiler, Type = Self::AssetId>
+        + eclair::cmp::PartialEq<Self::AssetIdVar, Self::Compiler>;
 
-    /// Void Number Type
-    type VoidNumber: PartialEq;
+    /// Asset Value Variable Type
+    type AssetValueVar: Variable<Secret, Self::Compiler, Type = Self::AssetValue>
+        + Variable<Public, Self::Compiler, Type = Self::AssetValue>
+        + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
+        + eclair::cmp::PartialEq<Self::AssetValueVar, Self::Compiler>;
 
-    /// Void Number Commitment Scheme Type
-    type VoidNumberCommitmentScheme: VoidNumberCommitmentScheme<
-        SecretSpendKey = SecretKey<Self>,
-        Utxo = Utxo<Self>,
-        VoidNumber = VoidNumber<Self>,
-    >;
+    /// Unspent Transaction Output Variable Type
+    type UtxoVar: Variable<Secret, Self::Compiler, Type = Self::Utxo>
+        + Variable<Public, Self::Compiler, Type = Self::Utxo>;
 
-    /// Void Number Variable Type
-    type VoidNumberVar: Variable<Public, Self::Compiler, Type = Self::VoidNumber>
-        + eclair::cmp::PartialEq<Self::VoidNumberVar, Self::Compiler>;
+    /// Note Variable Type
+    type NoteVar: Variable<Public, Self::Compiler>;
 
-    /// Void Number Commitment Scheme Variable Type
-    type VoidNumberCommitmentSchemeVar: Constant<Self::Compiler, Type = Self::VoidNumberCommitmentScheme>
-        + VoidNumberCommitmentScheme<
-            Self::Compiler,
-            SecretSpendKey = SecretKeyVar<Self>,
-            Utxo = UtxoVar<Self>,
-            VoidNumber = VoidNumberVar<Self>,
-        >;
-
-    /// UTXO Accumulator Model Type
-    type UtxoAccumulatorModel: Model<Item = Self::Utxo, Verification = bool>;
+    /// Nullifier Variable Type
+    type NullifierVar: Variable<Public, Self::Compiler, Type = Self::Nullifier>;
 
     /// UTXO Accumulator Witness Variable Type
     type UtxoAccumulatorWitnessVar: Variable<
@@ -217,616 +206,282 @@ pub trait Configuration {
     >;
 
     /// UTXO Accumulator Model Variable Type
-    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = Self::UtxoAccumulatorModel>
-        + AssertValidVerification<Self::Compiler>
-        + Model<
+    type UtxoAccumulatorModelVar: Constant<Self::Compiler, Type = UtxoAccumulatorModel<Self>>
+        + accumulator::Model<
             Self::Compiler,
-            Item = Self::UtxoVar,
             Witness = Self::UtxoAccumulatorWitnessVar,
             Output = Self::UtxoAccumulatorOutputVar,
-            Verification = Bool<Self::Compiler>,
         >;
 
-    /// Asset Id Variable Type
-    type AssetIdVar: Variable<Public, Self::Compiler, Type = AssetId>
-        + Variable<Secret, Self::Compiler, Type = AssetId>
-        + eclair::cmp::PartialEq<Self::AssetIdVar, Self::Compiler>;
+    /// Mint Secret Variable Type
+    type MintSecretVar: Variable<Secret, Self::Compiler, Type = <Self::Parameters as Mint>::Secret>;
 
-    /// Asset Value Variable Type
-    type AssetValueVar: Variable<Public, Self::Compiler, Type = AssetValue>
-        + Variable<Secret, Self::Compiler, Type = AssetValue>
-        + Add<Self::AssetValueVar, Self::Compiler, Output = Self::AssetValueVar>
-        + eclair::cmp::PartialEq<Self::AssetValueVar, Self::Compiler>;
+    /// Spend Secret Variable Type
+    type SpendSecretVar: Variable<
+        Secret,
+        Self::Compiler,
+        Type = <Self::Parameters as Spend>::Secret,
+    >;
 
-    /// Constraint System Type
-    type Compiler: AssertEq;
+    /// Parameters Variable Type
+    type ParametersVar: Constant<Self::Compiler, Type = Self::Parameters>
+        + auth::AssertAuthorized<
+            Compiler<Self>,
+            AuthorizationContext = Self::AuthorizationContextVar,
+            AuthorizationProof = Self::AuthorizationProofVar,
+        > + utxo::AssetType<Asset = AssetVar<Self>>
+        + utxo::UtxoType<Utxo = Self::UtxoVar>
+        + Mint<Self::Compiler, Secret = Self::MintSecretVar, Note = Self::NoteVar>
+        + Spend<
+            Self::Compiler,
+            UtxoAccumulatorModel = Self::UtxoAccumulatorModelVar,
+            Secret = Self::SpendSecretVar,
+            Nullifier = Self::NullifierVar,
+        >;
 
     /// Proof System Type
     type ProofSystem: ProofSystem<Compiler = Self::Compiler>
-        + HasInput<AssetId>
-        + HasInput<AssetValue>
+        + HasInput<AuthorizationKey<Self>>
+        + HasInput<Self::AssetId>
+        + HasInput<Self::AssetValue>
         + HasInput<UtxoAccumulatorOutput<Self>>
         + HasInput<Utxo<Self>>
-        + HasInput<VoidNumber<Self>>
-        + HasInput<PublicKey<Self>>;
-
-    /// Note Base Encryption Scheme Type
-    type NoteEncryptionScheme: encryption::Encrypt<
-            EncryptionKey = SharedSecret<Self>,
-            Randomness = (),
-            Header = (),
-            Plaintext = Note<Self>,
-        > + encryption::Decrypt<
-            DecryptionKey = SharedSecret<Self>,
-            DecryptedPlaintext = Option<Note<Self>>,
-        >;
+        + HasInput<Note<Self>>
+        + HasInput<Nullifier<Self>>;
 }
 
-/// Asset Variable Type
-pub type AssetVar<C> = Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
-
-/// Secret Key Type
-pub type SecretKey<C> = <C as Configuration>::SecretKey;
-
-/// Secret Key Variable Type
-pub type SecretKeyVar<C> = <C as Configuration>::SecretKeyVar;
-
-/// Public Key Type
-pub type PublicKey<C> = <C as Configuration>::PublicKey;
-
-/// Public Key Variable Type
-pub type PublicKeyVar<C> = <C as Configuration>::PublicKeyVar;
-
-/// Shared Secret Type
-pub type SharedSecret<C> = key::agreement::SharedSecret<<C as Configuration>::KeyAgreementScheme>;
-
-/// Unspend Transaction Output Type
-pub type Utxo<C> = <C as Configuration>::Utxo;
-
-/// Unspent Transaction Output Variable Type
-pub type UtxoVar<C> = <C as Configuration>::UtxoVar;
-
-/// Void Number Type
-pub type VoidNumber<C> = <C as Configuration>::VoidNumber;
-
-/// Void Number Variable Type
-pub type VoidNumberVar<C> = <C as Configuration>::VoidNumberVar;
-
-/// UTXO Accumulator Witness Type
-pub type UtxoAccumulatorWitness<C> =
-    <<C as Configuration>::UtxoAccumulatorModel as accumulator::Types>::Witness;
-
-/// UTXO Accumulator Output Type
-pub type UtxoAccumulatorOutput<C> =
-    <<C as Configuration>::UtxoAccumulatorModel as accumulator::Types>::Output;
-
-/// UTXO Membership Proof Type
-pub type UtxoMembershipProof<C> = MembershipProof<<C as Configuration>::UtxoAccumulatorModel>;
-
-/// UTXO Membership Proof Variable Type
-pub type UtxoMembershipProofVar<C> = MembershipProof<<C as Configuration>::UtxoAccumulatorModelVar>;
-
-/// Encrypted Note Type
-pub type EncryptedNote<C> = EncryptedMessage<
-    Hybrid<<C as Configuration>::KeyAgreementScheme, <C as Configuration>::NoteEncryptionScheme>,
->;
-
-/// Transfer Configuration Compiler Type
+/// Compiler Type
 pub type Compiler<C> = <C as Configuration>::Compiler;
 
-/// Transfer Proof System Type
+/// Proof System Type
 type ProofSystemType<C> = <C as Configuration>::ProofSystem;
 
-/// Transfer Proof System Error Type
+/// Proof System Error Type
 pub type ProofSystemError<C> = <ProofSystemType<C> as ProofSystem>::Error;
 
-/// Transfer Proof System Public Parameters Type
+/// Proof System Public Parameters Type
 pub type ProofSystemPublicParameters<C> = <ProofSystemType<C> as ProofSystem>::PublicParameters;
 
-/// Transfer Proving Context Type
+/// Proving Context Type
 pub type ProvingContext<C> = <ProofSystemType<C> as ProofSystem>::ProvingContext;
 
-/// Transfer Verifying Context Type
+/// Verifying Context Type
 pub type VerifyingContext<C> = <ProofSystemType<C> as ProofSystem>::VerifyingContext;
 
-/// Transfer Proof System Input Type
-pub type ProofInput<C> = <<C as Configuration>::ProofSystem as ProofSystem>::Input;
+/// Proof System Input Type
+pub type ProofInput<C> = <ProofSystemType<C> as ProofSystem>::Input;
 
-/// Transfer Validity Proof Type
+/// Validity Proof Type
 pub type Proof<C> = <ProofSystemType<C> as ProofSystem>::Proof;
 
-/// Transfer Parameters
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = r"
-        C::KeyAgreementScheme: Clone,
-        C::NoteEncryptionScheme: Clone,
-        C::UtxoCommitmentScheme: Clone,
-        C::VoidNumberCommitmentScheme: Clone
-    "),
-    Copy(bound = r"
-        C::KeyAgreementScheme: Copy,
-        C::NoteEncryptionScheme: Copy,
-        C::UtxoCommitmentScheme: Copy,
-        C::VoidNumberCommitmentScheme: Copy
-    "),
-    Debug(bound = r"
-        C::KeyAgreementScheme: Debug,
-        C::NoteEncryptionScheme: Debug,
-        C::UtxoCommitmentScheme: Debug,
-        C::VoidNumberCommitmentScheme: Debug
-    "),
-    Default(bound = r"
-        C::KeyAgreementScheme: Default,
-        C::NoteEncryptionScheme: Default,
-        C::UtxoCommitmentScheme: Default,
-        C::VoidNumberCommitmentScheme: Default
-    "),
-    Eq(bound = r"
-        C::KeyAgreementScheme: Eq,
-        C::NoteEncryptionScheme: Eq,
-        C::UtxoCommitmentScheme: Eq,
-        C::VoidNumberCommitmentScheme: Eq
-    "),
-    Hash(bound = r"
-        C::KeyAgreementScheme: Hash,
-        C::NoteEncryptionScheme: Hash,
-        C::UtxoCommitmentScheme: Hash,
-        C::VoidNumberCommitmentScheme: Hash
-    "),
-    PartialEq(bound = r"
-        C::KeyAgreementScheme: PartialEq,
-        C::NoteEncryptionScheme: PartialEq,
-        C::UtxoCommitmentScheme: PartialEq,
-        C::VoidNumberCommitmentScheme: PartialEq
-    ")
-)]
-pub struct Parameters<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Note Encryption Scheme
-    pub note_encryption_scheme: Hybrid<C::KeyAgreementScheme, C::NoteEncryptionScheme>,
+/// Parameters Type
+pub type Parameters<C> = <C as Configuration>::Parameters;
 
-    /// UTXO Commitment Scheme
-    pub utxo_commitment: C::UtxoCommitmentScheme,
+/// Parameters Variable Type
+pub type ParametersVar<C> = <C as Configuration>::ParametersVar;
 
-    /// Void Number Commitment Scheme
-    pub void_number_commitment: C::VoidNumberCommitmentScheme,
-}
+/// Full Parameters Type
+pub type FullParameters<'p, C> = utxo::FullParameters<'p, Parameters<C>>;
 
-impl<C> Parameters<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Builds a new [`Parameters`] container from `note_encryption_scheme`, `utxo_commitment`, and
-    /// `void_number_commitment`.
-    #[inline]
-    pub fn new(
-        key_agreement_scheme: C::KeyAgreementScheme,
-        note_encryption_scheme: C::NoteEncryptionScheme,
-        utxo_commitment: C::UtxoCommitmentScheme,
-        void_number_commitment: C::VoidNumberCommitmentScheme,
-    ) -> Self {
-        Self {
-            note_encryption_scheme: Hybrid {
-                key_agreement_scheme,
-                encryption_scheme: note_encryption_scheme,
-            },
-            utxo_commitment,
-            void_number_commitment,
-        }
-    }
+/// Full Parameters Variable Type
+pub type FullParametersVar<'p, C> = utxo::FullParameters<'p, ParametersVar<C>, Compiler<C>>;
 
-    /// Returns the [`KeyAgreementScheme`](Configuration::KeyAgreementScheme) associated to `self`.
-    #[inline]
-    pub fn key_agreement_scheme(&self) -> &C::KeyAgreementScheme {
-        &self.note_encryption_scheme.key_agreement_scheme
-    }
+/// Full Parameters Reference Type
+pub type FullParametersRef<'p, C> = utxo::FullParametersRef<'p, Parameters<C>>;
 
-    /// Derives a [`PublicKey`] from a borrowed `secret_key`.
-    #[inline]
-    pub fn derive(&self, secret_key: &SecretKey<C>) -> PublicKey<C> {
-        self.note_encryption_scheme
-            .key_agreement_scheme
-            .derive(secret_key, &mut ())
-    }
+/// Full Parameters Reference Variable Type
+pub type FullParametersRefVar<'p, C> = utxo::FullParametersRef<'p, ParametersVar<C>, Compiler<C>>;
 
-    /// Computes the [`Utxo`] associated to `ephemeral_secret_key`, `public_spend_key`, and `asset`.
-    #[inline]
-    pub fn utxo(
-        &self,
-        ephemeral_secret_key: &SecretKey<C>,
-        public_spend_key: &PublicKey<C>,
-        asset: &Asset,
-    ) -> Utxo<C> {
-        self.utxo_commitment
-            .commit(ephemeral_secret_key, public_spend_key, asset, &mut ())
-    }
+/// UTXO Accumulator Model Type
+pub type UtxoAccumulatorModel<C> = utxo::UtxoAccumulatorModel<Parameters<C>>;
 
-    /// Computes the [`VoidNumber`] associated to `secret_spend_key` and `utxo`.
-    #[inline]
-    pub fn void_number(&self, secret_spend_key: &SecretKey<C>, utxo: &Utxo<C>) -> VoidNumber<C> {
-        self.void_number_commitment
-            .commit(secret_spend_key, utxo, &mut ())
-    }
+/// UTXO Accumulator Model Variable Type
+pub type UtxoAccumulatorModelVar<C> = utxo::UtxoAccumulatorModel<ParametersVar<C>, Compiler<C>>;
 
-    /// Validates the `utxo` against the `secret_spend_key` and the given `ephemeral_secret_key`
-    /// and `asset`, returning the void number if the `utxo` is valid.
-    #[inline]
-    pub fn check_full_asset(
-        &self,
-        secret_spend_key: &SecretKey<C>,
-        ephemeral_secret_key: &SecretKey<C>,
-        asset: &Asset,
-        utxo: &Utxo<C>,
-    ) -> Option<VoidNumber<C>> {
-        (&self.utxo(ephemeral_secret_key, &self.derive(secret_spend_key), asset) == utxo)
-            .then(move || self.void_number(secret_spend_key, utxo))
-    }
-}
+/// UTXO Accumulator Item Type
+pub type UtxoAccumulatorItem<C> = utxo::UtxoAccumulatorItem<Parameters<C>>;
 
-/// Transfer Full Parameters
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""), Copy(bound = ""))]
-pub struct FullParameters<'p, C>
+/// UTXO Accumulator Witness Type
+pub type UtxoAccumulatorWitness<C> = utxo::UtxoAccumulatorWitness<Parameters<C>>;
+
+/// UTXO Accumulator Output Type
+pub type UtxoAccumulatorOutput<C> = utxo::UtxoAccumulatorOutput<Parameters<C>>;
+
+/// Address Type
+pub type Address<C> = utxo::Address<Parameters<C>>;
+
+/// Asset Id Type
+pub type AssetId<C> = <C as Configuration>::AssetId;
+
+/// Asset Value Type
+pub type AssetValue<C> = <C as Configuration>::AssetValue;
+
+/// Asset Type
+pub type Asset<C> = asset::Asset<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>;
+
+/// Asset Variable Type
+pub type AssetVar<C> =
+    asset::Asset<<C as Configuration>::AssetIdVar, <C as Configuration>::AssetValueVar>;
+
+/// Associated Data Type
+pub type AssociatedData<C> = utxo::AssociatedData<Parameters<C>>;
+
+/// Spending Key Type
+pub type SpendingKey<C> = auth::SpendingKey<Parameters<C>>;
+
+/// Authorization Context Type
+pub type AuthorizationContext<C> = auth::AuthorizationContext<Parameters<C>>;
+
+/// Authorization Context Variable Type
+pub type AuthorizationContextVar<C> = auth::AuthorizationContext<ParametersVar<C>>;
+
+/// Authorization Proof Type
+pub type AuthorizationProof<C> = auth::AuthorizationProof<Parameters<C>>;
+
+/// Authorization Proof Variable Type
+pub type AuthorizationProofVar<C> = auth::AuthorizationProof<ParametersVar<C>>;
+
+/// Authorization Type
+pub type Authorization<C> = auth::Authorization<Parameters<C>>;
+
+/// Authorization Variable Type
+pub type AuthorizationVar<C> = auth::Authorization<ParametersVar<C>>;
+
+/// Authorization Key Type
+pub type AuthorizationKey<C> = auth::AuthorizationKey<Parameters<C>>;
+
+/// Authorization Signature Type
+pub type AuthorizationSignature<C> = auth::AuthorizationSignature<Parameters<C>>;
+
+/// Unspent Transaction Output Type
+pub type Utxo<C> = utxo::Utxo<Parameters<C>>;
+
+/// Base Note Type
+pub type BaseNote<C> = Var<<C as Configuration>::NoteVar, Public, <C as Configuration>::Compiler>;
+
+/// Note Type
+pub type Note<C> = utxo::Note<Parameters<C>>;
+
+/// Nullifier Type
+pub type Nullifier<C> = utxo::Nullifier<Parameters<C>>;
+
+/// Identifier Type
+pub type Identifier<C> = utxo::Identifier<Parameters<C>>;
+
+/// Identified Asset Type
+pub type IdentifiedAsset<C> = utxo::IdentifiedAsset<Parameters<C>>;
+
+/// Pre-Sender Type
+pub type PreSender<C> = sender::PreSender<Parameters<C>>;
+
+/// Sender Type
+pub type Sender<C> = sender::Sender<Parameters<C>>;
+
+/// Sender Variable Type
+pub type SenderVar<C> = sender::Sender<ParametersVar<C>, Compiler<C>>;
+
+/// Sender Post Type
+pub type SenderPost<C> = sender::SenderPost<Parameters<C>>;
+
+/// Receiver Type
+pub type Receiver<C> = receiver::Receiver<Parameters<C>>;
+
+/// Receiver Variable Type
+pub type ReceiverVar<C> = receiver::Receiver<ParametersVar<C>, Compiler<C>>;
+
+/// Receiver Post Type
+pub type ReceiverPost<C> = receiver::ReceiverPost<Parameters<C>>;
+
+/// Generates an internal pair for `asset` against `authorization_context`.
+#[inline]
+pub fn internal_pair<C, R>(
+    parameters: &Parameters<C>,
+    authorization_context: &mut AuthorizationContext<C>,
+    address: Address<C>,
+    asset: Asset<C>,
+    associated_data: AssociatedData<C>,
+    rng: &mut R,
+) -> (Receiver<C>, PreSender<C>)
 where
     C: Configuration,
+    R: CryptoRng + RngCore + ?Sized,
 {
-    /// Base Parameters
-    pub base: &'p Parameters<C>,
-
-    /// UTXO Accumulator Model
-    pub utxo_accumulator_model: &'p C::UtxoAccumulatorModel,
+    let receiver = Receiver::<C>::sample(parameters, address, asset.clone(), associated_data, rng);
+    let pre_sender = PreSender::<C>::sample(
+        parameters,
+        authorization_context,
+        receiver.identifier(),
+        asset,
+        rng,
+    );
+    (receiver, pre_sender)
 }
 
-impl<'p, C> FullParameters<'p, C>
+/// Generates an internal pair for a zero-asset with the given `asset_id` against
+/// `authorization_context`.
+#[inline]
+pub fn internal_zero_pair<C, R>(
+    parameters: &Parameters<C>,
+    authorization_context: &mut AuthorizationContext<C>,
+    address: Address<C>,
+    asset_id: C::AssetId,
+    associated_data: AssociatedData<C>,
+    rng: &mut R,
+) -> (Receiver<C>, PreSender<C>)
 where
     C: Configuration,
+    R: CryptoRng + RngCore + ?Sized,
 {
-    /// Builds a new [`FullParameters`] from `base` and `utxo_accumulator_model`.
-    #[inline]
-    pub fn new(
-        base: &'p Parameters<C>,
-        utxo_accumulator_model: &'p C::UtxoAccumulatorModel,
-    ) -> Self {
-        Self {
-            base,
-            utxo_accumulator_model,
-        }
-    }
-}
-
-impl<'p, C> AsRef<Parameters<C>> for FullParameters<'p, C>
-where
-    C: Configuration,
-{
-    #[inline]
-    fn as_ref(&self) -> &Parameters<C> {
-        self.base
-    }
-}
-
-impl<'p, C> Deref for FullParameters<'p, C>
-where
-    C: Configuration,
-{
-    type Target = Parameters<C>;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.base
-    }
-}
-
-/// Transfer Full Parameters Variables
-pub struct FullParametersVar<'p, C>
-where
-    C: Configuration,
-{
-    /// Key Agreement Scheme
-    key_agreement: C::KeyAgreementSchemeVar,
-
-    /// UTXO Commitment Scheme
-    utxo_commitment: C::UtxoCommitmentSchemeVar,
-
-    /// Void Number Commitment Scheme
-    void_number_commitment: C::VoidNumberCommitmentSchemeVar,
-
-    /// UTXO Accumulator Model
-    utxo_accumulator_model: C::UtxoAccumulatorModelVar,
-
-    /// Type Parameter Marker
-    __: PhantomData<&'p ()>,
-}
-
-impl<'p, C> FullParametersVar<'p, C>
-where
-    C: Configuration,
-{
-    /// Derives a [`PublicKeyVar`] from `secret_key`.
-    #[inline]
-    fn derive(&self, secret_key: &SecretKeyVar<C>, compiler: &mut C::Compiler) -> PublicKeyVar<C> {
-        self.key_agreement.derive(secret_key, compiler)
-    }
-
-    /// Computes the [`UtxoVar`] associated to `ephemeral_secret_key`, `public_spend_key`, and
-    /// `asset`.
-    #[inline]
-    fn utxo(
-        &self,
-        ephemeral_secret_key: &SecretKeyVar<C>,
-        public_spend_key: &PublicKeyVar<C>,
-        asset: &AssetVar<C>,
-        compiler: &mut C::Compiler,
-    ) -> UtxoVar<C> {
-        self.utxo_commitment
-            .commit(ephemeral_secret_key, public_spend_key, asset, compiler)
-    }
-
-    /// Computes the [`VoidNumberVar`] associated to `secret_spend_key` and `utxo`.
-    #[inline]
-    fn void_number(
-        &self,
-        secret_spend_key: &SecretKeyVar<C>,
-        utxo: &UtxoVar<C>,
-        compiler: &mut C::Compiler,
-    ) -> VoidNumberVar<C> {
-        self.void_number_commitment
-            .commit(secret_spend_key, utxo, compiler)
-    }
-}
-
-impl<'p, C> Constant<C::Compiler> for FullParametersVar<'p, C>
-where
-    C: Configuration,
-    Parameters<C>: 'p,
-{
-    type Type = FullParameters<'p, C>;
-
-    #[inline]
-    fn new_constant(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
-        Self {
-            key_agreement: this
-                .note_encryption_scheme
-                .key_agreement_scheme
-                .as_constant(compiler),
-            utxo_commitment: this.utxo_commitment.as_constant(compiler),
-            void_number_commitment: this.void_number_commitment.as_constant(compiler),
-            utxo_accumulator_model: this.utxo_accumulator_model.as_constant(compiler),
-            __: PhantomData,
-        }
-    }
-}
-
-/// Spending Key
-#[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
-pub struct SpendingKey<C>
-where
-    C: Configuration,
-{
-    /// Spend Part of the Spending Key
-    spend: SecretKey<C>,
-
-    /// View Part of the Spending Key
-    view: SecretKey<C>,
-}
-
-impl<C> SpendingKey<C>
-where
-    C: Configuration,
-{
-    /// Builds a new [`SpendingKey`] from `spend` and `view`.
-    #[inline]
-    pub fn new(spend: SecretKey<C>, view: SecretKey<C>) -> Self {
-        Self { spend, view }
-    }
-
-    /// Derives the receiving key for `self`.
-    #[inline]
-    pub fn derive(&self, parameters: &C::KeyAgreementScheme) -> ReceivingKey<C> {
-        ReceivingKey {
-            spend: parameters.derive(&self.spend, &mut ()),
-            view: parameters.derive(&self.view, &mut ()),
-        }
-    }
-
-    /// Validates the `utxo` against `self` and the given `ephemeral_secret_key` and `asset`,
-    /// returning the void number if the `utxo` is valid.
-    #[inline]
-    pub fn check_full_asset(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: &SecretKey<C>,
-        asset: &Asset,
-        utxo: &Utxo<C>,
-    ) -> Option<VoidNumber<C>> {
-        parameters.check_full_asset(&self.spend, ephemeral_secret_key, asset, utxo)
-    }
-
-    /// Prepares `self` for spending `asset` with the given `ephemeral_secret_key`.
-    #[inline]
-    pub fn sender(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> PreSender<C> {
-        PreSender::new(parameters, self.spend.clone(), ephemeral_secret_key, asset)
-    }
-
-    /// Prepares `self` for receiving `asset`.
-    #[inline]
-    pub fn receiver(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> Receiver<C> {
-        self.derive(parameters.key_agreement_scheme())
-            .into_receiver(parameters, ephemeral_secret_key, asset)
-    }
-
-    /// Returns an receiver-sender pair for internal transactions.
-    #[inline]
-    pub fn internal_pair(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> (Receiver<C>, PreSender<C>) {
-        let receiver = self.receiver(parameters, ephemeral_secret_key.clone(), asset);
-        let sender = self.sender(parameters, ephemeral_secret_key, asset);
-        (receiver, sender)
-    }
-
-    /// Returns an receiver-sender pair of zeroes for internal transactions.
-    #[inline]
-    pub fn internal_zero_pair(
-        &self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset_id: AssetId,
-    ) -> (Receiver<C>, PreSender<C>) {
-        self.internal_pair(parameters, ephemeral_secret_key, Asset::zero(asset_id))
-    }
-}
-
-impl<C, D> Sample<D> for SpendingKey<C>
-where
-    C: Configuration,
-    D: Clone,
-    SecretKey<C>: Sample<D>,
-{
-    #[inline]
-    fn sample<R>(distribution: D, rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(
-            Sample::sample(distribution.clone(), rng),
-            Sample::sample(distribution, rng),
-        )
-    }
-}
-
-/// Receiving Key
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "PublicKey<C>: Deserialize<'de>",
-            serialize = "PublicKey<C>: Serialize"
-        ),
-        crate = "manta_util::serde",
-        deny_unknown_fields
+    internal_pair::<C, R>(
+        parameters,
+        authorization_context,
+        address,
+        Asset::<C>::zero(asset_id),
+        associated_data,
+        rng,
     )
-)]
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = ""),
-    Copy(bound = "PublicKey<C>: Copy"),
-    Debug(bound = "PublicKey<C>: Debug"),
-    Eq(bound = "PublicKey<C>: Eq"),
-    Hash(bound = "PublicKey<C>: Hash"),
-    PartialEq(bound = "PublicKey<C>: PartialEq")
-)]
-pub struct ReceivingKey<C>
-where
-    C: Configuration,
-{
-    /// Spend Part of the Receiving Key
-    pub spend: PublicKey<C>,
-
-    /// View Part of the Receiving Key
-    pub view: PublicKey<C>,
-}
-
-impl<C> ReceivingKey<C>
-where
-    C: Configuration,
-{
-    /// Prepares `self` for receiving `asset`.
-    #[inline]
-    pub fn into_receiver(
-        self,
-        parameters: &Parameters<C>,
-        ephemeral_secret_key: SecretKey<C>,
-        asset: Asset,
-    ) -> Receiver<C> {
-        Receiver::new(
-            parameters,
-            self.spend,
-            self.view,
-            ephemeral_secret_key,
-            asset,
-        )
-    }
-}
-
-/// Note
-#[derive(derivative::Derivative)]
-#[derivative(
-    Clone(bound = "SecretKey<C>: Clone"),
-    Copy(bound = "SecretKey<C>: Copy"),
-    Debug(bound = "SecretKey<C>: Debug"),
-    Eq(bound = "SecretKey<C>: Eq"),
-    Hash(bound = "SecretKey<C>: Hash"),
-    PartialEq(bound = "SecretKey<C>: PartialEq")
-)]
-pub struct Note<C>
-where
-    C: Configuration + ?Sized,
-{
-    /// Ephemeral Secret Key
-    pub ephemeral_secret_key: SecretKey<C>,
-
-    /// Asset
-    pub asset: Asset,
-}
-
-impl<C> Note<C>
-where
-    C: Configuration,
-{
-    /// Builds a new plaintext [`Note`] from `ephemeral_secret_key` and `asset`.
-    #[inline]
-    pub fn new(ephemeral_secret_key: SecretKey<C>, asset: Asset) -> Self {
-        Self {
-            ephemeral_secret_key,
-            asset,
-        }
-    }
-}
-
-impl<C, SD, AD> Sample<(SD, AD)> for Note<C>
-where
-    C: Configuration,
-    SecretKey<C>: Sample<SD>,
-    Asset: Sample<AD>,
-{
-    #[inline]
-    fn sample<R>(distribution: (SD, AD), rng: &mut R) -> Self
-    where
-        R: RngCore + ?Sized,
-    {
-        Self::new(
-            Sample::sample(distribution.0, rng),
-            Sample::sample(distribution.1, rng),
-        )
-    }
-}
-
-impl<C> SizeLimit for Note<C>
-where
-    C: Configuration,
-{
-    const SIZE: usize = SecretKey::<C>::SIZE + Asset::SIZE;
 }
 
 /// Transfer
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = r"
+        Authorization<C>: Clone,
+        C::AssetId: Clone,
+        C::AssetValue: Clone,
+        Sender<C>: Clone,
+        Receiver<C>: Clone"),
+    Copy(bound = r"
+        Authorization<C>: Copy,
+        C::AssetId: Copy,
+        C::AssetValue: Copy,
+        Sender<C>: Copy,
+        Receiver<C>: Copy"),
+    Debug(bound = r"
+        Authorization<C>: Debug,
+        C::AssetId: Debug,
+        C::AssetValue: Debug,
+        Sender<C>: Debug,
+        Receiver<C>: Debug"),
+    Eq(bound = r"
+        Authorization<C>: Eq,
+        C::AssetId: Eq,
+        C::AssetValue: Eq,
+        Sender<C>: Eq,
+        Receiver<C>: Eq"),
+    Hash(bound = r"
+        Authorization<C>: Hash,
+        C::AssetId: Hash,
+        C::AssetValue: Hash,
+        Sender<C>: Hash,
+        Receiver<C>: Hash"),
+    PartialEq(bound = r"
+        Authorization<C>: PartialEq,
+        C::AssetId: PartialEq,
+        C::AssetValue: PartialEq,
+        Sender<C>: PartialEq,
+        Receiver<C>: PartialEq")
+)]
 pub struct Transfer<
     C,
     const SOURCES: usize,
@@ -836,11 +491,14 @@ pub struct Transfer<
 > where
     C: Configuration,
 {
+    /// Authorization
+    authorization: Option<Authorization<C>>,
+
     /// Asset Id
-    asset_id: Option<AssetId>,
+    asset_id: Option<C::AssetId>,
 
     /// Sources
-    sources: [AssetValue; SOURCES],
+    sources: [C::AssetValue; SOURCES],
 
     /// Senders
     senders: [Sender<C>; SENDERS],
@@ -849,7 +507,7 @@ pub struct Transfer<
     receivers: [Receiver<C>; RECEIVERS],
 
     /// Sinks
-    sinks: [AssetValue; SINKS],
+    sinks: [C::AssetValue; SINKS],
 }
 
 impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
@@ -857,53 +515,34 @@ impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, cons
 where
     C: Configuration,
 {
-    /// Builds a new [`Transfer`].
+    /// Builds a new [`Transfer`] from its component parts.
     #[inline]
     pub fn new(
-        asset_id: impl Into<Option<AssetId>>,
-        sources: [AssetValue; SOURCES],
+        authorization: impl Into<Option<Authorization<C>>>,
+        asset_id: impl Into<Option<C::AssetId>>,
+        sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
-        sinks: [AssetValue; SINKS],
+        sinks: [C::AssetValue; SINKS],
     ) -> Self {
+        let authorization = authorization.into();
         let asset_id = asset_id.into();
-        Self::check_shape(asset_id.is_some());
-        Self::new_unchecked(asset_id, sources, senders, receivers, sinks)
-    }
-
-    /// Generates the public input for the [`Transfer`] validation proof.
-    #[inline]
-    pub fn generate_proof_input(&self) -> ProofInput<C> {
-        let mut input = Default::default();
-        if let Some(asset_id) = self.asset_id {
-            C::ProofSystem::extend(&mut input, &asset_id);
-        }
-        self.sources
-            .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source));
-        self.senders
-            .iter()
-            .for_each(|sender| sender.extend_input(&mut input));
-        self.receivers
-            .iter()
-            .for_each(|receiver| receiver.extend_input(&mut input));
-        self.sinks
-            .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
-        input
+        Self::check_shape(authorization.is_some(), asset_id.is_some());
+        Self::new_unchecked(authorization, asset_id, sources, senders, receivers, sinks)
     }
 
     /// Checks that the [`Transfer`] has a valid shape.
     #[inline]
-    fn check_shape(has_visible_asset_id: bool) {
+    pub fn check_shape(has_authorization: bool, has_visible_asset_id: bool) {
         Self::has_nonempty_input_shape();
         Self::has_nonempty_output_shape();
+        Self::has_authorization_when_required(has_authorization);
         Self::has_visible_asset_id_when_required(has_visible_asset_id);
     }
 
     /// Checks that the input side of the transfer is not empty.
     #[inline]
-    fn has_nonempty_input_shape() {
+    pub fn has_nonempty_input_shape() {
         assert_ne!(
             SOURCES + SENDERS,
             0,
@@ -913,7 +552,7 @@ where
 
     /// Checks that the output side of the transfer is not empty.
     #[inline]
-    fn has_nonempty_output_shape() {
+    pub fn has_nonempty_output_shape() {
         assert_ne!(
             RECEIVERS + SINKS,
             0,
@@ -921,9 +560,20 @@ where
         );
     }
 
+    /// Checks that the given `authorization` for [`Transfer`] building is present exactly when
+    /// required.
+    #[inline]
+    pub fn has_authorization_when_required(has_authorization: bool) {
+        if requires_authorization(SENDERS) {
+            assert!(has_authorization, "Missing authorization when required.");
+        } else {
+            assert!(!has_authorization, "Given authorization when not required.");
+        }
+    }
+
     /// Checks that the given `asset_id` for [`Transfer`] building is visible exactly when required.
     #[inline]
-    fn has_visible_asset_id_when_required(has_visible_asset_id: bool) {
+    pub fn has_visible_asset_id_when_required(has_visible_asset_id: bool) {
         if has_public_participants(SOURCES, SINKS) {
             assert!(
                 has_visible_asset_id,
@@ -941,13 +591,15 @@ where
     /// output sides.
     #[inline]
     fn new_unchecked(
-        asset_id: Option<AssetId>,
-        sources: [AssetValue; SOURCES],
+        authorization: Option<Authorization<C>>,
+        asset_id: Option<C::AssetId>,
+        sources: [C::AssetValue; SOURCES],
         senders: [Sender<C>; SENDERS],
         receivers: [Receiver<C>; RECEIVERS],
-        sinks: [AssetValue; SINKS],
+        sinks: [C::AssetValue; SINKS],
     ) -> Self {
         Self {
+            authorization,
             asset_id,
             sources,
             senders,
@@ -956,9 +608,39 @@ where
         }
     }
 
+    /// Constructs an [`Asset`] against the `asset_id` of `self` and `value`.
+    #[inline]
+    fn construct_asset(&self, value: &C::AssetValue) -> Option<Asset<C>> {
+        Some(Asset::<C>::new(self.asset_id.clone()?, value.clone()))
+    }
+
+    /// Returns the `k`-th source in the transfer.
+    #[inline]
+    pub fn source(&self, k: usize) -> Option<Asset<C>> {
+        self.sources
+            .get(k)
+            .and_then(|value| self.construct_asset(value))
+    }
+
+    /// Returns the `k`-th sink in the transfer.
+    #[inline]
+    pub fn sink(&self, k: usize) -> Option<Asset<C>> {
+        self.sinks
+            .get(k)
+            .and_then(|value| self.construct_asset(value))
+    }
+
+    /// Generates the public input for the [`Transfer`] validation proof.
+    #[inline]
+    pub fn generate_proof_input(&self) -> ProofInput<C> {
+        let mut input = Default::default();
+        self.extend(&mut input);
+        input
+    }
+
     /// Builds a constraint system which asserts constraints against unknown variables.
     #[inline]
-    pub fn unknown_constraints(parameters: FullParameters<C>) -> C::Compiler {
+    pub fn unknown_constraints(parameters: FullParametersRef<C>) -> C::Compiler {
         let mut compiler = C::ProofSystem::context_compiler();
         TransferVar::<C, SOURCES, SENDERS, RECEIVERS, SINKS>::new_unknown(&mut compiler)
             .build_validity_constraints(&parameters.as_constant(&mut compiler), &mut compiler);
@@ -967,7 +649,7 @@ where
 
     /// Builds a constraint system which asserts constraints against known variables.
     #[inline]
-    pub fn known_constraints(&self, parameters: FullParameters<C>) -> C::Compiler {
+    pub fn known_constraints(&self, parameters: FullParametersRef<C>) -> C::Compiler {
         let mut compiler = C::ProofSystem::proof_compiler();
         let transfer: TransferVar<C, SOURCES, SENDERS, RECEIVERS, SINKS> =
             self.as_known(&mut compiler);
@@ -979,7 +661,7 @@ where
     #[inline]
     pub fn generate_context<R>(
         public_parameters: &ProofSystemPublicParameters<C>,
-        parameters: FullParameters<C>,
+        parameters: FullParametersRef<C>,
         rng: &mut R,
     ) -> Result<(ProvingContext<C>, VerifyingContext<C>), ProofSystemError<C>>
     where
@@ -992,37 +674,156 @@ where
         )
     }
 
-    /// Converts `self` into its ledger post.
+    /// Converts `self` into its [`TransferPostBody`] by building the [`Transfer`] validity proof.
+    #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction here.
     #[inline]
-    pub fn into_post<R>(
+    fn into_post_body_with_authorization<R>(
         self,
-        parameters: FullParameters<C>,
-        context: &ProvingContext<C>,
+        parameters: FullParametersRef<C>,
+        proving_context: &ProvingContext<C>,
         rng: &mut R,
-    ) -> Result<TransferPost<C>, ProofSystemError<C>>
+    ) -> Result<(TransferPostBody<C>, Option<Authorization<C>>), ProofSystemError<C>>
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        Ok(TransferPost {
-            validity_proof: C::ProofSystem::prove(
-                context,
-                self.known_constraints(parameters),
-                rng,
-            )?,
-            asset_id: self.asset_id,
-            sources: self.sources.into(),
-            sender_posts: self.senders.into_iter().map(Sender::into_post).collect(),
-            receiver_posts: self
-                .receivers
-                .into_iter()
-                .map(Receiver::into_post)
-                .collect(),
-            sinks: self.sinks.into(),
-        })
+        Ok((
+            TransferPostBody::build(
+                C::ProofSystem::prove(proving_context, self.known_constraints(parameters), rng)?,
+                self.asset_id,
+                self.sources,
+                self.senders,
+                self.receivers,
+                self.sinks,
+            ),
+            self.authorization,
+        ))
+    }
+
+    /// Converts `self` into its [`TransferPostBody`] by building the [`Transfer`] validity proof.
+    #[inline]
+    pub fn into_post_body<R>(
+        self,
+        parameters: FullParametersRef<C>,
+        proving_context: &ProvingContext<C>,
+        rng: &mut R,
+    ) -> Result<TransferPostBody<C>, ProofSystemError<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        Ok(self
+            .into_post_body_with_authorization(parameters, proving_context, rng)?
+            .0)
+    }
+
+    /// Converts `self` into its [`TransferPost`] by building the [`Transfer`] validity proof and
+    /// signing the [`TransferPostBody`] payload.
+    ///
+    /// Returns `Ok(None)` when the authorization required by this [`Transfer`] is invalid or not
+    /// provided. Returns `Err` when proof generation fails.
+    #[inline]
+    pub fn into_post<R>(
+        self,
+        parameters: FullParametersRef<C>,
+        proving_context: &ProvingContext<C>,
+        spending_key: Option<&SpendingKey<C>>,
+        rng: &mut R,
+    ) -> Result<Option<TransferPost<C>>, ProofSystemError<C>>
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        match (
+            requires_authorization(SENDERS),
+            self.authorization.is_some(),
+            spending_key,
+        ) {
+            (true, true, Some(spending_key)) => {
+                let (body, authorization) =
+                    self.into_post_body_with_authorization(parameters, proving_context, rng)?;
+                match auth::sign(
+                    parameters.base,
+                    spending_key,
+                    authorization.expect("It is known to be `Some` from the check above."),
+                    &body,
+                    rng,
+                ) {
+                    Some(authorization_signature) => Ok(Some(TransferPost::new_unchecked(
+                        Some(authorization_signature),
+                        body,
+                    ))),
+                    _ => Ok(None),
+                }
+            }
+            (false, false, None) => Ok(Some(TransferPost::new_unchecked(
+                None,
+                self.into_post_body(parameters, proving_context, rng)?,
+            ))),
+            _ => Ok(None),
+        }
+    }
+}
+
+impl<C, const SOURCES: usize, const SENDERS: usize, const RECEIVERS: usize, const SINKS: usize>
+    Input<C::ProofSystem> for Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>
+where
+    C: Configuration,
+{
+    #[inline]
+    fn extend(&self, input: &mut ProofInput<C>) {
+        if let Some(authorization) = &self.authorization {
+            C::ProofSystem::extend(input, Field::get(authorization))
+        }
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(input, asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(input, source));
+        self.senders
+            .iter()
+            .for_each(|sender| C::ProofSystem::extend(input, sender));
+        self.receivers
+            .iter()
+            .for_each(|receiver| C::ProofSystem::extend(input, receiver));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(input, sink));
     }
 }
 
 /// Transfer Variable
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = r"
+            AuthorizationVar<C>: Clone,
+            C::AssetIdVar: Clone,
+            C::AssetValueVar: Clone,
+            SenderVar<C>: Clone,
+            ReceiverVar<C>: Clone"),
+    Debug(bound = r"
+            AuthorizationVar<C>: Debug,
+            C::AssetIdVar: Debug,
+            C::AssetValueVar: Debug,
+            SenderVar<C>: Debug,
+            ReceiverVar<C>: Debug"),
+    Eq(bound = r"
+            AuthorizationVar<C>: Eq,
+            C::AssetIdVar: Eq,
+            C::AssetValueVar: Eq,
+            SenderVar<C>: Eq,
+            ReceiverVar<C>: Eq"),
+    Hash(bound = r"
+            AuthorizationVar<C>: Hash,
+            C::AssetIdVar: Hash,
+            C::AssetValueVar: Hash,
+            SenderVar<C>: Hash,
+            ReceiverVar<C>: Hash"),
+    PartialEq(bound = r"
+            AuthorizationVar<C>: PartialEq,
+            C::AssetIdVar: PartialEq,
+            C::AssetValueVar: PartialEq,
+            SenderVar<C>: PartialEq,
+            ReceiverVar<C>: PartialEq")
+)]
 struct TransferVar<
     C,
     const SOURCES: usize,
@@ -1032,6 +833,9 @@ struct TransferVar<
 > where
     C: Configuration,
 {
+    /// Authorization
+    authorization: Option<AuthorizationVar<C>>,
+
     /// Asset Id
     asset_id: Option<C::AssetIdVar>,
 
@@ -1061,28 +865,19 @@ where
         compiler: &mut C::Compiler,
     ) {
         let mut secret_asset_ids = Vec::with_capacity(SENDERS + RECEIVERS);
-        let input_sum = Self::value_sum(
-            self.senders
-                .into_iter()
-                .map(|s| {
-                    let asset = s.get_well_formed_asset(parameters, compiler);
-                    secret_asset_ids.push(asset.id);
-                    asset.value
-                })
-                .chain(self.sources)
-                .collect::<Vec<_>>(),
+        let input_sum = Self::input_sum(
+            parameters,
+            &mut secret_asset_ids,
+            self.authorization,
+            self.senders,
+            self.sources,
             compiler,
         );
-        let output_sum = Self::value_sum(
-            self.receivers
-                .into_iter()
-                .map(|r| {
-                    let asset = r.get_well_formed_asset(parameters, compiler);
-                    secret_asset_ids.push(asset.id);
-                    asset.value
-                })
-                .chain(self.sinks)
-                .collect::<Vec<_>>(),
+        let output_sum = Self::output_sum(
+            parameters,
+            &mut secret_asset_ids,
+            self.receivers,
+            self.sinks,
             compiler,
         );
         compiler.assert_eq(&input_sum, &output_sum);
@@ -1092,13 +887,69 @@ where
         }
     }
 
+    /// Computes the sum over all the input assets, asserting that they are all well-formed.
+    #[inline]
+    fn input_sum(
+        parameters: &FullParametersVar<C>,
+        secret_asset_ids: &mut Vec<C::AssetIdVar>,
+        authorization: Option<AuthorizationVar<C>>,
+        senders: Vec<SenderVar<C>>,
+        sources: Vec<C::AssetValueVar>,
+        compiler: &mut C::Compiler,
+    ) -> C::AssetValueVar {
+        if let Some(mut authorization) = authorization {
+            authorization.assert_authorized(&parameters.base, compiler);
+            Self::value_sum(
+                senders
+                    .into_iter()
+                    .map(|s| {
+                        let asset = s.well_formed_asset(
+                            &parameters.base,
+                            &parameters.utxo_accumulator_model,
+                            &mut authorization.context,
+                            compiler,
+                        );
+                        secret_asset_ids.push(asset.id);
+                        asset.value
+                    })
+                    .chain(sources)
+                    .collect::<Vec<_>>(),
+                compiler,
+            )
+        } else {
+            Self::value_sum(sources, compiler)
+        }
+    }
+
+    /// Computes the sum over all the output assets, asserting that they are all well-formed.
+    #[inline]
+    fn output_sum(
+        parameters: &FullParametersVar<C>,
+        secret_asset_ids: &mut Vec<C::AssetIdVar>,
+        receivers: Vec<ReceiverVar<C>>,
+        sinks: Vec<C::AssetValueVar>,
+        compiler: &mut C::Compiler,
+    ) -> C::AssetValueVar {
+        Self::value_sum(
+            receivers
+                .into_iter()
+                .map(|r| {
+                    let asset = r.well_formed_asset(&parameters.base, compiler);
+                    secret_asset_ids.push(asset.id);
+                    asset.value
+                })
+                .chain(sinks)
+                .collect::<Vec<_>>(),
+            compiler,
+        )
+    }
+
     /// Computes the sum of the asset values over `iter`.
     #[inline]
     fn value_sum<I>(iter: I, compiler: &mut C::Compiler) -> C::AssetValueVar
     where
         I: IntoIterator<Item = C::AssetValueVar>,
     {
-        // TODO: Add a `Sum` trait for `compiler` and just do a sum here.
         iter.into_iter()
             .reduce(move |l, r| Add::add(l, r, compiler))
             .unwrap()
@@ -1113,9 +964,41 @@ where
     type Type = Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>;
 
     #[inline]
+    fn new_unknown(compiler: &mut C::Compiler) -> Self {
+        Self {
+            authorization: requires_authorization(SENDERS).then(|| compiler.allocate_unknown()),
+            asset_id: has_public_participants(SOURCES, SINKS)
+                .then(|| compiler.allocate_unknown::<Public, _>()),
+            sources: (0..SOURCES)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown::<Public, _>())
+                .collect(),
+            senders: (0..SENDERS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown())
+                .collect(),
+            receivers: (0..RECEIVERS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown())
+                .collect(),
+            sinks: (0..SINKS)
+                .into_iter()
+                .map(|_| compiler.allocate_unknown::<Public, _>())
+                .collect(),
+        }
+    }
+
+    #[inline]
     fn new_known(this: &Self::Type, compiler: &mut C::Compiler) -> Self {
         Self {
-            asset_id: this.asset_id.map(|id| id.as_known::<Public, _>(compiler)),
+            authorization: this
+                .authorization
+                .as_ref()
+                .map(|authorization| authorization.as_known(compiler)),
+            asset_id: this
+                .asset_id
+                .as_ref()
+                .map(|id| id.as_known::<Public, _>(compiler)),
             sources: this
                 .sources
                 .iter()
@@ -1138,30 +1021,6 @@ where
                 .collect(),
         }
     }
-
-    #[inline]
-    fn new_unknown(compiler: &mut C::Compiler) -> Self {
-        Self {
-            asset_id: has_public_participants(SOURCES, SINKS)
-                .then(|| compiler.allocate_unknown::<Public, _>()),
-            sources: (0..SOURCES)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown::<Public, _>())
-                .collect(),
-            senders: (0..SENDERS)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown())
-                .collect(),
-            receivers: (0..RECEIVERS)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown())
-                .collect(),
-            sinks: (0..SINKS)
-                .into_iter()
-                .map(|_| compiler.allocate_unknown::<Public, _>())
-                .collect(),
-        }
-    }
 }
 
 /// Transfer Ledger
@@ -1171,11 +1030,22 @@ where
 /// the [`Transfer`] abstraction. This `trait` inherits from [`SenderLedger`] and [`ReceiverLedger`]
 /// which validate the [`Sender`] and [`Receiver`] parts of any [`Transfer`]. See their
 /// documentation for more.
-pub trait TransferLedger<C>: SenderLedger<C, SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>)>
-    + ReceiverLedger<C, SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>)>
+pub trait TransferLedger<C>:
+    SenderLedger<
+        Parameters<C>,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+    > + ReceiverLedger<
+        Parameters<C>,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+    >
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
+    /// Super Posting Key
+    ///
+    /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
+    type SuperPostingKey: Copy;
+
     /// Account Identifier
     type AccountId;
 
@@ -1189,21 +1059,21 @@ where
     /// track this condition.
     type UpdateError;
 
-    /// Valid [`AssetValue`] for [`TransferPost`] Source
+    /// Valid [`AssetValue`](Configuration::AssetValue) for [`TransferPost`] Source
     ///
     /// # Safety
     ///
     /// This type must be restricted so that it can only be constructed by this implementation of
     /// [`TransferLedger`].
-    type ValidSourceAccount: AsRef<AssetValue>;
+    type ValidSourceAccount: AsRef<C::AssetValue>;
 
-    /// Valid [`AssetValue`] for [`TransferPost`] Sink
+    /// Valid [`AssetValue`](Configuration::AssetValue) for [`TransferPost`] Sink
     ///
     /// # Safety
     ///
     /// This type must be restricted so that it can only be constructed by this implementation of
     /// [`TransferLedger`].
-    type ValidSinkAccount: AsRef<AssetValue>;
+    type ValidSinkAccount: AsRef<C::AssetValue>;
 
     /// Valid [`Proof`] Posting Key
     ///
@@ -1216,55 +1086,45 @@ where
     /// [`check_sink_accounts`](Self::check_sink_accounts) and [`is_valid`](Self::is_valid).
     type ValidProof: Copy;
 
-    /// Super Posting Key
-    ///
-    /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
-    type SuperPostingKey: Copy;
-
     /// Checks that the balances associated to the source accounts are sufficient to withdraw the
     /// amount given in `sources`.
     fn check_source_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: &C::AssetId,
         sources: I,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<C, Self::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>;
+        I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
     /// Checks that the sink accounts exist and balance can be increased by the specified amounts.
     fn check_sink_accounts<I>(
         &self,
-        asset_id: AssetId,
+        asset_id: &C::AssetId,
         sinks: I,
-    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<C, Self::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>;
+        I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
 
-    /// Checks that the transfer `proof` is valid.
+    /// Checks that the transfer proof stored in `posting_key` is valid.
     fn is_valid(
         &self,
-        asset_id: Option<AssetId>,
-        sources: &[SourcePostingKey<C, Self>],
-        senders: &[SenderPostingKey<C, Self>],
-        receivers: &[ReceiverPostingKey<C, Self>],
-        sinks: &[SinkPostingKey<C, Self>],
-        proof: Proof<C>,
+        posting_key: TransferPostingKeyRef<C, Self>,
     ) -> Option<(Self::ValidProof, Self::Event)>;
 
     /// Updates the public balances in the ledger, finishing the transaction.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// This method can only be called once we check that `proof` is a valid proof and that
     /// `senders` and `receivers` are valid participants in the transaction. See
     /// [`is_valid`](Self::is_valid) for more.
     fn update_public_balances(
         &mut self,
-        asset_id: AssetId,
+        super_key: &TransferLedgerSuperPostingKey<C, Self>,
+        asset_id: C::AssetId,
         sources: Vec<SourcePostingKey<C, Self>>,
         sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
-        super_key: &TransferLedgerSuperPostingKey<C, Self>,
     ) -> Result<(), Self::UpdateError>;
 }
 
@@ -1274,8 +1134,32 @@ pub type SourcePostingKey<C, L> = <L as TransferLedger<C>>::ValidSourceAccount;
 /// Transfer Sink Posting Key Type
 pub type SinkPostingKey<C, L> = <L as TransferLedger<C>>::ValidSinkAccount;
 
+/// Transfer Sender Posting Key Type
+pub type SenderPostingKey<C, L> = sender::SenderPostingKey<Parameters<C>, L>;
+
+/// Transfer Receiver Posting Key Type
+pub type ReceiverPostingKey<C, L> = receiver::ReceiverPostingKey<Parameters<C>, L>;
+
 /// Transfer Ledger Super Posting Key Type
 pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPostingKey;
+
+/// Invalid Authorization Signature Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum InvalidAuthorizationSignature {
+    /// Invalid Authorization Signature Shape
+    InvalidShape,
+
+    /// Missing Signature
+    MissingSignature,
+
+    /// Bad Signature
+    BadSignature,
+}
 
 /// Invalid Source Accounts
 ///
@@ -1286,16 +1170,27 @@ pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPo
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct InvalidSourceAccount<AccountId> {
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AccountId: Clone, C::AssetId: Clone, C::AssetValue: Clone"),
+    Copy(bound = "AccountId: Copy, C::AssetId: Copy, C::AssetValue: Copy"),
+    Debug(bound = "AccountId: Debug, C::AssetId: Debug, C::AssetValue: Debug"),
+    Eq(bound = "AccountId: Eq, C::AssetId: Eq, C::AssetValue: Eq"),
+    Hash(bound = "AccountId: Hash, C::AssetId: Hash, C::AssetValue: Hash"),
+    PartialEq(bound = "AccountId: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq")
+)]
+pub struct InvalidSourceAccount<C, AccountId>
+where
+    C: Configuration + ?Sized,
+{
     /// Account Id
     pub account_id: AccountId,
 
     /// Asset Id
-    pub asset_id: AssetId,
+    pub asset_id: C::AssetId,
 
     /// Amount Attempting to Withdraw
-    pub withdraw: AssetValue,
+    pub withdraw: C::AssetValue,
 }
 
 /// Invalid Sink Accounts
@@ -1307,16 +1202,27 @@ pub struct InvalidSourceAccount<AccountId> {
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct InvalidSinkAccount<AccountId> {
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AccountId: Clone, C::AssetId: Clone, C::AssetValue: Clone"),
+    Copy(bound = "AccountId: Copy, C::AssetId: Copy, C::AssetValue: Copy"),
+    Debug(bound = "AccountId: Debug, C::AssetId: Debug, C::AssetValue: Debug"),
+    Eq(bound = "AccountId: Eq, C::AssetId: Eq, C::AssetValue: Eq"),
+    Hash(bound = "AccountId: Hash, C::AssetId: Hash, C::AssetValue: Hash"),
+    PartialEq(bound = "AccountId: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq")
+)]
+pub struct InvalidSinkAccount<C, AccountId>
+where
+    C: Configuration + ?Sized,
+{
     /// Account Id
     pub account_id: AccountId,
 
     /// Asset Id
-    pub asset_id: AssetId,
+    pub asset_id: C::AssetId,
 
     /// Amount Attempting to Deposit
-    pub deposit: AssetValue,
+    pub deposit: C::AssetValue,
 }
 
 /// Transfer Post Error
@@ -1326,18 +1232,51 @@ pub struct InvalidSinkAccount<AccountId> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = r"
+                AccountId: Deserialize<'de>,
+                UpdateError: Deserialize<'de>,
+                C::AssetId: Deserialize<'de>,
+                C::AssetValue: Deserialize<'de>",
+            serialize = r"
+                AccountId: Serialize,
+                UpdateError: Serialize,
+                C::AssetId: Serialize,
+                C::AssetValue: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TransferPostError<AccountId, UpdateError> {
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AccountId: Clone, UpdateError: Clone, C::AssetId: Clone, C::AssetValue: Clone"),
+    Copy(bound = "AccountId: Copy, UpdateError: Copy, C::AssetId: Copy, C::AssetValue: Copy"),
+    Debug(bound = "AccountId: Debug, UpdateError: Debug, C::AssetId: Debug, C::AssetValue: Debug"),
+    Eq(bound = "AccountId: Eq, UpdateError: Eq, C::AssetId: Eq, C::AssetValue: Eq"),
+    Hash(bound = "AccountId: Hash, UpdateError: Hash, C::AssetId: Hash, C::AssetValue: Hash"),
+    PartialEq(
+        bound = "AccountId: PartialEq, UpdateError: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq"
+    )
+)]
+pub enum TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
+{
     /// Invalid Transfer Post Shape
     InvalidShape,
 
+    /// Invalid Authorization Signature
+    ///
+    /// The authorization signature for the [`TransferPost`] was not valid.
+    InvalidAuthorizationSignature(InvalidAuthorizationSignature),
+
     /// Invalid Source Accounts
-    InvalidSourceAccount(InvalidSourceAccount<AccountId>),
+    InvalidSourceAccount(InvalidSourceAccount<C, AccountId>),
 
     /// Invalid Sink Accounts
-    InvalidSinkAccount(InvalidSinkAccount<AccountId>),
+    InvalidSinkAccount(InvalidSinkAccount<C, AccountId>),
 
     /// Sender Post Error
     Sender(SenderPostError),
@@ -1348,8 +1287,8 @@ pub enum TransferPostError<AccountId, UpdateError> {
     /// Duplicate Spend Error
     DuplicateSpend,
 
-    /// Duplicate Register Error
-    DuplicateRegister,
+    /// Duplicate Mint Error
+    DuplicateMint,
 
     /// Invalid Transfer Proof Error
     ///
@@ -1362,50 +1301,77 @@ pub enum TransferPostError<AccountId, UpdateError> {
     UpdateError(UpdateError),
 }
 
-impl<AccountId, UpdateError> From<InvalidSourceAccount<AccountId>>
-    for TransferPostError<AccountId, UpdateError>
+impl<C, AccountId, UpdateError> From<InvalidAuthorizationSignature>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: InvalidSourceAccount<AccountId>) -> Self {
+    fn from(err: InvalidAuthorizationSignature) -> Self {
+        Self::InvalidAuthorizationSignature(err)
+    }
+}
+
+impl<C, AccountId, UpdateError> From<InvalidSourceAccount<C, AccountId>>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn from(err: InvalidSourceAccount<C, AccountId>) -> Self {
         Self::InvalidSourceAccount(err)
     }
 }
 
-impl<AccountId, UpdateError> From<InvalidSinkAccount<AccountId>>
-    for TransferPostError<AccountId, UpdateError>
+impl<C, AccountId, UpdateError> From<InvalidSinkAccount<C, AccountId>>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: InvalidSinkAccount<AccountId>) -> Self {
+    fn from(err: InvalidSinkAccount<C, AccountId>) -> Self {
         Self::InvalidSinkAccount(err)
     }
 }
 
-impl<AccountId, UpdateError> From<SenderPostError> for TransferPostError<AccountId, UpdateError> {
+impl<C, AccountId, UpdateError> From<SenderPostError>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
+{
     #[inline]
     fn from(err: SenderPostError) -> Self {
         Self::Sender(err)
     }
 }
 
-impl<AccountId, UpdateError> From<ReceiverPostError> for TransferPostError<AccountId, UpdateError> {
+impl<C, AccountId, UpdateError> From<ReceiverPostError>
+    for TransferPostError<C, AccountId, UpdateError>
+where
+    C: Configuration + ?Sized,
+{
     #[inline]
     fn from(err: ReceiverPostError) -> Self {
         Self::Receiver(err)
     }
 }
 
-/// Transfer Post
+/// Transfer Post Body
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
     serde(
         bound(
             deserialize = r"
+                C::AssetId: Deserialize<'de>,
+                C::AssetValue: Deserialize<'de>,
                 SenderPost<C>: Deserialize<'de>,
                 ReceiverPost<C>: Deserialize<'de>,
                 Proof<C>: Deserialize<'de>,
             ",
             serialize = r"
+                C::AssetId: Serialize,
+                C::AssetValue: Serialize,
                 SenderPost<C>: Serialize,
                 ReceiverPost<C>: Serialize,
                 Proof<C>: Serialize,
@@ -1417,21 +1383,51 @@ impl<AccountId, UpdateError> From<ReceiverPostError> for TransferPostError<Accou
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SenderPost<C>: Clone, ReceiverPost<C>: Clone, Proof<C>: Clone"),
-    Debug(bound = "SenderPost<C>: Debug, ReceiverPost<C>: Debug, Proof<C>: Debug"),
-    Eq(bound = "SenderPost<C>: Eq, ReceiverPost<C>: Eq, Proof<C>: Eq"),
-    Hash(bound = "SenderPost<C>: Hash, ReceiverPost<C>: Hash, Proof<C>: Hash"),
-    PartialEq(bound = "SenderPost<C>: PartialEq, ReceiverPost<C>: PartialEq, Proof<C>: PartialEq")
+    Clone(bound = r"
+        C::AssetId: Clone,
+        C::AssetValue: Clone,
+        SenderPost<C>: Clone,
+        ReceiverPost<C>: Clone,
+        Proof<C>: Clone
+    "),
+    Debug(bound = r"
+        C::AssetId: Debug,
+        C::AssetValue: Debug,
+        SenderPost<C>: Debug,
+        ReceiverPost<C>: Debug,
+        Proof<C>: Debug
+    "),
+    Eq(bound = r"
+        C::AssetId: Eq,
+        C::AssetValue: Eq,
+        SenderPost<C>: Eq,
+        ReceiverPost<C>: Eq,
+        Proof<C>: Eq
+    "),
+    Hash(bound = r"
+        C::AssetId: Hash,
+        C::AssetValue: Hash,
+        SenderPost<C>: Hash,
+        ReceiverPost<C>: Hash,
+        Proof<C>: Hash
+    "),
+    PartialEq(bound = r"
+        C::AssetId: PartialEq,
+        C::AssetValue: PartialEq,
+        SenderPost<C>: PartialEq,
+        ReceiverPost<C>: PartialEq,
+        Proof<C>: PartialEq
+    ")
 )]
-pub struct TransferPost<C>
+pub struct TransferPostBody<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
     /// Asset Id
-    pub asset_id: Option<AssetId>,
+    pub asset_id: Option<C::AssetId>,
 
     /// Sources
-    pub sources: Vec<AssetValue>,
+    pub sources: Vec<C::AssetValue>,
 
     /// Sender Posts
     pub sender_posts: Vec<SenderPost<C>>,
@@ -1440,35 +1436,187 @@ where
     pub receiver_posts: Vec<ReceiverPost<C>>,
 
     /// Sinks
-    pub sinks: Vec<AssetValue>,
+    pub sinks: Vec<C::AssetValue>,
 
-    /// Validity Proof
-    pub validity_proof: Proof<C>,
+    /// Proof
+    pub proof: Proof<C>,
+}
+
+impl<C> TransferPostBody<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Builds a new [`TransferPostBody`].
+    #[inline]
+    fn build<
+        const SOURCES: usize,
+        const SENDERS: usize,
+        const RECEIVERS: usize,
+        const SINKS: usize,
+    >(
+        proof: Proof<C>,
+        asset_id: Option<C::AssetId>,
+        sources: [C::AssetValue; SOURCES],
+        senders: [Sender<C>; SENDERS],
+        receivers: [Receiver<C>; RECEIVERS],
+        sinks: [C::AssetValue; SINKS],
+    ) -> Self {
+        Self {
+            asset_id,
+            sources: sources.into(),
+            sender_posts: senders.into_iter().map(Sender::<C>::into_post).collect(),
+            receiver_posts: receivers
+                .into_iter()
+                .map(Receiver::<C>::into_post)
+                .collect(),
+            sinks: sinks.into(),
+            proof,
+        }
+    }
+
+    /// Constructs an [`Asset`] against the `asset_id` of `self` and `value`.
+    #[inline]
+    fn construct_asset(&self, value: &C::AssetValue) -> Option<Asset<C>> {
+        Some(Asset::<C>::new(self.asset_id.clone()?, value.clone()))
+    }
+
+    /// Returns the `k`-th source in the transfer.
+    #[inline]
+    pub fn source(&self, k: usize) -> Option<Asset<C>> {
+        self.sources
+            .get(k)
+            .and_then(|value| self.construct_asset(value))
+    }
+
+    /// Returns the `k`-th sink in the transfer.
+    #[inline]
+    pub fn sink(&self, k: usize) -> Option<Asset<C>> {
+        self.sinks
+            .get(k)
+            .and_then(|value| self.construct_asset(value))
+    }
+}
+
+impl<C> Encode for TransferPostBody<C>
+where
+    C: Configuration + ?Sized,
+    C::AssetId: Encode,
+    C::AssetValue: Encode,
+    SenderPost<C>: Encode,
+    ReceiverPost<C>: Encode,
+    Proof<C>: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.asset_id.encode(&mut writer)?;
+        self.sources.encode(&mut writer)?;
+        self.sender_posts.encode(&mut writer)?;
+        self.receiver_posts.encode(&mut writer)?;
+        self.sinks.encode(&mut writer)?;
+        self.proof.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<C> Input<C::ProofSystem> for TransferPostBody<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut ProofInput<C>) {
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(input, asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(input, source));
+        self.sender_posts
+            .iter()
+            .for_each(|post| C::ProofSystem::extend(input, post));
+        self.receiver_posts
+            .iter()
+            .for_each(|post| C::ProofSystem::extend(input, post));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(input, sink));
+    }
+}
+
+/// Transfer Post
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                AuthorizationSignature<C>: Deserialize<'de>,
+                TransferPostBody<C>: Deserialize<'de>,
+            ",
+            serialize = r"
+                AuthorizationSignature<C>: Serialize,
+                TransferPostBody<C>: Serialize,
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AuthorizationSignature<C>: Clone, TransferPostBody<C>: Clone"),
+    Debug(bound = "AuthorizationSignature<C>: Debug, TransferPostBody<C>: Debug"),
+    Eq(bound = "AuthorizationSignature<C>: Eq, TransferPostBody<C>: Eq"),
+    Hash(bound = "AuthorizationSignature<C>: Hash, TransferPostBody<C>: Hash"),
+    PartialEq(bound = "AuthorizationSignature<C>: PartialEq, TransferPostBody<C>: PartialEq")
+)]
+pub struct TransferPost<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Authorization Signature
+    pub authorization_signature: Option<AuthorizationSignature<C>>,
+
+    /// Transfer Post Body
+    pub body: TransferPostBody<C>,
 }
 
 impl<C> TransferPost<C>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
 {
+    /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`
+    /// and the `authorization_signature`.
+    #[inline]
+    fn new_unchecked(
+        authorization_signature: Option<AuthorizationSignature<C>>,
+        body: TransferPostBody<C>,
+    ) -> Self {
+        Self {
+            authorization_signature,
+            body,
+        }
+    }
+
+    /// Returns the `k`-th source in the transfer.
+    #[inline]
+    pub fn source(&self, k: usize) -> Option<Asset<C>> {
+        self.body.source(k)
+    }
+
+    /// Returns the `k`-th sink in the transfer.
+    #[inline]
+    pub fn sink(&self, k: usize) -> Option<Asset<C>> {
+        self.body.sink(k)
+    }
+
     /// Generates the public input for the [`Transfer`] validation proof.
     #[inline]
     pub fn generate_proof_input(&self) -> ProofInput<C> {
         let mut input = Default::default();
-        if let Some(asset_id) = self.asset_id {
-            C::ProofSystem::extend(&mut input, &asset_id);
-        }
-        self.sources
-            .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source));
-        self.sender_posts
-            .iter()
-            .for_each(|post| post.extend_input(&mut input));
-        self.receiver_posts
-            .iter()
-            .for_each(|post| post.extend_input(&mut input));
-        self.sinks
-            .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink));
+        self.extend(&mut input);
         input
     }
 
@@ -1481,8 +1629,47 @@ where
         C::ProofSystem::verify(
             verifying_context,
             &self.generate_proof_input(),
-            &self.validity_proof,
+            &self.body.proof,
         )
+    }
+
+    /// Asserts that `self` has a valid proof. See [`has_valid_proof`](Self::has_valid_proof) for
+    /// more.
+    #[inline]
+    pub fn assert_valid_proof(&self, verifying_context: &VerifyingContext<C>) -> &Proof<C>
+    where
+        Self: Debug,
+        ProofSystemError<C>: Debug,
+    {
+        assert!(
+            self.has_valid_proof(verifying_context)
+                .expect("Unable to verify proof."),
+            "Invalid TransferPost: {self:?}.",
+        );
+        &self.body.proof
+    }
+
+    /// Verifies that the authorization signature for `self` is valid under the `parameters`.
+    #[inline]
+    pub fn has_valid_authorization_signature(
+        &self,
+        parameters: &C::Parameters,
+    ) -> Result<(), InvalidAuthorizationSignature> {
+        match (
+            &self.authorization_signature,
+            requires_authorization(self.body.sender_posts.len()),
+        ) {
+            (Some(authorization_signature), true) => {
+                if authorization_signature.verify(parameters, &self.body) {
+                    Ok(())
+                } else {
+                    Err(InvalidAuthorizationSignature::BadSignature)
+                }
+            }
+            (Some(_), false) => Err(InvalidAuthorizationSignature::InvalidShape),
+            (None, true) => Err(InvalidAuthorizationSignature::MissingSignature),
+            (None, false) => Ok(()),
+        }
     }
 
     /// Checks that the public participant data is well-formed and runs `ledger` validation on
@@ -1490,15 +1677,15 @@ where
     #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction for this.
     #[inline]
     fn check_public_participants<L>(
-        asset_id: Option<AssetId>,
+        asset_id: &Option<C::AssetId>,
         source_accounts: Vec<L::AccountId>,
-        source_values: Vec<AssetValue>,
+        source_values: Vec<C::AssetValue>,
         sink_accounts: Vec<L::AccountId>,
-        sink_values: Vec<AssetValue>,
+        sink_values: Vec<C::AssetValue>,
         ledger: &L,
     ) -> Result<
         (Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>),
-        TransferPostError<L::AccountId, L::UpdateError>,
+        TransferPostError<C, L::AccountId, L::UpdateError>,
     >
     where
         L: TransferLedger<C>,
@@ -1516,7 +1703,7 @@ where
         }
         let sources = if sources > 0 {
             ledger.check_source_accounts(
-                asset_id.unwrap(),
+                asset_id.as_ref().unwrap(),
                 source_accounts.into_iter().zip(source_values),
             )?
         } else {
@@ -1524,7 +1711,7 @@ where
         };
         let sinks = if sinks > 0 {
             ledger.check_sink_accounts(
-                asset_id.unwrap(),
+                asset_id.as_ref().unwrap(),
                 sink_accounts.into_iter().zip(sink_values),
             )?
         } else {
@@ -1534,72 +1721,66 @@ where
     }
 
     /// Validates `self` on the transfer `ledger`.
+    #[allow(clippy::type_complexity)] // FIXME: Use a better abstraction for this.
     #[inline]
     pub fn validate<L>(
         self,
+        parameters: &C::Parameters,
+        ledger: &L,
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
-        ledger: &L,
-    ) -> Result<TransferPostingKey<C, L>, TransferPostError<L::AccountId, L::UpdateError>>
+    ) -> Result<TransferPostingKey<C, L>, TransferPostError<C, L::AccountId, L::UpdateError>>
     where
         L: TransferLedger<C>,
     {
+        self.has_valid_authorization_signature(parameters)?;
         let (source_posting_keys, sink_posting_keys) = Self::check_public_participants(
-            self.asset_id,
+            &self.body.asset_id,
             source_accounts,
-            self.sources,
+            self.body.sources,
             sink_accounts,
-            self.sinks,
+            self.body.sinks,
             ledger,
         )?;
-        for (i, p) in self.sender_posts.iter().enumerate() {
-            if self
-                .sender_posts
-                .iter()
-                .skip(i + 1)
-                .any(move |q| p.void_number == q.void_number)
-            {
-                return Err(TransferPostError::DuplicateSpend);
-            }
+        if !all_unequal(&self.body.sender_posts, |p, q| {
+            p.nullifier.is_related(&q.nullifier)
+        }) {
+            return Err(TransferPostError::DuplicateSpend);
         }
-        for (i, p) in self.receiver_posts.iter().enumerate() {
-            if self
-                .receiver_posts
-                .iter()
-                .skip(i + 1)
-                .any(move |q| p.utxo == q.utxo)
-            {
-                return Err(TransferPostError::DuplicateRegister);
-            }
+        if !all_unequal(&self.body.receiver_posts, |p, q| p.utxo.is_related(&q.utxo)) {
+            return Err(TransferPostError::DuplicateMint);
         }
         let sender_posting_keys = self
+            .body
             .sender_posts
             .into_iter()
             .map(move |s| s.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
         let receiver_posting_keys = self
+            .body
             .receiver_posts
             .into_iter()
             .map(move |r| r.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
-        let (validity_proof, event) = match ledger.is_valid(
-            self.asset_id,
-            &source_posting_keys,
-            &sender_posting_keys,
-            &receiver_posting_keys,
-            &sink_posting_keys,
-            self.validity_proof,
-        ) {
-            Some((validity_proof, event)) => (validity_proof, event),
+        let (proof, event) = match ledger.is_valid(TransferPostingKeyRef {
+            authorization_key: &self.authorization_signature.map(|s| s.authorization_key),
+            asset_id: &self.body.asset_id,
+            sources: &source_posting_keys,
+            senders: &sender_posting_keys,
+            receivers: &receiver_posting_keys,
+            sinks: &sink_posting_keys,
+            proof: self.body.proof,
+        }) {
+            Some((proof, event)) => (proof, event),
             _ => return Err(TransferPostError::InvalidProof),
         };
         Ok(TransferPostingKey {
-            asset_id: self.asset_id,
+            asset_id: self.body.asset_id,
             source_posting_keys,
             sender_posting_keys,
             receiver_posting_keys,
             sink_posting_keys,
-            validity_proof,
+            proof,
             event,
         })
     }
@@ -1609,28 +1790,136 @@ where
     #[inline]
     pub fn post<L>(
         self,
+        parameters: &C::Parameters,
+        ledger: &mut L,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
-        super_key: &TransferLedgerSuperPostingKey<C, L>,
-        ledger: &mut L,
-    ) -> Result<L::Event, TransferPostError<L::AccountId, L::UpdateError>>
+    ) -> Result<L::Event, TransferPostError<C, L::AccountId, L::UpdateError>>
     where
         L: TransferLedger<C>,
     {
-        self.validate(source_accounts, sink_accounts, ledger)?
-            .post(super_key, ledger)
+        self.validate(parameters, ledger, source_accounts, sink_accounts)?
+            .post(ledger, super_key)
             .map_err(TransferPostError::UpdateError)
     }
 }
 
+impl<C> Encode for TransferPost<C>
+where
+    C: Configuration + ?Sized,
+    AuthorizationSignature<C>: Encode,
+    TransferPostBody<C>: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.authorization_signature.encode(&mut writer)?;
+        self.body.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
+impl<C> Input<C::ProofSystem> for TransferPost<C>
+where
+    C: Configuration + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut ProofInput<C>) {
+        if let Some(authorization_signature) = &self.authorization_signature {
+            C::ProofSystem::extend(input, &authorization_signature.authorization_key);
+        }
+        self.body.extend(input);
+    }
+}
+
 /// Transfer Posting Key
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                C::AssetId: Deserialize<'de>,
+                SourcePostingKey<C, L>: Deserialize<'de>,
+                SenderPostingKey<C, L>: Deserialize<'de>,
+                ReceiverPostingKey<C, L>: Deserialize<'de>,
+                SinkPostingKey<C, L>: Deserialize<'de>,
+                L::ValidProof: Deserialize<'de>,
+                L::Event: Deserialize<'de>",
+            serialize = r"
+                C::AssetId: Serialize,
+                SourcePostingKey<C, L>: Serialize,
+                SenderPostingKey<C, L>: Serialize,
+                ReceiverPostingKey<C, L>: Serialize,
+                SinkPostingKey<C, L>: Serialize,
+                L::ValidProof: Serialize,
+                L::Event: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = r"
+            C::AssetId: Clone,
+            SourcePostingKey<C, L>: Clone,
+            SenderPostingKey<C, L>: Clone,
+            ReceiverPostingKey<C, L>: Clone,
+            SinkPostingKey<C, L>: Clone,
+            L::ValidProof: Clone,
+            L::Event: Clone"),
+    Debug(bound = r"
+            C::AssetId: Debug,
+            SourcePostingKey<C, L>: Debug,
+            SenderPostingKey<C, L>: Debug,
+            ReceiverPostingKey<C, L>: Debug,
+            SinkPostingKey<C, L>: Debug,
+            L::ValidProof: Debug,
+            L::Event: Debug"),
+    Default(bound = r"
+            C::AssetId: Default,
+            SourcePostingKey<C, L>: Default,
+            SenderPostingKey<C, L>: Default,
+            ReceiverPostingKey<C, L>: Default,
+            SinkPostingKey<C, L>: Default,
+            L::ValidProof: Default,
+            L::Event: Default"),
+    Eq(bound = r"
+            C::AssetId: Eq,
+            SourcePostingKey<C, L>: Eq,
+            SenderPostingKey<C, L>: Eq,
+            ReceiverPostingKey<C, L>: Eq,
+            SinkPostingKey<C, L>: Eq,
+            L::ValidProof: Eq,
+            L::Event: Eq"),
+    Hash(bound = r"
+            C::AssetId: Hash,
+            SourcePostingKey<C, L>: Hash,
+            SenderPostingKey<C, L>: Hash,
+            ReceiverPostingKey<C, L>: Hash,
+            SinkPostingKey<C, L>: Hash,
+            L::ValidProof: Hash,
+            L::Event: Hash"),
+    PartialEq(bound = r"
+            C::AssetId: PartialEq,
+            SourcePostingKey<C, L>: PartialEq,
+            SenderPostingKey<C, L>: PartialEq,
+            ReceiverPostingKey<C, L>: PartialEq,
+            SinkPostingKey<C, L>: PartialEq,
+            L::ValidProof: PartialEq,
+            L::Event: PartialEq")
+)]
 pub struct TransferPostingKey<C, L>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     L: TransferLedger<C>,
 {
     /// Asset Id
-    asset_id: Option<AssetId>,
+    asset_id: Option<C::AssetId>,
 
     /// Source Posting Keys
     source_posting_keys: Vec<SourcePostingKey<C, L>>,
@@ -1644,8 +1933,8 @@ where
     /// Sink Posting Keys
     sink_posting_keys: Vec<SinkPostingKey<C, L>>,
 
-    /// Validity Proof Posting Key
-    validity_proof: L::ValidProof,
+    /// Proof Posting Key
+    proof: L::ValidProof,
 
     /// Ledger Event
     event: L::Event,
@@ -1653,40 +1942,12 @@ where
 
 impl<C, L> TransferPostingKey<C, L>
 where
-    C: Configuration,
+    C: Configuration + ?Sized,
     L: TransferLedger<C>,
 {
-    /// Generates the public input for the [`Transfer`] validation proof.
-    #[inline]
-    pub fn generate_proof_input(
-        asset_id: Option<AssetId>,
-        sources: &[SourcePostingKey<C, L>],
-        senders: &[SenderPostingKey<C, L>],
-        receivers: &[ReceiverPostingKey<C, L>],
-        sinks: &[SinkPostingKey<C, L>],
-    ) -> ProofInput<C> {
-        let mut input = Default::default();
-        if let Some(asset_id) = asset_id {
-            C::ProofSystem::extend(&mut input, &asset_id);
-        }
-        sources
-            .iter()
-            .for_each(|source| C::ProofSystem::extend(&mut input, source.as_ref()));
-        senders
-            .iter()
-            .for_each(|post| post.extend_input(&mut input));
-        receivers
-            .iter()
-            .for_each(|post| post.extend_input(&mut input));
-        sinks
-            .iter()
-            .for_each(|sink| C::ProofSystem::extend(&mut input, sink.as_ref()));
-        input
-    }
-
     /// Posts `self` to the transfer `ledger`.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// This method assumes that posting `self` to `ledger` is atomic and cannot fail. See
     /// [`SenderLedger::spend`] and [`ReceiverLedger::register`] for more information on the
@@ -1694,21 +1955,139 @@ where
     #[inline]
     pub fn post(
         self,
-        super_key: &TransferLedgerSuperPostingKey<C, L>,
         ledger: &mut L,
+        super_key: &TransferLedgerSuperPostingKey<C, L>,
     ) -> Result<L::Event, L::UpdateError> {
-        let proof = self.validity_proof;
-        SenderPostingKey::post_all(self.sender_posting_keys, &(proof, *super_key), ledger);
-        ReceiverPostingKey::post_all(self.receiver_posting_keys, &(proof, *super_key), ledger);
+        let proof = self.proof;
+        SenderPostingKey::<C, _>::post_all(self.sender_posting_keys, ledger, &(proof, *super_key));
+        ReceiverPostingKey::<C, _>::post_all(
+            self.receiver_posting_keys,
+            ledger,
+            &(proof, *super_key),
+        );
         if let Some(asset_id) = self.asset_id {
             ledger.update_public_balances(
+                super_key,
                 asset_id,
                 self.source_posting_keys,
                 self.sink_posting_keys,
                 proof,
-                super_key,
             )?;
         }
         Ok(self.event)
+    }
+}
+
+/// Transfer Posting Key Reference
+#[derive(derivative::Derivative)]
+#[derivative(
+    Debug(bound = r"
+        AuthorizationKey<C>: Debug,
+        C::AssetId: Debug,
+        SourcePostingKey<C, L>: Debug,
+        SenderPostingKey<C, L>: Debug,
+        ReceiverPostingKey<C, L>: Debug,
+        SinkPostingKey<C, L>: Debug,
+        Proof<C>: Debug"),
+    Eq(bound = r"
+        AuthorizationKey<C>: Eq,
+        C::AssetId: Eq,
+        SourcePostingKey<C, L>: Eq,
+        SenderPostingKey<C, L>: Eq,
+        ReceiverPostingKey<C, L>: Eq,
+        SinkPostingKey<C, L>: Eq,
+        Proof<C>: Eq"),
+    Hash(bound = r"
+        AuthorizationKey<C>: Hash,
+        C::AssetId: Hash,
+        SourcePostingKey<C, L>: Hash,
+        SenderPostingKey<C, L>: Hash,
+        ReceiverPostingKey<C, L>: Hash,
+        SinkPostingKey<C, L>: Hash,
+        Proof<C>: Hash"),
+    PartialEq(bound = r"
+        AuthorizationKey<C>: PartialEq,
+        C::AssetId: PartialEq,
+        SourcePostingKey<C, L>: PartialEq,
+        SenderPostingKey<C, L>: PartialEq,
+        ReceiverPostingKey<C, L>: PartialEq,
+        SinkPostingKey<C, L>: PartialEq,
+        Proof<C>: PartialEq")
+)]
+pub struct TransferPostingKeyRef<'k, C, L>
+where
+    C: Configuration + ?Sized,
+    L: TransferLedger<C> + ?Sized,
+{
+    /// Authorization Key
+    pub authorization_key: &'k Option<AuthorizationKey<C>>,
+
+    /// Asset Id
+    pub asset_id: &'k Option<C::AssetId>,
+
+    /// Sources
+    pub sources: &'k [SourcePostingKey<C, L>],
+
+    /// Senders
+    pub senders: &'k [SenderPostingKey<C, L>],
+
+    /// Receivers
+    pub receivers: &'k [ReceiverPostingKey<C, L>],
+
+    /// Sinks
+    pub sinks: &'k [SinkPostingKey<C, L>],
+
+    /// Proof
+    pub proof: Proof<C>,
+}
+
+impl<'k, C, L> TransferPostingKeyRef<'k, C, L>
+where
+    C: Configuration + ?Sized,
+    L: TransferLedger<C> + ?Sized,
+{
+    /// Generates the public input for the [`Transfer`] validation proof.
+    #[inline]
+    pub fn generate_proof_input(&self) -> ProofInput<C> {
+        let mut input = Default::default();
+        self.extend(&mut input);
+        input
+    }
+
+    /// Verifies the validity proof of `self` according to the `verifying_context`.
+    #[inline]
+    pub fn has_valid_proof(
+        &self,
+        verifying_context: &VerifyingContext<C>,
+    ) -> Result<bool, ProofSystemError<C>> {
+        C::ProofSystem::verify(verifying_context, &self.generate_proof_input(), &self.proof)
+    }
+}
+
+impl<'k, C, L> Input<C::ProofSystem> for TransferPostingKeyRef<'k, C, L>
+where
+    C: Configuration + ?Sized,
+    L: TransferLedger<C> + ?Sized,
+{
+    #[inline]
+    fn extend(&self, input: &mut ProofInput<C>) {
+        if let Some(authorization_key) = &self.authorization_key {
+            C::ProofSystem::extend(input, authorization_key);
+        }
+        if let Some(asset_id) = &self.asset_id {
+            C::ProofSystem::extend(input, asset_id);
+        }
+        self.sources
+            .iter()
+            .for_each(|source| C::ProofSystem::extend(input, source.as_ref()));
+        self.senders
+            .iter()
+            .for_each(|post| C::ProofSystem::extend(input, post));
+        self.receivers
+            .iter()
+            .for_each(|post| C::ProofSystem::extend(input, post));
+        self.sinks
+            .iter()
+            .for_each(|sink| C::ProofSystem::extend(input, sink.as_ref()));
     }
 }

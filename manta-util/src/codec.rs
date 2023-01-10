@@ -18,6 +18,7 @@
 
 // TODO: Deprecate this in favor of pure `serde`.
 
+use crate::Array;
 use core::{convert::Infallible, fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(feature = "alloc")]
@@ -653,6 +654,19 @@ where
     }
 }
 
+impl<T, const N: usize> Encode for Array<T, N>
+where
+    T: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.0.encode(&mut writer)
+    }
+}
+
 #[cfg(feature = "alloc")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "alloc")))]
 impl<T> Encode for Vec<T>
@@ -837,6 +851,23 @@ impl Decode for u64 {
         R: Read,
     {
         let mut bytes = [0; 8];
+        match reader.read_exact(&mut bytes) {
+            Ok(()) => Ok(Self::from_le_bytes(bytes)),
+            Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),
+            _ => Err(DecodeError::Decode(())),
+        }
+    }
+}
+
+impl Decode for u128 {
+    type Error = ();
+
+    #[inline]
+    fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
+    where
+        R: Read,
+    {
+        let mut bytes = [0; 16];
         match reader.read_exact(&mut bytes) {
             Ok(()) => Ok(Self::from_le_bytes(bytes)),
             Err(ReadExactError::Read(err)) => Err(DecodeError::Read(err)),

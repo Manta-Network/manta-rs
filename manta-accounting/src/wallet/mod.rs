@@ -28,22 +28,22 @@
 //! [`Ledger`]: ledger::Connection
 
 use crate::{
-    asset::{Asset, AssetId, AssetList, AssetMetadata, AssetValue},
+    asset::{AssetList, AssetMetadata},
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Configuration, ReceivingKey, TransferPost,
+        Address, Asset, Configuration, TransferPost,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, ReceivingKeyRequest, SignError, SignRequest, SignResponse, SyncData,
-            SyncError, SyncRequest, SyncResponse,
+            BalanceUpdate, SignError, SignRequest, SignResponse, SyncData, SyncError, SyncRequest,
+            SyncResponse,
         },
     },
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::AddAssign};
 use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
@@ -58,12 +58,38 @@ pub mod signer;
 pub mod test;
 
 /// Wallet
-pub struct Wallet<C, L, S = signer::Signer<C>, B = BTreeMapBalanceState>
-where
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "L: Deserialize<'de>, S::Checkpoint: Deserialize<'de>, S: Deserialize<'de>, B: Deserialize<'de>",
+            serialize = "L: Serialize, S::Checkpoint: Serialize, S: Serialize, B: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "L: Clone, S::Checkpoint: Clone, S: Clone, B: Clone"),
+    Copy(bound = "L: Copy, S::Checkpoint: Copy, S: Copy, B: Copy"),
+    Debug(bound = "L: Debug, S::Checkpoint: Debug, S: Debug, B: Debug"),
+    Default(bound = "L: Default, S::Checkpoint: Default, S: Default, B: Default"),
+    Eq(bound = "L: Eq, S::Checkpoint: Eq, S: Eq, B: Eq"),
+    Hash(bound = "L: Hash, S::Checkpoint: Hash, S: Hash, B: Hash"),
+    PartialEq(bound = "L: PartialEq, S::Checkpoint: PartialEq, S: PartialEq, B: PartialEq")
+)]
+pub struct Wallet<
+    C,
+    L,
+    S = signer::Signer<C>,
+    B = BTreeMapBalanceState<<C as Configuration>::AssetId, <C as Configuration>::AssetValue>,
+> where
     C: Configuration,
     L: ledger::Connection,
     S: signer::Connection<C>,
-    B: BalanceState,
+    B: BalanceState<C::AssetId, C::AssetValue>,
 {
     /// Ledger Connection
     ledger: L,
@@ -72,7 +98,7 @@ where
     checkpoint: S::Checkpoint,
 
     /// Signer Connection
-    pub signer: S,
+    signer: S,
 
     /// Balance State
     assets: B,
@@ -86,7 +112,7 @@ where
     C: Configuration,
     L: ledger::Connection,
     S: signer::Connection<C>,
-    B: BalanceState,
+    B: BalanceState<C::AssetId, C::AssetValue>,
 {
     /// Builds a new [`Wallet`] without checking if `ledger`, `checkpoint`, `signer`, and `assets`
     /// are properly synchronized.
@@ -117,6 +143,17 @@ where
         Self::new_unchecked(ledger, Default::default(), signer, Default::default())
     }
 
+    /// Returns a mutable reference to the [`Connection`](signer::Connection).
+    ///
+    /// # Crypto Safety
+    ///
+    /// Calls to this function cannot modify the signer in any way that would leave the
+    /// [`BalanceState`] invalid.
+    #[inline]
+    pub fn signer_mut(&mut self) -> &mut S {
+        &mut self.signer
+    }
+
     /// Starts a new wallet with `ledger` and `signer` connections.
     #[inline]
     pub async fn start(ledger: L, signer: S) -> Result<Self, Error<C, L, S>>
@@ -137,26 +174,28 @@ where
 
     /// Returns the current balance associated with this `id`.
     #[inline]
-    pub fn balance(&self, id: AssetId) -> AssetValue {
+    pub fn balance(&self, id: &C::AssetId) -> C::AssetValue {
         self.assets.balance(id)
     }
 
     /// Returns true if `self` contains at least `asset.value` of the asset of kind `asset.id`.
     #[inline]
-    pub fn contains(&self, asset: Asset) -> bool {
+    pub fn contains(&self, asset: &Asset<C>) -> bool {
         self.assets.contains(asset)
     }
 
     /// Returns `true` if `self` contains at least every asset in `assets`. Assets are combined
-    /// first by [`AssetId`] before checking for membership.
+    /// first by asset id before checking for membership.
     #[inline]
-    pub fn contains_all<I>(&self, assets: I) -> bool
+    pub fn contains_all<A>(&self, assets: A) -> bool
     where
-        I: IntoIterator<Item = Asset>,
+        C::AssetId: Ord,
+        C::AssetValue: AddAssign + Default,
+        A: IntoIterator<Item = Asset<C>>,
     {
         AssetList::from_iter(assets)
             .into_iter()
-            .all(|asset| self.contains(asset))
+            .all(|asset| self.contains(&asset))
     }
 
     /// Returns a shared reference to the balance state associated to `self`.
@@ -194,7 +233,7 @@ where
     {
         self.reset_state();
         self.load_initial_state().await?;
-        while self.sync_with(true).await?.is_continue() {}
+        while self.sync_with().await?.is_continue() {}
         Ok(())
     }
 
@@ -240,12 +279,12 @@ where
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
-        self.sync_with(false).await
+        self.sync_with().await
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state.
     #[inline]
-    async fn sync_with(&mut self, with_recovery: bool) -> Result<ControlFlow, Error<C, L, S>>
+    async fn sync_with(&mut self) -> Result<ControlFlow, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
@@ -258,7 +297,6 @@ where
             .await
             .map_err(Error::LedgerConnectionError)?;
         self.signer_sync(SyncRequest {
-            with_recovery,
             origin_checkpoint: self.checkpoint.clone(),
             data,
         })
@@ -312,13 +350,18 @@ where
     /// kind of update that should be performed on the balance state if the transaction is
     /// successfully posted to the ledger.
     ///
-    /// # Safety
+    /// # Crypto Safety
     ///
     /// This method is already called by [`post`](Self::post), but can be used by custom
     /// implementations to perform checks elsewhere.
     #[inline]
-    pub fn check(&self, transaction: &Transaction<C>) -> Result<TransactionKind, Asset> {
-        transaction.check(move |a| self.contains(a))
+    fn check<'s>(
+        &'s self,
+        transaction: &'s Transaction<C>,
+    ) -> Result<TransactionKind<C>, Asset<C>> {
+        transaction
+            .check(move |a| self.contains(a))
+            .map_err(Clone::clone)
     }
 
     /// Signs the `transaction` using the signer connection, sending `metadata` for context. This
@@ -379,13 +422,10 @@ where
             .map_err(Error::LedgerConnectionError)
     }
 
-    /// Returns public receiving keys according to the `request`.
+    /// Returns the address.
     #[inline]
-    pub async fn receiving_keys(
-        &mut self,
-        request: ReceivingKeyRequest,
-    ) -> Result<Vec<ReceivingKey<C>>, S::Error> {
-        self.signer.receiving_keys(request).await
+    pub async fn address(&mut self) -> Result<Address<C>, S::Error> {
+        self.signer.address().await
     }
 }
 
@@ -435,11 +475,13 @@ pub enum InconsistencyError {
     serde(
         bound(
             deserialize = r"
+                Asset<C>: Deserialize<'de>,
                 SignError<C>: Deserialize<'de>,
                 L::Error: Deserialize<'de>,
                 S::Error: Deserialize<'de>
             ",
             serialize = r"
+                Asset<C>: Serialize,
                 SignError<C>: Serialize,
                 L::Error: Serialize,
                 S::Error: Serialize
@@ -451,12 +493,14 @@ pub enum InconsistencyError {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SignError<C>: Clone, L::Error: Clone, S::Error: Clone"),
-    Copy(bound = "SignError<C>: Copy, L::Error: Copy, S::Error: Copy"),
-    Debug(bound = "SignError<C>: Debug, L::Error: Debug, S::Error: Debug"),
-    Eq(bound = "SignError<C>: Eq, L::Error: Eq, S::Error: Eq"),
-    Hash(bound = "SignError<C>: Hash, L::Error: Hash, S::Error: Hash"),
-    PartialEq(bound = "SignError<C>: PartialEq, L::Error: PartialEq, S::Error: PartialEq")
+    Clone(bound = "Asset<C>: Clone, SignError<C>: Clone, L::Error: Clone, S::Error: Clone"),
+    Copy(bound = "Asset<C>: Copy, SignError<C>: Copy, L::Error: Copy, S::Error: Copy"),
+    Debug(bound = "Asset<C>: Debug, SignError<C>: Debug, L::Error: Debug, S::Error: Debug"),
+    Eq(bound = "Asset<C>: Eq, SignError<C>: Eq, L::Error: Eq, S::Error: Eq"),
+    Hash(bound = "Asset<C>: Hash, SignError<C>: Hash, L::Error: Hash, S::Error: Hash"),
+    PartialEq(
+        bound = "Asset<C>: PartialEq, SignError<C>: PartialEq, L::Error: PartialEq, S::Error: PartialEq"
+    )
 )]
 pub enum Error<C, L, S>
 where
@@ -465,7 +509,7 @@ where
     S: signer::Connection<C>,
 {
     /// Insufficient Balance
-    InsufficientBalance(Asset),
+    InsufficientBalance(Asset<C>),
 
     /// Inconsistency Error
     ///

@@ -122,3 +122,27 @@ macro_rules! impl_checked {
 }
 
 impl_checked!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
+
+impl<A> CheckedAdd for &A
+where
+    A: Clone + CheckedAdd,
+{
+    type Output = A::Output;
+
+    #[inline]
+    fn checked_add(self, rhs: Self) -> Option<Self::Output> {
+        self.clone().checked_add(rhs.clone())
+    }
+}
+
+impl<A> CheckedSub for &A
+where
+    A: Clone + CheckedSub,
+{
+    type Output = A::Output;
+
+    #[inline]
+    fn checked_sub(self, rhs: Self) -> Option<Self::Output> {
+        self.clone().checked_sub(rhs.clone())
+    }
+}

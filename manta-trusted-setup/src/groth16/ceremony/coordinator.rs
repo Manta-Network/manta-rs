@@ -212,6 +212,10 @@ where
         latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>>,
         round: u64,
     ) -> Self {
+        assert!(
+            metadata.ceremony_size.matches(state.as_slice()),
+            "Mismatch of metadata `{metadata:?}` and state.",
+        );
         Self {
             state,
             challenge,

@@ -16,8 +16,6 @@
 
 //! Manta Pay Cryptographic Primitives Implementations
 
-pub mod constraint;
-pub mod ecc;
 pub mod encryption;
 pub mod key;
 pub mod poseidon;

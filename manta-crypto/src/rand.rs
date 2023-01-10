@@ -39,9 +39,12 @@ pub use rand_core::OsRng;
 #[cfg(feature = "rand")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
 #[doc(inline)]
-pub use rand::distributions::{
-    uniform::{SampleRange, SampleUniform},
-    Distribution,
+pub use rand::{
+    self,
+    distributions::{
+        uniform::{SampleBorrow, SampleRange, SampleUniform, UniformInt, UniformSampler},
+        Distribution,
+    },
 };
 
 /// Random Number Generator Sized Wrapper

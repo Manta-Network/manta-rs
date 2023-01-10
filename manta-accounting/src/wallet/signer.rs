@@ -19,7 +19,6 @@
 // TODO:  Should have a mode on the signer where we return a generic error which reveals no detail
 //        about what went wrong during signing. The kind of error returned from a signing could
 //        reveal information about the internal state (privacy leak, not a secrecy leak).
-// TODO:  Setup multi-account wallets using `crate::key::AccountTable`.
 // TODO:  Move `sync` to a streaming algorithm.
 // TODO:  Add self-destruct feature for clearing all secret and private data.
 // TODO:  Compress the `BalanceUpdate` data before sending (improves privacy and bandwidth).
@@ -27,36 +26,33 @@
 //        internally.
 
 use crate::{
-    asset::{Asset, AssetId, AssetMap, AssetMetadata, AssetValue},
-    key::{
-        self, HierarchicalKeyDerivationScheme, KeyIndex, SecretKeyPair, ViewKeySelection,
-        ViewKeyTable,
-    },
+    asset::{AssetMap, AssetMetadata},
+    key::{self, Account, AccountCollection, DeriveAddress, DeriveAddresses},
     transfer::{
         self,
         batch::Join,
         canonical::{
-            Mint, MultiProvingContext, PrivateTransfer, PrivateTransferShape, Reclaim, Selection,
-            Shape, Transaction,
+            MultiProvingContext, PrivateTransfer, PrivateTransferShape, Selection, ToPrivate,
+            ToPublic, Transaction,
         },
-        EncryptedNote, FullParameters, Note, Parameters, PreSender, ProofSystemError,
-        ProvingContext, Receiver, ReceivingKey, SecretKey, Sender, SpendingKey, Transfer,
-        TransferPost, Utxo, VoidNumber,
+        requires_authorization,
+        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, Spend, UtxoReconstruct},
+        Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
+        IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
+        ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
+        UtxoAccumulatorItem, UtxoAccumulatorModel,
     },
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
-    accumulator::{Accumulator, ExactSizeAccumulator, OptimizedAccumulator},
+    accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
     rand::{CryptoRng, FromEntropy, Rand, RngCore},
 };
 use manta_util::{
-    array_map,
-    future::LocalBoxFutureResult,
-    into_array_unchecked,
-    iter::{Finder, IteratorExt},
-    persistence::Rollback,
+    array_map, cmp::Independence, future::LocalBoxFutureResult, into_array_unchecked,
+    iter::IteratorExt, persistence::Rollback,
 };
 
 #[cfg(feature = "serde")]
@@ -83,7 +79,7 @@ where
     fn sync(
         &mut self,
         request: SyncRequest<C, Self::Checkpoint>,
-    ) -> LocalBoxFutureResult<SyncResult<Self::Checkpoint>, Self::Error>;
+    ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error>;
 
     /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
@@ -91,11 +87,8 @@ where
         request: SignRequest<C>,
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
-    /// Returns public receiving keys according to the `request`.
-    fn receiving_keys(
-        &mut self,
-        request: ReceivingKeyRequest,
-    ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error>;
+    /// Returns the [`Address`] corresponding to `self`.
+    fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error>;
 }
 
 /// Signer Synchronization Data
@@ -106,13 +99,13 @@ where
         bound(
             deserialize = r"
                 Utxo<C>: Deserialize<'de>,
-                EncryptedNote<C>: Deserialize<'de>,
-                VoidNumber<C>: Deserialize<'de>
+                Note<C>: Deserialize<'de>,
+                Nullifier<C>: Deserialize<'de>
             ",
             serialize = r"
                 Utxo<C>: Serialize,
-                EncryptedNote<C>: Serialize,
-                VoidNumber<C>: Serialize
+                Note<C>: Serialize,
+                Nullifier<C>: Serialize
             ",
         ),
         crate = "manta_util::serde",
@@ -121,31 +114,38 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Utxo<C>: Clone, EncryptedNote<C>: Clone, VoidNumber<C>: Clone"),
-    Debug(bound = "Utxo<C>: Debug, EncryptedNote<C>: Debug, VoidNumber<C>: Debug"),
+    Clone(bound = "Utxo<C>: Clone, Note<C>: Clone, Nullifier<C>: Clone"),
+    Debug(bound = "Utxo<C>: Debug, Note<C>: Debug, Nullifier<C>: Debug"),
     Default(bound = ""),
-    Eq(bound = "Utxo<C>: Eq, EncryptedNote<C>: Eq, VoidNumber<C>: Eq"),
-    Hash(bound = "Utxo<C>: Hash, EncryptedNote<C>: Hash, VoidNumber<C>: Hash"),
-    PartialEq(bound = "Utxo<C>: PartialEq, EncryptedNote<C>: PartialEq, VoidNumber<C>: PartialEq")
+    Eq(bound = "Utxo<C>: Eq, Note<C>: Eq, Nullifier<C>: Eq"),
+    Hash(bound = "Utxo<C>: Hash, Note<C>: Hash, Nullifier<C>: Hash"),
+    PartialEq(bound = "Utxo<C>: PartialEq, Note<C>: PartialEq, Nullifier<C>: PartialEq")
 )]
 pub struct SyncData<C>
 where
     C: transfer::Configuration + ?Sized,
 {
-    /// Receiver Data
-    pub receivers: Vec<(Utxo<C>, EncryptedNote<C>)>,
+    /// UTXO-Note Data
+    pub utxo_note_data: Vec<(Utxo<C>, Note<C>)>,
 
-    /// Sender Data
-    pub senders: Vec<VoidNumber<C>>,
+    /// Nullifier Data
+    pub nullifier_data: Vec<Nullifier<C>>,
 }
 
 impl<C> Data<C::Checkpoint> for SyncData<C>
 where
     C: Configuration + ?Sized,
 {
+    type Parameters = C::UtxoAccumulatorItemHash;
+
     #[inline]
-    fn prune(&mut self, origin: &C::Checkpoint, checkpoint: &C::Checkpoint) -> bool {
-        C::Checkpoint::prune(self, origin, checkpoint)
+    fn prune(
+        &mut self,
+        parameters: &Self::Parameters,
+        origin: &C::Checkpoint,
+        checkpoint: &C::Checkpoint,
+    ) -> bool {
+        C::Checkpoint::prune(parameters, self, origin, checkpoint)
     }
 }
 
@@ -176,15 +176,6 @@ where
     C: transfer::Configuration,
     T: ledger::Checkpoint,
 {
-    /// Recovery Flag
-    ///
-    /// If `with_recovery` is set to `true`, the [`GAP_LIMIT`] is used during sync to perform a full
-    /// recovery. See [`Configuration::HierarchicalKeyDerivationScheme`] for the scheme where the
-    /// [`GAP_LIMIT`] is configured.
-    ///
-    /// [`GAP_LIMIT`]: HierarchicalKeyDerivationScheme::GAP_LIMIT
-    pub with_recovery: bool,
-
     /// Origin Checkpoint
     ///
     /// This checkpoint was the one that was used to retrieve the [`data`](Self::data) from the
@@ -206,11 +197,16 @@ where
     /// [`data`]: Self::data
     /// [`origin_checkpoint`]: Self::origin_checkpoint
     #[inline]
-    pub fn prune(&mut self, checkpoint: &T) -> bool
+    pub fn prune(
+        &mut self,
+        parameters: &<SyncData<C> as Data<T>>::Parameters,
+        checkpoint: &T,
+    ) -> bool
     where
         SyncData<C>: Data<T>,
     {
-        self.data.prune(&self.origin_checkpoint, checkpoint)
+        self.data
+            .prune(parameters, &self.origin_checkpoint, checkpoint)
     }
 }
 
@@ -221,38 +217,72 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = "T: Deserialize<'de>, BalanceUpdate<C>: Deserialize<'de>",
+            serialize = "T: Serialize, BalanceUpdate<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct SyncResponse<T>
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "T: Clone, BalanceUpdate<C>: Clone"),
+    Copy(bound = "T: Copy, BalanceUpdate<C>: Copy"),
+    Debug(bound = "T: Debug, BalanceUpdate<C>: Debug"),
+    Default(bound = "T: Default, BalanceUpdate<C>: Default"),
+    Eq(bound = "T: Eq, BalanceUpdate<C>: Eq"),
+    Hash(bound = "T: Hash, BalanceUpdate<C>: Hash"),
+    PartialEq(bound = "T: PartialEq, BalanceUpdate<C>: PartialEq")
+)]
+pub struct SyncResponse<C, T>
 where
+    C: transfer::Configuration,
     T: ledger::Checkpoint,
 {
     /// Checkpoint
     pub checkpoint: T,
 
     /// Balance Update
-    pub balance_update: BalanceUpdate,
+    pub balance_update: BalanceUpdate<C>,
 }
 
 /// Balance Update
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = "Asset<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum BalanceUpdate {
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq")
+)]
+pub enum BalanceUpdate<C>
+where
+    C: transfer::Configuration,
+{
     /// Partial Update
     ///
     /// This is the typical response from the [`Signer`]. In rare de-synchronization cases, we may
     /// need to perform a [`Full`](Self::Full) update.
     Partial {
         /// Assets Deposited in the Last Update
-        deposit: Vec<Asset>,
+        deposit: Vec<Asset<C>>,
 
         /// Assets Withdrawn in the Last Update
-        withdraw: Vec<Asset>,
+        withdraw: Vec<Asset<C>>,
     },
 
     /// Full Update
@@ -262,7 +292,7 @@ pub enum BalanceUpdate {
     /// case, the entire balance state needs to be sent to catch up.
     Full {
         /// Full Balance State
-        assets: Vec<Asset>,
+        assets: Vec<Asset<C>>,
     },
 }
 
@@ -293,7 +323,7 @@ where
 }
 
 /// Synchronization Result
-pub type SyncResult<T> = Result<SyncResponse<T>, SyncError<T>>;
+pub type SyncResult<C, T> = Result<SyncResponse<C, T>, SyncError<T>>;
 
 /// Signer Signing Request
 ///
@@ -382,8 +412,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "ProofSystemError<C>: Deserialize<'de>",
-            serialize = "ProofSystemError<C>: Serialize"
+            deserialize = "Asset<C>: Deserialize<'de>, ProofSystemError<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize, ProofSystemError<C>: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -391,19 +421,19 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "ProofSystemError<C>: Clone"),
-    Copy(bound = "ProofSystemError<C>: Copy"),
-    Debug(bound = "ProofSystemError<C>: Debug"),
-    Eq(bound = "ProofSystemError<C>: Eq"),
-    Hash(bound = "ProofSystemError<C>: Hash"),
-    PartialEq(bound = "ProofSystemError<C>: PartialEq")
+    Clone(bound = "Asset<C>: Clone, ProofSystemError<C>: Clone"),
+    Copy(bound = "Asset<C>: Copy, ProofSystemError<C>: Copy"),
+    Debug(bound = "Asset<C>: Debug, ProofSystemError<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, ProofSystemError<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, ProofSystemError<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, ProofSystemError<C>: PartialEq")
 )]
 pub enum SignError<C>
 where
     C: transfer::Configuration,
 {
     /// Insufficient Balance
-    InsufficientBalance(Asset),
+    InsufficientBalance(Asset<C>),
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
@@ -412,50 +442,22 @@ where
 /// Signing Result
 pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
 
-/// Receiving Key Request
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum ReceivingKeyRequest {
-    /// Get Specific Key
-    ///
-    /// Requests the key at the specific `index`. If the signer's response is an empty key vector,
-    /// then the index was out of bounds.
-    Get {
-        /// Target Key Index
-        index: KeyIndex,
-    },
-
-    /// Get All Keys
-    ///
-    /// Requests all the public keys associated to the signer. The signer should always respond to
-    /// this request with at least one key, the default public key.
-    GetAll,
-
-    /// New Keys
-    ///
-    /// Requests `count`-many new keys from the hierarchical key derivation scheme. The signer
-    /// should always respond with at most `count`-many keys. If there are fewer, this is because,
-    /// adding such keys would exceed the [`GAP_LIMIT`](HierarchicalKeyDerivationScheme::GAP_LIMIT).
-    New {
-        /// Number of New Keys to Generate
-        count: usize,
-    },
-}
-
 /// Signer Checkpoint
 pub trait Checkpoint<C>: ledger::Checkpoint
 where
     C: transfer::Configuration + ?Sized,
 {
     /// UTXO Accumulator Type
-    type UtxoAccumulator: Accumulator<Item = C::Utxo, Model = C::UtxoAccumulatorModel>;
+    type UtxoAccumulator: Accumulator<
+        Item = UtxoAccumulatorItem<C>,
+        Model = UtxoAccumulatorModel<C>,
+    >;
 
-    /// Updates `self` by viewing `count`-many void numbers.
-    fn update_from_void_numbers(&mut self, count: usize);
+    /// UTXO Accumulator Hash Type
+    type UtxoAccumulatorItemHash: ItemHashFunction<Utxo<C>, Item = UtxoAccumulatorItem<C>>;
+
+    /// Updates `self` by viewing `count`-many nullifiers.
+    fn update_from_nullifiers(&mut self, count: usize);
 
     /// Updates `self` by viewing a new `accumulator`.
     fn update_from_utxo_accumulator(&mut self, accumulator: &Self::UtxoAccumulator);
@@ -470,39 +472,57 @@ where
 
     /// Prunes the `data` required for a [`sync`](Connection::sync) call against `origin` and
     /// `signer_checkpoint`, returning `true` if the data was pruned.
-    fn prune(data: &mut SyncData<C>, origin: &Self, signer_checkpoint: &Self) -> bool;
+    fn prune(
+        parameters: &Self::UtxoAccumulatorItemHash,
+        data: &mut SyncData<C>,
+        origin: &Self,
+        signer_checkpoint: &Self,
+    ) -> bool;
 }
 
 /// Signer Configuration
 pub trait Configuration: transfer::Configuration {
     /// Checkpoint Type
-    type Checkpoint: Checkpoint<Self, UtxoAccumulator = Self::UtxoAccumulator>;
-
-    /// Hierarchical Key Derivation Scheme
-    type HierarchicalKeyDerivationScheme: HierarchicalKeyDerivationScheme<
-        SecretKey = SecretKey<Self>,
+    type Checkpoint: Checkpoint<
+        Self,
+        UtxoAccumulator = Self::UtxoAccumulator,
+        UtxoAccumulatorItemHash = Self::UtxoAccumulatorItemHash,
     >;
 
+    /// Account Type
+    type Account: AccountCollection<SpendingKey = SpendingKey<Self>>
+        + Clone
+        + DeriveAddresses<Parameters = Self::Parameters, Address = Self::Address>;
+
     /// [`Utxo`] Accumulator Type
-    type UtxoAccumulator: Accumulator<Item = Self::Utxo, Model = Self::UtxoAccumulatorModel>
+    type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
         + ExactSizeAccumulator
         + OptimizedAccumulator
         + Rollback;
 
     /// Asset Map Type
-    type AssetMap: AssetMap<Key = AssetMapKey<Self>>;
+    type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
 
     /// Random Number Generator Type
     type Rng: CryptoRng + FromEntropy + RngCore;
 }
 
 /// Account Table Type
-pub type AccountTable<C> = key::AccountTable<<C as Configuration>::HierarchicalKeyDerivationScheme>;
-
-/// Asset Map Key Type
-pub type AssetMapKey<C> = (KeyIndex, SecretKey<C>);
+pub type AccountTable<C> = key::AccountTable<<C as Configuration>::Account>;
 
 /// Signer Parameters
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Parameters<C>: Deserialize<'de>, MultiProvingContext<C>: Deserialize<'de>",
+            serialize = "Parameters<C>: Serialize, MultiProvingContext<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "Parameters<C>: Clone, MultiProvingContext<C>: Clone"),
@@ -534,16 +554,6 @@ where
             proving_context,
         }
     }
-
-    /// Converts `keypair` into a [`ReceivingKey`] by using the key-agreement scheme to derive the
-    /// public keys associated to `keypair`.
-    #[inline]
-    fn receiving_key(
-        &self,
-        keypair: SecretKeyPair<C::HierarchicalKeyDerivationScheme>,
-    ) -> ReceivingKey<C> {
-        SpendingKey::new(keypair.spend, keypair.view).derive(self.parameters.key_agreement_scheme())
-    }
 }
 
 /// Signer State
@@ -569,13 +579,51 @@ where
         deny_unknown_fields
     )
 )]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Debug(bound = r"
+        AccountTable<C>: Debug,
+        C::UtxoAccumulator: Debug,
+        C::AssetMap: Debug,
+        C::Checkpoint: Debug,
+        C::Rng: Debug
+    "),
+    Default(bound = r"
+        AccountTable<C>: Default,
+        C::UtxoAccumulator: Default,
+        C::AssetMap: Default,
+        C::Checkpoint: Default,
+        C::Rng: Default
+    "),
+    Eq(bound = r"
+        AccountTable<C>: Eq,
+        C::UtxoAccumulator: Eq,
+        C::AssetMap: Eq,
+        C::Checkpoint: Eq,
+        C::Rng: Eq
+    "),
+    Hash(bound = r"
+        AccountTable<C>: Hash,
+        C::UtxoAccumulator: Hash,
+        C::AssetMap: Hash,
+        C::Checkpoint: Hash,
+        C::Rng: Hash
+    "),
+    PartialEq(bound = r"
+        AccountTable<C>: PartialEq,
+        C::UtxoAccumulator: PartialEq,
+        C::AssetMap: PartialEq,
+        C::Checkpoint: PartialEq,
+        C::Rng: PartialEq
+    ")
+)]
 pub struct SignerState<C>
 where
     C: Configuration,
 {
     /// Account Table
     ///
-    /// # Note
+    /// # Implementation Note
     ///
     /// For now, we only use the default account, and the rest of the storage data is related to
     /// this account. Eventually, we want to have a global `utxo_accumulator` for all accounts and
@@ -623,10 +671,7 @@ where
 
     /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator`.
     #[inline]
-    pub fn new(
-        keys: C::HierarchicalKeyDerivationScheme,
-        utxo_accumulator: C::UtxoAccumulator,
-    ) -> Self {
+    pub fn new(keys: C::Account, utxo_accumulator: C::UtxoAccumulator) -> Self {
         Self::build(
             AccountTable::<C>::new(keys),
             utxo_accumulator,
@@ -635,84 +680,125 @@ where
         )
     }
 
-    /// Returns the [`AccountTable`] for `self.`
+    /// Returns the [`AccountTable`].
     #[inline]
     pub fn accounts(&self) -> &AccountTable<C> {
         &self.accounts
     }
 
-    /// Finds the next viewing key that can decrypt the `encrypted_note` from the `view_key_table`.
+    /// Returns the default account for `self`.
     #[inline]
-    fn find_next_key<'h>(
-        view_key_table: &mut ViewKeyTable<'h, C::HierarchicalKeyDerivationScheme>,
-        parameters: &Parameters<C>,
-        with_recovery: bool,
-        encrypted_note: EncryptedNote<C>,
-    ) -> Option<ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>> {
-        let mut finder = Finder::new(encrypted_note);
-        view_key_table.find_index_with_maybe_gap(with_recovery, move |k| {
-            finder.next(|note| note.decrypt(&parameters.note_encryption_scheme, k, &mut ()))
-        })
+    pub fn default_account(&self) -> Account<C::Account> {
+        self.accounts.get_default()
     }
 
-    /// Inserts the new `utxo`-`note` pair into the `utxo_accumulator` adding the spendable amount
-    /// to `assets` if there is no void number to match it.
+    /// Returns the default spending key for `self`.
     #[inline]
-    fn insert_next_item(
+    fn default_spending_key(&self, parameters: &C::Parameters) -> SpendingKey<C> {
+        let _ = parameters;
+        self.accounts.get_default().spending_key()
+    }
+
+    /// Returns the default authorization context for `self`.
+    #[inline]
+    fn default_authorization_context(&self, parameters: &C::Parameters) -> AuthorizationContext<C> {
+        parameters.derive_context(&self.default_spending_key(parameters))
+    }
+
+    /// Returns the authorization for the default spending key of `self`.
+    #[inline]
+    fn authorization_for_default_spending_key(
+        &mut self,
+        parameters: &C::Parameters,
+    ) -> Authorization<C> {
+        Authorization::<C>::from_spending_key(
+            parameters,
+            &self.default_spending_key(parameters),
+            &mut self.rng,
+        )
+    }
+
+    /// Returns the address for the default account of `self`.
+    #[inline]
+    fn default_address(&mut self, parameters: &C::Parameters) -> Address<C> {
+        self.accounts.get_default().address(parameters)
+    }
+
+    /// Hashes `utxo` using the [`UtxoAccumulatorItemHash`](transfer::Configuration::UtxoAccumulatorItemHash)
+    /// in the transfer [`Configuration`](transfer::Configuration).
+    #[inline]
+    fn item_hash(parameters: &C::Parameters, utxo: &Utxo<C>) -> UtxoAccumulatorItem<C> {
+        parameters
+            .utxo_accumulator_item_hash()
+            .item_hash(utxo, &mut ())
+    }
+
+    /// Inserts the hash of `utxo` in `utxo_accumulator`.
+    #[allow(clippy::too_many_arguments)] // FIXME: Use a better abstraction here.
+    #[inline]
+    fn insert_next_item<R>(
+        authorization_context: &mut AuthorizationContext<C>,
         utxo_accumulator: &mut C::UtxoAccumulator,
         assets: &mut C::AssetMap,
         parameters: &Parameters<C>,
         utxo: Utxo<C>,
-        selection: ViewKeySelection<C::HierarchicalKeyDerivationScheme, Note<C>>,
-        void_numbers: &mut Vec<VoidNumber<C>>,
-        deposit: &mut Vec<Asset>,
-    ) {
-        let ViewKeySelection {
-            index,
-            keypair,
-            item: Note {
-                ephemeral_secret_key,
-                asset,
-            },
-        } = selection;
-        if let Some(void_number) =
-            parameters.check_full_asset(&keypair.spend, &ephemeral_secret_key, &asset, &utxo)
-        {
-            if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
-                void_numbers.remove(index);
+        identified_asset: IdentifiedAsset<C>,
+        nullifiers: &mut Vec<Nullifier<C>>,
+        deposit: &mut Vec<Asset<C>>,
+        rng: &mut R,
+    ) where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let IdentifiedAsset::<C> { identifier, asset } = identified_asset;
+        let (_, computed_utxo, nullifier) = parameters.derive_spend(
+            authorization_context,
+            identifier.clone(),
+            asset.clone(),
+            rng,
+        );
+        if computed_utxo.is_related(&utxo) {
+            if let Some(index) = nullifiers
+                .iter()
+                .position(move |n| n.is_related(&nullifier))
+            {
+                nullifiers.remove(index);
             } else {
-                utxo_accumulator.insert(&utxo);
-                assets.insert((index, ephemeral_secret_key), asset);
+                utxo_accumulator.insert(&Self::item_hash(parameters, &utxo));
                 if !asset.is_zero() {
-                    deposit.push(asset);
+                    deposit.push(asset.clone());
                 }
+                assets.insert(identifier, asset);
                 return;
             }
         }
-        utxo_accumulator.insert_nonprovable(&utxo);
+        utxo_accumulator.insert_nonprovable(&Self::item_hash(parameters, &utxo));
     }
 
-    /// Checks if `asset` matches with `void_number`, removing it from the `utxo_accumulator` and
+    /// Checks if `asset` matches with `nullifier`, removing it from the `utxo_accumulator` and
     /// inserting it into the `withdraw` set if this is the case.
+    #[allow(clippy::too_many_arguments)] // FIXME: Use a better abstraction here.
     #[inline]
-    fn is_asset_unspent(
+    fn is_asset_unspent<R>(
+        authorization_context: &mut AuthorizationContext<C>,
         utxo_accumulator: &mut C::UtxoAccumulator,
         parameters: &Parameters<C>,
-        secret_spend_key: &SecretKey<C>,
-        ephemeral_secret_key: &SecretKey<C>,
-        asset: Asset,
-        void_numbers: &mut Vec<VoidNumber<C>>,
-        withdraw: &mut Vec<Asset>,
-    ) -> bool {
-        let utxo = parameters.utxo(
-            ephemeral_secret_key,
-            &parameters.derive(secret_spend_key),
-            &asset,
-        );
-        let void_number = parameters.void_number(secret_spend_key, &utxo);
-        if let Some(index) = void_numbers.iter().position(move |v| v == &void_number) {
-            void_numbers.remove(index);
-            utxo_accumulator.remove_proof(&utxo);
+        identifier: Identifier<C>,
+        asset: Asset<C>,
+        nullifiers: &mut Vec<Nullifier<C>>,
+        withdraw: &mut Vec<Asset<C>>,
+        rng: &mut R,
+    ) -> bool
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let (_, utxo, nullifier) =
+            parameters.derive_spend(authorization_context, identifier, asset.clone(), rng);
+        if let Some(index) = nullifiers
+            .iter()
+            .position(move |n| n.is_related(&nullifier))
+        {
+            nullifiers.remove(index);
+            utxo_accumulator.remove_proof(&Self::item_hash(parameters, &utxo));
             if !asset.is_zero() {
                 withdraw.push(asset);
             }
@@ -727,56 +813,54 @@ where
     fn sync_with<I>(
         &mut self,
         parameters: &Parameters<C>,
-        with_recovery: bool,
         inserts: I,
-        mut void_numbers: Vec<VoidNumber<C>>,
+        mut nullifiers: Vec<Nullifier<C>>,
         is_partial: bool,
-    ) -> SyncResponse<C::Checkpoint>
+    ) -> SyncResponse<C, C::Checkpoint>
     where
-        I: Iterator<Item = (Utxo<C>, EncryptedNote<C>)>,
+        I: Iterator<Item = (Utxo<C>, Note<C>)>,
     {
-        let void_number_count = void_numbers.len();
+        let nullifier_count = nullifiers.len();
         let mut deposit = Vec::new();
         let mut withdraw = Vec::new();
-        let mut view_key_table = self.accounts.get_mut_default().view_key_table();
-        for (utxo, encrypted_note) in inserts {
-            if let Some(selection) = Self::find_next_key(
-                &mut view_key_table,
-                parameters,
-                with_recovery,
-                encrypted_note,
-            ) {
+        let mut authorization_context = self.default_authorization_context(parameters);
+        let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
+        for (utxo, note) in inserts {
+            if let Some((identifier, asset)) =
+                parameters.open_with_check(&decryption_key, &utxo, note)
+            {
                 Self::insert_next_item(
+                    &mut authorization_context,
                     &mut self.utxo_accumulator,
                     &mut self.assets,
                     parameters,
                     utxo,
-                    selection,
-                    &mut void_numbers,
+                    transfer::utxo::IdentifiedAsset::new(identifier, asset),
+                    &mut nullifiers,
                     &mut deposit,
+                    &mut self.rng,
                 );
             } else {
-                self.utxo_accumulator.insert_nonprovable(&utxo);
+                self.utxo_accumulator
+                    .insert_nonprovable(&Self::item_hash(parameters, &utxo));
             }
         }
-        self.assets.retain(|(index, ephemeral_secret_key), assets| {
-            assets.retain(
-                |asset| match self.accounts.get_default().spend_key(*index) {
-                    Some(secret_spend_key) => Self::is_asset_unspent(
-                        &mut self.utxo_accumulator,
-                        parameters,
-                        &secret_spend_key,
-                        ephemeral_secret_key,
-                        *asset,
-                        &mut void_numbers,
-                        &mut withdraw,
-                    ),
-                    _ => true,
-                },
-            );
+        self.assets.retain(|identifier, assets| {
+            assets.retain(|asset| {
+                Self::is_asset_unspent(
+                    &mut authorization_context,
+                    &mut self.utxo_accumulator,
+                    parameters,
+                    identifier.clone(),
+                    asset.clone(),
+                    &mut nullifiers,
+                    &mut withdraw,
+                    &mut self.rng,
+                )
+            });
             !assets.is_empty()
         });
-        self.checkpoint.update_from_void_numbers(void_number_count);
+        self.checkpoint.update_from_nullifiers(nullifier_count);
         self.checkpoint
             .update_from_utxo_accumulator(&self.utxo_accumulator);
         SyncResponse {
@@ -793,56 +877,40 @@ where
         }
     }
 
-    /// Builds the pre-sender associated to `key` and `asset`.
+    /// Builds the [`PreSender`] associated to `identifier` and `asset`.
     #[inline]
     fn build_pre_sender(
-        &self,
-        parameters: &Parameters<C>,
-        key: AssetMapKey<C>,
-        asset: Asset,
-    ) -> Result<PreSender<C>, SignError<C>> {
-        let (spend_index, ephemeral_secret_key) = key;
-        Ok(PreSender::new(
-            parameters,
-            self.accounts
-                .get_default()
-                .spend_key(spend_index)
-                .expect("Index is guaranteed to be within bounds."),
-            ephemeral_secret_key,
-            asset,
-        ))
-    }
-
-    /// Builds the receiver for `asset`.
-    #[inline]
-    fn build_receiver(
         &mut self,
         parameters: &Parameters<C>,
-        asset: Asset,
-    ) -> Result<Receiver<C>, SignError<C>> {
-        let keypair = self.accounts.get_default().default_keypair();
-        Ok(SpendingKey::new(keypair.spend, keypair.view).receiver(
+        identifier: Identifier<C>,
+        asset: Asset<C>,
+    ) -> PreSender<C> {
+        PreSender::<C>::sample(
             parameters,
-            self.rng.gen(),
-            asset,
-        ))
-    }
-
-    /// Builds a new internal [`Mint`] for zero assets.
-    #[inline]
-    fn mint_zero(
-        &mut self,
-        parameters: &Parameters<C>,
-        asset_id: AssetId,
-    ) -> Result<(Mint<C>, PreSender<C>), SignError<C>> {
-        let asset = Asset::zero(asset_id);
-        let keypair = self.accounts.get_default().default_keypair();
-        Ok(Mint::internal_pair(
-            parameters,
-            &SpendingKey::new(keypair.spend, keypair.view),
+            &mut self.default_authorization_context(parameters),
+            identifier,
             asset,
             &mut self.rng,
-        ))
+        )
+    }
+
+    /// Builds the [`Receiver`] associated with `address` and `asset`.
+    #[inline]
+    fn receiver(
+        &mut self,
+        parameters: &Parameters<C>,
+        address: Address<C>,
+        asset: Asset<C>,
+        associated_data: AssociatedData<C>,
+    ) -> Receiver<C> {
+        Receiver::<C>::sample(parameters, address, asset, associated_data, &mut self.rng)
+    }
+
+    /// Builds the [`Receiver`] associated with the default address and `asset`.
+    #[inline]
+    fn default_receiver(&mut self, parameters: &Parameters<C>, asset: Asset<C>) -> Receiver<C> {
+        let default_address = self.default_address(parameters);
+        self.receiver(parameters, default_address, asset, Default::default())
     }
 
     /// Selects the pre-senders which collectively own at least `asset`, returning any change.
@@ -850,15 +918,35 @@ where
     fn select(
         &mut self,
         parameters: &Parameters<C>,
-        asset: Asset,
+        asset: &Asset<C>,
     ) -> Result<Selection<C>, SignError<C>> {
         let selection = self.assets.select(asset);
         if !asset.is_zero() && selection.is_empty() {
-            return Err(SignError::InsufficientBalance(asset));
+            return Err(SignError::InsufficientBalance(asset.clone()));
         }
         Selection::new(selection, move |k, v| {
-            self.build_pre_sender(parameters, k, asset.id.with(v))
+            Ok(self.build_pre_sender(parameters, k, Asset::<C>::new(asset.id.clone(), v)))
         })
+    }
+
+    /// Builds a [`TransferPost`] for the given `transfer`.
+    #[inline]
+    fn build_post_inner<
+        const SOURCES: usize,
+        const SENDERS: usize,
+        const RECEIVERS: usize,
+        const SINKS: usize,
+    >(
+        parameters: FullParametersRef<C>,
+        proving_context: &ProvingContext<C>,
+        spending_key: Option<&SpendingKey<C>>,
+        transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
+        rng: &mut C::Rng,
+    ) -> Result<TransferPost<C>, SignError<C>> {
+        transfer
+            .into_post(parameters, proving_context, spending_key, rng)
+            .map(|p| p.expect("Internally, all transfer posts are constructed correctly."))
+            .map_err(SignError::ProofSystemError)
     }
 
     /// Builds a [`TransferPost`] for the given `transfer`.
@@ -869,61 +957,17 @@ where
         const RECEIVERS: usize,
         const SINKS: usize,
     >(
-        parameters: FullParameters<C>,
+        &mut self,
+        parameters: &Parameters<C>,
         proving_context: &ProvingContext<C>,
         transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
-        rng: &mut C::Rng,
     ) -> Result<TransferPost<C>, SignError<C>> {
-        transfer
-            .into_post(parameters, proving_context, rng)
-            .map_err(SignError::ProofSystemError)
-    }
-
-    /// Mints an asset with zero value for the given `asset_id`, returning the appropriate
-    /// Builds a [`TransferPost`] for `mint`.
-    #[inline]
-    fn mint_post(
-        &mut self,
-        parameters: &Parameters<C>,
-        proving_context: &ProvingContext<C>,
-        mint: Mint<C>,
-    ) -> Result<TransferPost<C>, SignError<C>> {
-        Self::build_post(
-            FullParameters::new(parameters, self.utxo_accumulator.model()),
+        let spending_key = self.default_spending_key(parameters);
+        Self::build_post_inner(
+            FullParametersRef::<C>::new(parameters, self.utxo_accumulator.model()),
             proving_context,
-            mint,
-            &mut self.rng,
-        )
-    }
-
-    /// Builds a [`TransferPost`] for `private_transfer`.
-    #[inline]
-    fn private_transfer_post(
-        &mut self,
-        parameters: &Parameters<C>,
-        proving_context: &ProvingContext<C>,
-        private_transfer: PrivateTransfer<C>,
-    ) -> Result<TransferPost<C>, SignError<C>> {
-        Self::build_post(
-            FullParameters::new(parameters, self.utxo_accumulator.model()),
-            proving_context,
-            private_transfer,
-            &mut self.rng,
-        )
-    }
-
-    /// Builds a [`TransferPost`] for `reclaim`.
-    #[inline]
-    fn reclaim_post(
-        &mut self,
-        parameters: &Parameters<C>,
-        proving_context: &ProvingContext<C>,
-        reclaim: Reclaim<C>,
-    ) -> Result<TransferPost<C>, SignError<C>> {
-        Self::build_post(
-            FullParameters::new(parameters, self.utxo_accumulator.model()),
-            proving_context,
-            reclaim,
+            requires_authorization(SENDERS).then_some(&spending_key),
+            transfer,
             &mut self.rng,
         )
     }
@@ -934,14 +978,14 @@ where
     fn next_join(
         &mut self,
         parameters: &Parameters<C>,
-        asset_id: AssetId,
-        total: AssetValue,
+        asset_id: &C::AssetId,
+        total: C::AssetValue,
     ) -> Result<([Receiver<C>; PrivateTransferShape::RECEIVERS], Join<C>), SignError<C>> {
-        let keypair = self.accounts.get_default().default_keypair();
         Ok(Join::new(
             parameters,
-            asset_id.with(total),
-            &SpendingKey::new(keypair.spend, keypair.view),
+            &mut self.default_authorization_context(parameters),
+            self.default_address(parameters),
+            Asset::<C>::new(asset_id.clone(), total),
             &mut self.rng,
         ))
     }
@@ -951,42 +995,61 @@ where
     fn prepare_final_pre_senders(
         &mut self,
         parameters: &Parameters<C>,
-        proving_context: &MultiProvingContext<C>,
-        asset_id: AssetId,
+        asset_id: &C::AssetId,
         mut new_zeroes: Vec<PreSender<C>>,
-        pre_senders: &mut Vec<PreSender<C>>,
-        posts: &mut Vec<TransferPost<C>>,
-    ) -> Result<(), SignError<C>> {
-        let mut needed_zeroes = PrivateTransferShape::SENDERS - pre_senders.len();
+        pre_senders: Vec<PreSender<C>>,
+    ) -> Result<Vec<Sender<C>>, SignError<C>> {
+        let mut senders = pre_senders
+            .into_iter()
+            .map(|s| s.try_upgrade(parameters, &self.utxo_accumulator))
+            .collect::<Option<Vec<_>>>()
+            .expect("Unable to upgrade expected UTXOs.");
+        let mut needed_zeroes = PrivateTransferShape::SENDERS - senders.len();
         if needed_zeroes == 0 {
-            return Ok(());
+            return Ok(senders);
         }
         let zeroes = self.assets.zeroes(needed_zeroes, asset_id);
         needed_zeroes -= zeroes.len();
         for zero in zeroes {
-            let pre_sender = self.build_pre_sender(parameters, zero, Asset::zero(asset_id))?;
-            pre_senders.push(pre_sender);
+            let pre_sender = self.build_pre_sender(
+                parameters,
+                zero,
+                Asset::<C>::new(asset_id.clone(), Default::default()),
+            );
+            senders.push(
+                pre_sender
+                    .try_upgrade(parameters, &self.utxo_accumulator)
+                    .expect("Unable to upgrade expected UTXOs."),
+            );
         }
         if needed_zeroes == 0 {
-            return Ok(());
+            return Ok(senders);
         }
-        let needed_mints = needed_zeroes.saturating_sub(new_zeroes.len());
+        let needed_fake_zeroes = needed_zeroes.saturating_sub(new_zeroes.len());
         for _ in 0..needed_zeroes {
             match new_zeroes.pop() {
-                Some(zero) => pre_senders.push(zero),
+                Some(zero) => senders.push(
+                    zero.try_upgrade(parameters, &self.utxo_accumulator)
+                        .expect("Unable to upgrade expected UTXOs."),
+                ),
                 _ => break,
             }
         }
-        if needed_mints == 0 {
-            return Ok(());
+        if needed_fake_zeroes == 0 {
+            return Ok(senders);
         }
-        for _ in 0..needed_mints {
-            let (mint, pre_sender) = self.mint_zero(parameters, asset_id)?;
-            posts.push(self.mint_post(parameters, &proving_context.mint, mint)?);
-            pre_sender.insert_utxo(&mut self.utxo_accumulator);
-            pre_senders.push(pre_sender);
+        for _ in 0..needed_fake_zeroes {
+            let identifier = self.rng.gen();
+            senders.push(
+                self.build_pre_sender(
+                    parameters,
+                    identifier,
+                    Asset::<C>::new(asset_id.clone(), Default::default()),
+                )
+                .upgrade_unchecked(Default::default()),
+            );
         }
-        Ok(())
+        Ok(senders)
     }
 
     /// Computes the batched transactions for rebalancing before a final transfer.
@@ -995,7 +1058,7 @@ where
         &mut self,
         parameters: &Parameters<C>,
         proving_context: &MultiProvingContext<C>,
-        asset_id: AssetId,
+        asset_id: &C::AssetId,
         mut pre_senders: Vec<PreSender<C>>,
         posts: &mut Vec<TransferPost<C>>,
     ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>> {
@@ -1007,59 +1070,40 @@ where
                 .chunk_by::<{ PrivateTransferShape::SENDERS }>();
             for chunk in &mut iter {
                 let senders = array_map(chunk, |s| {
-                    s.try_upgrade(&self.utxo_accumulator)
+                    s.try_upgrade(parameters, &self.utxo_accumulator)
                         .expect("Unable to upgrade expected UTXO.")
                 });
                 let (receivers, mut join) = self.next_join(
                     parameters,
                     asset_id,
-                    senders.iter().map(Sender::asset_value).sum(),
+                    senders.iter().map(|s| s.asset().value).sum(),
                 )?;
-                posts.push(self.private_transfer_post(
+                let authorization = self.authorization_for_default_spending_key(parameters);
+                posts.push(self.build_post(
                     parameters,
                     &proving_context.private_transfer,
-                    PrivateTransfer::build(senders, receivers),
+                    PrivateTransfer::build(authorization, senders, receivers),
                 )?);
-                join.insert_utxos(&mut self.utxo_accumulator);
+                join.insert_utxos(parameters, &mut self.utxo_accumulator);
                 joins.push(join.pre_sender);
                 new_zeroes.append(&mut join.zeroes);
             }
             joins.append(&mut iter.remainder());
             pre_senders = joins;
         }
-        self.prepare_final_pre_senders(
+        Ok(into_array_unchecked(self.prepare_final_pre_senders(
             parameters,
-            proving_context,
             asset_id,
             new_zeroes,
-            &mut pre_senders,
-            posts,
-        )?;
-        Ok(into_array_unchecked(
-            pre_senders
-                .into_iter()
-                .map(move |s| s.try_upgrade(&self.utxo_accumulator))
-                .collect::<Option<Vec<_>>>()
-                .expect("Unable to upgrade expected UTXOs."),
-        ))
-    }
-
-    /// Prepares a given [`ReceivingKey`] for receiving `asset`.
-    #[inline]
-    fn prepare_receiver(
-        &mut self,
-        parameters: &Parameters<C>,
-        asset: Asset,
-        receiving_key: ReceivingKey<C>,
-    ) -> Receiver<C> {
-        receiving_key.into_receiver(parameters, self.rng.gen(), asset)
+            pre_senders,
+        )?))
     }
 }
 
 impl<C> Clone for SignerState<C>
 where
     C: Configuration,
-    C::HierarchicalKeyDerivationScheme: Clone,
+    AccountTable<C>: Clone,
     C::UtxoAccumulator: Clone,
     C::AssetMap: Clone,
 {
@@ -1075,6 +1119,26 @@ where
 }
 
 /// Signer
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "SignerParameters<C>: Deserialize<'de>, SignerState<C>: Deserialize<'de>",
+            serialize = "SignerParameters<C>: Serialize, SignerState<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "SignerParameters<C>: Clone, SignerState<C>: Clone"),
+    Debug(bound = "SignerParameters<C>: Debug, SignerState<C>: Debug"),
+    Eq(bound = "SignerParameters<C>: Eq, SignerState<C>: Eq"),
+    Hash(bound = "SignerParameters<C>: Hash, SignerState<C>: Hash"),
+    PartialEq(bound = "SignerParameters<C>: PartialEq, SignerState<C>: PartialEq")
+)]
 pub struct Signer<C>
 where
     C: Configuration,
@@ -1100,8 +1164,8 @@ where
     #[inline]
     fn new_inner(
         accounts: AccountTable<C>,
-        proving_context: MultiProvingContext<C>,
         parameters: Parameters<C>,
+        proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
         rng: C::Rng,
@@ -1124,15 +1188,15 @@ where
     #[inline]
     pub fn new(
         accounts: AccountTable<C>,
-        proving_context: MultiProvingContext<C>,
         parameters: Parameters<C>,
+        proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
             accounts,
-            proving_context,
             parameters,
+            proving_context,
             utxo_accumulator,
             Default::default(),
             rng,
@@ -1156,7 +1220,7 @@ where
     pub fn sync(
         &mut self,
         mut request: SyncRequest<C, C::Checkpoint>,
-    ) -> Result<SyncResponse<C::Checkpoint>, SyncError<C::Checkpoint>> {
+    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
         // TODO: Do a capacity check on the current UTXO accumulator?
         //
         // if self.utxo_accumulator.capacity() < starting_index {
@@ -1168,13 +1232,18 @@ where
                 checkpoint: checkpoint.clone(),
             })
         } else {
-            let has_pruned = request.prune(checkpoint);
-            let SyncData { receivers, senders } = request.data;
+            let has_pruned = request.prune(
+                self.parameters.parameters.utxo_accumulator_item_hash(),
+                checkpoint,
+            );
+            let SyncData {
+                utxo_note_data,
+                nullifier_data,
+            } = request.data;
             let response = self.state.sync_with(
                 &self.parameters.parameters,
-                request.with_recovery,
-                receivers.into_iter(),
-                senders,
+                utxo_note_data.into_iter(),
+                nullifier_data,
                 !has_pruned,
             );
             self.state.utxo_accumulator.commit();
@@ -1182,40 +1251,47 @@ where
         }
     }
 
-    /// Signs a withdraw transaction for `asset` sent to `receiver`.
+    /// Signs a withdraw transaction for `asset` sent to `address`.
     #[inline]
     fn sign_withdraw(
         &mut self,
-        asset: Asset,
-        receiver: Option<ReceivingKey<C>>,
+        asset: Asset<C>,
+        address: Option<Address<C>>,
     ) -> Result<SignResponse<C>, SignError<C>> {
-        let selection = self.state.select(&self.parameters.parameters, asset)?;
-        let change = self
-            .state
-            .build_receiver(&self.parameters.parameters, asset.id.with(selection.change))?;
+        let selection = self.state.select(&self.parameters.parameters, &asset)?;
         let mut posts = Vec::new();
         let senders = self.state.compute_batched_transactions(
             &self.parameters.parameters,
             &self.parameters.proving_context,
-            asset.id,
+            &asset.id,
             selection.pre_senders,
             &mut posts,
         )?;
-        let final_post = match receiver {
-            Some(receiver) => {
-                let receiver =
-                    self.state
-                        .prepare_receiver(&self.parameters.parameters, asset, receiver);
-                self.state.private_transfer_post(
+        let change = self.state.default_receiver(
+            &self.parameters.parameters,
+            Asset::<C>::new(asset.id.clone(), selection.change),
+        );
+        let authorization = self
+            .state
+            .authorization_for_default_spending_key(&self.parameters.parameters);
+        let final_post = match address {
+            Some(address) => {
+                let receiver = self.state.receiver(
+                    &self.parameters.parameters,
+                    address,
+                    asset,
+                    Default::default(),
+                );
+                self.state.build_post(
                     &self.parameters.parameters,
                     &self.parameters.proving_context.private_transfer,
-                    PrivateTransfer::build(senders, [change, receiver]),
+                    PrivateTransfer::build(authorization, senders, [change, receiver]),
                 )?
             }
-            _ => self.state.reclaim_post(
+            _ => self.state.build_post(
                 &self.parameters.parameters,
-                &self.parameters.proving_context.reclaim,
-                Reclaim::build(senders, [change], asset),
+                &self.parameters.proving_context.to_public,
+                ToPublic::build(authorization, senders, [change], asset),
             )?,
         };
         posts.push(final_post);
@@ -1229,20 +1305,20 @@ where
         transaction: Transaction<C>,
     ) -> Result<SignResponse<C>, SignError<C>> {
         match transaction {
-            Transaction::Mint(asset) => {
+            Transaction::ToPrivate(asset) => {
                 let receiver = self
                     .state
-                    .build_receiver(&self.parameters.parameters, asset)?;
-                Ok(SignResponse::new(vec![self.state.mint_post(
+                    .default_receiver(&self.parameters.parameters, asset.clone());
+                Ok(SignResponse::new(vec![self.state.build_post(
                     &self.parameters.parameters,
-                    &self.parameters.proving_context.mint,
-                    Mint::build(asset, receiver),
+                    &self.parameters.proving_context.to_private,
+                    ToPrivate::build(asset, receiver),
                 )?]))
             }
-            Transaction::PrivateTransfer(asset, receiver) => {
-                self.sign_withdraw(asset, Some(receiver))
+            Transaction::PrivateTransfer(asset, address) => {
+                self.sign_withdraw(asset, Some(address))
             }
-            Transaction::Reclaim(asset) => self.sign_withdraw(asset, None),
+            Transaction::ToPublic(asset) => self.sign_withdraw(asset, None),
         }
     }
 
@@ -1254,33 +1330,11 @@ where
         result
     }
 
-    /// Returns public receiving keys according to the `request`.
+    /// Returns the [`Address`] corresponding to `self`.
     #[inline]
-    pub fn receiving_keys(&mut self, request: ReceivingKeyRequest) -> Vec<ReceivingKey<C>> {
-        match request {
-            ReceivingKeyRequest::Get { index } => self
-                .state
-                .accounts
-                .get_default()
-                .keypair(index)
-                .into_iter()
-                .map(|k| self.parameters.receiving_key(k))
-                .collect(),
-            ReceivingKeyRequest::GetAll => self
-                .state
-                .accounts
-                .get_default()
-                .keypairs()
-                .map(|k| self.parameters.receiving_key(k))
-                .collect(),
-            ReceivingKeyRequest::New { count } => self
-                .state
-                .accounts
-                .generate_keys(Default::default())
-                .take(count)
-                .map(|k| self.parameters.receiving_key(k))
-                .collect(),
-        }
+    pub fn address(&mut self) -> Address<C> {
+        let account = self.state.accounts.get_default();
+        account.address(&self.parameters.parameters)
     }
 }
 
@@ -1296,7 +1350,7 @@ where
         &mut self,
         request: SyncRequest<C, C::Checkpoint>,
     ) -> LocalBoxFutureResult<
-        Result<SyncResponse<C::Checkpoint>, SyncError<C::Checkpoint>>,
+        Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>,
         Self::Error,
     > {
         Box::pin(async move { Ok(self.sync(request)) })
@@ -1311,10 +1365,7 @@ where
     }
 
     #[inline]
-    fn receiving_keys(
-        &mut self,
-        request: ReceivingKeyRequest,
-    ) -> LocalBoxFutureResult<Vec<ReceivingKey<C>>, Self::Error> {
-        Box::pin(async move { Ok(self.receiving_keys(request)) })
+    fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error> {
+        Box::pin(async move { Ok(self.address()) })
     }
 }
