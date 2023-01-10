@@ -253,10 +253,10 @@ impl Serializer<G1Affine, G1> for PpotSerializer {
             // Final result will be reversed, so this is like modifying first byte
             res[31] |= 1 << 6;
         } else {
-            let mut temp_writer = &mut res[..];
+            let temp_writer = &mut res[..];
 
             // Write x coordinate
-            point.x.write(&mut temp_writer)?;
+            point.x.write(temp_writer)?;
 
             // Check whether y-coordinate is lexicographically greatest
             // Final result will be reversed, so this is like modifying first byte
@@ -785,11 +785,9 @@ mod tests {
         const N: usize = 100; // number of samples
         let mut rng = ChaCha20Rng::from_seed([0; 32]);
         let g1: Vec<G1Affine> = (0..N)
-            .into_iter()
             .map(|_| <G1Affine as AffineCurve>::Projective::gen(&mut rng).into_affine())
             .collect();
         let g2: Vec<G2Affine> = (0..N)
-            .into_iter()
             .map(|_| <G2Affine as AffineCurve>::Projective::gen(&mut rng).into_affine())
             .collect();
 
