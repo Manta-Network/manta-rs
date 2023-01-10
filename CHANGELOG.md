@@ -8,12 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#190](https://github.com/Manta-Network/manta-rs/pull/190) Implement Merkle tree pruning algorithm
 
 ### Changed
+- [\#293](https://github.com/Manta-Network/manta-rs/pull/293) Add decimals argument to AssetMetadata display
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+- [\#296](https://github.com/Manta-Network/manta-rs/pull/296) Fix AssetMetadata display for values less than 1
 
 ### Security
 
