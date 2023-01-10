@@ -312,64 +312,62 @@ macro_rules! define_lfs {
 
 /// Concrete Parameters for Manta Pay
 pub mod pay {
-    /// Testnet Data
-    pub mod testnet {
         /// Parameters
         pub mod parameters {
             define_dat!(
                 GroupGenerator,
                 "Group Generator",
-                "pay/testnet/parameters/group-generator",
+                "pay/parameters/group-generator",
             );
             define_dat!(
                 UtxoCommitmentScheme,
                 "UTXO Commitment Scheme Parameters",
-                "pay/testnet/parameters/utxo-commitment-scheme",
+                "pay/parameters/utxo-commitment-scheme",
             );
             define_dat!(
                 IncomingBaseEncryptionScheme,
                 "Incoming Base Encryption Scheme Parameters",
-                "pay/testnet/parameters/incoming-base-encryption-scheme",
+                "pay/parameters/incoming-base-encryption-scheme",
             );
             define_dat!(
                 LightIncomingBaseEncryptionScheme,
                 "Light Incoming Base Encryption Scheme Parameters",
-                "pay/testnet/parameters/light-incoming-base-encryption-scheme",
+                "pay/parameters/light-incoming-base-encryption-scheme",
             );
             define_dat!(
                 ViewingKeyDerivationFunction,
                 "Viewing Key Derivation Function Parameters",
-                "pay/testnet/parameters/viewing-key-derivation-function",
+                "pay/parameters/viewing-key-derivation-function",
             );
             define_dat!(
                 UtxoAccumulatorItemHash,
                 "UTXO Accumulator Item Hash Parameters",
-                "pay/testnet/parameters/utxo-accumulator-item-hash",
+                "pay/parameters/utxo-accumulator-item-hash",
             );
             define_dat!(
                 NullifierCommitmentScheme,
                 "Nullifier Commitment Scheme Parameters",
-                "pay/testnet/parameters/nullifier-commitment-scheme",
+                "pay/parameters/nullifier-commitment-scheme",
             );
             define_dat!(
                 OutgoingBaseEncryptionScheme,
                 "Outgoing Base Encryption Scheme Parameters",
-                "pay/testnet/parameters/outgoing-base-encryption-scheme",
+                "pay/parameters/outgoing-base-encryption-scheme",
             );
             define_dat!(
                 AddressPartitionFunction,
                 "Address Partition Function",
-                "pay/testnet/parameters/address-partition-function",
+                "pay/parameters/address-partition-function",
             );
             define_dat!(
                 SchnorrHashFunction,
                 "Schnorr Hash Function Parameters",
-                "pay/testnet/parameters/schnorr-hash-function",
+                "pay/parameters/schnorr-hash-function",
             );
             define_dat!(
                 UtxoAccumulatorModel,
                 "UTXO Accumulator Model Parameters",
-                "pay/testnet/parameters/utxo-accumulator-model",
+                "pay/parameters/utxo-accumulator-model",
             );
         }
 
@@ -378,17 +376,17 @@ pub mod pay {
             define_lfs!(
                 ToPrivate,
                 "ToPrivate Proving Context",
-                "pay/testnet/proving/to-private",
+                "pay/proving/to-private",
             );
             define_lfs!(
                 PrivateTransfer,
                 "Private Transfer Proving Context",
-                "pay/testnet/proving/private-transfer",
+                "pay/proving/private-transfer",
             );
             define_lfs!(
                 ToPublic,
                 "ToPublic Proving Context",
-                "pay/testnet/proving/to-public",
+                "pay/proving/to-public",
             );
         }
 
@@ -397,21 +395,20 @@ pub mod pay {
             define_dat!(
                 ToPrivate,
                 "ToPrivate Verifying Context",
-                "pay/testnet/verifying/to-private"
+                "pay/verifying/to-private"
             );
             define_dat!(
                 PrivateTransfer,
                 "Private Transfer Verifying Context",
-                "pay/testnet/verifying/private-transfer"
+                "pay/verifying/private-transfer"
             );
             define_dat!(
                 ToPublic,
                 "ToPublic Verifying Context",
-                "pay/testnet/verifying/to-public"
+                "pay/verifying/to-public"
             );
         }
     }
-}
 
 /// Testing Suite
 #[cfg(test)]
