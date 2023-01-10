@@ -36,6 +36,7 @@ use core::{
 };
 use derive_more::{Display, From};
 use manta_crypto::{
+    arkworks::std,
     constraint::{HasInput, Input},
     eclair::{
         self,
@@ -60,7 +61,7 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
-use std::{
+use self::std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
 };
