@@ -26,7 +26,7 @@
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
     format,
-    string::String,
+    string::{String, ToString},
     vec,
     vec::Vec,
 };
@@ -62,7 +62,7 @@ use openzl_util::{
 use openzl_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
-use std::{
+use self::std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
 };
@@ -1071,29 +1071,35 @@ pub struct AssetMetadata {
 }
 
 impl AssetMetadata {
-    /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
+    /// Returns a string formatting of only the `value` with `digits` fractional digits,
+    /// interpreted using `self` as the metadata.
     #[inline]
-    pub fn display_value<V>(&self, value: V) -> String
+    pub fn display_value<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
+        V: manta_crypto::arkworks::std::fmt::Display,
+        V: std::ops::Sub<u128, Output = u128>,
     {
-        // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
-        //       more general?
-        const FRACTIONAL_DIGITS: u32 = 3;
         let value_base_units = &value / (10u128.pow(self.decimals));
-        let fractional_digits = &value / (10u128.pow(self.decimals - FRACTIONAL_DIGITS))
-            % (10u128.pow(FRACTIONAL_DIGITS));
-        format!("{value_base_units}.{fractional_digits:0>3}")
+        let fractional_digits =
+            &value / (10u128.pow(self.decimals - digits)) % (10u128.pow(digits));
+
+        let decimals: u128 = value - (value_base_units * 10u128.pow(digits));
+        let decimals_length: u32 = decimals.to_string().len().try_into().unwrap();
+        let leading_zeros = "0".repeat((digits - decimals_length).try_into().unwrap());
+        format!("{value_base_units}.{leading_zeros}{fractional_digits}")
     }
 
-    /// Returns a string formatting of `value` interpreted using `self` as the metadata including
-    /// the symbol.
+    /// Returns a string formatting of `value` with `digits` fractional digits, interpreted using
+    /// `self` as the metadata including the symbol.
     #[inline]
-    pub fn display<V>(&self, value: V) -> String
+    pub fn display<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
+        V: manta_crypto::arkworks::std::fmt::Display,
+        V: std::ops::Sub<u128, Output = u128>,
     {
-        format!("{} {}", self.display_value(value), self.symbol)
+        format!("{} {}", self.display_value(value, digits), self.symbol)
     }
 }
 
