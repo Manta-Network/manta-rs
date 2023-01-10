@@ -85,7 +85,7 @@ where
     /// Removes the leaf digest stored at 'index'. Fails when trying to remove the current leaf.
     fn remove(&mut self, index: usize) -> bool;
 
-    /// Generates a LeafMap from a 'Vec<LeafDigest>'.
+    /// Generates a LeafMap from a `Vec<LeafDigest>`.
     fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self;
 
     /// Returns a vector with all leaf digests.
