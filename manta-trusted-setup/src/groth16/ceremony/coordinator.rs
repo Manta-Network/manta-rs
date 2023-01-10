@@ -347,6 +347,7 @@ where
         .read(true)
         .open(phase_one_param_path)
         .expect("Unable to open phase 1 parameter file in this directory");
+    // SAFETY: This is only safe when other processes are not modifying the memory-mapped file.
     let reader = unsafe {
         MmapOptions::new()
             .map(&file)

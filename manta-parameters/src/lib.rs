@@ -312,103 +312,103 @@ macro_rules! define_lfs {
 
 /// Concrete Parameters for Manta Pay
 pub mod pay {
-        /// Parameters
-        pub mod parameters {
-            define_dat!(
-                GroupGenerator,
-                "Group Generator",
-                "pay/parameters/group-generator",
-            );
-            define_dat!(
-                UtxoCommitmentScheme,
-                "UTXO Commitment Scheme Parameters",
-                "pay/parameters/utxo-commitment-scheme",
-            );
-            define_dat!(
-                IncomingBaseEncryptionScheme,
-                "Incoming Base Encryption Scheme Parameters",
-                "pay/parameters/incoming-base-encryption-scheme",
-            );
-            define_dat!(
-                LightIncomingBaseEncryptionScheme,
-                "Light Incoming Base Encryption Scheme Parameters",
-                "pay/parameters/light-incoming-base-encryption-scheme",
-            );
-            define_dat!(
-                ViewingKeyDerivationFunction,
-                "Viewing Key Derivation Function Parameters",
-                "pay/parameters/viewing-key-derivation-function",
-            );
-            define_dat!(
-                UtxoAccumulatorItemHash,
-                "UTXO Accumulator Item Hash Parameters",
-                "pay/parameters/utxo-accumulator-item-hash",
-            );
-            define_dat!(
-                NullifierCommitmentScheme,
-                "Nullifier Commitment Scheme Parameters",
-                "pay/parameters/nullifier-commitment-scheme",
-            );
-            define_dat!(
-                OutgoingBaseEncryptionScheme,
-                "Outgoing Base Encryption Scheme Parameters",
-                "pay/parameters/outgoing-base-encryption-scheme",
-            );
-            define_dat!(
-                AddressPartitionFunction,
-                "Address Partition Function",
-                "pay/parameters/address-partition-function",
-            );
-            define_dat!(
-                SchnorrHashFunction,
-                "Schnorr Hash Function Parameters",
-                "pay/parameters/schnorr-hash-function",
-            );
-            define_dat!(
-                UtxoAccumulatorModel,
-                "UTXO Accumulator Model Parameters",
-                "pay/parameters/utxo-accumulator-model",
-            );
-        }
-
-        /// Zero-Knowledge Proof System Proving Data
-        pub mod proving {
-            define_lfs!(
-                ToPrivate,
-                "ToPrivate Proving Context",
-                "pay/proving/to-private",
-            );
-            define_lfs!(
-                PrivateTransfer,
-                "Private Transfer Proving Context",
-                "pay/proving/private-transfer",
-            );
-            define_lfs!(
-                ToPublic,
-                "ToPublic Proving Context",
-                "pay/proving/to-public",
-            );
-        }
-
-        /// Zero-Knowledge Proof System Verifying Data
-        pub mod verifying {
-            define_dat!(
-                ToPrivate,
-                "ToPrivate Verifying Context",
-                "pay/verifying/to-private"
-            );
-            define_dat!(
-                PrivateTransfer,
-                "Private Transfer Verifying Context",
-                "pay/verifying/private-transfer"
-            );
-            define_dat!(
-                ToPublic,
-                "ToPublic Verifying Context",
-                "pay/verifying/to-public"
-            );
-        }
+    /// Parameters
+    pub mod parameters {
+        define_dat!(
+            GroupGenerator,
+            "Group Generator",
+            "pay/parameters/group-generator",
+        );
+        define_dat!(
+            UtxoCommitmentScheme,
+            "UTXO Commitment Scheme Parameters",
+            "pay/parameters/utxo-commitment-scheme",
+        );
+        define_dat!(
+            IncomingBaseEncryptionScheme,
+            "Incoming Base Encryption Scheme Parameters",
+            "pay/parameters/incoming-base-encryption-scheme",
+        );
+        define_dat!(
+            LightIncomingBaseEncryptionScheme,
+            "Light Incoming Base Encryption Scheme Parameters",
+            "pay/parameters/light-incoming-base-encryption-scheme",
+        );
+        define_dat!(
+            ViewingKeyDerivationFunction,
+            "Viewing Key Derivation Function Parameters",
+            "pay/parameters/viewing-key-derivation-function",
+        );
+        define_dat!(
+            UtxoAccumulatorItemHash,
+            "UTXO Accumulator Item Hash Parameters",
+            "pay/parameters/utxo-accumulator-item-hash",
+        );
+        define_dat!(
+            NullifierCommitmentScheme,
+            "Nullifier Commitment Scheme Parameters",
+            "pay/parameters/nullifier-commitment-scheme",
+        );
+        define_dat!(
+            OutgoingBaseEncryptionScheme,
+            "Outgoing Base Encryption Scheme Parameters",
+            "pay/parameters/outgoing-base-encryption-scheme",
+        );
+        define_dat!(
+            AddressPartitionFunction,
+            "Address Partition Function",
+            "pay/parameters/address-partition-function",
+        );
+        define_dat!(
+            SchnorrHashFunction,
+            "Schnorr Hash Function Parameters",
+            "pay/parameters/schnorr-hash-function",
+        );
+        define_dat!(
+            UtxoAccumulatorModel,
+            "UTXO Accumulator Model Parameters",
+            "pay/parameters/utxo-accumulator-model",
+        );
     }
+
+    /// Zero-Knowledge Proof System Proving Data
+    pub mod proving {
+        define_lfs!(
+            ToPrivate,
+            "ToPrivate Proving Context",
+            "pay/proving/to-private",
+        );
+        define_lfs!(
+            PrivateTransfer,
+            "Private Transfer Proving Context",
+            "pay/proving/private-transfer",
+        );
+        define_lfs!(
+            ToPublic,
+            "ToPublic Proving Context",
+            "pay/proving/to-public",
+        );
+    }
+
+    /// Zero-Knowledge Proof System Verifying Data
+    pub mod verifying {
+        define_dat!(
+            ToPrivate,
+            "ToPrivate Verifying Context",
+            "pay/verifying/to-private"
+        );
+        define_dat!(
+            PrivateTransfer,
+            "Private Transfer Verifying Context",
+            "pay/verifying/private-transfer"
+        );
+        define_dat!(
+            ToPublic,
+            "ToPublic Verifying Context",
+            "pay/verifying/to-public"
+        );
+    }
+}
 
 /// Testing Suite
 #[cfg(test)]
