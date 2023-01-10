@@ -86,10 +86,10 @@ where
     Ok(fs::write(path.with_extension("checksum"), checksum)?)
 }
 
-/// Compiles a raw binary file by checking its BLAKE3 checksum with the `checksums` map and copying
+/// Compiles a local file by checking its BLAKE3 checksum with the `checksums` map and copying
 /// the data and checksum to the `out_dir`.
 #[inline]
-fn compile_dat(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result<()> {
+fn compile_local_file(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result<()> {
     let checksum = get_checksum(checksums, source)?;
     let data = fs::read(source)?;
     let found_checksum = blake3::hash(&data);
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
         if !path.is_dir() && !should_ignore(path, &ignore_table)? {
             match path.extension() {
                 Some(extension) => match extension.to_str() {
-                    Some("dat") => compile_dat(path, &out_dir, &checksums)?,
+                    Some("dat") | Some("txt") => compile_local_file(path, &out_dir, &checksums)?,
                     Some("lfs") => compile_lfs(path, &out_dir, &checksums)?,
                     Some("md") => {}
                     _ => bail!("Unsupported data file extension: {}.", path.display()),

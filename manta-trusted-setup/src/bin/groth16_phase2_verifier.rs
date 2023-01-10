@@ -18,7 +18,6 @@
 
 use clap::Parser;
 use core::fmt::Debug;
-use manta_crypto::arkworks::serialize::CanonicalSerialize;
 use manta_trusted_setup::{
     ceremony::util::deserialize_from_file,
     groth16::{
@@ -26,18 +25,16 @@ use manta_trusted_setup::{
             config::ppot::Config, message::ContributeResponse, server::filename_format, Ceremony,
             CeremonyError, UnexpectedError,
         },
-        mpc::{verify_transform, Proof, State},
+        mpc::{utilities::extract_keys, verify_transform, Proof, State},
     },
 };
 use manta_util::Array;
 use std::{
-    fs::{File, OpenOptions},
+    fs::File,
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
-
-// cargo run --release --package manta-trusted-setup --all-features --bin groth16_phase2_verifier /Users/thomascnorton/Documents/Manta/ceremony_archive_2022_12_29 4380
 
 /// Verification CLI
 #[derive(Debug, Parser)]
@@ -55,7 +52,12 @@ impl Arguments {
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
         let path = PathBuf::from(self.path);
         verify_ceremony(&path, self.start)?;
+        println!("Computing contribution hashes.");
         contribution_hashes(&path);
+        println!(
+            "Verification complete. Contribution hashes were written to {:?}",
+            path.join("contribution_hashes.txt")
+        );
         Ok(())
     }
 }
@@ -124,7 +126,6 @@ where
             ));
             match (proof_result, next_state_result) {
                 (Ok(proof), Ok(next_state)) => {
-                    print!("Successfully loaded round {round} state");
                     if round % 50 == 0 {
                         println!("Verifying round {round}");
                     }
@@ -137,7 +138,9 @@ where
                         .expect("Unable to write challenge hash to file");
                 }
                 _ => {
-                    print!("Didn't loaded round {round} state");
+                    println!("Writing final {name} prover and verifier key to file.");
+                    extract_keys(&path.join("foo"), name.clone(), Some(state))
+                        .expect("Key extraction error");
                     break;
                 }
             }
@@ -214,89 +217,4 @@ fn contribution_hashes(path: &Path) {
             _ => println!("Read error occurred"),
         }
     }
-}
-
-/// If circuit_names file is missing, this is a way of generating a new one.
-/// Change `path` as desired.
-#[ignore]
-#[test]
-fn create_names_file() {
-    use manta_trusted_setup::ceremony::util::serialize_into_file;
-    use std::fs::OpenOptions;
-
-    let path = PathBuf::from("/circuit_names");
-    let names = Vec::from([
-        "private_transfer".to_string(),
-        "to_private".to_string(),
-        "to_public".to_string(),
-    ]);
-    serialize_into_file(
-        OpenOptions::new().write(true).truncate(true).create(true),
-        &path,
-        &names,
-    )
-    .expect("Unable to serialize names");
-}
-
-/// The `prepare` method writes a `State`, which is just a wrapper
-/// around a prover key. This deserializes, unwraps, reserializes.
-/// Modify the path as appropriate. 4382 refers to the total number
-/// of ceremony contributions.
-#[ignore]
-#[test]
-fn convert_state_to_keys() {
-    use std::path::PathBuf;
-
-    // Modify this to the appropriate path
-    let directory_path = PathBuf::from("/");
-    let to_private_path = directory_path.join("to_private_state_4382");
-    let to_public_path = directory_path.join("to_public_state_4382");
-    let private_transfer_path = directory_path.join("private_transfer_state_4382");
-
-    extract_keys(&to_private_path, "to_private".to_string()).expect("Extraction error");
-    extract_keys(&to_public_path, "to_public".to_string()).expect("Extraction error");
-    extract_keys(&private_transfer_path, "private_transfer".to_string()).expect("Extraction error");
-}
-
-/// Extracts prover key and verifier key from state located at `path` and writes
-/// them to a file according to the provided `name`. The new files are located
-/// in the same directory as `path`.
-pub fn extract_keys(path: &Path, name: String) -> Result<(), UnexpectedError> {
-    let mut pk_file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open(
-            path.parent()
-                .expect("Path has no parent")
-                .join(format!("{name}_pk")),
-        )
-        .map_err(|_| UnexpectedError::Serialization {
-            message: "Unable to create file at desired location.".to_string(),
-        })?;
-    let mut vk_file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .open(
-            path.parent()
-                .expect("Path has no parent")
-                .join(format!("{name}_vk")),
-        )
-        .map_err(|_| UnexpectedError::Serialization {
-            message: "Unable to create file at desired location.".to_string(),
-        })?;
-    let state: State<Config> =
-        deserialize_from_file(path).map_err(|_| UnexpectedError::Serialization {
-            message: "Unable to deserialize state at provided path".to_string(),
-        })?;
-    CanonicalSerialize::serialize_uncompressed(&state.0, &mut pk_file).map_err(|_| {
-        UnexpectedError::Serialization {
-            message: "Unable to serialize prover key.".to_string(),
-        }
-    })?;
-    CanonicalSerialize::serialize_uncompressed(&state.0.vk, &mut vk_file).map_err(|_| {
-        UnexpectedError::Serialization {
-            message: "Unable to serialize prover key.".to_string(),
-        }
-    })?;
-    Ok(())
 }
