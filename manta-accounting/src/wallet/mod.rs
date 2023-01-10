@@ -38,7 +38,7 @@ use crate::{
         ledger::ReadResponse,
         signer::{
             BalanceUpdate, SignError, SignRequest, SignResponse, SyncData, SyncError, SyncRequest,
-            SyncResponse,
+            SyncResponse, TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -48,8 +48,6 @@ use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use self::signer::{TransactionDataRequest, TransactionDataResponse};
 
 pub mod balance;
 pub mod ledger;

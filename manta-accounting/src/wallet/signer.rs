@@ -1396,25 +1396,25 @@ where
         account.address(&self.parameters.parameters)
     }
 
-    /// Returns the associated [`TransactionData`] of `transferpost`, namely the [`Asset`] and the
-    /// [`Identifier`]. Returns `None` if `transferpost` has an invalid shape,
-    /// or if `self` doesn't own the underlying assets in `transferpost`.
+    /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
+    /// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `self` doesn't own the
+    /// underlying assets in `post`.
     #[inline]
-    pub fn transaction_data(&self, transferpost: TransferPost<C>) -> Option<TransactionData<C>> {
-        let shape = TransferShape::from_post(&transferpost)?;
+    pub fn transaction_data(&self, post: TransferPost<C>) -> Option<TransactionData<C>> {
+        let shape = TransferShape::from_post(&post)?;
         let parameters = &self.parameters.parameters;
         let mut authorization_context = self.state.default_authorization_context(parameters);
         let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
         match shape {
             TransferShape::ToPrivate => {
-                let ReceiverPost { utxo, note } = transferpost.body.receiver_posts.take_first();
+                let ReceiverPost { utxo, note } = post.body.receiver_posts.take_first();
                 let (identifier, asset) =
                     parameters.open_with_check(&decryption_key, &utxo, note)?;
                 Some(TransactionData::<C>::ToPrivate(identifier, asset))
             }
             TransferShape::PrivateTransfer => {
                 let mut transaction_data = Vec::new();
-                let receiver_posts = transferpost.body.receiver_posts;
+                let receiver_posts = post.body.receiver_posts;
                 for receiver_post in receiver_posts.into_iter() {
                     let ReceiverPost { utxo, note } = receiver_post;
                     if let Some(identified_asset) =
@@ -1430,7 +1430,7 @@ where
                 }
             }
             TransferShape::ToPublic => {
-                let ReceiverPost { utxo, note } = transferpost.body.receiver_posts.take_first();
+                let ReceiverPost { utxo, note } = post.body.receiver_posts.take_first();
                 let (identifier, asset) =
                     parameters.open_with_check(&decryption_key, &utxo, note)?;
                 Some(TransactionData::<C>::ToPublic(identifier, asset))
@@ -1438,16 +1438,17 @@ where
         }
     }
 
-    /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by `self`.
+    /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by
+    /// `self`.
     #[inline]
     pub fn batched_transaction_data(
         &self,
-        transferposts: Vec<TransferPost<C>>,
+        posts: Vec<TransferPost<C>>,
     ) -> TransactionDataResponse<C> {
         TransactionDataResponse(
-            transferposts
+            posts
                 .into_iter()
-                .map(|transferpost| self.transaction_data(transferpost))
+                .map(|p| self.transaction_data(p))
                 .collect(),
         )
     }
