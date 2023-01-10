@@ -1,6 +1,6 @@
 [package]
 name = "manta-benchmark"
-version = "0.5.8"
+version = "0.5.9"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
@@ -51,7 +51,7 @@ manta-crypto = { path = "../manta-crypto", default-features = false, features = 
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "parameters", "test"] }
 wasm-bindgen = { version = "0.2.83", default-features = false }
 wasm-bindgen-test = { version = "0.3.33", default-features = false }
-web-sys = { version = "0.3.59", default-features = false, features = ["console"] }
+web-sys = { version = "0.3.60", default-features = false, features = ["console"] }
 
 [dev-dependencies]
-criterion = { version = "0.3.4", default-features = false }
+criterion = { version = "0.3.6", default-features = false }
