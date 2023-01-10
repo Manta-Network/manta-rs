@@ -163,10 +163,8 @@ pub fn try_load_proving_context(directory: &Path) -> MultiProvingContext {
     manta_parameters::pay::proving::ToPrivate::download_if_invalid(&to_private_path)
         .expect("Unable to download ToPrivate proving context.");
     let private_transfer_path = directory.join("private-transfer.dat");
-    manta_parameters::pay::proving::PrivateTransfer::download_if_invalid(
-        &private_transfer_path,
-    )
-    .expect("Unable to download PrivateTransfer proving context.");
+    manta_parameters::pay::proving::PrivateTransfer::download_if_invalid(&private_transfer_path)
+        .expect("Unable to download PrivateTransfer proving context.");
     let to_public_path = directory.join("to-public.dat");
     manta_parameters::pay::proving::ToPublic::download_if_invalid(&to_public_path)
         .expect("Unable to download ToPublic proving context.");
@@ -204,8 +202,7 @@ pub fn decode_proving_context(
 #[inline]
 pub fn load_to_private_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
-        manta_parameters::pay::verifying::ToPrivate::get()
-            .expect("Checksum did not match."),
+        manta_parameters::pay::verifying::ToPrivate::get().expect("Checksum did not match."),
     )
     .expect("Unable to decode To-Private verifying context.")
 }
@@ -214,8 +211,7 @@ pub fn load_to_private_verifying_context() -> VerifyingContext {
 #[inline]
 pub fn load_private_transfer_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
-        manta_parameters::pay::verifying::PrivateTransfer::get()
-            .expect("Checksum did not match."),
+        manta_parameters::pay::verifying::PrivateTransfer::get().expect("Checksum did not match."),
     )
     .expect("Unable to decode PrivateTransfer verifying context.")
 }
@@ -224,8 +220,7 @@ pub fn load_private_transfer_verifying_context() -> VerifyingContext {
 #[inline]
 pub fn load_to_public_verifying_context() -> VerifyingContext {
     VerifyingContext::decode(
-        manta_parameters::pay::verifying::ToPublic::get()
-            .expect("Checksum did not match."),
+        manta_parameters::pay::verifying::ToPublic::get().expect("Checksum did not match."),
     )
     .expect("Unable to decode ToPublic verifying context.")
 }
