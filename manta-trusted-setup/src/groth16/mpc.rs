@@ -550,9 +550,13 @@ where
     Ok(())
 }
 
-/// Utilities for serialization and io.
-#[cfg(all(feature = "std", feature = "serde"))]
-pub mod utilities {
+/// Utilities for Serialization and I/O
+#[cfg(all(feature = "bincode", feature = "std", feature = "tokio"))]
+#[cfg_attr(
+    doc_cfg,
+    doc(cfg(all(feature = "bincode", feature = "std", feature = "tokio")))
+)]
+pub mod util {
     use super::*;
     use crate::{ceremony::util::deserialize_from_file, groth16::ceremony::UnexpectedError};
     use manta_crypto::arkworks::serialize::CanonicalSerialize;

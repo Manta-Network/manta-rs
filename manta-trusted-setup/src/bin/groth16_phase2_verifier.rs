@@ -25,7 +25,7 @@ use manta_trusted_setup::{
             config::ppot::Config, message::ContributeResponse, server::filename_format, Ceremony,
             CeremonyError, UnexpectedError,
         },
-        mpc::{utilities::extract_keys, verify_transform, Proof, State},
+        mpc::{util::extract_keys, verify_transform, Proof, State},
     },
 };
 use manta_util::Array;
