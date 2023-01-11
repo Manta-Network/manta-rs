@@ -1046,13 +1046,6 @@ where
     /// Ledger Event
     type Event;
 
-    /// State Update Error
-    ///
-    /// This error type is used if the ledger can fail when updating the public state. The
-    /// [`update_public_balances`](Self::update_public_balances) method uses this error type to
-    /// track this condition.
-    type UpdateError;
-
     /// Valid [`AssetValue`](Configuration::AssetValue) for [`TransferPost`] Source
     ///
     /// # Safety
@@ -1080,6 +1073,19 @@ where
     /// [`check_sink_accounts`](Self::check_sink_accounts) and [`is_valid`](Self::is_valid).
     type ValidProof: Copy;
 
+    /// Error Type
+    type Error: From<<Self as ReceiverLedger<Parameters<C>>>::Error>
+        + From<<Self as SenderLedger<Parameters<C>>>::Error>
+        + Into<
+            TransferPostError<
+                C,
+                Self::AccountId,
+                <Self as SenderLedger<Parameters<C>>>::Error,
+                <Self as ReceiverLedger<Parameters<C>>>::Error,
+                <Self as TransferLedger<C>>::Error,
+            >,
+        >;
+
     /// Checks that the balances associated to the source accounts are sufficient to withdraw the
     /// amount given in `sources`.
     fn check_source_accounts<I>(
@@ -1103,7 +1109,7 @@ where
     fn is_valid(
         &self,
         posting_key: TransferPostingKeyRef<C, Self>,
-    ) -> Option<(Self::ValidProof, Self::Event)>;
+    ) -> Result<(Self::ValidProof, Self::Event), <Self as TransferLedger<C>>::Error>;
 
     /// Updates the public balances in the ledger, finishing the transaction.
     ///
@@ -1119,7 +1125,7 @@ where
         sources: Vec<SourcePostingKey<C, Self>>,
         sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
-    ) -> Result<(), Self::UpdateError>;
+    ) -> Result<(), <Self as TransferLedger<C>>::Error>;
 }
 
 /// Transfer Source Posting Key Type
@@ -1219,6 +1225,15 @@ where
     pub deposit: C::AssetValue,
 }
 
+/// Transfer Ledger Post Error
+pub type TransferLedgerPostError<C, L> = TransferPostError<
+    C,
+    <L as TransferLedger<C>>::AccountId,
+    <L as SenderLedger<Parameters<C>>>::Error,
+    <L as ReceiverLedger<Parameters<C>>>::Error,
+    <L as TransferLedger<C>>::Error,
+>;
+
 /// Transfer Post Error
 ///
 /// This `enum` is the error state of the [`TransferPost::validate`] method. See its documentation
@@ -1230,12 +1245,16 @@ where
         bound(
             deserialize = r"
                 AccountId: Deserialize<'de>,
-                UpdateError: Deserialize<'de>,
+                SenderError: Deserialize<'de>,
+                ReceiverError: Deserialize<'de>,
+                Error: Deserialize<'de>,
                 C::AssetId: Deserialize<'de>,
                 C::AssetValue: Deserialize<'de>",
             serialize = r"
                 AccountId: Serialize,
-                UpdateError: Serialize,
+                SenderError: Serialize,
+                ReceiverError: Serialize,
+                Error: Serialize,
                 C::AssetId: Serialize,
                 C::AssetValue: Serialize",
         ),
@@ -1245,16 +1264,26 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "AccountId: Clone, UpdateError: Clone, C::AssetId: Clone, C::AssetValue: Clone"),
-    Copy(bound = "AccountId: Copy, UpdateError: Copy, C::AssetId: Copy, C::AssetValue: Copy"),
-    Debug(bound = "AccountId: Debug, UpdateError: Debug, C::AssetId: Debug, C::AssetValue: Debug"),
-    Eq(bound = "AccountId: Eq, UpdateError: Eq, C::AssetId: Eq, C::AssetValue: Eq"),
-    Hash(bound = "AccountId: Hash, UpdateError: Hash, C::AssetId: Hash, C::AssetValue: Hash"),
+    Clone(
+        bound = "AccountId: Clone, SenderError: Clone, ReceiverError: Clone, Error: Clone, C::AssetId: Clone, C::AssetValue: Clone"
+    ),
+    Copy(
+        bound = "AccountId: Copy, SenderError: Copy, ReceiverError: Copy, Error: Copy, C::AssetId: Copy, C::AssetValue: Copy"
+    ),
+    Debug(
+        bound = "AccountId: Debug, SenderError: Debug, ReceiverError: Debug, Error: Debug, C::AssetId: Debug, C::AssetValue: Debug"
+    ),
+    Eq(
+        bound = "AccountId: Eq, SenderError: Eq, ReceiverError: Eq, Error: Eq, C::AssetId: Eq, C::AssetValue: Eq"
+    ),
+    Hash(
+        bound = "AccountId: Hash, SenderError: Hash, ReceiverError: Hash, Error: Hash, C::AssetId: Hash, C::AssetValue: Hash"
+    ),
     PartialEq(
-        bound = "AccountId: PartialEq, UpdateError: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq"
+        bound = "AccountId: PartialEq, SenderError: PartialEq, ReceiverError: PartialEq, Error: PartialEq, C::AssetId: PartialEq, C::AssetValue: PartialEq"
     )
 )]
-pub enum TransferPostError<C, AccountId, UpdateError>
+pub enum TransferPostError<C, AccountId, SenderError, ReceiverError, Error>
 where
     C: Configuration + ?Sized,
 {
@@ -1273,10 +1302,10 @@ where
     InvalidSinkAccount(InvalidSinkAccount<C, AccountId>),
 
     /// Sender Post Error
-    Sender(SenderPostError),
+    Sender(SenderPostError<SenderError>),
 
     /// Receiver Post Error
-    Receiver(ReceiverPostError),
+    Receiver(ReceiverPostError<ReceiverError>),
 
     /// Duplicate Spend Error
     DuplicateSpend,
@@ -1289,14 +1318,14 @@ where
     /// Validity of the transfer could not be proved by the ledger.
     InvalidProof,
 
-    /// Update Error
+    /// Unexpected Error
     ///
-    /// An error occured while updating the ledger state.
-    UpdateError(UpdateError),
+    /// An unexpected error occured.
+    UnexpectedError(Error),
 }
 
-impl<C, AccountId, UpdateError> From<InvalidAuthorizationSignature>
-    for TransferPostError<C, AccountId, UpdateError>
+impl<C, AccountId, SenderError, ReceiverError, Error> From<InvalidAuthorizationSignature>
+    for TransferPostError<C, AccountId, SenderError, ReceiverError, Error>
 where
     C: Configuration + ?Sized,
 {
@@ -1306,8 +1335,8 @@ where
     }
 }
 
-impl<C, AccountId, UpdateError> From<InvalidSourceAccount<C, AccountId>>
-    for TransferPostError<C, AccountId, UpdateError>
+impl<C, AccountId, SenderError, ReceiverError, Error> From<InvalidSourceAccount<C, AccountId>>
+    for TransferPostError<C, AccountId, SenderError, ReceiverError, Error>
 where
     C: Configuration + ?Sized,
 {
@@ -1317,8 +1346,8 @@ where
     }
 }
 
-impl<C, AccountId, UpdateError> From<InvalidSinkAccount<C, AccountId>>
-    for TransferPostError<C, AccountId, UpdateError>
+impl<C, AccountId, SenderError, ReceiverError, Error> From<InvalidSinkAccount<C, AccountId>>
+    for TransferPostError<C, AccountId, SenderError, ReceiverError, Error>
 where
     C: Configuration + ?Sized,
 {
@@ -1328,24 +1357,24 @@ where
     }
 }
 
-impl<C, AccountId, UpdateError> From<SenderPostError>
-    for TransferPostError<C, AccountId, UpdateError>
+impl<C, AccountId, SenderError, ReceiverError, Error> From<SenderPostError<SenderError>>
+    for TransferPostError<C, AccountId, SenderError, ReceiverError, Error>
 where
     C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: SenderPostError) -> Self {
+    fn from(err: SenderPostError<SenderError>) -> Self {
         Self::Sender(err)
     }
 }
 
-impl<C, AccountId, UpdateError> From<ReceiverPostError>
-    for TransferPostError<C, AccountId, UpdateError>
+impl<C, AccountId, SenderError, ReceiverError, Error> From<ReceiverPostError<ReceiverError>>
+    for TransferPostError<C, AccountId, SenderError, ReceiverError, Error>
 where
     C: Configuration + ?Sized,
 {
     #[inline]
-    fn from(err: ReceiverPostError) -> Self {
+    fn from(err: ReceiverPostError<ReceiverError>) -> Self {
         Self::Receiver(err)
     }
 }
@@ -1677,10 +1706,7 @@ where
         sink_accounts: Vec<L::AccountId>,
         sink_values: Vec<C::AssetValue>,
         ledger: &L,
-    ) -> Result<
-        (Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>),
-        TransferPostError<C, L::AccountId, L::UpdateError>,
-    >
+    ) -> Result<(Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>), TransferLedgerPostError<C, L>>
     where
         L: TransferLedger<C>,
     {
@@ -1723,7 +1749,7 @@ where
         ledger: &L,
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
-    ) -> Result<TransferPostingKey<C, L>, TransferPostError<C, L::AccountId, L::UpdateError>>
+    ) -> Result<TransferPostingKey<C, L>, TransferLedgerPostError<C, L>>
     where
         L: TransferLedger<C>,
     {
@@ -1756,18 +1782,17 @@ where
             .into_iter()
             .map(move |r| r.validate(ledger))
             .collect::<Result<Vec<_>, _>>()?;
-        let (proof, event) = match ledger.is_valid(TransferPostingKeyRef {
-            authorization_key: &self.authorization_signature.map(|s| s.authorization_key),
-            asset_id: &self.body.asset_id,
-            sources: &source_posting_keys,
-            senders: &sender_posting_keys,
-            receivers: &receiver_posting_keys,
-            sinks: &sink_posting_keys,
-            proof: self.body.proof,
-        }) {
-            Some((proof, event)) => (proof, event),
-            _ => return Err(TransferPostError::InvalidProof),
-        };
+        let (proof, event) = ledger
+            .is_valid(TransferPostingKeyRef {
+                authorization_key: &self.authorization_signature.map(|s| s.authorization_key),
+                asset_id: &self.body.asset_id,
+                sources: &source_posting_keys,
+                senders: &sender_posting_keys,
+                receivers: &receiver_posting_keys,
+                sinks: &sink_posting_keys,
+                proof: self.body.proof,
+            })
+            .map_err(|x| x.into())?;
         Ok(TransferPostingKey {
             asset_id: self.body.asset_id,
             source_posting_keys,
@@ -1789,13 +1814,13 @@ where
         super_key: &TransferLedgerSuperPostingKey<C, L>,
         source_accounts: Vec<L::AccountId>,
         sink_accounts: Vec<L::AccountId>,
-    ) -> Result<L::Event, TransferPostError<C, L::AccountId, L::UpdateError>>
+    ) -> Result<L::Event, TransferLedgerPostError<C, L>>
     where
         L: TransferLedger<C>,
     {
         self.validate(parameters, ledger, source_accounts, sink_accounts)?
             .post(ledger, super_key)
-            .map_err(TransferPostError::UpdateError)
+            .map_err(TransferPostError::UnexpectedError)
     }
 }
 
@@ -1951,14 +1976,14 @@ where
         self,
         ledger: &mut L,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
-    ) -> Result<L::Event, L::UpdateError> {
+    ) -> Result<L::Event, <L as TransferLedger<C>>::Error> {
         let proof = self.proof;
-        SenderPostingKey::<C, _>::post_all(self.sender_posting_keys, ledger, &(proof, *super_key));
+        SenderPostingKey::<C, _>::post_all(self.sender_posting_keys, ledger, &(proof, *super_key))?;
         ReceiverPostingKey::<C, _>::post_all(
             self.receiver_posting_keys,
             ledger,
             &(proof, *super_key),
-        );
+        )?;
         if let Some(asset_id) = self.asset_id {
             ledger.update_public_balances(
                 super_key,
