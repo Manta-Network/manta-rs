@@ -41,7 +41,7 @@ jobs:
     name: Lint (${{ matrix.os }} + ${{ matrix.channel }})
     needs: [format, format-cargo-toml, docs]
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os:
           - ubuntu-latest
@@ -58,15 +58,16 @@ jobs:
       - run: cargo hakari manage-deps --yes
       - run: cargo hakari verify
       - run: cargo install cargo-hack --locked
+      - run: cargo clippy --workspace --all-features -vv
+      - run: cargo hack clippy --workspace --feature-powerset --tests
       - run: cargo hack clippy --workspace --feature-powerset
       - run: cargo hack clippy --workspace --feature-powerset --bins
       - run: cargo hack clippy --workspace --feature-powerset --examples
-      - run: cargo hack clippy --workspace --feature-powerset --tests
   test:
     name: Test (${{ matrix.os }} + ${{ matrix.channel }})
     needs: [format, format-cargo-toml, docs]
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os:
           - macos-latest
@@ -85,7 +86,7 @@ jobs:
     name: Compile Benchmarks (${{ matrix.os }} + ${{ matrix.channel }})
     needs: [format, format-cargo-toml, docs]
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os:
           - macos-latest
