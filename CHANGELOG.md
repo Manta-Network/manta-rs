@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 - [\#296](https://github.com/Manta-Network/manta-rs/pull/296) Fix AssetMetadata display for values less than 1
+- [\#294](https://github.com/Manta-Network/manta-rs/pull/294) Distinguish between panic-errors and possible-fix-errors
 
 ### Security
 
@@ -24,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 - [\#283](https://github.com/Manta-Network/manta-rs/pull/283) Upgrade asset system.
-- [\#284](https://github.com/Manta-Network/manta-rs/pull/284) Moved `R1CS` implementation to `manta-crypto` 
+- [\#284](https://github.com/Manta-Network/manta-rs/pull/284) Moved `R1CS` implementation to `manta-crypto`
 - [\#282](https://github.com/Manta-Network/manta-rs/pull/282) Upgrade key system.
 
 ## [0.5.7] - 2022-11-04
@@ -53,7 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#197](https://github.com/Manta-Network/manta-rs/pull/197) Add ECLAIR utilities for next circuit upgrade
 - [\#196](https://github.com/Manta-Network/manta-rs/pull/172) Add fixed base scalar multiplication using precomputed bases
 - [\#193](https://github.com/Manta-Network/manta-rs/pull/193) Add Bn254 curve backend for Groth16 trusted setup
-- [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add abstract Phase 2 for Groth16 trusted setup 
+- [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add abstract Phase 2 for Groth16 trusted setup
 
 ### Changed
 - [\#247](https://github.com/Manta-Network/manta-rs/pull/247) Moved BLS12-381 and BN254 curves (and Edwards counterparts) to `manta-crypto`
