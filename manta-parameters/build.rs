@@ -131,7 +131,7 @@ where
 #[inline]
 fn compile_local_binary_file(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result<()> {
     let (checksum, data, found_checksum) = load_local_file(source, checksums)?;
-    let hex_data = hex::encode(&data);
+    let hex_data = hex::encode(data);
     println!("Binary Data for: {}\n\n{hex_data}", source.display());
     validate_and_save_checksum(source, out_dir, checksum, hex_data, found_checksum)
 }
