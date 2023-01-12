@@ -33,8 +33,9 @@ use crate::{
         batch::Join,
         canonical::{
             MultiProvingContext, PrivateTransfer, PrivateTransferShape, Selection, ToPrivate,
-            ToPublic, Transaction,
+            ToPublic, Transaction, TransactionData, TransferShape,
         },
+        receiver::ReceiverPost,
         requires_authorization,
         utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, Spend, UtxoReconstruct},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
@@ -52,7 +53,7 @@ use manta_crypto::{
 };
 use manta_util::{
     array_map, cmp::Independence, future::LocalBoxFutureResult, into_array_unchecked,
-    iter::IteratorExt, persistence::Rollback,
+    iter::IteratorExt, persistence::Rollback, vec::VecExt,
 };
 
 #[cfg(feature = "serde")]
@@ -89,6 +90,12 @@ where
 
     /// Returns the [`Address`] corresponding to `self`.
     fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error>;
+
+    /// Returns the [`TransactionData`] of the [`TransferPost`]s in `request` owned by `self`.
+    fn transaction_data(
+        &mut self,
+        request: TransactionDataRequest<C>,
+    ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error>;
 }
 
 /// Signer Synchronization Data
@@ -247,6 +254,58 @@ where
     /// Balance Update
     pub balance_update: BalanceUpdate<C>,
 }
+
+/// Transaction Data Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "TransferPost<C>: Deserialize<'de>",
+            serialize = "TransferPost<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "TransferPost<C>: Clone"),
+    Debug(bound = "TransferPost<C>: Debug"),
+    Default(bound = "TransferPost<C>: Default"),
+    Eq(bound = "TransferPost<C>: Eq"),
+    Hash(bound = "TransferPost<C>: Hash"),
+    PartialEq(bound = "TransferPost<C>: PartialEq")
+)]
+pub struct TransactionDataRequest<C>(pub Vec<TransferPost<C>>)
+where
+    C: transfer::Configuration;
+
+/// Transaction Data Response
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "TransactionData<C>: Deserialize<'de>",
+            serialize = "TransactionData<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "TransactionData<C>: Clone"),
+    Debug(bound = "TransactionData<C>: Debug"),
+    Default(bound = "TransactionData<C>: Default"),
+    Eq(bound = "TransactionData<C>: Eq"),
+    Hash(bound = "TransactionData<C>: Hash"),
+    PartialEq(bound = "TransactionData<C>: PartialEq")
+)]
+pub struct TransactionDataResponse<C>(pub Vec<Option<TransactionData<C>>>)
+where
+    C: transfer::Configuration;
 
 /// Balance Update
 #[cfg_attr(
@@ -1336,6 +1395,63 @@ where
         let account = self.state.accounts.get_default();
         account.address(&self.parameters.parameters)
     }
+
+    /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
+    /// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `self` doesn't own the
+    /// underlying assets in `post`.
+    #[inline]
+    pub fn transaction_data(&self, post: TransferPost<C>) -> Option<TransactionData<C>> {
+        let shape = TransferShape::from_post(&post)?;
+        let parameters = &self.parameters.parameters;
+        let mut authorization_context = self.state.default_authorization_context(parameters);
+        let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
+        match shape {
+            TransferShape::ToPrivate => {
+                let ReceiverPost { utxo, note } = post.body.receiver_posts.take_first();
+                let (identifier, asset) =
+                    parameters.open_with_check(&decryption_key, &utxo, note)?;
+                Some(TransactionData::<C>::ToPrivate(identifier, asset))
+            }
+            TransferShape::PrivateTransfer => {
+                let mut transaction_data = Vec::new();
+                let receiver_posts = post.body.receiver_posts;
+                for receiver_post in receiver_posts.into_iter() {
+                    let ReceiverPost { utxo, note } = receiver_post;
+                    if let Some(identified_asset) =
+                        parameters.open_with_check(&decryption_key, &utxo, note)
+                    {
+                        transaction_data.push(identified_asset);
+                    }
+                }
+                if transaction_data.is_empty() {
+                    None
+                } else {
+                    Some(TransactionData::<C>::PrivateTransfer(transaction_data))
+                }
+            }
+            TransferShape::ToPublic => {
+                let ReceiverPost { utxo, note } = post.body.receiver_posts.take_first();
+                let (identifier, asset) =
+                    parameters.open_with_check(&decryption_key, &utxo, note)?;
+                Some(TransactionData::<C>::ToPublic(identifier, asset))
+            }
+        }
+    }
+
+    /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by
+    /// `self`.
+    #[inline]
+    pub fn batched_transaction_data(
+        &self,
+        posts: Vec<TransferPost<C>>,
+    ) -> TransactionDataResponse<C> {
+        TransactionDataResponse(
+            posts
+                .into_iter()
+                .map(|p| self.transaction_data(p))
+                .collect(),
+        )
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
@@ -1367,5 +1483,13 @@ where
     #[inline]
     fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error> {
         Box::pin(async move { Ok(self.address()) })
+    }
+
+    #[inline]
+    fn transaction_data(
+        &mut self,
+        request: TransactionDataRequest<C>,
+    ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error> {
+        Box::pin(async move { Ok(self.batched_transaction_data(request.0)) })
     }
 }
