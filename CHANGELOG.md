@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#295](https://github.com/Manta-Network/manta-rs/pull/295) Transaction data retrieving methods for the signer.
+- [\#297](https://github.com/Manta-Network/manta-rs/pull/297) Add trusted setup verification tools, update manta-parameters
 
 ### Changed
 - [\#293](https://github.com/Manta-Network/manta-rs/pull/293) Add decimals argument to AssetMetadata display
