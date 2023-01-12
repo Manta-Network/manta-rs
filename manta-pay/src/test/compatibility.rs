@@ -29,13 +29,14 @@ use crate::{
 use manta_crypto::rand::OsRng;
 
 /// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
-#[ignore = "This would fail because it'd download the data from main before merging."]
 #[test]
 fn compatibility() {
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
     let mut rng = OsRng;
+    println!("Loading Parameters");
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         load_parameters(directory.path()).expect("Failed to load parameters");
+    println!("Checking to-private Circuit");
     let _ = &prove_to_private(
         &proving_context.to_private,
         &parameters,
@@ -43,6 +44,7 @@ fn compatibility() {
         &mut rng,
     )
     .assert_valid_proof(&verifying_context.to_private);
+    println!("Checking private-transfer Circuit");
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model);
     let _ = &prove_private_transfer(
         &proving_context.private_transfer,
@@ -51,6 +53,7 @@ fn compatibility() {
         &mut rng,
     )
     .assert_valid_proof(&verifying_context.private_transfer);
+    println!("Checking to-public Circuit");
     let _ = &prove_to_public(
         &proving_context.to_public,
         &parameters,
