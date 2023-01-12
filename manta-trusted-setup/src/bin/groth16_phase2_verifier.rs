@@ -141,7 +141,7 @@ where
                 }
                 _ => {
                     println!("Writing final {name} prover and verifier key to file.");
-                    extract_keys(&path.join("foo"), name.clone(), Some(state))
+                    extract_keys(&path.join("keys"), name.clone(), Some(state))
                         .expect("Key extraction error");
                     break;
                 }
