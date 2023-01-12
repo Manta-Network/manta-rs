@@ -559,7 +559,8 @@ where
 pub mod util {
     use super::*;
     use crate::{ceremony::util::deserialize_from_file, groth16::ceremony::UnexpectedError};
-    use manta_crypto::arkworks::serialize::CanonicalSerialize;
+    use manta_crypto::arkworks::groth16::ProvingContext;
+    use manta_util::codec::{Encode, IoWriter};
     use std::{fs::OpenOptions, path::Path};
 
     /// Extracts prover key and verifier key from state located at `path` and writes
@@ -602,16 +603,18 @@ pub mod util {
                 message: "Unable to deserialize state at provided path".to_string(),
             })?,
         };
-        CanonicalSerialize::serialize_uncompressed(&state.0, &mut pk_file).map_err(|_| {
-            UnexpectedError::Serialization {
+        ProvingContext(state.0)
+            .encode(IoWriter(pk_file))
+            .map_err(|_| UnexpectedError::Serialization {
                 message: "Unable to serialize prover key.".to_string(),
-            }
-        })?;
-        CanonicalSerialize::serialize_uncompressed(&state.0.vk, &mut vk_file).map_err(|_| {
-            UnexpectedError::Serialization {
-                message: "Unable to serialize prover key.".to_string(),
-            }
-        })?;
+            })?;
+        ProvingContext(state.0)
+            .get_verifying_context()
+            .expect("Should be able to extract verifying context.")
+            .encode(IoWriter(vk_file))
+            .map_err(|_| UnexpectedError::Serialization {
+                message: "Unable to serialize verifier key.".to_string(),
+            })?;
         Ok(())
     }
 }
