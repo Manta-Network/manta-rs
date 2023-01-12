@@ -5,22 +5,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#295](https://github.com/Manta-Network/manta-rs/pull/295) Transaction data retrieving methods for the signer.
-- [\#297](https://github.com/Manta-Network/manta-rs/pull/297) Add trusted setup verification tools, update manta-parameters
 
 ### Changed
-- [\#293](https://github.com/Manta-Network/manta-rs/pull/293) Add decimals argument to AssetMetadata display
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+
+### Security
+
+## [0.5.9] - 2023-01-12
+### Added
+- [\#295](https://github.com/Manta-Network/manta-rs/pull/295) Transaction data retrieving methods for the signer.
+- [\#297](https://github.com/Manta-Network/manta-rs/pull/297) Add trusted setup verification tools, update manta-parameters
+
+### Changed
+- [\#293](https://github.com/Manta-Network/manta-rs/pull/293) Add decimals argument to AssetMetadata display
+
+### Fixed
 - [\#302](https://github.com/Manta-Network/manta-rs/pull/302) Fix fuzzing test bug
 - [\#296](https://github.com/Manta-Network/manta-rs/pull/296) Fix AssetMetadata display for values less than 1
 - [\#294](https://github.com/Manta-Network/manta-rs/pull/294) Distinguish between panic-errors and possible-fix-errors
-
-### Security
 
 ## [0.5.8] - 2022-12-03
 ### Added
@@ -151,7 +158,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.8...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.9...HEAD
+[0.5.9]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.9
 [0.5.8]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.8
 [0.5.7]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.7
 [0.5.6]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.6
