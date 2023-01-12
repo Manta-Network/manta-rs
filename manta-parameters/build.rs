@@ -17,6 +17,7 @@
 //! Manta Parameters Build Script
 
 use anyhow::{anyhow, bail, ensure, Result};
+use core::fmt::Display;
 use hex::FromHex;
 use std::{
     collections::{HashMap, HashSet},
@@ -86,16 +87,34 @@ where
     Ok(fs::write(path.with_extension("checksum"), checksum)?)
 }
 
-/// Compiles a raw binary file by checking its BLAKE3 checksum with the `checksums` map and copying
-/// the data and checksum to the `out_dir`.
+/// Loads a local file from `source` and reads it's checksum from `checksums`.
 #[inline]
-fn compile_dat(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result<()> {
+fn load_local_file(
+    source: &Path,
+    checksums: &ChecksumMap,
+) -> Result<(Checksum, Vec<u8>, Checksum)> {
     let checksum = get_checksum(checksums, source)?;
     let data = fs::read(source)?;
     let found_checksum = blake3::hash(&data);
+    Ok((checksum, data, found_checksum.into()))
+}
+
+/// Ensures that the `found_checksum` and `checksum` are equal for `data`, and if so writes the
+/// checksum to the `out_dir` directory.
+#[inline]
+fn validate_and_save_checksum<D>(
+    source: &Path,
+    out_dir: &Path,
+    checksum: Checksum,
+    data: D,
+    found_checksum: Checksum,
+) -> Result<()>
+where
+    D: Display,
+{
     ensure!(
         found_checksum == checksum,
-        "Checksum did not match for {:?}. Expected: {:?}, Found: {:?}. Data: {:?}",
+        "Checksum did not match for {:?}. Expected: {:?}, Found: {:?}. Data: \n\n{}",
         source,
         hex::encode(checksum),
         found_checksum,
@@ -105,6 +124,27 @@ fn compile_dat(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result
     write_checksum(&target, checksum)?;
     fs::copy(source, target)?;
     Ok(())
+}
+
+/// Compiles a local binary file by checking its BLAKE3 checksum with the `checksums` map and copying
+/// the data and checksum to the `out_dir`.
+#[inline]
+fn compile_local_binary_file(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result<()> {
+    let (checksum, data, found_checksum) = load_local_file(source, checksums)?;
+    let hex_data = hex::encode(data);
+    println!("Binary Data for: {}\n\n{hex_data}", source.display());
+    validate_and_save_checksum(source, out_dir, checksum, hex_data, found_checksum)
+}
+
+/// Compiles a local text file by checking its BLAKE3 checksum with the `checksums` map and copying
+/// the data and checksum to the `out_dir`.
+#[allow(dead_code)] // FIXME: For some reason `.txt` files aren't working on windows.
+#[inline]
+fn compile_local_text_file(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result<()> {
+    let (checksum, data, found_checksum) = load_local_file(source, checksums)?;
+    let string_data = String::from_utf8_lossy(&data);
+    println!("Text String for {}: \n\n{string_data}", source.display());
+    validate_and_save_checksum(source, out_dir, checksum, string_data, found_checksum)
 }
 
 /// Compiles a Git LFS file by writing its checksum to the `out_dir`.
@@ -182,9 +222,12 @@ fn main() -> Result<()> {
         if !path.is_dir() && !should_ignore(path, &ignore_table)? {
             match path.extension() {
                 Some(extension) => match extension.to_str() {
-                    Some("dat") => compile_dat(path, &out_dir, &checksums)?,
+                    Some("dat") => compile_local_binary_file(path, &out_dir, &checksums)?,
+                    // FIXME: This should work, but for some reason hashing is broken on windows.
+                    //
+                    // Some("txt") => compile_local_text_file(path, &out_dir, &checksums)?,
                     Some("lfs") => compile_lfs(path, &out_dir, &checksums)?,
-                    Some("md") => {}
+                    Some("md") | Some("txt") => {}
                     _ => bail!("Unsupported data file extension: {}.", path.display()),
                 },
                 _ => bail!("All data files must have an extension: {}.", path.display()),

@@ -41,7 +41,7 @@ jobs:
     name: Lint (${{ matrix.os }} + ${{ matrix.channel }})
     needs: [format, format-cargo-toml, docs]
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os:
           - ubuntu-latest
@@ -52,21 +52,22 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: rustup update ${{ matrix.channel }} && rustup default ${{ matrix.channel }} && rustup component add clippy
-      - run: cargo install cargo-hakari
+      - run: cargo install cargo-hakari --locked
       - run: cargo hakari init workspace-hack --yes
       - run: cargo hakari generate
       - run: cargo hakari manage-deps --yes
       - run: cargo hakari verify
-      - run: cargo install cargo-hack
-      - run: cargo hack clippy --workspace --feature-powerset
-      - run: cargo hack clippy --workspace --feature-powerset --bins
-      - run: cargo hack clippy --workspace --feature-powerset --examples
-      - run: cargo hack clippy --workspace --feature-powerset --tests
+      - run: cargo install cargo-hack --locked
+      - run: cargo clippy --workspace --all-features -vv
+      - run: cargo hack clippy --workspace --feature-powerset --depth 3 --tests
+      - run: cargo hack clippy --workspace --feature-powerset --depth 3
+      - run: cargo hack clippy --workspace --feature-powerset --depth 3 --bins
+      - run: cargo hack clippy --workspace --feature-powerset --depth 3 --examples
   test:
     name: Test (${{ matrix.os }} + ${{ matrix.channel }})
     needs: [format, format-cargo-toml, docs]
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os:
           - macos-latest
@@ -79,13 +80,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: rustup update ${{ matrix.channel }} && rustup default ${{ matrix.channel }}
-      - run: cargo install cargo-nextest
+      - run: cargo install cargo-nextest --locked
       - run: cargo nextest run --workspace --release --all-features
   compile-bench:
     name: Compile Benchmarks (${{ matrix.os }} + ${{ matrix.channel }})
     needs: [format, format-cargo-toml, docs]
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os:
           - macos-latest

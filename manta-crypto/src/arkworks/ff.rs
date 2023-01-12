@@ -17,6 +17,7 @@
 //! Arkworks Finite Field Backend
 
 use manta_util::{byte_count, into_array_unchecked};
+use num_integer::Integer;
 
 #[doc(inline)]
 pub use ark_ff::*;
@@ -51,6 +52,23 @@ field_try_into! {
    try_into_u32 => u32,
    try_into_u64 => u64,
    try_into_u128 => u128,
+}
+
+/// Divides the [`BigInteger`]s `n` by `m` and returns the quotient and the remainder.
+#[inline]
+pub fn div_rem<B>(n: B, m: B) -> (B, B)
+where
+    B: BigInteger,
+{
+    let (quotient, remainder) = n.into().div_rem(&m.into());
+    (
+        B::try_from(quotient)
+            .ok()
+            .expect("Unable to compute modular reduction."),
+        B::try_from(remainder)
+            .ok()
+            .expect("Unable to compute modular reduction."),
+    )
 }
 
 /// Testing Suite

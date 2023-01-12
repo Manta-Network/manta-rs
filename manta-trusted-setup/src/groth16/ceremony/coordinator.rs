@@ -19,16 +19,34 @@
 use crate::{
     ceremony::{
         participant::{Participant, Priority},
-        registry::Registry,
+        registry::{self, Registry},
         signature::{Nonce, SignedMessage},
+        util::serialize_into_file,
     },
     groth16::{
-        ceremony::{Ceremony, CeremonyError, Metadata, Queue, Round, UnexpectedError},
-        mpc::{verify_transform, Proof, State},
+        ceremony::{
+            server::filename_format, Ceremony, CeremonyError, Circuits, Configuration, Metadata,
+            Queue, Round, UnexpectedError,
+        },
+        kzg,
+        kzg::Accumulator,
+        mpc,
+        mpc::{verify_transform, Proof, ProvingKeyHasher, State},
+        ppot::serialization::{read_subaccumulator, Compressed},
     },
+    mpc::ChallengeType,
 };
-use core::mem;
-use manta_util::{time::lock::Timed, BoxArray};
+use core::{fmt::Debug, mem};
+use manta_crypto::arkworks::{
+    bn254::{G1Affine, G2Affine},
+    pairing::Pairing,
+    relations::r1cs::ConstraintSynthesizer,
+};
+use manta_util::{time::lock::Timed, Array, BoxArray};
+use std::{fs::OpenOptions, path::PathBuf, time::Instant};
+
+#[cfg(feature = "csv")]
+use crate::ceremony::registry::csv::Record;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -279,4 +297,124 @@ where
         self.increment_round();
         Ok(())
     }
+}
+
+/// Given Phase 1 accumulator and circuit description,
+/// compute initial `State`, `Challenge`.
+pub fn initialize<C, S>(
+    powers: &Accumulator<C>,
+    cs: S,
+) -> (<C as ChallengeType>::Challenge, State<C>)
+where
+    C: Ceremony + kzg::Configuration + kzg::Size + mpc::ProvingKeyHasher<C>,
+    <C as ProvingKeyHasher<C>>::Output: Into<<C as ChallengeType>::Challenge>, // TODO Is this weird?
+    S: ConstraintSynthesizer<C::Scalar>,
+{
+    let state =
+        mpc::initialize(powers, cs).expect("Should form proving key from circuit description");
+    let challenge = <C as ProvingKeyHasher<C>>::hash(&state.0);
+    (challenge.into(), state)
+}
+
+/// Prepare by initalizing each circuit's prover key, challenge hash and saving
+/// to file. Creates a `_registry_0` file containing an empty registry.
+/// TODO: Generalize ProvingKeyHasher Output type and curves.
+pub fn prepare<C, R, T>(phase_one_param_path: PathBuf, target_path: PathBuf)
+where
+    C: Ceremony
+        + Configuration
+        + kzg::Configuration
+        + kzg::Size
+        + mpc::ProvingKeyHasher<C>
+        + Circuits<<C as Pairing>::Scalar>,
+    C: mpc::ProvingKeyHasher<C, Output = [u8; 64]>,
+    C: ChallengeType<Challenge = Array<u8, 64>>,
+    C: Pairing<G1 = G1Affine, G2 = G2Affine>, // TODO: Generalize or make part of a config
+    R: Default + Registry<C::Identifier, C::Participant> + Serialize,
+    R: registry::Configuration<
+        Identifier = C::Identifier,
+        Participant = C::Participant,
+        Registry = R,
+    >,
+    R: Debug,
+    T: Record<C::Identifier, C::Participant>,
+    T::Error: Debug,
+    C::Identifier: Debug + Copy,
+{
+    use memmap::MmapOptions;
+
+    let file = OpenOptions::new()
+        .read(true)
+        .open(phase_one_param_path)
+        .expect("Unable to open phase 1 parameter file in this directory");
+    // SAFETY: This is only safe when other processes are not modifying the memory-mapped file.
+    let reader = unsafe {
+        MmapOptions::new()
+            .map(&file)
+            .expect("unable to create memory map for input")
+    };
+    let powers = read_subaccumulator(&reader, Compressed::No)
+        .expect("Cannot read Phase 1 accumulator from file");
+
+    let round_number = 0u64;
+    let mut names = Vec::new();
+    for (circuit, name) in C::circuits().into_iter() {
+        println!("Creating proving key for {name}");
+        let now = Instant::now();
+        names.push(name.clone());
+        let (challenge, state): (<C as ChallengeType>::Challenge, State<C>) =
+            initialize(&powers, circuit);
+
+        serialize_into_file(
+            OpenOptions::new().write(true).truncate(true).create(true), // TODO: Change to create_new for production. `prepare` should only be called once
+            &filename_format(
+                &target_path,
+                name.clone(),
+                "state".to_string(),
+                round_number,
+            ),
+            &state,
+        )
+        .expect("Writing state to disk should succeed.");
+
+        serialize_into_file(
+            OpenOptions::new().write(true).truncate(true).create(true),
+            &filename_format(
+                &target_path,
+                name.clone(),
+                "challenge".to_string(),
+                round_number,
+            ),
+            &challenge,
+        )
+        .expect("Writing challenge to disk should succeed.");
+        println!("Computed proving key for {name} in {:?}", now.elapsed());
+    }
+
+    serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &target_path.join(r"circuit_names"),
+        &names,
+    )
+    .expect("Writing circuit names to disk should succeed.");
+
+    serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &target_path.join(r"round_number"),
+        &round_number,
+    )
+    .expect("Must serialize round number to file");
+
+    let registry = R::default();
+    serialize_into_file(
+        OpenOptions::new().write(true).truncate(true).create(true),
+        &filename_format(
+            &target_path,
+            "".to_string(),
+            "registry".to_string(),
+            round_number,
+        ),
+        &registry,
+    )
+    .expect("Writing registry to disk should succeed.");
 }
