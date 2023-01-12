@@ -21,7 +21,7 @@ use crate::{
     signer::{
         client::network::{Message, Network},
         Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
-        SyncResponse,
+        SyncResponse, TransactionDataRequest, TransactionDataResponse,
     },
 };
 use alloc::boxed::Box;
@@ -102,6 +102,18 @@ impl signer::Connection<Config> for Client {
         Box::pin(async move {
             self.base
                 .post("address", &self.wrap_request(GetRequest::Get))
+                .await
+        })
+    }
+
+    #[inline]
+    fn transaction_data(
+        &mut self,
+        request: TransactionDataRequest,
+    ) -> LocalBoxFutureResult<TransactionDataResponse, Self::Error> {
+        Box::pin(async move {
+            self.base
+                .post("transaction_data", &self.wrap_request(request))
                 .await
         })
     }
