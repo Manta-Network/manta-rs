@@ -11,4 +11,5 @@ The current parameters are the result of the MantaPay trusted setup ceremony aft
 ## Archived Parameters
 
 ### Testnet
+
 The parameters in `manta-parameters/data/archive/testnet` are those used for the Dolphin testnet v3. The base parameters for cryptographic hash functions and accumulators were randomly sampled. The Groth16 proving and verifying keys were computed relative to these base parameters and one round of randomly sampled contribution. These proving and verifying keys are not secure for use in production.
