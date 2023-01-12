@@ -138,6 +138,7 @@ fn compile_local_binary_file(source: &Path, out_dir: &Path, checksums: &Checksum
 
 /// Compiles a local text file by checking its BLAKE3 checksum with the `checksums` map and copying
 /// the data and checksum to the `out_dir`.
+#[allow(dead_code)] // FIXME: For some reason `.txt` files aren't working on windows.
 #[inline]
 fn compile_local_text_file(source: &Path, out_dir: &Path, checksums: &ChecksumMap) -> Result<()> {
     let (checksum, data, found_checksum) = load_local_file(source, checksums)?;
@@ -222,9 +223,11 @@ fn main() -> Result<()> {
             match path.extension() {
                 Some(extension) => match extension.to_str() {
                     Some("dat") => compile_local_binary_file(path, &out_dir, &checksums)?,
-                    Some("txt") => compile_local_text_file(path, &out_dir, &checksums)?,
+                    // FIXME: This should work, but for some reason hashing is broken on windows.
+                    //
+                    // Some("txt") => compile_local_text_file(path, &out_dir, &checksums)?,
                     Some("lfs") => compile_lfs(path, &out_dir, &checksums)?,
-                    Some("md") => {}
+                    Some("md") | Some("txt") => {}
                     _ => bail!("Unsupported data file extension: {}.", path.display()),
                 },
                 _ => bail!("All data files must have an extension: {}.", path.display()),
