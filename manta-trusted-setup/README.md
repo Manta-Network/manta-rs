@@ -16,7 +16,7 @@ If you have total trust in the Manta Network team then you can simply use the ne
 
 ## High Trust: Hash Checks Only
 
-We have published a list of contribution hashes [here](https://github.com/Manta-Network/manta-rs/blob/feat/ts_verifier/manta-trusted-setup/contribution_hashes.txt). These hashes are commitments to each of the 4,382 ceremony contributions. If you trust that Manta has correctly computed these hashes from the ceremony transcript, then it is sufficient to check that the hashes in this list match the published claims from ceremony participants. For example, you or someone you trust may have announced their contribution via twitter:
+We have published a list of contribution hashes [here](https://github.com/Manta-Network/manta-rs/blob/main/manta-parameters/data/pay/trusted-setup/contribution_hashes.txt). These hashes are commitments to each of the 4,382 ceremony contributions. If you trust that Manta has correctly computed these hashes from the ceremony transcript, then it is sufficient to check that the hashes in this list match the published claims from ceremony participants. For example, you or someone you trust may have announced their contribution via twitter:
 
 ![tweet](./docs/contribution_hash_announcement.png)
 
