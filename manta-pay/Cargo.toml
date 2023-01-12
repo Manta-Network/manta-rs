@@ -93,7 +93,7 @@ std = [
 ]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test", "manta-parameters/download", "tempfile"]
+test = ["manta-accounting/test", "manta-crypto/test", "tempfile"]
 
 # Wallet
 wallet = ["key", "manta-crypto/getrandom", "std"]
