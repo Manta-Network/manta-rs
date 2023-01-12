@@ -559,7 +559,7 @@ where
 pub mod util {
     use super::*;
     use crate::{ceremony::util::deserialize_from_file, groth16::ceremony::UnexpectedError};
-    use manta_crypto::arkworks::groth16::ProvingContext;
+    use manta_crypto::arkworks::{groth16::ProvingContext, serialize::HasSerialization};
     use manta_util::codec::{Encode, IoWriter};
     use std::{fs::OpenOptions, path::Path};
 
@@ -574,8 +574,9 @@ pub mod util {
     ) -> Result<(), UnexpectedError>
     where
         C: Configuration,
+        for<'s> C::G2Prepared: HasSerialization<'s>,
     {
-        let mut pk_file = OpenOptions::new()
+        let pk_file = OpenOptions::new()
             .write(true)
             .create(true)
             .open(
@@ -586,7 +587,7 @@ pub mod util {
             .map_err(|_| UnexpectedError::Serialization {
                 message: "Unable to create file at desired location.".to_string(),
             })?;
-        let mut vk_file = OpenOptions::new()
+        let vk_file = OpenOptions::new()
             .write(true)
             .create(true)
             .open(
@@ -603,12 +604,13 @@ pub mod util {
                 message: "Unable to deserialize state at provided path".to_string(),
             })?,
         };
-        ProvingContext(state.0)
+        let proving_context = ProvingContext(state.0);
+        proving_context
             .encode(IoWriter(pk_file))
             .map_err(|_| UnexpectedError::Serialization {
                 message: "Unable to serialize prover key.".to_string(),
             })?;
-        ProvingContext(state.0)
+        proving_context
             .get_verifying_context()
             .expect("Should be able to extract verifying context.")
             .encode(IoWriter(vk_file))
