@@ -203,10 +203,16 @@ where
     /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
     type ValidUtxo: AsRef<M::Utxo>;
 
+    /// Error Type
+    ///
+    /// This error describes situations in which ledger invariants have been broken but the system
+    /// must be able to handle them gracefully instead of crashing.
+    type Error: Into<ReceiverPostError<Self::Error>>;
+
     /// Checks if the ledger already contains the `utxo` in its set of UTXOs.
     ///
     /// Existence of such a UTXO could indicate a possible double-spend.
-    fn is_not_registered(&self, utxo: M::Utxo) -> Option<Self::ValidUtxo>;
+    fn is_not_registered(&self, utxo: M::Utxo) -> Result<Self::ValidUtxo, Self::Error>;
 
     /// Posts the `utxo` and `note` to the ledger, registering the asset.
     ///
@@ -229,7 +235,7 @@ where
         super_key: &Self::SuperPostingKey,
         utxo: Self::ValidUtxo,
         note: M::Note,
-    ) {
+    ) -> Result<(), Self::Error> {
         self.register_all(super_key, iter::once((utxo, note)))
     }
 
@@ -251,13 +257,18 @@ where
     /// [`register`]: Self::register
     /// [`register_all`]: Self::register_all
     #[inline]
-    fn register_all<I>(&mut self, super_key: &Self::SuperPostingKey, iter: I)
+    fn register_all<I>(
+        &mut self,
+        super_key: &Self::SuperPostingKey,
+        iter: I,
+    ) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = (Self::ValidUtxo, M::Note)>,
     {
         for (utxo, note) in iter {
-            self.register(super_key, utxo, note)
+            self.register(super_key, utxo, note)?;
         }
+        Ok(())
     }
 }
 
@@ -265,15 +276,25 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(
+        bound(
+            deserialize = "Error: Deserialize<'de>",
+            serialize = "Error: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
 )]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-pub enum ReceiverPostError {
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum ReceiverPostError<Error> {
     /// Asset Registered Error
     ///
     /// The asset has already been registered with the ledger.
-    #[default]
     AssetRegistered,
+
+    /// Unexpected Error
+    UnexpectedError(Error),
 }
 
 /// Receiver Post
@@ -330,14 +351,15 @@ where
 
     /// Validates `self` on the receiver `ledger`.
     #[inline]
-    pub fn validate<L>(self, ledger: &L) -> Result<ReceiverPostingKey<M, L>, ReceiverPostError>
+    pub fn validate<L>(
+        self,
+        ledger: &L,
+    ) -> Result<ReceiverPostingKey<M, L>, ReceiverPostError<L::Error>>
     where
         L: ReceiverLedger<M>,
     {
         Ok(ReceiverPostingKey {
-            utxo: ledger
-                .is_not_registered(self.utxo)
-                .ok_or(ReceiverPostError::AssetRegistered)?,
+            utxo: ledger.is_not_registered(self.utxo).map_err(|x| x.into())?,
             note: self.note,
         })
     }
@@ -414,13 +436,17 @@ where
 {
     /// Posts `self` to the receiver `ledger`.
     #[inline]
-    pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) {
-        ledger.register(super_key, self.utxo, self.note);
+    pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) -> Result<(), L::Error> {
+        ledger.register(super_key, self.utxo, self.note)
     }
 
     /// Posts all the of the [`ReceiverPostingKey`]s in `iter` to the receiver `ledger`.
     #[inline]
-    pub fn post_all<I>(iter: I, ledger: &mut L, super_key: &L::SuperPostingKey)
+    pub fn post_all<I>(
+        iter: I,
+        ledger: &mut L,
+        super_key: &L::SuperPostingKey,
+    ) -> Result<(), L::Error>
     where
         I: IntoIterator<Item = Self>,
     {
