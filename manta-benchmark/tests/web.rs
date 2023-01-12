@@ -22,7 +22,7 @@ use web_sys::console;
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-static REPEAT: usize = 3;
+static REPEAT: usize = 0;
 
 fn bench<F>(mut f: F, operation: &str)
 where
@@ -34,14 +34,14 @@ where
         f(&context);
     }
     let end_time = instant::Instant::now();
-    console::log_1(
-        &format!(
-            "{:?} Performance: {:?}",
-            operation,
-            ((end_time - start_time) / REPEAT as u32)
-        )
-        .into(),
-    );
+    // console::log_1(
+    //     &format!(
+    //         "{:?} Performance: {:?}",
+    //         operation,
+    //         ((end_time - start_time) / REPEAT as u32)
+    //     )
+    //     .into(),
+    // );
 }
 
 #[wasm_bindgen_test]
