@@ -18,6 +18,7 @@
 
 use clap::Parser;
 use core::fmt::Debug;
+use manta_crypto::arkworks::serialize::HasSerialization;
 use manta_trusted_setup::{
     ceremony::util::deserialize_from_file,
     groth16::{
@@ -69,6 +70,7 @@ fn main() {
 fn verify_ceremony<C>(path: &Path, start: u64) -> Result<(), CeremonyError<C>>
 where
     C: Ceremony<Challenge = Array<u8, 64>>,
+    for<'s> C::G2Prepared: HasSerialization<'s>,
 {
     // Need to read from files, so get circuit names
     let names: Vec<String> =
@@ -139,7 +141,7 @@ where
                 }
                 _ => {
                     println!("Writing final {name} prover and verifier key to file.");
-                    extract_keys(&path.join("foo"), name.clone(), Some(state))
+                    extract_keys(&path.join("keys"), name.clone(), Some(state))
                         .expect("Key extraction error");
                     break;
                 }
