@@ -21,4 +21,5 @@
 #![forbid(missing_docs)]
 
 pub mod ecc;
-pub mod transfer;
+// TODO: Fix dependency. Currently manta-pay/test makes wasm-bindgen-test not work.
+// pub mod transfer;
