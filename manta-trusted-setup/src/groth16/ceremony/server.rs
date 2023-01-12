@@ -88,10 +88,11 @@ where
         Coordinator<C, R, CIRCUIT_COUNT, LEVEL_COUNT>: DeserializeOwned,
     {
         Ok(Self {
-            coordinator: Arc::new(Mutex::new(
-                deserialize_from_file(path)
-                    .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?,
-            )),
+            coordinator: Arc::new(Mutex::new(deserialize_from_file(path).map_err(|e| {
+                CeremonyError::Unexpected(UnexpectedError::Serialization {
+                    message: format!("{e:?}"),
+                })
+            })?)),
             recovery_directory,
         })
     }
@@ -162,8 +163,24 @@ where
                 .join(format!("transcript{}.data", coordinator.round())),
             &coordinator.deref(),
         )
-        .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        .map_err(|e| {
+            CeremonyError::Unexpected(UnexpectedError::Serialization {
+                message: format!("{e:?}"),
+            })
+        })?;
         println!("{} participants have contributed.", coordinator.round());
         Ok(())
     }
+}
+
+/// Filename formatting for saving/recovering server. The `kind` may be
+/// `state`, `challenge`, `proof`, `registry`. For `registry` the `name`
+/// should be "".
+pub fn filename_format(
+    folder_path: &Path,
+    name: String,
+    kind: String,
+    round_number: u64,
+) -> PathBuf {
+    folder_path.join(format!("{name}_{kind}_{round_number}"))
 }

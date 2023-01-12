@@ -124,10 +124,11 @@ where
     where
         T: Serialize,
     {
-        let signed_message = self
-            .signer
-            .sign(message)
-            .map_err(|_| CeremonyError::Unexpected(UnexpectedError::Serialization))?;
+        let signed_message = self.signer.sign(message).map_err(|e| {
+            CeremonyError::Unexpected(UnexpectedError::Serialization {
+                message: format!("{e:?}"),
+            })
+        })?;
         self.signer.increment_nonce();
         Ok(signed_message)
     }
