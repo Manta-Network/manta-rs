@@ -16,13 +16,19 @@
 
 //! Cryptography Benchmarking Suites
 
-use manta_crypto::hash::ArrayHashFunction;
+use manta_accounting::{asset, transfer::utxo::protocol};
 use manta_crypto::{
     arkworks::{constraint::fp::Fp, ff::field_new},
-    rand::{OsRng, Sample},
+    encryption::{Decrypt, EmptyHeader, Encrypt},
+    hash::ArrayHashFunction,
+    rand::{OsRng, Rand, Sample},
 };
 use manta_pay::{
-    config::{poseidon::Spec2 as Poseidon2, utxo::InnerHashDomainTag, ConstraintField},
+    config::{
+        poseidon::Spec2 as Poseidon2,
+        utxo::{Config, IncomingBaseAES, InnerHashDomainTag},
+        ConstraintField,
+    },
     crypto::poseidon::hash::Hasher,
 };
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
@@ -48,6 +54,34 @@ fn bench_poseidon_hash() {
     console::log_1(
         &format!(
             "Poseidon2 Performance: {:?}",
+            ((end_time - start_time) / REPEAT as u32)
+        )
+        .into(),
+    );
+}
+
+#[wasm_bindgen_test]
+fn bench_aes_decryption() {
+    let mut rng = OsRng;
+    let base_aes = IncomingBaseAES::default();
+    let header = EmptyHeader::default();
+    let key = rng.gen();
+    let plaintext = protocol::IncomingPlaintext::<Config>::new(
+        rng.gen(),
+        asset::Asset {
+            id: rng.gen(),
+            value: rng.gen(),
+        },
+    );
+    let ciphertext = base_aes.encrypt(&key, &(), &header, &plaintext, &mut ());
+    let start_time = instant::Instant::now();
+    for _ in 0..REPEAT {
+        base_aes.decrypt(&key, &header, &ciphertext, &mut ());
+    }
+    let end_time = instant::Instant::now();
+    console::log_1(
+        &format!(
+            "AES decryption Performance: {:?}",
             ((end_time - start_time) / REPEAT as u32)
         )
         .into(),
