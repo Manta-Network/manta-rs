@@ -28,6 +28,10 @@ maintenance = { status = "actively-developed" }
 crate-type = ["cdylib", "lib"]
 
 [[bench]]
+name = "crypto"
+harness = false
+
+[[bench]]
 name = "ecc"
 harness = false
 
