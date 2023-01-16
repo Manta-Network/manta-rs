@@ -391,3 +391,90 @@ fn to_public_proof_validity() {
     .expect("Random ToPublic should have generated a TransferPost.");
     validity_check_with_fuzzing(&verifying_context, &post, &mut rng);
 }
+
+/// Measures the length in bytes of the serde_json and bincode encodings of a
+/// [`ToPrivate`] [`TransferPost`](manta_accounting::transfer::TransferPost)
+#[cfg(feature = "serde")]
+#[test]
+fn to_private_byte_measurement() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, _) = ToPrivate::generate_context(
+        &(),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = ToPrivate::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        None,
+        &mut rng,
+    )
+    .expect("Random ToPrivate should have produced a proof.")
+    .expect("Random ToPrivate should have generated a TransferPost.");
+    let serde_json_encoding: Vec<u8> = serde_json::to_vec(&post).unwrap();
+    let bincode_encoding: Vec<u8> = bincode::serialize(&post).unwrap();
+    println!("Serde_json encoding: {:?}", serde_json_encoding.len());
+    println!("Bincode encoding: {:?}", bincode_encoding.len());
+}
+
+/// Measures the length in bytes of the serde_json and bincode encodings of a
+/// [`PrivateTransfer`] [`TransferPost`](manta_accounting::transfer::TransferPost)
+#[cfg(feature = "serde")]
+#[test]
+fn private_transfer_byte_measurement() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, _) = ToPrivate::generate_context(
+        &(),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = PrivateTransfer::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        Some(&rng.gen()),
+        &mut rng,
+    )
+    .expect("Random PrivateTransfer should have produced a proof.")
+    .expect("Random PrivateTransfer should have generated a TransferPost.");
+    let serde_json_encoding: Vec<u8> = serde_json::to_vec(&post).unwrap();
+    let bincode_encoding: Vec<u8> = bincode::serialize(&post).unwrap();
+    println!("Serde_json encoding: {:?}", serde_json_encoding.len());
+    println!("Bincode encoding: {:?}", bincode_encoding.len());
+}
+
+/// Measures the length in bytes of the serde_json and bincode encodings of a
+/// [`ToPublic`] [`TransferPost`](manta_accounting::transfer::TransferPost)
+#[cfg(feature = "serde")]
+#[test]
+fn to_public_byte_measurement() {
+    let mut rng = OsRng;
+    let parameters = rng.gen();
+    let mut utxo_accumulator = UtxoAccumulator::new(rng.gen());
+    let (proving_context, _) = ToPrivate::generate_context(
+        &(),
+        FullParametersRef::new(&parameters, utxo_accumulator.model()),
+        &mut rng,
+    )
+    .expect("Unable to create proving and verifying contexts.");
+    let post = ToPublic::sample_post(
+        &proving_context,
+        &parameters,
+        &mut utxo_accumulator,
+        Some(&rng.gen()),
+        &mut rng,
+    )
+    .expect("Random ToPublic should have produced a proof.")
+    .expect("Random ToPublic should have generated a TransferPost.");
+    let serde_json_encoding: Vec<u8> = serde_json::to_vec(&post).unwrap();
+    let bincode_encoding: Vec<u8> = bincode::serialize(&post).unwrap();
+    println!("Serde_json encoding: {:?}", serde_json_encoding.len());
+    println!("Bincode encoding: {:?}", bincode_encoding.len());
+}
