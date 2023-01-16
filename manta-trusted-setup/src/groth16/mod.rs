@@ -23,8 +23,8 @@ pub mod mpc;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "ceremony")))]
 pub mod ceremony;
 
-#[cfg(feature = "ppot")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "ppot")))]
+#[cfg(feature = "ceremony")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ceremony")))]
 pub mod ppot;
 
 #[cfg(test)]

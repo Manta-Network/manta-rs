@@ -34,42 +34,47 @@ required-features = ["coordinator"]
 
 [[bin]]
 name = "groth16_phase2_server"
-required-features = ["client", "coordinator"]
+required-features = ["coordinator"]
 
 [[bin]]
 name = "groth16_phase2_verifier"
-required-features = ["client", "coordinator"]
+required-features = ["coordinator"]
 
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]
 
 # Trusted Setup Ceremony
-ceremony = ["bincode", "chrono", "clap", "csv", "reqwest", "serde", "tokio"]
+ceremony = [
+    "bincode",
+    "bs58",
+    "chrono",
+    "clap",
+    "colored",
+    "console",
+    "csv",
+    "dialoguer",
+    "manta-crypto/ark-bn254",
+    "reqwest",
+    "serde",
+    "tiny-bip39",
+    "tokio"
+ ]
 
 # Trusted Setup Client
 client = [
     "async-std", 
-    "bs58",
     "ceremony",
-    "colored",
-    "console",
-    "dialoguer",
     "hex/std",
     "manta-util/tide",
     "parking_lot",
-    "ppot",
-    "tiny-bip39",
 ]
 
 # Trusted Setup Coordinator
-coordinator = ["ceremony", "memmap", "parking_lot", "serde_json", "std",]
+coordinator = ["client", "memmap", "parking_lot", "serde_json", "std",]
 
 # CSV for Ceremony Registries
 csv = ["dep:csv", "serde", "std"]
-
-# Perpetual Powers of Tau Ceremony
-ppot = ["manta-crypto/ark-bn254"]
 
 # Rayon Parallelization
 rayon = ["manta-util/rayon"]

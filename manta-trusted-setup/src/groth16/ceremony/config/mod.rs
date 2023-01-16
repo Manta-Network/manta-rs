@@ -16,4 +16,6 @@
 
 //! Groth16 Trusted Setup Ceremony Configurations
 
+#[cfg(feature = "client")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "client")))]
 pub mod ppot;
