@@ -48,11 +48,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
-
 #[cfg(feature = "csv")]
 use crate::ceremony::registry::csv::Record;
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Queue and Participant Lock
 #[derive(derivative::Derivative)]
@@ -212,10 +212,6 @@ where
         latest_proof: Option<BoxArray<Proof<C>, CIRCUIT_COUNT>>,
         round: u64,
     ) -> Self {
-        assert!(
-            metadata.ceremony_size.matches(state.as_slice()),
-            "Mismatch of metadata `{metadata:?}` and state.",
-        );
         Self {
             state,
             challenge,
@@ -478,6 +474,7 @@ where
         .read(true)
         .open(phase_one_param_path)
         .expect("Unable to open phase 1 parameter file in this directory");
+    // SAFETY: This is only safe when other processes are not modifying the memory-mapped file.
     let reader = unsafe {
         MmapOptions::new()
             .map(&file)

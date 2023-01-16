@@ -559,3 +559,74 @@ where
     }
     Ok(())
 }
+
+/// Utilities for Serialization and I/O
+#[cfg(all(feature = "bincode", feature = "std", feature = "tokio"))]
+#[cfg_attr(
+    doc_cfg,
+    doc(cfg(all(feature = "bincode", feature = "std", feature = "tokio")))
+)]
+pub mod util {
+    use super::*;
+    use crate::{ceremony::util::deserialize_from_file, groth16::ceremony::UnexpectedError};
+    use manta_crypto::arkworks::{groth16::ProvingContext, serialize::HasSerialization};
+    use manta_util::codec::{Encode, IoWriter};
+    use std::{fs::OpenOptions, path::Path};
+
+    /// Extracts prover key and verifier key from state located at `path` and writes
+    /// them to a file according to the provided `name`. The new files are located
+    /// in the same directory as `path`.
+    /// The state can be passed in as an argument instead of being read from the path.
+    pub fn extract_keys<C>(
+        path: &Path,
+        name: String,
+        state: Option<State<C>>,
+    ) -> Result<(), UnexpectedError>
+    where
+        C: Configuration,
+        for<'s> C::G2Prepared: HasSerialization<'s>,
+    {
+        let pk_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(
+                path.parent()
+                    .expect("Path has no parent")
+                    .join(format!("{name}_pk")),
+            )
+            .map_err(|_| UnexpectedError::Serialization {
+                message: "Unable to create file at desired location.".to_string(),
+            })?;
+        let vk_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(
+                path.parent()
+                    .expect("Path has no parent")
+                    .join(format!("{name}_vk")),
+            )
+            .map_err(|_| UnexpectedError::Serialization {
+                message: "Unable to create file at desired location.".to_string(),
+            })?;
+        let state: State<C> = match state {
+            Some(state) => state,
+            None => deserialize_from_file(path).map_err(|_| UnexpectedError::Serialization {
+                message: "Unable to deserialize state at provided path".to_string(),
+            })?,
+        };
+        let proving_context = ProvingContext(state.0);
+        proving_context
+            .encode(IoWriter(pk_file))
+            .map_err(|_| UnexpectedError::Serialization {
+                message: "Unable to serialize prover key.".to_string(),
+            })?;
+        proving_context
+            .get_verifying_context()
+            .expect("Should be able to extract verifying context.")
+            .encode(IoWriter(vk_file))
+            .map_err(|_| UnexpectedError::Serialization {
+                message: "Unable to serialize verifier key.".to_string(),
+            })?;
+        Ok(())
+    }
+}

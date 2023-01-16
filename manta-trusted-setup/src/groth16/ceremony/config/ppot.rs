@@ -59,6 +59,10 @@ use manta_crypto::{
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     signature,
 };
+use manta_pay::{
+    config::{FullParametersRef, PrivateTransfer, ToPrivate, ToPublic},
+    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
+};
 use manta_util::{
     into_array_unchecked,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
@@ -883,15 +887,29 @@ impl Ceremony for Config {
 impl Circuits<<Self as Pairing>::Scalar> for Config {
     #[inline]
     fn circuits() -> Vec<(R1CS<<Self as Pairing>::Scalar>, String)> {
-        let mut circuits = Vec::new();
-        //
-        // Placeholder:
-        for i in 0..3 {
-            let mut cs = R1CS::for_contexts();
-            dummy_circuit(&mut cs);
-            circuits.push((cs, format!("dummy_{i}")));
-        }
-        circuits
+        vec![
+            (
+                ToPrivate::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "to_private".to_string(),
+            ),
+            (
+                ToPublic::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "to_public".to_string(),
+            ),
+            (
+                PrivateTransfer::unknown_constraints(FullParametersRef::new(
+                    &load_transfer_parameters(),
+                    &load_utxo_accumulator_model(),
+                )),
+                "private_transfer".to_string(),
+            ),
+        ]
     }
 }
 

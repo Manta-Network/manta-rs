@@ -17,8 +17,8 @@
 //! Trusted Setup Ceremony Preparation
 //! Given Phase 1 parameters and circuit descriptions, prepares files
 //! needed for a server to act as ceremony coordinator.
-//! NOTE: This saves an empty registry file. Registry updates are
-//! triggered automatically by server.
+//! NOTE: This saves an empty registry file which is used by the coordinator
+//! server; this file can be ignored for ceremony verification.
 
 use clap::Parser;
 use manta_trusted_setup::groth16::ceremony::{
@@ -31,8 +31,10 @@ use std::path::PathBuf;
 /// Preparer CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
+    /// Path to a set of phase 1 KZG parameters
     phase_one_param_path: PathBuf,
 
+    /// Destination for output
     recovery_directory: PathBuf,
 }
 

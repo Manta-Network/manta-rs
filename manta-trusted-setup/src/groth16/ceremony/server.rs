@@ -99,8 +99,7 @@ where
     ) -> Self {
         assert!(
             metadata.ceremony_size.matches(state.as_slice()),
-            "Mismatch of metadata `{:?}` and state.",
-            metadata,
+            "Mismatch of metadata `{metadata:?}` and state.",
         );
         Self {
             lock_queue: Default::default(),
