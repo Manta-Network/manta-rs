@@ -19,7 +19,11 @@
 use crate::{
     ceremony::{
         participant::Participant,
-        registry::{self, csv::load_append_entries, Registry},
+        registry::{
+            self,
+            csv::{load_append_entries, Record},
+            Registry,
+        },
         signature::SignedMessage,
         util::deserialize_from_file,
     },
@@ -49,9 +53,6 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::task;
-
-#[cfg(feature = "csv")]
-use crate::ceremony::registry::csv::Record;
 
 /// Server
 #[derive(derivative::Derivative)]

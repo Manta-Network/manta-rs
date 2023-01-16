@@ -19,11 +19,8 @@
 pub mod kzg;
 pub mod mpc;
 
-#[cfg(all(feature = "bincode", feature = "serde", feature = "tokio"))]
-#[cfg_attr(
-    doc_cfg,
-    doc(cfg(all(feature = "bincode", feature = "serde", feature = "tokio")))
-)]
+#[cfg(feature = "ceremony")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "ceremony")))]
 pub mod ceremony;
 
 #[cfg(feature = "ppot")]

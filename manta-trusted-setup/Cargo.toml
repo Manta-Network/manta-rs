@@ -26,43 +26,50 @@ maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "groth16_phase2_client"
-required-features = ["clap", "ppot-client", "reqwest", "tokio"]
+required-features = ["client"]
 
 [[bin]]
 name = "groth16_phase2_prepare"
-required-features = ["ppot-client", "serde", "tokio"]
+required-features = ["coordinator"]
 
 [[bin]]
 name = "groth16_phase2_server"
-required-features = ["async-std", "bincode", "chrono", "clap", "csv", "ppot", "serde_json", "tide", "tokio"]
+required-features = ["client", "coordinator"]
 
 [[bin]]
 name = "groth16_phase2_verifier"
-required-features = ["clap", "memmap", "ppot-client", "reqwest", "tokio"]
+required-features = ["client", "coordinator"]
 
 [features]
 # Bincode for Message Signing
 bincode = ["dep:bincode", "serde"]
+
+# Trusted Setup Ceremony
+ceremony = ["bincode", "chrono", "clap", "csv", "reqwest", "serde", "tokio"]
+
+# Trusted Setup Client
+client = [
+    "async-std", 
+    "bs58",
+    "ceremony",
+    "colored",
+    "console",
+    "dialoguer",
+    "hex/std",
+    "manta-util/tide",
+    "parking_lot",
+    "ppot",
+    "tiny-bip39",
+]
+
+# Trusted Setup Coordinator
+coordinator = ["ceremony", "memmap", "parking_lot", "serde_json", "std",]
 
 # CSV for Ceremony Registries
 csv = ["dep:csv", "serde", "std"]
 
 # Perpetual Powers of Tau Ceremony
 ppot = ["manta-crypto/ark-bn254"]
-
-# PPoT Client Features
-ppot-client = [
-    "bincode",
-    "bs58",
-    "colored",
-    "console",
-    "csv",
-    "dialoguer",
-    "hex/std",
-    "parking_lot",
-    "ppot",
-    "tiny-bip39",
-]
 
 # Rayon Parallelization
 rayon = ["manta-util/rayon"]
@@ -80,13 +87,10 @@ serde = [
 ]
 
 # Standard Library
-std = ["ark-std/std", "manta-util/std"]
+std = ["ark-std/std", "hex/std", "manta-util/std"]
 
 # Testing Frameworks
 test = ["manta-crypto/test"]
-
-# Tide HTTP Server
-tide = ["manta-util/tide"]
 
 [dependencies]
 ark-groth16 = { version = "0.3.0", default-features = false }
@@ -96,10 +100,10 @@ async-std = { version = "1.6.0", optional = true, features = ["attributes", "tok
 bincode = { version = "1.3.3", optional = true, default-features = false }
 blake2 = { version = "0.10.6", default-features = false }
 bs58 = { version = "0.4.0", optional = true, default-features = false, features = ["alloc"] }
+chrono = { version = "0.4.19", optional = true, default-features = false, features = ["clock"] }
 clap = { version = "3.2.23", optional = true, default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
 colored = { version = "2.0.0", optional = true, default-features = false }
 console = { version = "0.15.4", optional = true, default-features = false }
-chrono = { version = "0.4.19", optional = true, default-features = false, features = ["clock"] }
 csv = { version = "1.1.6", optional = true, default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 dialoguer = { version = "0.10.2", optional = true, default-features = false }
@@ -111,7 +115,7 @@ memmap = { version = "0.7.0", optional = true, default-features = false }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 serde_json = { version = "1.0.91", optional = true, default-features = false, features = ["alloc"] }
 tiny-bip39 = { version = "1.0.0", optional = true, default-features = false } 
-tokio = { version = "1.24.1", optional = true, default-features = false, features = ["rt-multi-thread", "io-std"] }
+tokio = { version = "1.24.1", optional = true, default-features = false, features = ["rt-multi-thread", "io-std", "io-util", "time"] }
 
 [dev-dependencies]
 ark-snark = { version = "0.3.0", default-features = false }

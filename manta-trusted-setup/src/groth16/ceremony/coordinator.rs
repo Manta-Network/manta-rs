@@ -19,7 +19,7 @@
 use crate::{
     ceremony::{
         participant::{Participant, Priority},
-        registry::{self, Registry},
+        registry::{self, csv::Record, Registry},
         signature::{Nonce, SignedMessage},
         util::{deserialize_from_file, serialize_into_file},
     },
@@ -47,9 +47,6 @@ use std::{
     fs::OpenOptions,
     path::{Path, PathBuf},
 };
-
-#[cfg(feature = "csv")]
-use crate::ceremony::registry::csv::Record;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
