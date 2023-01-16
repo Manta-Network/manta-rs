@@ -335,7 +335,7 @@ where
         <R::Record as Record<R::Identifier, R::Participant>>::Error: Debug,
     {
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await; // TODO: Increase this duration for the actual ceremony
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
             let registry_path = self.registry_path.clone();
             let registry = self.registry.clone();
             match task::spawn_blocking(move || {
