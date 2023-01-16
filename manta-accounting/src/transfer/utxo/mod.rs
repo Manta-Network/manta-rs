@@ -259,8 +259,25 @@ pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType 
     }
 }
 
+/// Derive Address
+pub trait DeriveAddress: AddressType {
+    /// Secret Key Type
+    type SecretKey;
+
+    /// Derives the address corresponding to `secret_key`.
+    fn derive_address(&self, secret_key: &Self::SecretKey) -> Self::Address;
+}
+
 /// Utxo Reconstruction
-pub trait UtxoReconstruct: NoteOpen {
+pub trait UtxoReconstruct: NoteOpen + DeriveAddress<SecretKey = Self::DecryptionKey> {
+    /// Builds a [`Utxo`] from `asset`, `identifier` and `address`.
+    fn utxo_reconstruct(
+        &self,
+        asset: &Self::Asset,
+        identifier: &Self::Identifier,
+        address: &Self::Address,
+    ) -> Self::Utxo;
+
     /// Checks if `utxo` is consistent with `asset` and `identifier`.
     fn utxo_check(
         &self,

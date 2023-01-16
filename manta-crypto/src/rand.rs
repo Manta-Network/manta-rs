@@ -539,7 +539,7 @@ pub mod fuzz {
     use super::*;
 
     #[cfg(all(feature = "arkworks", feature = "rand"))]
-    use crate::arkworks::ff::{BigInteger, PrimeField};
+    use crate::arkworks::ff::{div_rem, BigInteger, FpParameters, PrimeField};
 
     /// Fuzz Trait
     pub trait Fuzz<M = ()> {
@@ -612,7 +612,8 @@ pub mod fuzz {
         where
             R: RngCore + ?Sized,
         {
-            P::from_repr(self.into_repr().fuzz(rng))
+            let (_, fuzzed_element) = div_rem(self.into_repr().fuzz(rng), P::Params::MODULUS);
+            P::from_repr(fuzzed_element)
                 .expect("Computing the field element from a big integer is not supposed to fail.")
         }
     }
