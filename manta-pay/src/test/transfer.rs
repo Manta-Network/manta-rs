@@ -394,7 +394,6 @@ fn to_public_proof_validity() {
 
 /// Measures the length in bytes of the serde_json and bincode encodings of a
 /// [`ToPrivate`] [`TransferPost`](manta_accounting::transfer::TransferPost)
-#[cfg(feature = "serde")]
 #[test]
 fn to_private_byte_measurement() {
     let mut rng = OsRng;
@@ -423,7 +422,6 @@ fn to_private_byte_measurement() {
 
 /// Measures the length in bytes of the serde_json and bincode encodings of a
 /// [`PrivateTransfer`] [`TransferPost`](manta_accounting::transfer::TransferPost)
-#[cfg(feature = "serde")]
 #[test]
 fn private_transfer_byte_measurement() {
     let mut rng = OsRng;
@@ -452,7 +450,6 @@ fn private_transfer_byte_measurement() {
 
 /// Measures the length in bytes of the serde_json and bincode encodings of a
 /// [`ToPublic`] [`TransferPost`](manta_accounting::transfer::TransferPost)
-#[cfg(feature = "serde")]
 #[test]
 fn to_public_byte_measurement() {
     let mut rng = OsRng;
