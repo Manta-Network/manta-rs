@@ -21,14 +21,18 @@
 use crate::{
     config::{utxo::Address, Config},
     signer::{
-        Checkpoint, GetRequest, SignError, SignRequest, SignResponse, SyncError, SyncRequest,
-        SyncResponse, TransactionDataRequest, TransactionDataResponse,
+        Checkpoint, GetRequest, SignError, SignRequest, SignResponse,
+        SignWithTransactionDataResponse, SyncError, SyncRequest, SyncResponse,
+        TransactionDataRequest, TransactionDataResponse,
     },
 };
 use alloc::boxed::Box;
 use core::marker::Unpin;
 use futures::{SinkExt, StreamExt};
-use manta_accounting::wallet::{self, signer};
+use manta_accounting::{
+    transfer::TransferPost,
+    wallet::{self, signer},
+};
 use manta_util::{
     from_variant,
     future::LocalBoxFutureResult,
@@ -157,5 +161,16 @@ impl signer::Connection<Config> for Client {
         request: TransactionDataRequest,
     ) -> LocalBoxFutureResult<TransactionDataResponse, Self::Error> {
         Box::pin(async move { self.send("transaction_data", request).await })
+    }
+
+    #[inline]
+    fn sign_with_transaction_data(
+        &mut self,
+        request: SignRequest,
+    ) -> LocalBoxFutureResult<Result<SignWithTransactionDataResponse, SignError>, Self::Error>
+    where
+        TransferPost<Config>: Clone,
+    {
+        Box::pin(async move { self.send("sign_with_transaction_data", request).await })
     }
 }

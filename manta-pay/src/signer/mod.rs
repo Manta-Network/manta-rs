@@ -60,6 +60,9 @@ pub type TransactionDataRequest = signer::TransactionDataRequest<Config>;
 /// Transaction Data Response
 pub type TransactionDataResponse = signer::TransactionDataResponse<Config>;
 
+/// Sign With Transaction Data Response
+pub type SignWithTransactionDataResponse = signer::SignWithTransactionDataResponse<Config>;
+
 /// Receiving Key Request
 #[cfg_attr(
     feature = "serde",
