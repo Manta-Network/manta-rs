@@ -206,19 +206,47 @@ where
     }
 }
 
-// TODO: Should we enable these tests now?
-/* TODO: After upgrading to new Poseidon, we have to enable these tests.
 /// Testing Suite
 #[cfg(test)]
 mod test {
-    use crate::{config::Poseidon2, crypto::constraint::arkworks::Fp};
-    use ark_bls12_381::Fr;
+    use crate::crypto::poseidon::{self, arkworks::TwoPowerMinusOneDomainTag, hash::Hasher};
     use manta_crypto::{
-        arkworks::ff::field_new,
+        arkworks::{bls12_381::Fr, constraint::fp::Fp, ff::field_new},
         rand::{OsRng, Sample},
     };
 
-    /// Tests if [`Poseidon2`](crate::config::Poseidon2) matches hardcoded sage outputs.
+    /// Poseidon Specification Configuration
+    ///
+    /// # Note
+    ///
+    /// This struct replicates the one in [`poseidon`](crate::config::poseidon) but with
+    /// the BLS-12 constraint field instead of the BN-254 one. This to match the
+    /// [`source`](https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_255_3.sage)
+    /// of hardcoded outputs.
+    struct Spec<const ARITY: usize>;
+
+    impl poseidon::Constants for Spec<2> {
+        const WIDTH: usize = 3;
+        const FULL_ROUNDS: usize = 8;
+        const PARTIAL_ROUNDS: usize = 55;
+    }
+
+    impl<const ARITY: usize> poseidon::arkworks::Specification for Spec<ARITY>
+    where
+        Self: poseidon::Constants,
+    {
+        type Field = Fr;
+
+        const SBOX_EXPONENT: u64 = 5;
+    }
+
+    /// Arity 2 Poseidon Specification
+    type Spec2 = Spec<2>;
+
+    /// Arity 2 Poseidon Hasher
+    type Poseidon2 = Hasher<Spec2, TwoPowerMinusOneDomainTag, 2>;
+
+    /// Tests if [`Poseidon2`] matches hardcoded sage outputs.
     #[test]
     fn poseidon_hash_matches_known_values() {
         let hasher = Poseidon2::gen(&mut OsRng);
@@ -229,4 +257,3 @@ mod test {
         );
     }
 }
-*/
