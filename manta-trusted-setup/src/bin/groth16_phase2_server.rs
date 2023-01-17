@@ -40,9 +40,14 @@ const TIME_LIMIT: u64 = 60;
 /// Server CLI
 #[derive(Debug, Parser)]
 pub struct Arguments {
+    /// Path to directory where server recovers/saves state
     recovery_dir_path: String,
 
+    /// Path to file from which server updates internal registry
     registry_path: String,
+
+    /// Path to html file to serve to web browsers
+    homepage_path: String,
 }
 
 impl Arguments {
@@ -58,11 +63,11 @@ impl Arguments {
 
         println!("Network is running!");
         let mut api = tide::Server::with_state(server);
-        api.at("/")
-            .serve_file("/home/mobula/manta-rs/index.html")
-            .map_err(|_| CeremonyError::<Config>::Network {
+        api.at("/").serve_file(&self.homepage_path).map_err(|_| {
+            CeremonyError::<Config>::Network {
                 message: "Cannot load landing page.".to_string(),
-            })?;
+            }
+        })?;
         api.at("/start")
             .post(|r| execute(r, Server::start_endpoint));
         api.at("/query")
