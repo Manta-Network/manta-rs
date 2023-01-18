@@ -37,8 +37,9 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, SignError, SignRequest, SignResponse, SyncData, SyncError, SyncRequest,
-            SyncResponse, TransactionDataRequest, TransactionDataResponse,
+            BalanceUpdate, SignError, SignRequest, SignResponse, SignWithTransactionDataResponse,
+            SyncData, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
+            TransactionDataResponse,
         },
     },
 };
@@ -395,6 +396,25 @@ where
             .transaction_data(TransactionDataRequest(transfer_posts))
             .await
             .map_err(Error::SignerConnectionError)
+    }
+
+    /// Combine `sign` and `transaction_data` in one call.
+    #[inline]
+    pub async fn sign_with_transaction_data(
+        &mut self,
+        transaction: Transaction<C>,
+        metadata: Option<AssetMetadata>,
+    ) -> Result<SignWithTransactionDataResponse<C>, Error<C, L, S>> {
+        self.check(&transaction)
+            .map_err(Error::InsufficientBalance)?;
+        self.signer
+            .sign_with_transaction_data(SignRequest {
+                transaction,
+                metadata,
+            })
+            .await
+            .map_err(Error::SignerConnectionError)?
+            .map_err(Error::SignError)
     }
 
     /// Posts a transaction to the ledger, returning a success [`Response`] if the `transaction`
