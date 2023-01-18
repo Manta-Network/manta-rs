@@ -19,6 +19,9 @@
 use crate::eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable};
 use core::{fmt::Debug, hash::Hash};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Accumulator Membership Model Types
 pub trait Types {
     /// Item Type
@@ -221,6 +224,18 @@ pub trait OptimizedAccumulator: Accumulator {
 }
 
 /// Accumulator Membership Proof
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "M::Witness: Deserialize<'de>, M::Output: Deserialize<'de>",
+            serialize = "M::Witness: Serialize, M::Output: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "M::Witness: Clone, M::Output: Clone"),

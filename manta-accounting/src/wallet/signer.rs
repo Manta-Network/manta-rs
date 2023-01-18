@@ -37,11 +37,14 @@ use crate::{
         },
         receiver::ReceiverPost,
         requires_authorization,
-        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, Spend, UtxoReconstruct},
+        utxo::{
+            auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, IdentifierType, Spend,
+            UtxoReconstruct,
+        },
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
-        UtxoAccumulatorItem, UtxoAccumulatorModel,
+        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoMembershipProof,
     },
     wallet::ledger::{self, Data},
 };
@@ -96,6 +99,14 @@ where
         &mut self,
         request: TransactionDataRequest<C>,
     ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error>;
+
+    ///
+    fn identity_verification(
+        &mut self,
+        request: IdentityVerificationRequest<C>,
+    ) -> LocalBoxFutureResult<Result<IdentityVerificationResponse<C>, SignError<C>>, Self::Error>
+    where
+        C::Utxo: Clone;
 }
 
 /// Signer Synchronization Data
@@ -451,6 +462,72 @@ where
     pub posts: Vec<TransferPost<C>>,
 }
 
+/// Identity Verification Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Asset<C>: Deserialize<'de>, Identifier<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize, Identifier<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Copy(bound = "Asset<C>: Copy, Identifier<C>: Copy"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub struct IdentityVerificationRequest<C>
+where
+    C: transfer::Configuration,
+{
+    /// Asset
+    pub asset: Asset<C>,
+
+    /// Identifier
+    pub identifier: Identifier<C>,
+}
+
+/// Identity Verification Response
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "TransferPost<C>: Deserialize<'de>, UtxoMembershipProof<C>: Deserialize<'de>",
+            serialize = "TransferPost<C>: Serialize, UtxoMembershipProof<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "TransferPost<C>: Clone, UtxoMembershipProof<C>: Clone"),
+    Copy(bound = "TransferPost<C>: Copy, UtxoMembershipProof<C>: Copy"),
+    Debug(bound = "TransferPost<C>: Debug, UtxoMembershipProof<C>: Debug"),
+    Eq(bound = "TransferPost<C>: Eq, UtxoMembershipProof<C>: Eq"),
+    Hash(bound = "TransferPost<C>: Hash, UtxoMembershipProof<C>: Hash"),
+    PartialEq(bound = "TransferPost<C>: PartialEq, UtxoMembershipProof<C>: PartialEq")
+)]
+pub struct IdentityVerificationResponse<C>
+where
+    C: transfer::Configuration,
+{
+    /// Transfer Post
+    pub post: TransferPost<C>,
+
+    /// Utxo Membership Proof
+    pub utxo_membership_proof: UtxoMembershipProof<C>,
+}
+
 impl<C> SignResponse<C>
 where
     C: transfer::Configuration,
@@ -496,6 +573,9 @@ where
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
+
+    /// Wrong Transparency Flag
+    WrongTransparencyFlag,
 }
 
 /// Signing Result
@@ -1111,6 +1191,50 @@ where
         Ok(senders)
     }
 
+    ///
+    #[allow(clippy::type_complexity)]
+    #[inline]
+    fn fake_senders(
+        &mut self,
+        parameters: &Parameters<C>,
+        asset_id: &C::AssetId,
+        pre_sender: PreSender<C>,
+    ) -> Result<
+        (
+            [Sender<C>; PrivateTransferShape::SENDERS],
+            UtxoMembershipProof<C>,
+        ),
+        SignError<C>,
+    >
+    where
+        C::Utxo: Clone,
+    {
+        let utxo = pre_sender.utxo().clone();
+        let sender = pre_sender
+            .insert_and_upgrade(parameters, &mut self.utxo_accumulator)
+            .expect("Unable to upgrade expected UTXO.");
+        let proof = self
+            .utxo_accumulator
+            .prove(
+                &parameters
+                    .utxo_accumulator_item_hash()
+                    .item_hash(&utxo, &mut ()),
+            )
+            .expect("Unable to produce Utxo Membership proof.");
+        let mut senders = Vec::new();
+        senders.push(sender);
+        let identifier = self.rng.gen();
+        senders.push(
+            self.build_pre_sender(
+                parameters,
+                identifier,
+                Asset::<C>::new(asset_id.clone(), Default::default()),
+            )
+            .upgrade_unchecked(Default::default()),
+        );
+        Ok((into_array_unchecked(senders), proof))
+    }
+
     /// Computes the batched transactions for rebalancing before a final transfer.
     #[inline]
     fn compute_batched_transactions(
@@ -1357,6 +1481,43 @@ where
         Ok(SignResponse::new(posts))
     }
 
+    /// Signs a fake [`ToPublic`] transaction for `asset` and `identifier`.
+    #[inline]
+    fn sign_fake_to_public(
+        &mut self,
+        asset: Asset<C>,
+        identifier: Identifier<C>,
+    ) -> Result<IdentityVerificationResponse<C>, SignError<C>>
+    where
+        C::Utxo: Clone,
+    {
+        if <Parameters<C> as IdentifierType>::is_transparent(&identifier) {
+            return Err(SignError::WrongTransparencyFlag);
+        }
+        let presender =
+            self.state
+                .build_pre_sender(&self.parameters.parameters, identifier, asset.clone());
+        let (senders, utxo_membership_proof) =
+            self.state
+                .fake_senders(&self.parameters.parameters, &asset.id, presender)?;
+        let change = self.state.default_receiver(
+            &self.parameters.parameters,
+            Asset::<C>::new(asset.id.clone(), Default::default()),
+        );
+        let authorization = self
+            .state
+            .authorization_for_default_spending_key(&self.parameters.parameters);
+        let post = self.state.build_post(
+            &self.parameters.parameters,
+            &self.parameters.proving_context.to_public,
+            ToPublic::build(authorization, senders, [change], asset),
+        )?;
+        Ok(IdentityVerificationResponse {
+            post,
+            utxo_membership_proof,
+        })
+    }
+
     /// Signs the `transaction`, generating transfer posts without releasing resources.
     #[inline]
     fn sign_internal(
@@ -1385,6 +1546,21 @@ where
     #[inline]
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
         let result = self.sign_internal(transaction);
+        self.state.utxo_accumulator.rollback();
+        result
+    }
+
+    ///
+    #[inline]
+    pub fn identity_verification(
+        &mut self,
+        asset: Asset<C>,
+        identifier: Identifier<C>,
+    ) -> Result<IdentityVerificationResponse<C>, SignError<C>>
+    where
+        C::Utxo: Clone,
+    {
+        let result = self.sign_fake_to_public(asset, identifier);
         self.state.utxo_accumulator.rollback();
         result
     }
@@ -1491,5 +1667,16 @@ where
         request: TransactionDataRequest<C>,
     ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error> {
         Box::pin(async move { Ok(self.batched_transaction_data(request.0)) })
+    }
+
+    #[inline]
+    fn identity_verification(
+        &mut self,
+        request: IdentityVerificationRequest<C>,
+    ) -> LocalBoxFutureResult<Result<IdentityVerificationResponse<C>, SignError<C>>, Self::Error>
+    where
+        C::Utxo: Clone,
+    {
+        Box::pin(async move { Ok(self.identity_verification(request.asset, request.identifier)) })
     }
 }

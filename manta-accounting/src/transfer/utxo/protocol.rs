@@ -626,6 +626,11 @@ where
     C: BaseConfiguration<Bool = bool>,
 {
     type Identifier = Identifier<C>;
+
+    #[inline]
+    fn is_transparent(identifier: &Self::Identifier) -> bool {
+        identifier.is_transparent
+    }
 }
 
 impl<C, COM> auth::AssertAuthorized<COM> for BaseParameters<C, COM>
@@ -998,6 +1003,11 @@ where
     C: Configuration<Bool = bool>,
 {
     type Identifier = Identifier<C>;
+
+    #[inline]
+    fn is_transparent(identifier: &Self::Identifier) -> bool {
+        identifier.is_transparent
+    }
 }
 
 impl<C> auth::DeriveContext for Parameters<C>
@@ -2090,6 +2100,10 @@ where
     C: BaseConfiguration<Bool = bool>,
 {
     type Identifier = Identifier<C>;
+
+    fn is_transparent(identifier: &Self::Identifier) -> bool {
+        identifier.is_transparent
+    }
 }
 
 impl<C, COM> utxo::UtxoType for MintSecret<C, COM>

@@ -60,6 +60,12 @@ pub type TransactionDataRequest = signer::TransactionDataRequest<Config>;
 /// Transaction Data Response
 pub type TransactionDataResponse = signer::TransactionDataResponse<Config>;
 
+/// Identity Verification Request
+pub type IdentityVerificationRequest = signer::IdentityVerificationRequest<Config>;
+
+/// Identity Verification Response
+pub type IdentityVerificationResponse = signer::IdentityVerificationResponse<Config>;
+
 /// Receiving Key Request
 #[cfg_attr(
     feature = "serde",

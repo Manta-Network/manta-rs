@@ -95,6 +95,9 @@ impl IndependenceContext for NullifierIndependence {
 pub trait IdentifierType {
     /// Identifier Type
     type Identifier;
+
+    ///
+    fn is_transparent(identifier: &Self::Identifier) -> bool;
 }
 
 /// Identifier Type

@@ -109,6 +109,12 @@ where
         Self::new(secret, utxo, nullifier)
     }
 
+    /// Returns the Utxo in `self`
+    #[inline]
+    pub fn utxo(&self) -> &S::Utxo {
+        &self.utxo
+    }
+
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
     /// of returning a proof later by a call to [`get_proof`](Self::get_proof).
     ///

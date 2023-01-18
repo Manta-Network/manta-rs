@@ -39,7 +39,7 @@ use crate::{
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
 use manta_crypto::{
-    accumulator::{self, ItemHashFunction},
+    accumulator::{self, ItemHashFunction, MembershipProof},
     constraint::{HasInput, Input, ProofSystem},
     eclair::{
         self,
@@ -306,6 +306,9 @@ pub type UtxoAccumulatorWitness<C> = utxo::UtxoAccumulatorWitness<Parameters<C>>
 
 /// UTXO Accumulator Output Type
 pub type UtxoAccumulatorOutput<C> = utxo::UtxoAccumulatorOutput<Parameters<C>>;
+
+/// UTXO Membership Proof Type
+pub type UtxoMembershipProof<C> = MembershipProof<UtxoAccumulatorModel<C>>;
 
 /// Address Type
 pub type Address<C> = utxo::Address<Parameters<C>>;
