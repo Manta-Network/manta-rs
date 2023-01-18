@@ -404,7 +404,10 @@ where
         &mut self,
         transaction: Transaction<C>,
         metadata: Option<AssetMetadata>,
-    ) -> Result<SignWithTransactionDataResponse<C>, Error<C, L, S>> {
+    ) -> Result<SignWithTransactionDataResponse<C>, Error<C, L, S>>
+    where
+        TransferPost<C>: Clone,
+    {
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
         self.signer
