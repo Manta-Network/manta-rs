@@ -20,9 +20,9 @@ use crate::{
     config::{utxo::Address, Config},
     signer::{
         client::network::{Message, Network},
-        Checkpoint, GetRequest, IdentityVerificationRequest, IdentityVerificationResponse,
-        SignError, SignRequest, SignResponse, SyncError, SyncRequest, SyncResponse,
-        TransactionDataRequest, TransactionDataResponse,
+        Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError, SignRequest,
+        SignResponse, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
+        TransactionDataResponse,
     },
 };
 use alloc::boxed::Box;
@@ -120,13 +120,13 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn identity_verification(
+    fn identity(
         &mut self,
-        request: IdentityVerificationRequest,
-    ) -> LocalBoxFutureResult<Result<IdentityVerificationResponse, SignError>, Self::Error> {
+        request: IdentityRequest,
+    ) -> LocalBoxFutureResult<Result<IdentityResponse, SignError>, Self::Error> {
         Box::pin(async move {
             self.base
-                .post("identity_verification", &self.wrap_request(request))
+                .post("identity", &self.wrap_request(request))
                 .await
         })
     }

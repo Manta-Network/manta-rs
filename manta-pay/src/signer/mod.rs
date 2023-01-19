@@ -61,10 +61,10 @@ pub type TransactionDataRequest = signer::TransactionDataRequest<Config>;
 pub type TransactionDataResponse = signer::TransactionDataResponse<Config>;
 
 /// Identity Verification Request
-pub type IdentityVerificationRequest = signer::IdentityVerificationRequest<Config>;
+pub type IdentityRequest = signer::IdentityRequest<Config>;
 
 /// Identity Verification Response
-pub type IdentityVerificationResponse = signer::IdentityVerificationResponse<Config>;
+pub type IdentityResponse = signer::IdentityResponse<Config>;
 
 /// Receiving Key Request
 #[cfg_attr(

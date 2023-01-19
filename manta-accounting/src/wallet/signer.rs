@@ -101,10 +101,10 @@ where
     ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error>;
 
     ///
-    fn identity_verification(
+    fn identity(
         &mut self,
-        request: IdentityVerificationRequest<C>,
-    ) -> LocalBoxFutureResult<Result<IdentityVerificationResponse<C>, SignError<C>>, Self::Error>
+        request: IdentityRequest<C>,
+    ) -> LocalBoxFutureResult<Result<IdentityResponse<C>, SignError<C>>, Self::Error>
     where
         C::Utxo: Clone;
 }
@@ -462,7 +462,7 @@ where
     pub posts: Vec<TransferPost<C>>,
 }
 
-/// Identity Verification Request
+/// Identity Request
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -484,7 +484,7 @@ where
     Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
     PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
 )]
-pub struct IdentityVerificationRequest<C>
+pub struct IdentityRequest<C>
 where
     C: transfer::Configuration,
 {
@@ -495,7 +495,7 @@ where
     pub identifier: Identifier<C>,
 }
 
-/// Identity Verification Response
+/// Identity Response
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -517,7 +517,7 @@ where
     Hash(bound = "TransferPost<C>: Hash, UtxoMembershipProof<C>: Hash"),
     PartialEq(bound = "TransferPost<C>: PartialEq, UtxoMembershipProof<C>: PartialEq")
 )]
-pub struct IdentityVerificationResponse<C>
+pub struct IdentityResponse<C>
 where
     C: transfer::Configuration,
 {
@@ -1488,7 +1488,7 @@ where
         &mut self,
         asset: Asset<C>,
         identifier: Identifier<C>,
-    ) -> Result<IdentityVerificationResponse<C>, SignError<C>>
+    ) -> Result<IdentityResponse<C>, SignError<C>>
     where
         C::Utxo: Clone,
     {
@@ -1526,7 +1526,7 @@ where
             &self.parameters.proving_context.to_public,
             ToPublic::build(authorization, senders, [change], asset),
         )?;
-        Ok(IdentityVerificationResponse {
+        Ok(IdentityResponse {
             post,
             utxo_membership_proof,
         })
@@ -1566,11 +1566,11 @@ where
 
     ///
     #[inline]
-    pub fn identity_verification(
+    pub fn identity(
         &mut self,
         asset: Asset<C>,
         identifier: Identifier<C>,
-    ) -> Result<IdentityVerificationResponse<C>, SignError<C>>
+    ) -> Result<IdentityResponse<C>, SignError<C>>
     where
         C::Utxo: Clone,
     {
@@ -1684,13 +1684,13 @@ where
     }
 
     #[inline]
-    fn identity_verification(
+    fn identity(
         &mut self,
-        request: IdentityVerificationRequest<C>,
-    ) -> LocalBoxFutureResult<Result<IdentityVerificationResponse<C>, SignError<C>>, Self::Error>
+        request: IdentityRequest<C>,
+    ) -> LocalBoxFutureResult<Result<IdentityResponse<C>, SignError<C>>, Self::Error>
     where
         C::Utxo: Clone,
     {
-        Box::pin(async move { Ok(self.identity_verification(request.asset, request.identifier)) })
+        Box::pin(async move { Ok(self.identity(request.asset, request.identifier)) })
     }
 }
