@@ -1033,6 +1033,26 @@ where
         )
     }
 
+    /// Builds the [`PreSender`] and the [`Utxo`] associated to `identifier` and `asset`.
+    #[inline]
+    fn build_pre_sender_with_utxo(
+        &mut self,
+        parameters: &Parameters<C>,
+        identifier: Identifier<C>,
+        asset: Asset<C>,
+    ) -> (PreSender<C>, Utxo<C>)
+    where
+        Utxo<C>: Clone,
+    {
+        PreSender::<C>::sample_with_utxo(
+            parameters,
+            &mut self.default_authorization_context(parameters),
+            identifier,
+            asset,
+            &mut self.rng,
+        )
+    }
+
     /// Builds the [`Receiver`] associated with `address` and `asset`.
     #[inline]
     fn receiver(
@@ -1192,35 +1212,16 @@ where
     }
 
     ///
-    #[allow(clippy::type_complexity)]
     #[inline]
     fn fake_senders(
         &mut self,
         parameters: &Parameters<C>,
         asset_id: &C::AssetId,
         pre_sender: PreSender<C>,
-    ) -> Result<
-        (
-            [Sender<C>; PrivateTransferShape::SENDERS],
-            UtxoMembershipProof<C>,
-        ),
-        SignError<C>,
-    >
-    where
-        C::Utxo: Clone,
-    {
-        let utxo = pre_sender.utxo().clone();
+    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>> {
         let sender = pre_sender
             .insert_and_upgrade(parameters, &mut self.utxo_accumulator)
             .expect("Unable to upgrade expected UTXO.");
-        let proof = self
-            .utxo_accumulator
-            .prove(
-                &parameters
-                    .utxo_accumulator_item_hash()
-                    .item_hash(&utxo, &mut ()),
-            )
-            .expect("Unable to produce Utxo Membership proof.");
         let mut senders = Vec::new();
         senders.push(sender);
         let identifier = self.rng.gen();
@@ -1232,7 +1233,7 @@ where
             )
             .upgrade_unchecked(Default::default()),
         );
-        Ok((into_array_unchecked(senders), proof))
+        Ok(into_array_unchecked(senders))
     }
 
     /// Computes the batched transactions for rebalancing before a final transfer.
@@ -1494,12 +1495,25 @@ where
         if <Parameters<C> as IdentifierType>::is_transparent(&identifier) {
             return Err(SignError::WrongTransparencyFlag);
         }
-        let presender =
-            self.state
-                .build_pre_sender(&self.parameters.parameters, identifier, asset.clone());
-        let (senders, utxo_membership_proof) =
-            self.state
-                .fake_senders(&self.parameters.parameters, &asset.id, presender)?;
+        let (presender, utxo) = self.state.build_pre_sender_with_utxo(
+            &self.parameters.parameters,
+            identifier,
+            asset.clone(),
+        );
+        let senders = self
+            .state
+            .fake_senders(&self.parameters.parameters, &asset.id, presender)?;
+        let utxo_membership_proof = self
+            .state
+            .utxo_accumulator
+            .prove(
+                &self
+                    .parameters
+                    .parameters
+                    .utxo_accumulator_item_hash()
+                    .item_hash(&utxo, &mut ()),
+            )
+            .expect("Unable to produce Utxo Membership proof.");
         let change = self.state.default_receiver(
             &self.parameters.parameters,
             Asset::<C>::new(asset.id.clone(), Default::default()),

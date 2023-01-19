@@ -109,10 +109,23 @@ where
         Self::new(secret, utxo, nullifier)
     }
 
-    /// Returns the Utxo in `self`
+    /// Samples a new [`PreSender`], returning also its [`Utxo`].
     #[inline]
-    pub fn utxo(&self) -> &S::Utxo {
-        &self.utxo
+    pub fn sample_with_utxo<R>(
+        parameters: &S,
+        authorization_context: &mut S::AuthorizationContext,
+        identifier: S::Identifier,
+        asset: S::Asset,
+        rng: &mut R,
+    ) -> (Self, S::Utxo)
+    where
+        S: DeriveSpend,
+        R: RngCore + ?Sized,
+        S::Utxo: Clone,
+    {
+        let (secret, utxo, nullifier) =
+            parameters.derive_spend(authorization_context, identifier, asset, rng);
+        (Self::new(secret, utxo.clone(), nullifier), utxo)
     }
 
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
