@@ -32,14 +32,15 @@
 use crate::{
     asset,
     transfer::{
+        canonical::TransferShape,
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence},
+        utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence, UtxoReconstruct},
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
 use manta_crypto::{
-    accumulator::{self, ItemHashFunction, MembershipProof},
+    accumulator::{self, ItemHashFunction, MembershipProof, Model},
     constraint::{HasInput, Input, ProofSystem},
     eclair::{
         self,
@@ -2112,4 +2113,71 @@ where
             .iter()
             .for_each(|sink| C::ProofSystem::extend(input, sink.as_ref()));
     }
+}
+
+///
+pub enum IdentityVerificationError {
+    ///
+    InvalidShape,
+
+    ///
+    InvalidProof,
+
+    ///
+    InconsistentUtxoAccumulatorOutput,
+
+    ///
+    InvalidMembershipProof,
+}
+
+///
+#[allow(clippy::too_many_arguments)]
+#[inline]
+pub fn identity_verification<C>(
+    parameters: &Parameters<C>,
+    verifying_context: &VerifyingContext<C>,
+    utxo_accumulator_model: &UtxoAccumulatorModel<C>,
+    transferpost: TransferPost<C>,
+    utxo_membership_proof: UtxoMembershipProof<C>,
+    identifier: Identifier<C>,
+    asset: Asset<C>,
+    address: Address<C>,
+) -> Result<(), IdentityVerificationError>
+where
+    C: Configuration,
+    C::UtxoAccumulatorOutput: PartialEq,
+    UtxoAccumulatorModel<C>: Model<Verification = bool>,
+{
+    TransferShape::from_post(&transferpost).map_or(
+        Err(IdentityVerificationError::InvalidShape),
+        |shape| match shape {
+            TransferShape::ToPublic => Ok(()),
+            _ => Err(IdentityVerificationError::InvalidShape),
+        },
+    )?;
+    if !transferpost
+        .has_valid_proof(verifying_context)
+        .map_err(|_| IdentityVerificationError::InvalidProof)?
+    {
+        return Err(IdentityVerificationError::InvalidProof);
+    }
+    if !transferpost
+        .body
+        .sender_posts
+        .iter()
+        .any(|sender_post| &sender_post.utxo_accumulator_output == utxo_membership_proof.output())
+    {
+        return Err(IdentityVerificationError::InconsistentUtxoAccumulatorOutput);
+    }
+    let utxo = parameters.utxo_reconstruct(&asset, &identifier, &address);
+    if !utxo_membership_proof.verify(
+        utxo_accumulator_model,
+        &parameters
+            .utxo_accumulator_item_hash()
+            .item_hash(&utxo, &mut ()),
+        &mut (),
+    ) {
+        return Err(IdentityVerificationError::InvalidMembershipProof);
+    }
+    Ok(())
 }
