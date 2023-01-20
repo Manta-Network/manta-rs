@@ -120,10 +120,10 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn identity(
+    fn identity_proof(
         &mut self,
         request: IdentityRequest,
-    ) -> LocalBoxFutureResult<Result<IdentityResponse, SignError>, Self::Error> {
+    ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
         Box::pin(async move {
             self.base
                 .post("identity", &self.wrap_request(request))

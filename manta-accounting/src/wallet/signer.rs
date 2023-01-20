@@ -42,9 +42,9 @@ use crate::{
             UtxoReconstruct,
         },
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
-        IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
-        ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
-        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoMembershipProof,
+        IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters, PreSender,
+        ProofSystemError, ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer,
+        TransferPost, Utxo, UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoMembershipProof,
     },
     wallet::ledger::{self, Data},
 };
@@ -100,11 +100,12 @@ where
         request: TransactionDataRequest<C>,
     ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error>;
 
-    ///
-    fn identity(
+    /// Generates an [`IdentityProof`] which can be verified against the [`IdentifiedAsset`]s in
+    /// `request`.
+    fn identity_proof(
         &mut self,
         request: IdentityRequest<C>,
-    ) -> LocalBoxFutureResult<Result<IdentityResponse<C>, SignError<C>>, Self::Error>
+    ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>
     where
         C::Utxo: Clone;
 }
@@ -478,22 +479,14 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
-    Copy(bound = "Asset<C>: Copy, Identifier<C>: Copy"),
     Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
     Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
     Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
     PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
 )]
-pub struct IdentityRequest<C>
+pub struct IdentityRequest<C>(pub Vec<IdentifiedAsset<C>>)
 where
-    C: transfer::Configuration,
-{
-    /// Asset
-    pub asset: Asset<C>,
-
-    /// Identifier
-    pub identifier: Identifier<C>,
-}
+    C: transfer::Configuration;
 
 /// Identity Response
 #[cfg_attr(
@@ -511,22 +504,14 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "TransferPost<C>: Clone, UtxoMembershipProof<C>: Clone"),
-    Copy(bound = "TransferPost<C>: Copy, UtxoMembershipProof<C>: Copy"),
     Debug(bound = "TransferPost<C>: Debug, UtxoMembershipProof<C>: Debug"),
     Eq(bound = "TransferPost<C>: Eq, UtxoMembershipProof<C>: Eq"),
     Hash(bound = "TransferPost<C>: Hash, UtxoMembershipProof<C>: Hash"),
     PartialEq(bound = "TransferPost<C>: PartialEq, UtxoMembershipProof<C>: PartialEq")
 )]
-pub struct IdentityResponse<C>
+pub struct IdentityResponse<C>(pub Vec<Option<IdentityProof<C>>>)
 where
-    C: transfer::Configuration,
-{
-    /// Transfer Post
-    pub post: TransferPost<C>,
-
-    /// Utxo Membership Proof
-    pub utxo_membership_proof: UtxoMembershipProof<C>,
-}
+    C: transfer::Configuration;
 
 impl<C> SignResponse<C>
 where
@@ -1482,27 +1467,32 @@ where
         Ok(SignResponse::new(posts))
     }
 
-    /// Signs a fake [`ToPublic`] transaction for `asset` and `identifier`.
+    /// Generates an [`IdentityProof`] for `identified_asset` by
+    /// signing a virtual [`ToPublic`] transaction.
     #[inline]
-    fn sign_fake_to_public(
+    fn sign_virtual_to_public(
         &mut self,
-        asset: Asset<C>,
-        identifier: Identifier<C>,
-    ) -> Result<IdentityResponse<C>, SignError<C>>
+        identified_asset: IdentifiedAsset<C>,
+    ) -> Option<IdentityProof<C>>
     where
         C::Utxo: Clone,
     {
-        if <Parameters<C> as IdentifierType>::is_transparent(&identifier) {
-            return Err(SignError::WrongTransparencyFlag);
+        if <Parameters<C> as IdentifierType>::is_transparent(&identified_asset.identifier) {
+            return None;
         }
         let (presender, utxo) = self.state.build_pre_sender_with_utxo(
             &self.parameters.parameters,
-            identifier,
-            asset.clone(),
+            identified_asset.identifier,
+            identified_asset.asset.clone(),
         );
         let senders = self
             .state
-            .fake_senders(&self.parameters.parameters, &asset.id, presender)?;
+            .fake_senders(
+                &self.parameters.parameters,
+                &identified_asset.asset.id,
+                presender,
+            )
+            .ok()?;
         let utxo_membership_proof = self
             .state
             .utxo_accumulator
@@ -1516,18 +1506,21 @@ where
             .expect("Unable to produce Utxo Membership proof.");
         let change = self.state.default_receiver(
             &self.parameters.parameters,
-            Asset::<C>::new(asset.id.clone(), Default::default()),
+            Asset::<C>::new(identified_asset.asset.id.clone(), Default::default()),
         );
         let authorization = self
             .state
             .authorization_for_default_spending_key(&self.parameters.parameters);
-        let post = self.state.build_post(
-            &self.parameters.parameters,
-            &self.parameters.proving_context.to_public,
-            ToPublic::build(authorization, senders, [change], asset),
-        )?;
-        Ok(IdentityResponse {
-            post,
+        let transferpost = self
+            .state
+            .build_post(
+                &self.parameters.parameters,
+                &self.parameters.proving_context.to_public,
+                ToPublic::build(authorization, senders, [change], identified_asset.asset),
+            )
+            .ok()?;
+        Some(IdentityProof {
+            transferpost,
             utxo_membership_proof,
         })
     }
@@ -1564,19 +1557,36 @@ where
         result
     }
 
-    ///
+    /// Generates an [`IdentityProof`] for `identified_asset` by
+    /// signing a virtual [`ToPublic`] transaction.
     #[inline]
-    pub fn identity(
+    pub fn identity_proof(
         &mut self,
-        asset: Asset<C>,
-        identifier: Identifier<C>,
-    ) -> Result<IdentityResponse<C>, SignError<C>>
+        identified_asset: IdentifiedAsset<C>,
+    ) -> Option<IdentityProof<C>>
     where
         C::Utxo: Clone,
     {
-        let result = self.sign_fake_to_public(asset, identifier);
+        let result = self.sign_virtual_to_public(identified_asset);
         self.state.utxo_accumulator.rollback();
         result
+    }
+
+    /// Returns a vector with the [`IdentityProof`] corresponding to each [`IdentifiedAsset`] in `identified_assets`.
+    #[inline]
+    pub fn batched_identity_proof(
+        &mut self,
+        identified_assets: Vec<IdentifiedAsset<C>>,
+    ) -> IdentityResponse<C>
+    where
+        C::Utxo: Clone,
+    {
+        IdentityResponse(
+            identified_assets
+                .into_iter()
+                .map(|identified_asset| self.identity_proof(identified_asset))
+                .collect(),
+        )
     }
 
     /// Returns the [`Address`] corresponding to `self`.
@@ -1684,13 +1694,13 @@ where
     }
 
     #[inline]
-    fn identity(
+    fn identity_proof(
         &mut self,
         request: IdentityRequest<C>,
-    ) -> LocalBoxFutureResult<Result<IdentityResponse<C>, SignError<C>>, Self::Error>
+    ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>
     where
         C::Utxo: Clone,
     {
-        Box::pin(async move { Ok(self.identity(request.asset, request.identifier)) })
+        Box::pin(async move { Ok(self.batched_identity_proof(request.0)) })
     }
 }
