@@ -40,7 +40,7 @@ use crate::{
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
 use manta_crypto::{
-    accumulator::{self, ItemHashFunction, MembershipProof, Model},
+    accumulator::{self, Accumulator, ItemHashFunction, MembershipProof, Model},
     constraint::{HasInput, Input, ProofSystem},
     eclair::{
         self,
@@ -75,6 +75,8 @@ pub mod test;
 
 #[doc(inline)]
 pub use canonical::Shape;
+
+use self::utxo::IdentifierTransparency;
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
@@ -2125,6 +2127,9 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum IdentityVerificationError {
+    /// Invalid Identified Asset
+    InvalidIdentifiedAsset,
+
     /// Invalid Shape
     InvalidShape,
 
@@ -2133,9 +2138,6 @@ pub enum IdentityVerificationError {
 
     /// Inconsistent Utxo Accumulator Output
     InconsistentUtxoAccumulatorOutput,
-
-    /// Invalid Membership Proof
-    InvalidMembershipProof,
 }
 
 /// Identity Proof
@@ -2144,7 +2146,7 @@ pub enum IdentityVerificationError {
 ///
 /// To verify your identity, i.e., that you have the spending rights of a certain
 /// [`Address`], you are prompted to generate a valid ToPublic [`TransferPost`]
-/// spending a virtual [`IdentifiedAsset`], returning its [`UtxoMembershipProof`].
+/// spending a virtual [`IdentifiedAsset`].
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -2170,11 +2172,8 @@ pub struct IdentityProof<C>
 where
     C: Configuration,
 {
-    /// Transferpost
+    /// TransferPost
     pub transfer_post: TransferPost<C>,
-
-    /// Utxo Membership Proof
-    pub utxo_membership_proof: UtxoMembershipProof<C>,
 }
 
 /// Verifies `identity_proof` for `address` against `virtual_asset`.
@@ -2188,16 +2187,15 @@ where
 ///
 /// 2) `identity_proof.transferpost` has a valid proof.
 ///
-/// 3) The [`UtxoAccumulatorOutput`]s in `identity_proof.transferpost`
-/// and `identity_proof.utxo_membership_proof` coincide.
+/// 3) The [`UtxoAccumulatorOutput`] in `identity_proof.transferpost` has been computed from
+/// `virtual_asset` and `address`.
 ///
-/// 4) The proof `identity_proof.utxo_membership_proof` is valid against
-/// the [`Utxo`] constructed from `virtual_asset` and `address`.
+/// 4) The virtual asset is correctly constructed.
 #[inline]
-pub fn identity_verification<C>(
+pub fn identity_verification<A, C>(
     parameters: &Parameters<C>,
     verifying_context: &VerifyingContext<C>,
-    utxo_accumulator_model: &UtxoAccumulatorModel<C>,
+    utxo_accumulator: &mut A,
     identity_proof: IdentityProof<C>,
     virtual_asset: IdentifiedAsset<C>,
     address: Address<C>,
@@ -2206,7 +2204,19 @@ where
     C: Configuration,
     C::UtxoAccumulatorOutput: PartialEq,
     UtxoAccumulatorModel<C>: Model<Verification = bool>,
+    A: Accumulator<
+        Item = UtxoAccumulatorItem<C>,
+        Model = UtxoAccumulatorModel<C>,
+        Output = UtxoAccumulatorOutput<C>,
+    >,
+    Asset<C>: Default,
 {
+    let IdentifiedAsset::<C> { identifier, asset } = virtual_asset;
+    if <Parameters<C> as IdentifierTransparency>::is_transparent(&identifier)
+        || asset == Default::default()
+    {
+        return Err(IdentityVerificationError::InvalidIdentifiedAsset);
+    }
     TransferShape::from_post(&identity_proof.transfer_post).map_or(
         Err(IdentityVerificationError::InvalidShape),
         |shape| match shape {
@@ -2221,27 +2231,28 @@ where
     {
         return Err(IdentityVerificationError::InvalidProof);
     }
+    let utxo = parameters.utxo_reconstruct(&asset, &identifier, &address);
+    utxo_accumulator.insert(
+        &parameters
+            .utxo_accumulator_item_hash()
+            .item_hash(&utxo, &mut ()),
+    );
+    let utxo_accumulator_output = utxo_accumulator
+        .prove(
+            &parameters
+                .utxo_accumulator_item_hash()
+                .item_hash(&utxo, &mut ()),
+        )
+        .expect("Failed to generate UtxoMembershipProof")
+        .into_output();
     if !identity_proof
         .transfer_post
         .body
         .sender_posts
         .iter()
-        .any(|sender_post| {
-            &sender_post.utxo_accumulator_output == identity_proof.utxo_membership_proof.output()
-        })
+        .any(|sender_post| sender_post.utxo_accumulator_output == utxo_accumulator_output)
     {
         return Err(IdentityVerificationError::InconsistentUtxoAccumulatorOutput);
-    }
-    let utxo =
-        parameters.utxo_reconstruct(&virtual_asset.asset, &virtual_asset.identifier, &address);
-    if !identity_proof.utxo_membership_proof.verify(
-        utxo_accumulator_model,
-        &parameters
-            .utxo_accumulator_item_hash()
-            .item_hash(&utxo, &mut ()),
-        &mut (),
-    ) {
-        return Err(IdentityVerificationError::InvalidMembershipProof);
     }
     Ok(())
 }

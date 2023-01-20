@@ -31,7 +31,7 @@ use crate::{
     asset::{AssetList, AssetMetadata},
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Address, Asset, Configuration, IdentifiedAsset, TransferPost,
+        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
@@ -406,7 +406,7 @@ where
         virtual_assets: Vec<IdentifiedAsset<C>>,
     ) -> Result<IdentityResponse<C>, Error<C, L, S>>
     where
-        C::Utxo: Clone,
+        UtxoAccumulatorModel<C>: Clone,
     {
         self.signer
             .identity_proof(IdentityRequest(virtual_assets))

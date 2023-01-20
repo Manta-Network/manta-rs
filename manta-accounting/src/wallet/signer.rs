@@ -107,7 +107,7 @@ where
         request: IdentityRequest<C>,
     ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>
     where
-        C::Utxo: Clone;
+        UtxoAccumulatorModel<C>: Clone;
 }
 
 /// Signer Synchronization Data
@@ -623,7 +623,8 @@ pub trait Configuration: transfer::Configuration {
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
         + ExactSizeAccumulator
         + OptimizedAccumulator
-        + Rollback;
+        + Rollback
+        + From<UtxoAccumulatorModel<Self>>;
 
     /// Asset Map Type
     type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
@@ -1019,26 +1020,6 @@ where
         )
     }
 
-    /// Builds the [`PreSender`] and the [`Utxo`] associated to `identifier` and `asset`.
-    #[inline]
-    fn build_pre_sender_with_utxo(
-        &mut self,
-        parameters: &Parameters<C>,
-        identifier: Identifier<C>,
-        asset: Asset<C>,
-    ) -> (PreSender<C>, Utxo<C>)
-    where
-        Utxo<C>: Clone,
-    {
-        PreSender::<C>::sample_with_utxo(
-            parameters,
-            &mut self.default_authorization_context(parameters),
-            identifier,
-            asset,
-            &mut self.rng,
-        )
-    }
-
     /// Builds the [`Receiver`] associated with `address` and `asset`.
     #[inline]
     fn receiver(
@@ -1204,9 +1185,13 @@ where
         parameters: &Parameters<C>,
         asset_id: &C::AssetId,
         pre_sender: PreSender<C>,
-    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>> {
+    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>>
+    where
+        UtxoAccumulatorModel<C>: Clone,
+    {
+        let mut utxo_accumulator = C::UtxoAccumulator::from(self.utxo_accumulator.model().clone());
         let sender = pre_sender
-            .insert_and_upgrade(parameters, &mut self.utxo_accumulator)
+            .insert_and_upgrade(parameters, &mut utxo_accumulator)
             .expect("Unable to upgrade expected UTXO.");
         let mut senders = Vec::new();
         senders.push(sender);
@@ -1476,12 +1461,12 @@ where
         identified_asset: IdentifiedAsset<C>,
     ) -> Option<IdentityProof<C>>
     where
-        C::Utxo: Clone,
+        UtxoAccumulatorModel<C>: Clone,
     {
         if <Parameters<C> as IdentifierTransparency>::is_transparent(&identified_asset.identifier) {
             return None;
         }
-        let (presender, utxo) = self.state.build_pre_sender_with_utxo(
+        let presender = self.state.build_pre_sender(
             &self.parameters.parameters,
             identified_asset.identifier,
             identified_asset.asset.clone(),
@@ -1494,17 +1479,6 @@ where
                 presender,
             )
             .ok()?;
-        let utxo_membership_proof = self
-            .state
-            .utxo_accumulator
-            .prove(
-                &self
-                    .parameters
-                    .parameters
-                    .utxo_accumulator_item_hash()
-                    .item_hash(&utxo, &mut ()),
-            )
-            .expect("Unable to produce Utxo Membership proof.");
         let change = self.state.default_receiver(
             &self.parameters.parameters,
             Asset::<C>::new(identified_asset.asset.id.clone(), Default::default()),
@@ -1520,10 +1494,7 @@ where
                 ToPublic::build(authorization, senders, [change], identified_asset.asset),
             )
             .ok()?;
-        Some(IdentityProof {
-            transfer_post,
-            utxo_membership_proof,
-        })
+        Some(IdentityProof { transfer_post })
     }
 
     /// Signs the `transaction`, generating transfer posts without releasing resources.
@@ -1566,7 +1537,7 @@ where
         identified_asset: IdentifiedAsset<C>,
     ) -> Option<IdentityProof<C>>
     where
-        C::Utxo: Clone,
+        UtxoAccumulatorModel<C>: Clone,
     {
         let result = self.sign_virtual_to_public(identified_asset);
         self.state.utxo_accumulator.rollback();
@@ -1580,7 +1551,7 @@ where
         identified_assets: Vec<IdentifiedAsset<C>>,
     ) -> IdentityResponse<C>
     where
-        C::Utxo: Clone,
+        UtxoAccumulatorModel<C>: Clone,
     {
         IdentityResponse(
             identified_assets
@@ -1700,7 +1671,7 @@ where
         request: IdentityRequest<C>,
     ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>
     where
-        C::Utxo: Clone,
+        UtxoAccumulatorModel<C>: Clone,
     {
         Box::pin(async move { Ok(self.batched_identity_proof(request.0)) })
     }

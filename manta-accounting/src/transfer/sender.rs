@@ -109,27 +109,6 @@ where
         Self::new(secret, utxo, nullifier)
     }
 
-    /// Samples a new [`PreSender`], returning also its [`Utxo`].
-    ///
-    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
-    #[inline]
-    pub fn sample_with_utxo<R>(
-        parameters: &S,
-        authorization_context: &mut S::AuthorizationContext,
-        identifier: S::Identifier,
-        asset: S::Asset,
-        rng: &mut R,
-    ) -> (Self, S::Utxo)
-    where
-        S: DeriveSpend,
-        R: RngCore + ?Sized,
-        S::Utxo: Clone,
-    {
-        let (secret, utxo, nullifier) =
-            parameters.derive_spend(authorization_context, identifier, asset, rng);
-        (Self::new(secret, utxo.clone(), nullifier), utxo)
-    }
-
     /// Inserts the [`Utxo`] corresponding to `self` into the `utxo_accumulator` with the intention
     /// of returning a proof later by a call to [`get_proof`](Self::get_proof).
     ///

@@ -341,6 +341,18 @@ where
     }
 }
 
+impl<C, F> From<Parameters<C>> for MerkleForest<C, F>
+where
+    C: Configuration + ?Sized,
+    F: Forest<C>,
+    F::Tree: WithProofs<C>,
+    InnerDigest<C>: Clone + PartialEq,
+{
+    fn from(value: Parameters<C>) -> Self {
+        Self::new(value)
+    }
+}
+
 impl<C, F> ConstantCapacityAccumulator for MerkleForest<C, F>
 where
     C: Configuration + ?Sized,
