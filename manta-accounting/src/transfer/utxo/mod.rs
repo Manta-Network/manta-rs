@@ -95,13 +95,16 @@ impl IndependenceContext for NullifierIndependence {
 pub trait IdentifierType {
     /// Identifier Type
     type Identifier;
-
-    /// Checks if `identifier` is transparent.
-    fn is_transparent(identifier: &Self::Identifier) -> bool;
 }
 
 /// Identifier Type
 pub type Identifier<T> = <T as IdentifierType>::Identifier;
+
+/// Transparency
+pub trait IdentifierTransparency: IdentifierType {
+    /// Checks if `identifier` is transparent
+    fn is_transparent(identifier: &Self::Identifier) -> bool;
+}
 
 /// Identified Asset
 #[cfg_attr(

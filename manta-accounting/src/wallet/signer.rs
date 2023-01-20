@@ -38,7 +38,7 @@ use crate::{
         receiver::ReceiverPost,
         requires_authorization,
         utxo::{
-            auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, IdentifierType, Spend,
+            auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, IdentifierTransparency, Spend,
             UtxoReconstruct,
         },
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
@@ -1478,7 +1478,7 @@ where
     where
         C::Utxo: Clone,
     {
-        if <Parameters<C> as IdentifierType>::is_transparent(&identified_asset.identifier) {
+        if <Parameters<C> as IdentifierTransparency>::is_transparent(&identified_asset.identifier) {
             return None;
         }
         let (presender, utxo) = self.state.build_pre_sender_with_utxo(

@@ -626,7 +626,12 @@ where
     C: BaseConfiguration<Bool = bool>,
 {
     type Identifier = Identifier<C>;
+}
 
+impl<C> utxo::IdentifierTransparency for BaseParameters<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+{
     #[inline]
     fn is_transparent(identifier: &Self::Identifier) -> bool {
         identifier.is_transparent
@@ -1003,7 +1008,12 @@ where
     C: Configuration<Bool = bool>,
 {
     type Identifier = Identifier<C>;
+}
 
+impl<C> utxo::IdentifierTransparency for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
     #[inline]
     fn is_transparent(identifier: &Self::Identifier) -> bool {
         identifier.is_transparent
@@ -2100,7 +2110,12 @@ where
     C: BaseConfiguration<Bool = bool>,
 {
     type Identifier = Identifier<C>;
+}
 
+impl<C> utxo::IdentifierTransparency for MintSecret<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+{
     #[inline]
     fn is_transparent(identifier: &Self::Identifier) -> bool {
         identifier.is_transparent
