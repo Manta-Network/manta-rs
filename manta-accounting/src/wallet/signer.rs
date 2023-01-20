@@ -562,9 +562,6 @@ where
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
-
-    /// Wrong Transparency Flag
-    WrongTransparencyFlag,
 }
 
 /// Signing Result
@@ -1200,9 +1197,9 @@ where
         Ok(senders)
     }
 
-    ///
+    /// Builds two virtual [`Sender`]s for `pre_sender`.
     #[inline]
-    fn fake_senders(
+    fn virtual_senders(
         &mut self,
         parameters: &Parameters<C>,
         asset_id: &C::AssetId,
@@ -1491,7 +1488,7 @@ where
         );
         let senders = self
             .state
-            .fake_senders(
+            .virtual_senders(
                 &self.parameters.parameters,
                 &identified_asset.asset.id,
                 presender,

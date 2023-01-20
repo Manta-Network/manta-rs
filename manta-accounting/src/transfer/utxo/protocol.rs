@@ -2101,6 +2101,7 @@ where
 {
     type Identifier = Identifier<C>;
 
+    #[inline]
     fn is_transparent(identifier: &Self::Identifier) -> bool {
         identifier.is_transparent
     }

@@ -96,7 +96,7 @@ pub trait IdentifierType {
     /// Identifier Type
     type Identifier;
 
-    ///
+    /// Checks if `identifier` is transparent.
     fn is_transparent(identifier: &Self::Identifier) -> bool;
 }
 
