@@ -110,6 +110,8 @@ where
     }
 
     /// Samples a new [`PreSender`], returning also its [`Utxo`].
+    ///
+    /// [`Utxo`]: crate::transfer::utxo::UtxoType::Utxo
     #[inline]
     pub fn sample_with_utxo<R>(
         parameters: &S,
