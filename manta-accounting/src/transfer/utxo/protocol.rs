@@ -21,6 +21,7 @@ use crate::{
     transfer::utxo::{
         self,
         auth::{self, DeriveContext, SpendingKey},
+        DeriveAddress,
     },
 };
 use alloc::vec::Vec;
@@ -1407,6 +1408,23 @@ where
     }
 }
 
+impl<C> utxo::DeriveAddress for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    type SecretKey = C::Scalar;
+
+    #[inline]
+    fn derive_address(&self, decryption_key: &Self::SecretKey) -> Self::Address {
+        Address::new(
+            self.base
+                .group_generator
+                .generator()
+                .scalar_mul(decryption_key, &mut ()),
+        )
+    }
+}
+
 impl<C> utxo::UtxoReconstruct for Parameters<C>
 where
     C: Configuration<Bool = bool>,
@@ -1415,13 +1433,15 @@ where
     Asset<C>: Clone + Default,
 {
     #[inline]
-    fn utxo_check(
+    fn utxo_reconstruct(
         &self,
-        utxo: &Self::Utxo,
-        asset: &Self::Asset,
-        identifier: &Self::Identifier,
-        decryption_key: &Self::DecryptionKey,
-    ) -> bool {
+        asset: &Asset<C>,
+        identifier: &Identifier<C>,
+        address: &Address<C>,
+    ) -> Utxo<C>
+    where
+        Asset<C>: Clone + Default,
+    {
         let associated_data = if identifier.is_transparent {
             Visibility::Transparent
         } else {
@@ -1431,19 +1451,26 @@ where
             &identifier.utxo_commitment_randomness,
             &associated_data.secret(asset).id,
             &associated_data.secret(asset).value,
-            &self
-                .base
-                .group_generator
-                .generator()
-                .scalar_mul(decryption_key, &mut ()),
+            &address.receiving_key,
             &mut (),
         );
-        let new_utxo = Self::Utxo::new(
+        Utxo::new(
             identifier.is_transparent,
             associated_data.public(asset),
             new_utxo_commitment,
-        );
-        new_utxo.eq(utxo, &mut ())
+        )
+    }
+
+    #[inline]
+    fn utxo_check(
+        &self,
+        utxo: &Self::Utxo,
+        asset: &Self::Asset,
+        identifier: &Self::Identifier,
+        decryption_key: &Self::DecryptionKey,
+    ) -> bool {
+        self.utxo_reconstruct(asset, identifier, &self.derive_address(decryption_key))
+            .eq(utxo, &mut ())
     }
 }
 

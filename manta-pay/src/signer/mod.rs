@@ -54,6 +54,12 @@ pub type SignError = signer::SignError<Config>;
 /// Signing Result
 pub type SignResult = signer::SignResult<Config>;
 
+/// Transaction Data Request
+pub type TransactionDataRequest = signer::TransactionDataRequest<Config>;
+
+/// Transaction Data Response
+pub type TransactionDataResponse = signer::TransactionDataResponse<Config>;
+
 /// Receiving Key Request
 #[cfg_attr(
     feature = "serde",

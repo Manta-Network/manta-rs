@@ -31,25 +31,26 @@ use core::{
     fmt::{self, Debug, Display},
     time::Duration,
 };
-use openzl_plugin_arkworks::{constraint::R1CS, pairing::Pairing};
+use openzl_plugin_arkworks::{constraint::R1CS, ff::PrimeField, pairing::Pairing};
 use openzl_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
 };
 
 pub mod config;
+pub mod log;
 pub mod message;
 
-#[cfg(feature = "reqwest")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
+#[cfg(feature = "client")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "client")))]
 pub mod client;
 
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+#[cfg(feature = "coordinator")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "coordinator")))]
 pub mod coordinator;
 
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+#[cfg(feature = "coordinator")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "coordinator")))]
 pub mod server;
 
 /// Participant Queue Type
@@ -85,12 +86,12 @@ pub trait Ceremony: Configuration + SignatureScheme {
 }
 
 /// Specifies R1CS circuit descriptions and names for a ceremony.
-pub trait Circuits<C>
+pub trait Circuits<F>
 where
-    C: Ceremony,
+    F: PrimeField,
 {
     /// Returns representations of the circuits used in this ceremony, each named.
-    fn circuits() -> Vec<(R1CS<C::Scalar>, String)>;
+    fn circuits() -> Vec<(R1CS<F>, String)>;
 }
 
 /// Parallel Round Alias
@@ -238,7 +239,10 @@ where
 #[derive(Debug)]
 pub enum UnexpectedError {
     /// Serialization Error
-    Serialization,
+    Serialization {
+        /// Optional Error Message Display String
+        message: String,
+    },
 
     /// Failed to generate a valid Contribution
     FailedContribution,

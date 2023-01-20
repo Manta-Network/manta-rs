@@ -5,18 +5,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#259](https://github.com/Manta-Network/manta-rs/pull/257) Add server binaries for the trusted setup
+- [\#303](https://github.com/Manta-Network/manta-rs/pull/303) Poseidon Hash and AES decryption WASM benchmarks.
 
 ### Changed
-- [\#293](https://github.com/Manta-Network/manta-rs/pull/293) Add decimals argument to AssetMetadata display
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
-- [\#296](https://github.com/Manta-Network/manta-rs/pull/296) Fix AssetMetadata display for values less than 1
 
 ### Security
+
+## [0.5.9] - 2023-01-12
+### Added
+- [\#295](https://github.com/Manta-Network/manta-rs/pull/295) Transaction data retrieving methods for the signer.
+- [\#297](https://github.com/Manta-Network/manta-rs/pull/297) Add trusted setup verification tools, update manta-parameters
+
+### Changed
+- [\#293](https://github.com/Manta-Network/manta-rs/pull/293) Add decimals argument to AssetMetadata display
+
+### Fixed
+- [\#304](https://github.com/Manta-Network/manta-rs/pull/302) Fix Verifying Key Serialization
+- [\#302](https://github.com/Manta-Network/manta-rs/pull/302) Fix fuzzing test bug
+- [\#296](https://github.com/Manta-Network/manta-rs/pull/296) Fix AssetMetadata display for values less than 1
+- [\#294](https://github.com/Manta-Network/manta-rs/pull/294) Distinguish between panic-errors and possible-fix-errors
 
 ## [0.5.8] - 2022-12-03
 ### Added
@@ -24,7 +38,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 - [\#283](https://github.com/Manta-Network/manta-rs/pull/283) Upgrade asset system.
-- [\#284](https://github.com/Manta-Network/manta-rs/pull/284) Moved `R1CS` implementation to `manta-crypto` 
+- [\#284](https://github.com/Manta-Network/manta-rs/pull/284) Moved `R1CS` implementation to `manta-crypto`
 - [\#282](https://github.com/Manta-Network/manta-rs/pull/282) Upgrade key system.
 
 ## [0.5.7] - 2022-11-04
@@ -53,7 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#197](https://github.com/Manta-Network/manta-rs/pull/197) Add ECLAIR utilities for next circuit upgrade
 - [\#196](https://github.com/Manta-Network/manta-rs/pull/172) Add fixed base scalar multiplication using precomputed bases
 - [\#193](https://github.com/Manta-Network/manta-rs/pull/193) Add Bn254 curve backend for Groth16 trusted setup
-- [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add abstract Phase 2 for Groth16 trusted setup 
+- [\#172](https://github.com/Manta-Network/manta-rs/pull/172) Add abstract Phase 2 for Groth16 trusted setup
 
 ### Changed
 - [\#247](https://github.com/Manta-Network/manta-rs/pull/247) Moved BLS12-381 and BN254 curves (and Edwards counterparts) to `manta-crypto`
@@ -147,7 +161,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.8...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.9...HEAD
+[0.5.9]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.9
 [0.5.8]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.8
 [0.5.7]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.7
 [0.5.6]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.6

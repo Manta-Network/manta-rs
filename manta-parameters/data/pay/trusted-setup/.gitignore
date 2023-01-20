@@ -1,0 +1,10 @@
+circuit_names
+private_transfer_computed_challenges
+private_transfer_pk
+private_transfer_vk
+to_private_computed_challenges
+to_private_pk
+to_private_vk
+to_public_computed_challenges
+to_public_pk
+to_public_vk

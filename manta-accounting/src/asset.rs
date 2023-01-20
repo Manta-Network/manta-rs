@@ -32,7 +32,7 @@ use alloc::{
 };
 use core::{
     borrow::Borrow,
-    fmt::Debug,
+    fmt::{Debug, Display},
     hash::Hash,
     iter::{self, FusedIterator},
     ops::{Add, AddAssign, Deref, Div, Sub, SubAssign},
@@ -62,7 +62,7 @@ use openzl_util::{
 use openzl_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
-use self::std::{
+use std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
 };
@@ -1077,8 +1077,8 @@ impl AssetMetadata {
     pub fn display_value<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
-        V: manta_crypto::arkworks::std::fmt::Display,
-        V: std::ops::Sub<u128, Output = u128>,
+        V: Display,
+        V: Sub<u128, Output = u128>,
     {
         let value_base_units = &value / (10u128.pow(self.decimals));
         let fractional_digits =
@@ -1096,8 +1096,8 @@ impl AssetMetadata {
     pub fn display<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
-        V: manta_crypto::arkworks::std::fmt::Display,
-        V: std::ops::Sub<u128, Output = u128>,
+        V: Display,
+        V: Sub<u128, Output = u128>,
     {
         format!("{} {}", self.display_value(value, digits), self.symbol)
     }

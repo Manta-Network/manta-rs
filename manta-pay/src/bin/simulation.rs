@@ -17,22 +17,16 @@
 //! Manta Pay Simulation
 
 use clap::{error::ErrorKind, CommandFactory, Parser};
-use manta_accounting::transfer::canonical::generate_context;
-use manta_pay::{config::FullParametersRef, simulation::Simulation};
+use manta_pay::{parameters::load_parameters, simulation::Simulation};
 use openzl_util::rand::{OsRng, Rand};
 
 /// Runs the Manta Pay simulation.
 pub fn main() {
     let simulation = Simulation::parse();
     let mut rng = OsRng;
-    let parameters = rng.gen();
-    let utxo_accumulator_model = rng.gen();
-    let (proving_context, verifying_context) = generate_context(
-        &(),
-        FullParametersRef::new(&parameters, &utxo_accumulator_model),
-        &mut rng,
-    )
-    .expect("Failed to generate contexts.");
+    let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
+    let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
+        load_parameters(directory.path()).expect("Unable to load parameters");
     match tokio::runtime::Builder::new_multi_thread()
         .worker_threads(6)
         .build()

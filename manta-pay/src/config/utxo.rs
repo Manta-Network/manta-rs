@@ -2059,7 +2059,7 @@ pub mod test {
         assert_eq!(new_asset_value, asset_value, "Asset value is not the same.");
     }
 
-    /// Checks that encryption of light incoming notes is well-executed for [`Config`] with [`Compiler`].
+    /// Checks that encryption of incoming notes is well-executed for [`Config`] with [`Compiler`].
     #[test]
     fn check_encryption_poseidon() {
         let mut rng = OsRng;

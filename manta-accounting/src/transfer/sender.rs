@@ -480,11 +480,17 @@ where
     /// [`has_matching_utxo_accumulator_output`]: Self::has_matching_utxo_accumulator_output
     type ValidNullifier: AsRef<S::Nullifier>;
 
+    /// Error Type
+    ///
+    /// This error describes situations in which ledger invariants have been broken but the system
+    /// must be able to handle them gracefully instead of crashing.
+    type Error: Into<SenderPostError<Self::Error>>;
+
     /// Checks if the ledger already contains the `nullifier` in its set of nullifiers.
     ///
     /// Existence of such a nullifier could indicate a possible double-spend and so the ledger does
     /// not accept duplicates.
-    fn is_unspent(&self, nullifier: S::Nullifier) -> Option<Self::ValidNullifier>;
+    fn is_unspent(&self, nullifier: S::Nullifier) -> Result<Self::ValidNullifier, Self::Error>;
 
     /// Checks if `output` matches the current accumulated value of the UTXO accumulator that is
     /// stored on the ledger.
@@ -494,7 +500,7 @@ where
     fn has_matching_utxo_accumulator_output(
         &self,
         output: UtxoAccumulatorOutput<S>,
-    ) -> Option<Self::ValidUtxoAccumulatorOutput>;
+    ) -> Result<Self::ValidUtxoAccumulatorOutput, Self::Error>;
 
     /// Posts the `nullifier` to the ledger, spending the asset.
     ///
@@ -517,7 +523,7 @@ where
         super_key: &Self::SuperPostingKey,
         utxo_accumulator_output: Self::ValidUtxoAccumulatorOutput,
         nullifier: Self::ValidNullifier,
-    ) {
+    ) -> Result<(), Self::Error> {
         self.spend_all(super_key, iter::once((utxo_accumulator_output, nullifier)))
     }
 
@@ -538,13 +544,18 @@ where
     /// [`spend`]: Self::spend
     /// [`spend_all`]: Self::spend_all
     #[inline]
-    fn spend_all<I>(&mut self, super_key: &Self::SuperPostingKey, iter: I)
+    fn spend_all<I>(
+        &mut self,
+        super_key: &Self::SuperPostingKey,
+        iter: I,
+    ) -> Result<(), Self::Error>
     where
         I: IntoIterator<Item = (Self::ValidUtxoAccumulatorOutput, Self::ValidNullifier)>,
     {
         for (utxo_accumulator_output, nullifier) in iter {
-            self.spend(super_key, utxo_accumulator_output, nullifier)
+            self.spend(super_key, utxo_accumulator_output, nullifier)?;
         }
+        Ok(())
     }
 }
 
@@ -554,8 +565,16 @@ where
     derive(Deserialize, Serialize),
     serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum SenderPostError {
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Error: Clone"),
+    Copy(bound = "Error: Copy"),
+    Debug(bound = "Error: Debug"),
+    Eq(bound = "Error: Eq"),
+    Hash(bound = "Error: Hash"),
+    PartialEq(bound = "Error: PartialEq")
+)]
+pub enum SenderPostError<Error> {
     /// Invalid UTXO Accumulator Output Error
     ///
     /// The sender was not constructed under the current state of the UTXO accumulator.
@@ -565,6 +584,9 @@ pub enum SenderPostError {
     ///
     /// The asset has already been spent.
     AssetSpent,
+
+    /// Unexpected Error
+    UnexpectedError(Error),
 }
 
 /// Sender Post
@@ -628,17 +650,18 @@ where
 
     /// Validates `self` on the sender `ledger`.
     #[inline]
-    pub fn validate<L>(self, ledger: &L) -> Result<SenderPostingKey<S, L>, SenderPostError>
+    pub fn validate<L>(
+        self,
+        ledger: &L,
+    ) -> Result<SenderPostingKey<S, L>, SenderPostError<L::Error>>
     where
         L: SenderLedger<S>,
     {
         Ok(SenderPostingKey {
             utxo_accumulator_output: ledger
                 .has_matching_utxo_accumulator_output(self.utxo_accumulator_output)
-                .ok_or(SenderPostError::InvalidUtxoAccumulatorOutput)?,
-            nullifier: ledger
-                .is_unspent(self.nullifier)
-                .ok_or(SenderPostError::AssetSpent)?,
+                .map_err(|x| x.into())?,
+            nullifier: ledger.is_unspent(self.nullifier).map_err(|x| x.into())?,
         })
     }
 }
@@ -718,13 +741,17 @@ where
 {
     /// Posts `self` to the sender `ledger`.
     #[inline]
-    pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) {
-        ledger.spend(super_key, self.utxo_accumulator_output, self.nullifier);
+    pub fn post(self, ledger: &mut L, super_key: &L::SuperPostingKey) -> Result<(), L::Error> {
+        ledger.spend(super_key, self.utxo_accumulator_output, self.nullifier)
     }
 
     /// Posts all of the [`SenderPostingKey`] in `iter` to the sender `ledger`.
     #[inline]
-    pub fn post_all<I>(iter: I, ledger: &mut L, super_key: &L::SuperPostingKey)
+    pub fn post_all<I>(
+        iter: I,
+        ledger: &mut L,
+        super_key: &L::SuperPostingKey,
+    ) -> Result<(), L::Error>
     where
         I: IntoIterator<Item = Self>,
     {

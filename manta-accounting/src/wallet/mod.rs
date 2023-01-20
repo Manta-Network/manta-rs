@@ -38,7 +38,7 @@ use crate::{
         ledger::ReadResponse,
         signer::{
             BalanceUpdate, SignError, SignRequest, SignResponse, SyncData, SyncError, SyncRequest,
-            SyncResponse,
+            SyncResponse, TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -383,6 +383,18 @@ where
             .await
             .map_err(Error::SignerConnectionError)?
             .map_err(Error::SignError)
+    }
+
+    /// Attempts to process TransferPosts and returns the corresponding TransactionData.
+    #[inline]
+    pub async fn transaction_data(
+        &mut self,
+        transfer_posts: Vec<TransferPost<C>>,
+    ) -> Result<TransactionDataResponse<C>, Error<C, L, S>> {
+        self.signer
+            .transaction_data(TransactionDataRequest(transfer_posts))
+            .await
+            .map_err(Error::SignerConnectionError)
     }
 
     /// Posts a transaction to the ledger, returning a success [`Response`] if the `transaction`
