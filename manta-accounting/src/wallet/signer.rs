@@ -464,6 +464,10 @@ where
 }
 
 /// Identity Request
+///
+/// # Note
+///
+/// The [`IdentifiedAsset`]s must be opaque.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
