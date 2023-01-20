@@ -21,8 +21,10 @@ use crate::{
     test::payment::UtxoAccumulator,
 };
 use manta_accounting::transfer::{identity_verification, IdentifiedAsset, Identifier};
-use manta_crypto::rand::{OsRng, Rand, fuzz::Fuzz};
-use manta_crypto::arkworks::constraint::fp::Fp;
+use manta_crypto::{
+    arkworks::constraint::fp::Fp,
+    rand::{fuzz::Fuzz, OsRng, Rand},
+};
 
 /// Checks the generation and verification of [`IdentityProof`](manta_accounting::transfer::IdentityProof)s.
 #[test]
@@ -64,7 +66,10 @@ fn identity_proof_test() {
     );
     assert!(verification_2.is_err(), "Verification should have failed");
     let fuzzed_salt = Fp(identifier.utxo_commitment_randomness.0.fuzz(&mut rng));
-    let new_virtual_asset = IdentifiedAsset::<Config>::new(Identifier::<Config>::new(false, fuzzed_salt), virtual_asset.asset);
+    let new_virtual_asset = IdentifiedAsset::<Config>::new(
+        Identifier::<Config>::new(false, fuzzed_salt),
+        virtual_asset.asset,
+    );
     let verification_3 = identity_verification(
         &parameters,
         &verifying_context.to_public,
