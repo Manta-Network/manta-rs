@@ -2176,7 +2176,7 @@ where
     pub utxo_membership_proof: UtxoMembershipProof<C>,
 }
 
-/// Veryfies `identity_proof` for `address` against `virtual_asset`.
+/// Verifies `identity_proof` for `address` against `virtual_asset`.
 ///
 /// # Note
 ///
