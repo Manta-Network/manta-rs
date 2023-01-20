@@ -50,7 +50,7 @@ ppot-client = [
 csv = ["dep:csv", "serde", "std"]
 
 # Perpetual Powers of Tau Ceremony
-ppot = ["openzl-plugin-arkworks/ark-bn254"]
+ppot = ["openzl-plugin-arkworks/bn254"]
 
 # Rayon Parallelization
 rayon = ["openzl-util/rayon"]
@@ -84,13 +84,13 @@ console = { version = "0.15.1", optional = true, default-features = false }
 csv = { version = "1.1.6", optional = true, default-features = false }
 derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
 dialoguer = { version = "0.10.2", optional = true, default-features = false }
-eclair = { git = "https://github.com/openzklib/openzl", branch = "feat/migrate-openzl", default-features = false }
+eclair = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false }
 hex = { version = "0.4.3", optional = true, default-features = false }
 memmap = { version = "0.7.0", optional = true, default-features = false }
-openzl-crypto = { git = "https://github.com/openzklib/openzl", branch = "feat/migrate-openzl", default-features = false }
-openzl-plugin-arkworks = { git = "https://github.com/openzklib/openzl", branch = "feat/migrate-openzl", default-features = false, features = ["ark-groth16"] }
-openzl-plugin-dalek = { git = "https://github.com/openzklib/openzl", branch = "feat/migrate-openzl", default-features = false }
-openzl-util = { git = "https://github.com/openzklib/openzl", branch = "feat/migrate-openzl", default-features = false, features = ["getrandom", "rand_chacha"] }
+openzl-crypto = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false }
+openzl-plugin-arkworks = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["groth16"] }
+openzl-plugin-dalek = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false }
+openzl-util = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["getrandom", "rand_chacha"] }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 serde_json = { version = "1.0", optional = true, default-features = false, features = ["alloc"] }
 tiny-bip39 = { version = "1.0.0", optional = true, default-features = false } 
@@ -101,5 +101,5 @@ manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-parameters = { path = "../manta-parameters", default-features = false, features = ["download"] }
 manta-trusted-setup = { path = ".", default-features = false, features = ["std", "test"] }
 memmap = { version = "0.7.0", default-features = false }
-openzl-plugin-arkworks = { git = "https://github.com/openzklib/openzl", branch = "feat/migrate-openzl", default-features = false, features = ["ark-bn254"] }
+openzl-plugin-arkworks = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["bn254"] }
 tempfile = { version = "3.3.0", default-features = false }
