@@ -23,6 +23,9 @@ pub mod balance;
 pub mod compatibility;
 
 #[cfg(test)]
+pub mod signer;
+
+#[cfg(test)]
 pub mod transfer;
 
 #[cfg(feature = "groth16")]
