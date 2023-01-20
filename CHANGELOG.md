@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#310](https://github.com/Manta-Network/manta-rs/pull/310) Identity verification
+- [\#310](https://github.com/Manta-Network/manta-rs/pull/310) Add identity verification algorithm using ToPublic circuit
 - [\#259](https://github.com/Manta-Network/manta-rs/pull/257) Add server binaries for the trusted setup
 - [\#303](https://github.com/Manta-Network/manta-rs/pull/303) Poseidon Hash and AES decryption WASM benchmarks.
 

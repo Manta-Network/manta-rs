@@ -1512,7 +1512,7 @@ where
         let authorization = self
             .state
             .authorization_for_default_spending_key(&self.parameters.parameters);
-        let transferpost = self
+        let transfer_post = self
             .state
             .build_post(
                 &self.parameters.parameters,
@@ -1521,7 +1521,7 @@ where
             )
             .ok()?;
         Some(IdentityProof {
-            transferpost,
+            transfer_post,
             utxo_membership_proof,
         })
     }

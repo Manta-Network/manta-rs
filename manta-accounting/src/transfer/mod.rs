@@ -2170,7 +2170,7 @@ where
     C: Configuration,
 {
     /// Transferpost
-    pub transferpost: TransferPost<C>,
+    pub transfer_post: TransferPost<C>,
 
     /// Utxo Membership Proof
     pub utxo_membership_proof: UtxoMembershipProof<C>,
@@ -2206,7 +2206,7 @@ where
     C::UtxoAccumulatorOutput: PartialEq,
     UtxoAccumulatorModel<C>: Model<Verification = bool>,
 {
-    TransferShape::from_post(&identity_proof.transferpost).map_or(
+    TransferShape::from_post(&identity_proof.transfer_post).map_or(
         Err(IdentityVerificationError::InvalidShape),
         |shape| match shape {
             TransferShape::ToPublic => Ok(()),
@@ -2214,14 +2214,14 @@ where
         },
     )?;
     if !identity_proof
-        .transferpost
+        .transfer_post
         .has_valid_proof(verifying_context)
         .map_err(|_| IdentityVerificationError::InvalidProof)?
     {
         return Err(IdentityVerificationError::InvalidProof);
     }
     if !identity_proof
-        .transferpost
+        .transfer_post
         .body
         .sender_posts
         .iter()
