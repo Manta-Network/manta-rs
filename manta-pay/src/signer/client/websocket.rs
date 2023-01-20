@@ -30,7 +30,7 @@ use core::marker::Unpin;
 use futures::{SinkExt, StreamExt};
 use manta_accounting::wallet::{self, signer};
 use openzl_util::{
-    from_variant,
+    derivative, from_variant,
     future::LocalBoxFutureResult,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };

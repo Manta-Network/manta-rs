@@ -60,6 +60,7 @@ use openzl_plugin_arkworks::{
 };
 use openzl_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
+    derivative,
     rand::{Rand, RngCore, Sample},
     Array,
 };

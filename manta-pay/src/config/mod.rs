@@ -26,6 +26,7 @@ use openzl_plugin_arkworks::{
     },
     groth16,
 };
+use openzl_util::derivative;
 
 #[cfg(feature = "bs58")]
 use {alloc::string::String, openzl_util::codec::Encode};

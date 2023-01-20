@@ -45,7 +45,10 @@ use eclair::alloc::{
     mode::{Public, Secret},
     Allocate,
 };
-<<<<<<< HEAD
+use manta_pay::{
+    config::{FullParametersRef, PrivateTransfer, ToPrivate, ToPublic},
+    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
+};
 use openzl_crypto::signature;
 use openzl_plugin_arkworks::{
     bn254::{self, Fr},
@@ -59,13 +62,6 @@ use openzl_plugin_arkworks::{
 };
 use openzl_plugin_dalek::ed25519::{self, generate_keypair, Ed25519, SECRET_KEY_LENGTH};
 use openzl_util::{
-=======
-use manta_pay::{
-    config::{FullParametersRef, PrivateTransfer, ToPrivate, ToPublic},
-    parameters::{load_transfer_parameters, load_utxo_accumulator_model},
-};
-use manta_util::{
->>>>>>> main
     into_array_unchecked,
     rand::{ChaCha20Rng, OsRng, Rand, SeedableRng},
     serde::{de::DeserializeOwned, Deserialize, Serialize},

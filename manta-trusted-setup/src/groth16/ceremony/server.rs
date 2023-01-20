@@ -43,6 +43,7 @@ use core::{
     time::Duration,
 };
 use openzl_util::{
+    into_array_unchecked,
     serde::{de::DeserializeOwned, Serialize},
     BoxArray,
 };

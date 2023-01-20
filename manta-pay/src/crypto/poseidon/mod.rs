@@ -25,6 +25,7 @@ use eclair::alloc::{Allocate, Const, Constant};
 use openzl_crypto::permutation::PseudorandomPermutation;
 use openzl_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
+    derivative,
     rand::{Rand, RngCore, Sample},
 };
 

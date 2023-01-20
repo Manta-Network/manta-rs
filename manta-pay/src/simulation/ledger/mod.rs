@@ -53,7 +53,10 @@ use openzl_crypto::{
         forest::{Configuration, FixedIndex},
     },
 };
-use openzl_util::future::{LocalBoxFuture, LocalBoxFutureResult};
+use openzl_util::{
+    derivative,
+    future::{LocalBoxFuture, LocalBoxFutureResult},
+};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
@@ -229,7 +232,7 @@ impl Ledger {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -265,7 +268,7 @@ impl From<SenderLedgerError> for SenderPostError<SenderLedgerError> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -295,7 +298,7 @@ impl From<ReceiverLedgerError> for ReceiverPostError<ReceiverLedgerError> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]

@@ -28,7 +28,7 @@ use alloc::{format, string::String, vec::Vec};
 use core::marker::PhantomData;
 use manta_accounting::key::{self, AccountIndex};
 use openzl_util::{
-    create_seal,
+    create_seal, derivative,
     rand::{CryptoRng, RngCore},
     seal, Array,
 };

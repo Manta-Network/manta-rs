@@ -25,6 +25,7 @@ use eclair::alloc::{Allocate, Const, Constant};
 use openzl_crypto::hash::ArrayHashFunction;
 use openzl_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
+    derivative,
     rand::{Rand, RngCore, Sample},
     vec::VecExt,
 };
@@ -207,10 +208,15 @@ where
 /// Testing Suite
 #[cfg(test)]
 mod test {
-    use crate::{config::Poseidon2, crypto::constraint::arkworks::Fp};
-    use openzl_plugin_arkworks::{ff::field_new, bls12_381::Fr, constraint::fp::Fp};
-    use openzl_util::rand::{OsRng, Sample},
-    use crate::crypto::poseidon::{self, arkworks::TwoPowerMinusOneDomainTag, hash::Hasher};
+    use crate::{
+        config::Poseidon2,
+        crypto::{
+            constraint::arkworks::Fp,
+            poseidon::{self, arkworks::TwoPowerMinusOneDomainTag, hash::Hasher},
+        },
+    };
+    use openzl_plugin_arkworks::{bls12_381::Fr, constraint::fp::Fp, ff::field_new};
+    use openzl_util::rand::{OsRng, Sample};
 
     /// Poseidon Specification Configuration
     ///

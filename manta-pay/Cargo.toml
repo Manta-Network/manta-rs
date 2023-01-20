@@ -129,7 +129,7 @@ manta-accounting = { path = "../manta-accounting", default-features = false }
 manta-parameters = { path = "../manta-parameters", optional = true, default-features = false }
 num-bigint = { version = "0.4.3", optional = true, default-features = false }
 openzl-crypto = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false }
-openzl-plugin-arkworks = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false }
+openzl-plugin-arkworks = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["algebra", "serialize"] }
 openzl-util = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["rand_chacha"] }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }

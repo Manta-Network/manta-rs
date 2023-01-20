@@ -567,8 +567,8 @@ where
 pub mod util {
     use super::*;
     use crate::{ceremony::util::deserialize_from_file, groth16::ceremony::UnexpectedError};
-    use manta_crypto::arkworks::{groth16::ProvingContext, serialize::HasSerialization};
-    use manta_util::codec::{Encode, IoWriter};
+    use openzl_plugin_arkworks::{groth16::ProvingContext, serialize::HasSerialization};
+    use openzl_util::codec::{Encode, IoWriter};
     use std::{fs::OpenOptions, path::Path};
 
     /// Extracts prover key and verifier key from state located at `path` and writes
