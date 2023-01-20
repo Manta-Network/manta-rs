@@ -17,7 +17,9 @@
 //! Signer Testing Suite
 
 use crate::{
-    config::Config, parameters::load_parameters, simulation::sample_signer,
+    config::{Asset, Config},
+    parameters::load_parameters,
+    simulation::sample_signer,
     test::payment::UtxoAccumulator,
 };
 use manta_accounting::transfer::{identity_verification, IdentifiedAsset, Identifier};
@@ -45,38 +47,64 @@ fn identity_proof_test() {
         .identity_proof(virtual_asset)
         .expect("Error producing identity proof");
     let address = signer.address();
-    let verification = identity_verification(
-        &parameters,
-        &verifying_context.to_public,
-        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
-        identity_proof.clone(),
-        virtual_asset,
-        address,
+    assert!(
+        identity_verification::<UtxoAccumulator, _>(
+            &parameters,
+            &verifying_context.to_public,
+            &utxo_accumulator_model,
+            identity_proof.clone(),
+            virtual_asset,
+            address,
+        )
+        .is_ok(),
+        "Verification failed"
     );
-    assert!(verification.is_ok(), "Verification failed");
-    let new_identifier = Identifier::<Config>::new(true, identifier.utxo_commitment_randomness);
-    let new_virtual_asset = IdentifiedAsset::<Config>::new(new_identifier, virtual_asset.asset);
-    let verification_2 = identity_verification(
-        &parameters,
-        &verifying_context.to_public,
-        &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
-        identity_proof.clone(),
-        new_virtual_asset,
-        address,
+    assert!(
+        identity_verification::<UtxoAccumulator, _>(
+            &parameters,
+            &verifying_context.to_public,
+            &utxo_accumulator_model,
+            identity_proof.clone(),
+            IdentifiedAsset::<Config>::new(
+                Identifier::<Config>::new(true, identifier.utxo_commitment_randomness),
+                virtual_asset.asset,
+            ),
+            address,
+        )
+        .is_err(),
+        "Verification should have failed"
     );
-    assert!(verification_2.is_err(), "Verification should have failed");
-    let fuzzed_salt = Fp(identifier.utxo_commitment_randomness.0.fuzz(&mut rng));
-    let new_virtual_asset = IdentifiedAsset::<Config>::new(
-        Identifier::<Config>::new(false, fuzzed_salt),
-        virtual_asset.asset,
+    assert!(
+        identity_verification::<UtxoAccumulator, _>(
+            &parameters,
+            &verifying_context.to_public,
+            &utxo_accumulator_model,
+            identity_proof.clone(),
+            IdentifiedAsset::<Config>::new(
+                Identifier::<Config>::new(
+                    false,
+                    Fp(identifier.utxo_commitment_randomness.0.fuzz(&mut rng)),
+                ),
+                virtual_asset.asset,
+            ),
+            address,
+        )
+        .is_err(),
+        "Verification should have failed"
     );
-    let verification_3 = identity_verification(
-        &parameters,
-        &verifying_context.to_public,
-        &mut UtxoAccumulator::new(utxo_accumulator_model),
-        identity_proof,
-        new_virtual_asset,
-        address,
+    assert!(
+        identity_verification::<UtxoAccumulator, _>(
+            &parameters,
+            &verifying_context.to_public,
+            &utxo_accumulator_model,
+            identity_proof,
+            IdentifiedAsset::<Config>::new(
+                virtual_asset.identifier,
+                Asset::new(virtual_asset.asset.id, rng.gen()),
+            ),
+            address,
+        )
+        .is_err(),
+        "Verification should have failed"
     );
-    assert!(verification_3.is_err(), "Verification should have failed");
 }

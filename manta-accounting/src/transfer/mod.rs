@@ -2195,7 +2195,7 @@ where
 pub fn identity_verification<A, C>(
     parameters: &Parameters<C>,
     verifying_context: &VerifyingContext<C>,
-    utxo_accumulator: &mut A,
+    utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     identity_proof: IdentityProof<C>,
     virtual_asset: IdentifiedAsset<C>,
     address: Address<C>,
@@ -2203,12 +2203,12 @@ pub fn identity_verification<A, C>(
 where
     C: Configuration,
     C::UtxoAccumulatorOutput: PartialEq,
-    UtxoAccumulatorModel<C>: Model<Verification = bool>,
+    UtxoAccumulatorModel<C>: Clone + Model<Verification = bool>,
     A: Accumulator<
-        Item = UtxoAccumulatorItem<C>,
-        Model = UtxoAccumulatorModel<C>,
-        Output = UtxoAccumulatorOutput<C>,
-    >,
+            Item = UtxoAccumulatorItem<C>,
+            Model = UtxoAccumulatorModel<C>,
+            Output = UtxoAccumulatorOutput<C>,
+        > + From<UtxoAccumulatorModel<C>>,
     Asset<C>: Default,
 {
     let IdentifiedAsset::<C> { identifier, asset } = virtual_asset;
@@ -2232,6 +2232,7 @@ where
         return Err(IdentityVerificationError::InvalidProof);
     }
     let utxo = parameters.utxo_reconstruct(&asset, &identifier, &address);
+    let mut utxo_accumulator: A = utxo_accumulator_model.clone().into();
     utxo_accumulator.insert(
         &parameters
             .utxo_accumulator_item_hash()

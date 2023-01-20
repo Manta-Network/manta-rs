@@ -37,10 +37,7 @@ use crate::{
         },
         receiver::ReceiverPost,
         requires_authorization,
-        utxo::{
-            auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, IdentifierTransparency, Spend,
-            UtxoReconstruct,
-        },
+        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, Spend, UtxoReconstruct},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters, PreSender,
         ProofSystemError, ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer,
@@ -1463,9 +1460,6 @@ where
     where
         UtxoAccumulatorModel<C>: Clone,
     {
-        if <Parameters<C> as IdentifierTransparency>::is_transparent(&identified_asset.identifier) {
-            return None;
-        }
         let presender = self.state.build_pre_sender(
             &self.parameters.parameters,
             identified_asset.identifier,
