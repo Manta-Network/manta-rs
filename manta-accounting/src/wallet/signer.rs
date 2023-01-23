@@ -102,9 +102,7 @@ where
     fn identity_proof(
         &mut self,
         request: IdentityRequest<C>,
-    ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>
-    where
-        UtxoAccumulatorModel<C>: Clone;
+    ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>;
 }
 
 /// Signer Synchronization Data
@@ -619,7 +617,6 @@ pub trait Configuration: transfer::Configuration {
     /// [`Utxo`] Accumulator Type
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
         + ExactSizeAccumulator
-        + From<UtxoAccumulatorModel<Self>>
         + OptimizedAccumulator
         + Rollback;
 
@@ -1182,11 +1179,8 @@ where
         parameters: &Parameters<C>,
         asset_id: &C::AssetId,
         pre_sender: PreSender<C>,
-    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>>
-    where
-        UtxoAccumulatorModel<C>: Clone,
-    {
-        let mut utxo_accumulator = C::UtxoAccumulator::from(self.utxo_accumulator.model().clone());
+    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>> {
+        let mut utxo_accumulator = C::UtxoAccumulator::empty(self.utxo_accumulator.model());
         let sender = pre_sender
             .insert_and_upgrade(parameters, &mut utxo_accumulator)
             .expect("Unable to upgrade expected UTXO.");
@@ -1456,10 +1450,7 @@ where
     fn sign_virtual_to_public(
         &mut self,
         identified_asset: IdentifiedAsset<C>,
-    ) -> Option<IdentityProof<C>>
-    where
-        UtxoAccumulatorModel<C>: Clone,
-    {
+    ) -> Option<IdentityProof<C>> {
         let presender = self.state.build_pre_sender(
             &self.parameters.parameters,
             identified_asset.identifier,
@@ -1529,10 +1520,7 @@ where
     pub fn identity_proof(
         &mut self,
         identified_asset: IdentifiedAsset<C>,
-    ) -> Option<IdentityProof<C>>
-    where
-        UtxoAccumulatorModel<C>: Clone,
-    {
+    ) -> Option<IdentityProof<C>> {
         let result = self.sign_virtual_to_public(identified_asset);
         self.state.utxo_accumulator.rollback();
         result
@@ -1543,10 +1531,7 @@ where
     pub fn batched_identity_proof(
         &mut self,
         identified_assets: Vec<IdentifiedAsset<C>>,
-    ) -> IdentityResponse<C>
-    where
-        UtxoAccumulatorModel<C>: Clone,
-    {
+    ) -> IdentityResponse<C> {
         IdentityResponse(
             identified_assets
                 .into_iter()
@@ -1663,10 +1648,7 @@ where
     fn identity_proof(
         &mut self,
         request: IdentityRequest<C>,
-    ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>
-    where
-        UtxoAccumulatorModel<C>: Clone,
-    {
+    ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error> {
         Box::pin(async move { Ok(self.batched_identity_proof(request.0)) })
     }
 }

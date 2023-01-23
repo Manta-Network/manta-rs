@@ -2207,12 +2207,12 @@ where
     ) -> Result<(), IdentityVerificationError>
     where
         C::UtxoAccumulatorOutput: PartialEq,
-        UtxoAccumulatorModel<C>: Clone + Model<Verification = bool>,
+        UtxoAccumulatorModel<C>: Model<Verification = bool>,
         A: Accumulator<
-                Item = UtxoAccumulatorItem<C>,
-                Model = UtxoAccumulatorModel<C>,
-                Output = UtxoAccumulatorOutput<C>,
-            > + From<UtxoAccumulatorModel<C>>,
+            Item = UtxoAccumulatorItem<C>,
+            Model = UtxoAccumulatorModel<C>,
+            Output = UtxoAccumulatorOutput<C>,
+        >,
         Asset<C>: Default,
     {
         let IdentifiedAsset::<C> { identifier, asset } = virtual_asset;
@@ -2236,20 +2236,19 @@ where
             return Err(IdentityVerificationError::InvalidProof);
         }
         let utxo = parameters.utxo_reconstruct(&asset, &identifier, &address);
-        let mut utxo_accumulator: A = utxo_accumulator_model.clone().into();
+        let mut utxo_accumulator = A::empty(utxo_accumulator_model);
         utxo_accumulator.insert(
             &parameters
                 .utxo_accumulator_item_hash()
                 .item_hash(&utxo, &mut ()),
         );
         let utxo_accumulator_output = utxo_accumulator
-            .prove(
+            .output_from(
                 &parameters
                     .utxo_accumulator_item_hash()
                     .item_hash(&utxo, &mut ()),
             )
-            .expect("Failed to generate UtxoMembershipProof")
-            .into_output();
+            .expect("Failed to obtain UtxoAccumulatorOutput");
         if !self
             .transfer_post
             .body
