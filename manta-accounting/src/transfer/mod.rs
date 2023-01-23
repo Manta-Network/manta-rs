@@ -35,10 +35,7 @@ use crate::{
         canonical::TransferShape,
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{
-            auth, IdentifierTransparency, Mint, NullifierIndependence, Spend, UtxoIndependence,
-            UtxoReconstruct,
-        },
+        utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence, UtxoReconstruct},
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -162,8 +159,7 @@ pub trait Configuration {
             Secret = Self::SpendSecret,
             Nullifier = Self::Nullifier,
             Identifier = Self::Identifier,
-        > + utxo::UtxoReconstruct
-        + utxo::IdentifierTransparency<Identifier = Self::Identifier>;
+        > + utxo::UtxoReconstruct;
 
     /// Authorization Context Variable Type
     type AuthorizationContextVar: Variable<
@@ -2128,8 +2124,8 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum IdentityVerificationError {
-    /// Invalid Identified Asset
-    InvalidIdentifiedAsset,
+    /// Invalid Signature
+    InvalidSignature,
 
     /// Invalid Shape
     InvalidShape,
@@ -2139,6 +2135,9 @@ pub enum IdentityVerificationError {
 
     /// Inconsistent Utxo Accumulator Output
     InconsistentUtxoAccumulatorOutput,
+
+    /// Invalid Identified Asset
+    InvalidVirtualAsset,
 }
 
 /// Identity Proof
@@ -2190,12 +2189,12 @@ where
     /// 1) `identity_proof.transfer_post` has a [`ToPublic`](crate::transfer::canonical::ToPublic)
     /// shape.
     ///
-    /// 2) `identity_proof.transfer_post` has a valid proof.
+    /// 2) `identity_proof.transfer_post` has a valid authorization signature.
     ///
-    /// 3) The [`UtxoAccumulatorOutput`] in `identity_proof.transfer_post` has been computed from
+    /// 3) `identity_proof.transfer_post` has a valid proof.
+    ///
+    /// 4) The [`UtxoAccumulatorOutput`] in `identity_proof.transfer_post` has been computed from
     /// `virtual_asset` and `address`.
-    ///
-    /// 4) The virtual asset is correctly constructed.
     #[inline]
     pub fn identity_verification<A>(
         &self,
@@ -2215,12 +2214,6 @@ where
         >,
         Asset<C>: Default,
     {
-        let IdentifiedAsset::<C> { identifier, asset } = virtual_asset;
-        if <Parameters<C> as IdentifierTransparency>::is_transparent(&identifier)
-            || asset == Default::default()
-        {
-            return Err(IdentityVerificationError::InvalidIdentifiedAsset);
-        }
         TransferShape::from_post(&self.transfer_post).map_or(
             Err(IdentityVerificationError::InvalidShape),
             |shape| match shape {
@@ -2228,6 +2221,9 @@ where
                 _ => Err(IdentityVerificationError::InvalidShape),
             },
         )?;
+        self.transfer_post
+            .has_valid_authorization_signature(parameters)
+            .map_err(|_| IdentityVerificationError::InvalidSignature)?;
         if !self
             .transfer_post
             .has_valid_proof(verifying_context)
@@ -2235,6 +2231,7 @@ where
         {
             return Err(IdentityVerificationError::InvalidProof);
         }
+        let IdentifiedAsset::<C> { identifier, asset } = virtual_asset;
         let utxo = parameters.utxo_reconstruct(&asset, &identifier, &address);
         let mut utxo_accumulator = A::empty(utxo_accumulator_model);
         utxo_accumulator.insert(

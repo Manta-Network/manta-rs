@@ -459,10 +459,6 @@ where
 }
 
 /// Identity Request
-///
-/// # Note
-///
-/// The [`IdentifiedAsset`]s must be opaque.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -1447,7 +1443,7 @@ where
     /// Generates an [`IdentityProof`] for `identified_asset` by
     /// signing a virtual [`ToPublic`] transaction.
     #[inline]
-    fn sign_virtual_to_public(
+    pub fn identity_proof(
         &mut self,
         identified_asset: IdentifiedAsset<C>,
     ) -> Option<IdentityProof<C>> {
@@ -1510,18 +1506,6 @@ where
     #[inline]
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
         let result = self.sign_internal(transaction);
-        self.state.utxo_accumulator.rollback();
-        result
-    }
-
-    /// Generates an [`IdentityProof`] for `identified_asset` by
-    /// signing a virtual [`ToPublic`] transaction.
-    #[inline]
-    pub fn identity_proof(
-        &mut self,
-        identified_asset: IdentifiedAsset<C>,
-    ) -> Option<IdentityProof<C>> {
-        let result = self.sign_virtual_to_public(identified_asset);
         self.state.utxo_accumulator.rollback();
         result
     }
