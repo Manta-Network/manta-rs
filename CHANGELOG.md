@@ -6,9 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased]
 ### Added
 - [\#310](https://github.com/Manta-Network/manta-rs/pull/310) Add identity verification algorithm using ToPublic circuit
-- [\#259](https://github.com/Manta-Network/manta-rs/pull/257) Add server binaries for the trusted setup
-- [\#303](https://github.com/Manta-Network/manta-rs/pull/303) Poseidon Hash and AES decryption WASM benchmarks.
-
 ### Changed
 
 ### Deprecated
@@ -18,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 ### Security
+
+## [0.5.10] - 2023-01-21
+### Added
+- [\#259](https://github.com/Manta-Network/manta-rs/pull/257) Add server binaries for the trusted setup
+- [\#303](https://github.com/Manta-Network/manta-rs/pull/303) Poseidon Hash and AES decryption WASM benchmarks.
 
 ## [0.5.9] - 2023-01-12
 ### Added
@@ -162,7 +164,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 - [\#50](https://github.com/Manta-Network/manta-rs/pull/50) Remove Trapdoor from Circuit
 
-[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.9...HEAD
+[Unreleased]: https://github.com/Manta-Network/manta-rs/compare/v0.5.10...HEAD
+[0.5.10]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.10
 [0.5.9]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.9
 [0.5.8]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.8
 [0.5.7]: https://github.com/Manta-Network/manta-rs/releases/tag/v0.5.7
