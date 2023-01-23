@@ -39,9 +39,9 @@ use crate::{
         requires_authorization,
         utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, Spend, UtxoReconstruct},
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
-        IdentifiedAsset, Identifier, Note, Nullifier, Parameters, PreSender, ProofSystemError,
-        ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
-        UtxoAccumulatorItem, UtxoAccumulatorModel,
+        IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters, PreSender,
+        ProofSystemError, ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer,
+        TransferPost, Utxo, UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoMembershipProof,
     },
     wallet::ledger::{self, Data},
 };
@@ -96,6 +96,13 @@ where
         &mut self,
         request: TransactionDataRequest<C>,
     ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error>;
+
+    /// Generates an [`IdentityProof`] which can be verified against the [`IdentifiedAsset`]s in
+    /// `request`.
+    fn identity_proof(
+        &mut self,
+        request: IdentityRequest<C>,
+    ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>;
 }
 
 /// Signer Synchronization Data
@@ -450,6 +457,56 @@ where
     /// Transfer Posts
     pub posts: Vec<TransferPost<C>>,
 }
+
+/// Identity Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Asset<C>: Deserialize<'de>, Identifier<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize, Identifier<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub struct IdentityRequest<C>(pub Vec<IdentifiedAsset<C>>)
+where
+    C: transfer::Configuration;
+
+/// Identity Response
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "TransferPost<C>: Deserialize<'de>, UtxoMembershipProof<C>: Deserialize<'de>",
+            serialize = "TransferPost<C>: Serialize, UtxoMembershipProof<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "TransferPost<C>: Clone, UtxoMembershipProof<C>: Clone"),
+    Debug(bound = "TransferPost<C>: Debug, UtxoMembershipProof<C>: Debug"),
+    Eq(bound = "TransferPost<C>: Eq, UtxoMembershipProof<C>: Eq"),
+    Hash(bound = "TransferPost<C>: Hash, UtxoMembershipProof<C>: Hash"),
+    PartialEq(bound = "TransferPost<C>: PartialEq, UtxoMembershipProof<C>: PartialEq")
+)]
+pub struct IdentityResponse<C>(pub Vec<Option<IdentityProof<C>>>)
+where
+    C: transfer::Configuration;
 
 impl<C> SignResponse<C>
 where
@@ -1111,6 +1168,32 @@ where
         Ok(senders)
     }
 
+    /// Builds two virtual [`Sender`]s for `pre_sender`.
+    #[inline]
+    fn virtual_senders(
+        &mut self,
+        parameters: &Parameters<C>,
+        asset_id: &C::AssetId,
+        pre_sender: PreSender<C>,
+    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>> {
+        let mut utxo_accumulator = C::UtxoAccumulator::empty(self.utxo_accumulator.model());
+        let sender = pre_sender
+            .insert_and_upgrade(parameters, &mut utxo_accumulator)
+            .expect("Unable to upgrade expected UTXO.");
+        let mut senders = Vec::new();
+        senders.push(sender);
+        let identifier = self.rng.gen();
+        senders.push(
+            self.build_pre_sender(
+                parameters,
+                identifier,
+                Asset::<C>::new(asset_id.clone(), Default::default()),
+            )
+            .upgrade_unchecked(Default::default()),
+        );
+        Ok(into_array_unchecked(senders))
+    }
+
     /// Computes the batched transactions for rebalancing before a final transfer.
     #[inline]
     fn compute_batched_transactions(
@@ -1357,6 +1440,44 @@ where
         Ok(SignResponse::new(posts))
     }
 
+    /// Generates an [`IdentityProof`] for `identified_asset` by
+    /// signing a virtual [`ToPublic`] transaction.
+    #[inline]
+    pub fn identity_proof(
+        &mut self,
+        identified_asset: IdentifiedAsset<C>,
+    ) -> Option<IdentityProof<C>> {
+        let presender = self.state.build_pre_sender(
+            &self.parameters.parameters,
+            identified_asset.identifier,
+            identified_asset.asset.clone(),
+        );
+        let senders = self
+            .state
+            .virtual_senders(
+                &self.parameters.parameters,
+                &identified_asset.asset.id,
+                presender,
+            )
+            .ok()?;
+        let change = self.state.default_receiver(
+            &self.parameters.parameters,
+            Asset::<C>::new(identified_asset.asset.id.clone(), Default::default()),
+        );
+        let authorization = self
+            .state
+            .authorization_for_default_spending_key(&self.parameters.parameters);
+        let transfer_post = self
+            .state
+            .build_post(
+                &self.parameters.parameters,
+                &self.parameters.proving_context.to_public,
+                ToPublic::build(authorization, senders, [change], identified_asset.asset),
+            )
+            .ok()?;
+        Some(IdentityProof { transfer_post })
+    }
+
     /// Signs the `transaction`, generating transfer posts without releasing resources.
     #[inline]
     fn sign_internal(
@@ -1387,6 +1508,20 @@ where
         let result = self.sign_internal(transaction);
         self.state.utxo_accumulator.rollback();
         result
+    }
+
+    /// Returns a vector with the [`IdentityProof`] corresponding to each [`IdentifiedAsset`] in `identified_assets`.
+    #[inline]
+    pub fn batched_identity_proof(
+        &mut self,
+        identified_assets: Vec<IdentifiedAsset<C>>,
+    ) -> IdentityResponse<C> {
+        IdentityResponse(
+            identified_assets
+                .into_iter()
+                .map(|identified_asset| self.identity_proof(identified_asset))
+                .collect(),
+        )
     }
 
     /// Returns the [`Address`] corresponding to `self`.
@@ -1491,5 +1626,13 @@ where
         request: TransactionDataRequest<C>,
     ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error> {
         Box::pin(async move { Ok(self.batched_transaction_data(request.0)) })
+    }
+
+    #[inline]
+    fn identity_proof(
+        &mut self,
+        request: IdentityRequest<C>,
+    ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error> {
+        Box::pin(async move { Ok(self.batched_identity_proof(request.0)) })
     }
 }

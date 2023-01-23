@@ -28,3 +28,8 @@ pub mod transfer;
 #[cfg(feature = "groth16")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod payment;
+
+#[cfg(all(feature = "groth16", feature = "simulation"))]
+#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "simulation"))))]
+#[cfg(test)]
+pub mod signer;

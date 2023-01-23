@@ -19,7 +19,8 @@
 use crate::{
     config::{
         utxo::{self, MerkleTreeConfiguration},
-        Config,
+        Address, Config, IdentifiedAsset, IdentityProof, Parameters, UtxoAccumulatorModel,
+        VerifyingContext,
     },
     key::{CoinType, KeySecret, Testnet},
     signer::Checkpoint,
@@ -29,7 +30,7 @@ use core::{cmp, mem};
 use manta_accounting::{
     asset::HashAssetMap,
     key::{AccountCollection, AccountIndex, DeriveAddresses},
-    transfer::{utxo::protocol, Identifier, SpendingKey},
+    transfer::{utxo::protocol, Identifier, IdentityVerificationError, SpendingKey},
     wallet::{
         self,
         signer::{self, SyncData},
@@ -195,3 +196,26 @@ pub type SignerState = wallet::signer::SignerState<Config>;
 
 /// Signer Base Type
 pub type Signer = wallet::signer::Signer<Config>;
+
+/// Runs the identity verification method on `identity_proof` with [`Config`] and
+/// [`UtxoAccumulator`], checking that `virtual_asset` is opaque and not zero for extra security.
+#[inline]
+pub fn identity_verification(
+    identity_proof: &IdentityProof,
+    parameters: &Parameters,
+    verifying_context: &VerifyingContext,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+    virtual_asset: IdentifiedAsset,
+    address: Address,
+) -> Result<(), IdentityVerificationError> {
+    if virtual_asset.identifier.is_transparent || virtual_asset.asset.is_empty(&mut ()) {
+        return Err(IdentityVerificationError::InvalidVirtualAsset);
+    }
+    identity_proof.identity_verification::<UtxoAccumulator>(
+        parameters,
+        verifying_context,
+        utxo_accumulator_model,
+        virtual_asset,
+        address,
+    )
+}
