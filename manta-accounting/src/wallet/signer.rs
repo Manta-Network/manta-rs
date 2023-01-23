@@ -619,9 +619,9 @@ pub trait Configuration: transfer::Configuration {
     /// [`Utxo`] Accumulator Type
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
         + ExactSizeAccumulator
+        + From<UtxoAccumulatorModel<Self>>
         + OptimizedAccumulator
-        + Rollback
-        + From<UtxoAccumulatorModel<Self>>;
+        + Rollback;
 
     /// Asset Map Type
     type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
