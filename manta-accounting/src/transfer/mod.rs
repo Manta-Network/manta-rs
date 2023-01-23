@@ -35,7 +35,10 @@ use crate::{
         canonical::TransferShape,
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence, UtxoReconstruct},
+        utxo::{
+            auth, IdentifierTransparency, Mint, NullifierIndependence, Spend, UtxoIndependence,
+            UtxoReconstruct,
+        },
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -75,8 +78,6 @@ pub mod test;
 
 #[doc(inline)]
 pub use canonical::Shape;
-
-use self::utxo::IdentifierTransparency;
 
 /// Returns `true` if the [`Transfer`] with this shape would have public participants.
 #[inline]
@@ -2176,84 +2177,88 @@ where
     pub transfer_post: TransferPost<C>,
 }
 
-/// Verifies `identity_proof` for `address` against `virtual_asset`.
-///
-/// # Note
-///
-/// It performs four checks:
-///
-/// 1) `identity_proof.transferpost` has a [`ToPublic`](crate::transfer::canonical::ToPublic)
-/// shape.
-///
-/// 2) `identity_proof.transferpost` has a valid proof.
-///
-/// 3) The [`UtxoAccumulatorOutput`] in `identity_proof.transferpost` has been computed from
-/// `virtual_asset` and `address`.
-///
-/// 4) The virtual asset is correctly constructed.
-#[inline]
-pub fn identity_verification<A, C>(
-    parameters: &Parameters<C>,
-    verifying_context: &VerifyingContext<C>,
-    utxo_accumulator_model: &UtxoAccumulatorModel<C>,
-    identity_proof: IdentityProof<C>,
-    virtual_asset: IdentifiedAsset<C>,
-    address: Address<C>,
-) -> Result<(), IdentityVerificationError>
+impl<C> IdentityProof<C>
 where
     C: Configuration,
-    C::UtxoAccumulatorOutput: PartialEq,
-    UtxoAccumulatorModel<C>: Clone + Model<Verification = bool>,
-    A: Accumulator<
-            Item = UtxoAccumulatorItem<C>,
-            Model = UtxoAccumulatorModel<C>,
-            Output = UtxoAccumulatorOutput<C>,
-        > + From<UtxoAccumulatorModel<C>>,
-    Asset<C>: Default,
 {
-    let IdentifiedAsset::<C> { identifier, asset } = virtual_asset;
-    if <Parameters<C> as IdentifierTransparency>::is_transparent(&identifier)
-        || asset == Default::default()
+    /// Verifies `self` for `address` against `virtual_asset`.
+    ///
+    /// # Note
+    ///
+    /// It performs four checks:
+    ///
+    /// 1) `identity_proof.transfer_post` has a [`ToPublic`](crate::transfer::canonical::ToPublic)
+    /// shape.
+    ///
+    /// 2) `identity_proof.transfer_post` has a valid proof.
+    ///
+    /// 3) The [`UtxoAccumulatorOutput`] in `identity_proof.transfer_post` has been computed from
+    /// `virtual_asset` and `address`.
+    ///
+    /// 4) The virtual asset is correctly constructed.
+    #[inline]
+    pub fn identity_verification<A>(
+        &self,
+        parameters: &Parameters<C>,
+        verifying_context: &VerifyingContext<C>,
+        utxo_accumulator_model: &UtxoAccumulatorModel<C>,
+        virtual_asset: IdentifiedAsset<C>,
+        address: Address<C>,
+    ) -> Result<(), IdentityVerificationError>
+    where
+        C::UtxoAccumulatorOutput: PartialEq,
+        UtxoAccumulatorModel<C>: Clone + Model<Verification = bool>,
+        A: Accumulator<
+                Item = UtxoAccumulatorItem<C>,
+                Model = UtxoAccumulatorModel<C>,
+                Output = UtxoAccumulatorOutput<C>,
+            > + From<UtxoAccumulatorModel<C>>,
+        Asset<C>: Default,
     {
-        return Err(IdentityVerificationError::InvalidIdentifiedAsset);
-    }
-    TransferShape::from_post(&identity_proof.transfer_post).map_or(
-        Err(IdentityVerificationError::InvalidShape),
-        |shape| match shape {
-            TransferShape::ToPublic => Ok(()),
-            _ => Err(IdentityVerificationError::InvalidShape),
-        },
-    )?;
-    if !identity_proof
-        .transfer_post
-        .has_valid_proof(verifying_context)
-        .map_err(|_| IdentityVerificationError::InvalidProof)?
-    {
-        return Err(IdentityVerificationError::InvalidProof);
-    }
-    let utxo = parameters.utxo_reconstruct(&asset, &identifier, &address);
-    let mut utxo_accumulator: A = utxo_accumulator_model.clone().into();
-    utxo_accumulator.insert(
-        &parameters
-            .utxo_accumulator_item_hash()
-            .item_hash(&utxo, &mut ()),
-    );
-    let utxo_accumulator_output = utxo_accumulator
-        .prove(
+        let IdentifiedAsset::<C> { identifier, asset } = virtual_asset;
+        if <Parameters<C> as IdentifierTransparency>::is_transparent(&identifier)
+            || asset == Default::default()
+        {
+            return Err(IdentityVerificationError::InvalidIdentifiedAsset);
+        }
+        TransferShape::from_post(&self.transfer_post).map_or(
+            Err(IdentityVerificationError::InvalidShape),
+            |shape| match shape {
+                TransferShape::ToPublic => Ok(()),
+                _ => Err(IdentityVerificationError::InvalidShape),
+            },
+        )?;
+        if !self
+            .transfer_post
+            .has_valid_proof(verifying_context)
+            .map_err(|_| IdentityVerificationError::InvalidProof)?
+        {
+            return Err(IdentityVerificationError::InvalidProof);
+        }
+        let utxo = parameters.utxo_reconstruct(&asset, &identifier, &address);
+        let mut utxo_accumulator: A = utxo_accumulator_model.clone().into();
+        utxo_accumulator.insert(
             &parameters
                 .utxo_accumulator_item_hash()
                 .item_hash(&utxo, &mut ()),
-        )
-        .expect("Failed to generate UtxoMembershipProof")
-        .into_output();
-    if !identity_proof
-        .transfer_post
-        .body
-        .sender_posts
-        .iter()
-        .any(|sender_post| sender_post.utxo_accumulator_output == utxo_accumulator_output)
-    {
-        return Err(IdentityVerificationError::InconsistentUtxoAccumulatorOutput);
+        );
+        let utxo_accumulator_output = utxo_accumulator
+            .prove(
+                &parameters
+                    .utxo_accumulator_item_hash()
+                    .item_hash(&utxo, &mut ()),
+            )
+            .expect("Failed to generate UtxoMembershipProof")
+            .into_output();
+        if !self
+            .transfer_post
+            .body
+            .sender_posts
+            .iter()
+            .any(|sender_post| sender_post.utxo_accumulator_output == utxo_accumulator_output)
+        {
+            return Err(IdentityVerificationError::InconsistentUtxoAccumulatorOutput);
+        }
+        Ok(())
     }
-    Ok(())
 }

@@ -348,6 +348,7 @@ where
     F::Tree: WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
 {
+    #[inline]
     fn from(value: Parameters<C>) -> Self {
         Self::new(value)
     }
