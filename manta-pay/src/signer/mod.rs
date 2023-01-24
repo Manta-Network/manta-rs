@@ -17,7 +17,7 @@
 //! Manta Pay Signer Tools
 
 use alloc::{format, string::String};
-use core::ops::Div;
+use core::ops::{Div, Sub};
 use manta_accounting::wallet::signer;
 
 #[cfg(feature = "groth16")]
@@ -122,19 +122,30 @@ pub struct AssetMetadata {
 impl AssetMetadata {
     /// Returns a string formatting of only the `value` interpreted using `self` as the metadata.
     #[inline]
-    pub fn display_value<V>(&self, value: V) -> Option<String>
+    pub fn display_value<V>(&self, value: V, digits: u32) -> Option<String>
     where
         for<'v> &'v V: Div<u128, Output = u128>,
+        V: Sub<u128, Output = u128>,
     {
-        // TODO: What if we want more than three `FRACTIONAL_DIGITS`? How do we make this method
-        //       more general?
         match self.token_type {
             TokenType::FT(decimals) => {
-                const FRACTIONAL_DIGITS: u32 = 3;
                 let value_base_units = &value / (10u128.pow(decimals));
-                let fractional_digits = &value / (10u128.pow(decimals - FRACTIONAL_DIGITS))
-                    % (10u128.pow(FRACTIONAL_DIGITS));
-                Some(format!("{value_base_units}.{fractional_digits:0>3}"))
+                let fractional_digits =
+                    &value / (10u128.pow(decimals - digits)) % (10u128.pow(digits));
+                let decimals: u128 = value - (value_base_units * 10u128.pow(digits));
+                let decimals_length: u32 = decimals
+                    .to_string()
+                    .len()
+                    .try_into()
+                    .expect("Conversion to u32 failed.");
+                let leading_zeros = "0".repeat(
+                    (digits - decimals_length)
+                        .try_into()
+                        .expect("Conversion from u32 to usize is not allowed to fail."),
+                );
+                Some(format!(
+                    "{value_base_units}.{leading_zeros}{fractional_digits}"
+                ))
             }
             TokenType::NFT => None,
         }
@@ -142,11 +153,12 @@ impl AssetMetadata {
     /// Returns a string formatting of `value` interpreted using `self` as the metadata including
     /// the symbol.
     #[inline]
-    pub fn display<V>(&self, value: V) -> String
+    pub fn display<V>(&self, value: V, digits: u32) -> String
     where
         for<'v> &'v V: Div<u128, Output = u128>,
+        V: Sub<u128, Output = u128>,
     {
-        match self.display_value(value) {
+        match self.display_value(value, digits) {
             Some(str) => format!("{} {}", str, self.symbol),
             _ => format!("{} {}", "NFT", self.symbol),
         }
