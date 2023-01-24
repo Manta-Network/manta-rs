@@ -16,7 +16,10 @@
 
 //! Manta Pay Signer Tools
 
-use alloc::{format, string::String};
+use alloc::{
+    format,
+    string::{String, ToString},
+};
 use core::ops::{Div, Sub};
 use manta_accounting::wallet::signer;
 
