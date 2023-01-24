@@ -53,6 +53,7 @@ use manta_util::serde::{Deserialize, Serialize};
 pub mod balance;
 pub mod ledger;
 pub mod signer;
+pub mod stateless_signer;
 
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
