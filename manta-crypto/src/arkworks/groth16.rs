@@ -20,6 +20,7 @@ use crate::{
     arkworks::{
         constraint::R1CS,
         ec::PairingEngine,
+        relations::r1cs::SynthesisError,
         serialize::{
             ArkReader, ArkWriter, CanonicalDeserialize, CanonicalSerialize, HasDeserialization,
             HasSerialization, Read, SerializationError, Write,
@@ -29,7 +30,7 @@ use crate::{
     rand::{CryptoRng, RngCore, SizedRng},
 };
 use alloc::vec::Vec;
-use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey};
+use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey, VerifyingKey};
 use ark_snark::SNARK;
 use core::marker::PhantomData;
 use manta_util::codec::{self, DecodeError};
@@ -202,6 +203,12 @@ where
     pub fn new(proving_key: ProvingKey<E>) -> Self {
         Self(proving_key)
     }
+
+    /// Returns the [`VerifyingContext`] for `self`.
+    #[inline]
+    pub fn get_verifying_context(&self) -> Result<VerifyingContext<E>, SynthesisError> {
+        VerifyingContext::from_proving_context(self)
+    }
 }
 
 impl<E> codec::Decode for ProvingContext<E>
@@ -247,6 +254,31 @@ where
 pub struct VerifyingContext<E>(pub PreparedVerifyingKey<E>)
 where
     E: PairingEngine;
+
+impl<E> VerifyingContext<E>
+where
+    E: PairingEngine,
+{
+    /// Builds a new [`VerifyingContext`] from `prepared_verifying_key`.
+    #[inline]
+    pub fn new_prepared(prepared_verifying_key: PreparedVerifyingKey<E>) -> Self {
+        Self(prepared_verifying_key)
+    }
+
+    /// Builds a new [`VerifyingContext`] from `verifying_key`.
+    #[inline]
+    pub fn new(verifying_key: &VerifyingKey<E>) -> Result<Self, SynthesisError> {
+        Ok(Self(ArkGroth16::process_vk(verifying_key)?))
+    }
+
+    /// Returns the [`VerifyingContext`] for `proving_context`.
+    #[inline]
+    pub fn from_proving_context(
+        proving_context: &ProvingContext<E>,
+    ) -> Result<Self, SynthesisError> {
+        Self::new(&proving_context.0.vk)
+    }
+}
 
 impl<E> CanonicalSerialize for VerifyingContext<E>
 where

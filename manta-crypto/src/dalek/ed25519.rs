@@ -40,14 +40,10 @@ macro_rules! byte_conversion {
         ///
         /// We don't need to return an error here because `bytes` already has the correct length.
         #[inline]
-        pub fn $name(bytes: [u8; $len]) -> $type {
+        pub fn $name(bytes: [u8; $len]) -> Result<$type, ByteConversionError> {
             match $type::from_bytes(&bytes) {
-                Ok(value) => value,
-                _ => unreachable!(concat!(
-                    "We are guaranteed the correct number of bytes from `",
-                    stringify!($len),
-                    "`."
-                )),
+                Ok(value) => Ok(value),
+                _ => Err(ByteConversionError::IncorrectByteSize),
             }
         }
     };
@@ -57,10 +53,17 @@ byte_conversion!(secret_key_from_bytes, SecretKey, SECRET_KEY_LENGTH);
 byte_conversion!(public_key_from_bytes, PublicKey, PUBLIC_KEY_LENGTH);
 byte_conversion!(signature_from_bytes, Signature, SIGNATURE_LENGTH);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Errors that can occur when converting from bytes
+pub enum ByteConversionError {
+    /// Incorrect Number of Bytes
+    IncorrectByteSize,
+}
+
 /// Clones the `secret_key` by serializing and then deserializing.
 #[inline]
 pub fn clone_secret_key(secret_key: &SecretKey) -> SecretKey {
-    secret_key_from_bytes(secret_key.to_bytes())
+    secret_key_from_bytes(secret_key.to_bytes()).expect("Byte conversion cannot fail here.")
 }
 
 /// Generates a [`Keypair`] from `secret_key`.
@@ -78,7 +81,7 @@ pub fn generate_secret_key<R>(rng: &mut R) -> SecretKey
 where
     R: CryptoRng + RngCore,
 {
-    secret_key_from_bytes(rng.gen())
+    secret_key_from_bytes(rng.gen()).expect("RNG will generate correct number of bytes.")
 }
 
 /// Generates a [`Keypair`] from `rng`.
@@ -98,6 +101,16 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Ed25519<M>(PhantomData<M>);
+
+/// The serialization of a [`PublicKey`].
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct VerifyingKey(Array<u8, 32>);
+
+impl From<PublicKey> for VerifyingKey {
+    fn from(k: PublicKey) -> Self {
+        Self(Array::from_unchecked(*k.as_bytes()))
+    }
+}
 
 impl<M> MessageType for Ed25519<M> {
     type Message = M;

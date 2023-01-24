@@ -31,14 +31,15 @@ use crate::{
     asset::AssetList,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Address, Asset, Configuration, TransferPost,
+        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, SignError, SignRequest, SignResponse, SyncData, SyncError, SyncRequest,
-            SyncResponse,
+            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
+            SyncData, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
+            TransactionDataResponse,
         },
     },
 };
@@ -383,6 +384,34 @@ where
             .await
             .map_err(Error::SignerConnectionError)?
             .map_err(Error::SignError)
+    }
+
+    /// Attempts to process TransferPosts and returns the corresponding TransactionData.
+    #[inline]
+    pub async fn transaction_data(
+        &mut self,
+        transfer_posts: Vec<TransferPost<C>>,
+    ) -> Result<TransactionDataResponse<C>, Error<C, L, S>> {
+        self.signer
+            .transaction_data(TransactionDataRequest(transfer_posts))
+            .await
+            .map_err(Error::SignerConnectionError)
+    }
+
+    /// Attempts to process [`IdentifiedAsset`]s and returns the corresponding
+    /// [`IdentityProof`](crate::transfer::IdentityProof)s.
+    #[inline]
+    pub async fn identity_proof(
+        &mut self,
+        virtual_assets: Vec<IdentifiedAsset<C>>,
+    ) -> Result<IdentityResponse<C>, Error<C, L, S>>
+    where
+        UtxoAccumulatorModel<C>: Clone,
+    {
+        self.signer
+            .identity_proof(IdentityRequest(virtual_assets))
+            .await
+            .map_err(Error::SignerConnectionError)
     }
 
     /// Posts a transaction to the ledger, returning a success [`Response`] if the `transaction`

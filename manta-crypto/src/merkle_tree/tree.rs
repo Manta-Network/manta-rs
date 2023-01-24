@@ -1061,6 +1061,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
 {
     type Model = Parameters<C>;
 
@@ -1084,6 +1085,17 @@ where
     }
 
     #[inline]
+    fn output_from(&self, item: &Self::Item) -> Option<Self::Output> {
+        let _ = item;
+        Some(self.root().clone())
+    }
+
+    #[inline]
+    fn empty(model: &Self::Model) -> Self {
+        Self::new(model.clone())
+    }
+
+    #[inline]
     fn contains(&self, item: &Self::Item) -> bool {
         self.contains(&self.parameters.digest(item))
     }
@@ -1094,6 +1106,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
 {
     #[inline]
     fn capacity() -> usize {
@@ -1106,6 +1119,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
 {
     #[inline]
     fn len(&self) -> usize {
@@ -1123,6 +1137,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
 {
     #[inline]
     fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {

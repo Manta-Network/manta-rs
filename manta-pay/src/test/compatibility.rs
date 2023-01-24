@@ -29,7 +29,6 @@ use crate::{
 use manta_crypto::rand::OsRng;
 
 /// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
-#[ignore = "This would fail because it'd download the data from main before merging."]
 #[test]
 fn compatibility() {
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");

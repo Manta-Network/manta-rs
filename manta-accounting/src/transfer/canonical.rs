@@ -21,11 +21,11 @@
 use crate::{
     asset::{self, AssetMap},
     transfer::{
-        has_public_participants, internal_pair, requires_authorization, Address, Asset,
-        AssociatedData, Authorization, AuthorizationContext, Configuration, FullParametersRef,
-        Parameters, PreSender, ProofSystemError, ProofSystemPublicParameters, ProvingContext,
-        Receiver, Sender, Transfer, TransferLedger, TransferPost, TransferPostingKeyRef,
-        VerifyingContext,
+        has_public_participants, internal_pair, requires_authorization, utxo::UtxoReconstruct,
+        Address, Asset, AssociatedData, Authorization, AuthorizationContext, Configuration,
+        FullParametersRef, Identifier, Parameters, PreSender, ProofSystemError,
+        ProofSystemPublicParameters, ProvingContext, Receiver, Sender, Transfer, TransferLedger,
+        TransferPost, TransferPostingKeyRef, Utxo, VerifyingContext,
     },
 };
 use alloc::vec::Vec;
@@ -657,4 +657,85 @@ where
             to_public: to_public.1,
         },
     ))
+}
+
+/// Transaction Data
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "Asset<C>: Deserialize<'de>, Identifier<C>: Deserialize<'de>",
+            serialize = "Asset<C>: Serialize, Identifier<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub enum TransactionData<C>
+where
+    C: Configuration,
+{
+    /// To Private Transaction Data
+    ToPrivate(Identifier<C>, Asset<C>),
+
+    /// Private Transfer Transaction Data
+    PrivateTransfer(Vec<(Identifier<C>, Asset<C>)>),
+
+    /// To Public Transaction Data
+    ToPublic(Identifier<C>, Asset<C>),
+}
+
+impl<C> TransactionData<C>
+where
+    C: Configuration,
+{
+    /// Returns a vector of [`Identifier`]-[`Asset`] pairs, consuming `self`.
+    #[inline]
+    pub fn open(&self) -> Vec<(Identifier<C>, Asset<C>)> {
+        match self {
+            TransactionData::ToPrivate(identifier, asset) => {
+                [(identifier.clone(), asset.clone())].to_vec()
+            }
+            TransactionData::PrivateTransfer(identified_assets) => identified_assets.clone(),
+            TransactionData::ToPublic(identifier, asset) => {
+                [(identifier.clone(), asset.clone())].to_vec()
+            }
+        }
+    }
+
+    /// Reconstructs the [`Utxo`] from `self` and `address`.
+    #[inline]
+    pub fn reconstruct_utxo(
+        &self,
+        parameters: &Parameters<C>,
+        address: &Address<C>,
+    ) -> Vec<Utxo<C>> {
+        self.open()
+            .into_iter()
+            .map(|(identifier, asset)| parameters.utxo_reconstruct(&asset, &identifier, address))
+            .collect()
+    }
+
+    /// Checks the correctness of `self` against `utxos`.
+    #[inline]
+    pub fn check_transaction_data(
+        &self,
+        parameters: &Parameters<C>,
+        address: &Address<C>,
+        utxos: &Vec<Utxo<C>>,
+    ) -> bool
+    where
+        Utxo<C>: PartialEq,
+    {
+        self.reconstruct_utxo(parameters, address).eq(utxos)
+    }
 }

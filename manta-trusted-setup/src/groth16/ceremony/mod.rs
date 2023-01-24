@@ -38,18 +38,19 @@ use manta_util::{
 };
 
 pub mod config;
+pub mod log;
 pub mod message;
 
-#[cfg(feature = "reqwest")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "reqwest")))]
+#[cfg(feature = "client")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "client")))]
 pub mod client;
 
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+#[cfg(feature = "coordinator")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "coordinator")))]
 pub mod coordinator;
 
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+#[cfg(feature = "coordinator")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "coordinator")))]
 pub mod server;
 
 /// Participant Queue Type
