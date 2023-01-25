@@ -20,8 +20,8 @@ use crate::{
     config::{utxo::Address, Config},
     signer::{
         client::network::{Message, Network},
-        Checkpoint, GetRequest, SignError, SignRequest, SignResponse,
-        SignWithTransactionDataResponse, SyncError, SyncRequest, SyncResponse,
+        Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError, SignRequest,
+        SignResponse, SignWithTransactionDataResponse, SyncError, SyncRequest, SyncResponse,
         TransactionDataRequest, TransactionDataResponse,
     },
 };
@@ -133,6 +133,17 @@ impl signer::Connection<Config> for Client {
         Box::pin(async move {
             self.base
                 .post("sign_with_transaction_data", &self.wrap_request(request))
+        })
+    }
+
+    #[inline]
+    fn identity_proof(
+        &mut self,
+        request: IdentityRequest,
+    ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
+        Box::pin(async move {
+            self.base
+                .post("identity", &self.wrap_request(request))
                 .await
         })
     }

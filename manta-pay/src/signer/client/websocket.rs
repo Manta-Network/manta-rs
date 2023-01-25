@@ -21,8 +21,8 @@
 use crate::{
     config::{utxo::Address, Config},
     signer::{
-        Checkpoint, GetRequest, SignError, SignRequest, SignResponse,
-        SignWithTransactionDataResponse, SyncError, SyncRequest, SyncResponse,
+        Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError, SignRequest,
+        SignResponse, SignWithTransactionDataResponse, SyncError, SyncRequest, SyncResponse,
         TransactionDataRequest, TransactionDataResponse,
     },
 };
@@ -172,5 +172,13 @@ impl signer::Connection<Config> for Client {
         TransferPost<Config>: Clone,
     {
         Box::pin(async move { self.send("sign_with_transaction_data", request).await })
+    }
+
+    #[inline]
+    fn identity_proof(
+        &mut self,
+        request: IdentityRequest,
+    ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
+        Box::pin(async move { self.send("identity", request).await })
     }
 }

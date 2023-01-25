@@ -305,6 +305,7 @@ where
     F: Forest<C>,
     F::Tree: WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
 {
     type Model = Parameters<C>;
 
@@ -334,6 +335,17 @@ where
     }
 
     #[inline]
+    fn output_from(&self, item: &Self::Item) -> Option<Self::Output> {
+        let tree = self.forest.get_tree(item);
+        Some(tree.root().clone())
+    }
+
+    #[inline]
+    fn empty(model: &Self::Model) -> Self {
+        Self::new(model.clone())
+    }
+
+    #[inline]
     fn contains(&self, item: &Self::Item) -> bool {
         self.forest
             .get_tree(item)
@@ -347,6 +359,7 @@ where
     F: ConstantWidthForest<C>,
     F::Tree: WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
 {
     #[inline]
     fn capacity() -> usize {
@@ -360,6 +373,7 @@ where
     F: Forest<C>,
     F::Tree: WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
 {
     #[inline]
     fn len(&self) -> usize {
@@ -378,6 +392,7 @@ where
     F: Forest<C>,
     F::Tree: WithProofs<C>,
     InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
 {
     #[inline]
     fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {
