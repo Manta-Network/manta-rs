@@ -133,6 +133,7 @@ impl signer::Connection<Config> for Client {
         Box::pin(async move {
             self.base
                 .post("sign_with_transaction_data", &self.wrap_request(request))
+                .await
         })
     }
 
