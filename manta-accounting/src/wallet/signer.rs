@@ -26,7 +26,7 @@
 //        internally.
 
 use crate::{
-    asset::{AssetMap, AssetMetadata},
+    asset::AssetMap,
     key::{self, Account, AccountCollection, DeriveAddress, DeriveAddresses},
     transfer::{
         self,
@@ -64,6 +64,9 @@ pub trait Connection<C>
 where
     C: transfer::Configuration,
 {
+    /// Asset Metadata Type
+    type AssetMetadata;
+
     /// Checkpoint Type
     ///
     /// This checkpoint is used by the signer to stay synchronized with wallet and the ledger.
@@ -85,7 +88,7 @@ where
     /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
         &mut self,
-        request: SignRequest<C>,
+        request: SignRequest<Self::AssetMetadata, C>,
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error>;
 
     /// Returns the [`Address`] corresponding to `self`.
@@ -400,8 +403,8 @@ pub type SyncResult<C, T> = Result<SyncResponse<C, T>, SyncError<T>>;
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "Transaction<C>: Deserialize<'de>",
-            serialize = "Transaction<C>: Serialize"
+            deserialize = "Transaction<C>: Deserialize<'de>, A: Deserialize<'de>",
+            serialize = "Transaction<C>: Serialize, A: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -409,13 +412,13 @@ pub type SyncResult<C, T> = Result<SyncResponse<C, T>, SyncError<T>>;
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Transaction<C>: Clone"),
-    Debug(bound = "Transaction<C>: Debug"),
-    Eq(bound = "Transaction<C>: Eq"),
-    Hash(bound = "Transaction<C>: Hash"),
-    PartialEq(bound = "Transaction<C>: PartialEq")
+    Clone(bound = "Transaction<C>: Clone, A: Clone"),
+    Debug(bound = "Transaction<C>: Debug, A: Debug"),
+    Eq(bound = "Transaction<C>: Eq, A: Eq"),
+    Hash(bound = "Transaction<C>: Hash, A: Hash"),
+    PartialEq(bound = "Transaction<C>: PartialEq, A: PartialEq")
 )]
-pub struct SignRequest<C>
+pub struct SignRequest<A, C>
 where
     C: transfer::Configuration,
 {
@@ -423,7 +426,7 @@ where
     pub transaction: Transaction<C>,
 
     /// Asset Metadata
-    pub metadata: Option<AssetMetadata>,
+    pub metadata: Option<A>,
 }
 
 /// Signer Signing Response
@@ -618,6 +621,9 @@ pub trait Configuration: transfer::Configuration {
 
     /// Asset Map Type
     type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
+
+    /// Asset Metadata Type
+    type AssetMetadata;
 
     /// Random Number Generator Type
     type Rng: CryptoRng + FromEntropy + RngCore;
@@ -1593,6 +1599,7 @@ impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
 {
+    type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;
     type Error = Infallible;
 
@@ -1610,7 +1617,7 @@ where
     #[inline]
     fn sign(
         &mut self,
-        request: SignRequest<C>,
+        request: SignRequest<Self::AssetMetadata, C>,
     ) -> LocalBoxFutureResult<Result<SignResponse<C>, SignError<C>>, Self::Error> {
         Box::pin(async move { Ok(self.sign(request.transaction)) })
     }

@@ -21,8 +21,8 @@
 use crate::{
     config::{utxo::Address, Config},
     signer::{
-        Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError, SignRequest,
-        SignResponse, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
+        AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError,
+        SignRequest, SignResponse, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
         TransactionDataResponse,
     },
 };
@@ -128,6 +128,7 @@ impl Client {
 }
 
 impl signer::Connection<Config> for Client {
+    type AssetMetadata = AssetMetadata;
     type Checkpoint = Checkpoint;
     type Error = Error;
 

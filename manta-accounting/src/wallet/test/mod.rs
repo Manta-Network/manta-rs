@@ -20,7 +20,7 @@
 // TODO: Generalize `PushResponse` so that we can test against more general wallet setups.
 
 use crate::{
-    asset::{AssetList, AssetMetadata},
+    asset::AssetList,
     transfer::{canonical::Transaction, Address, Asset, Configuration, TransferPost},
     wallet::{
         ledger,
@@ -493,7 +493,7 @@ where
     async fn post(
         &mut self,
         transaction: Transaction<C>,
-        metadata: Option<AssetMetadata>,
+        metadata: Option<S::AssetMetadata>,
     ) -> Result<L::Response, Error<C, L, S>> {
         self.wallet.post(transaction, metadata).await
     }
@@ -611,17 +611,17 @@ where
     /// [`ToPrivate`]: ActionType::ToPrivate
     /// [`Skip`]: ActionType::Skip
     #[inline]
-    async fn sample_private_transfer<A, R>(
+    async fn sample_private_transfer<F, R>(
         &mut self,
         is_self: bool,
         rng: &mut R,
-        address: A,
+        address: F,
     ) -> MaybeAction<C, L, S>
     where
         C::AssetValue: SampleUniform,
         L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
-        A: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
+        F: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
     {
         let action = if is_self {
             ActionType::SelfTransfer
@@ -647,16 +647,16 @@ where
     /// [`ToPrivate`]: ActionType::ToPrivate
     /// [`Skip`]: ActionType::Skip
     #[inline]
-    async fn sample_zero_private_transfer<A, R>(
+    async fn sample_zero_private_transfer<F, R>(
         &mut self,
         is_self: bool,
         rng: &mut R,
-        address: A,
+        address: F,
     ) -> MaybeAction<C, L, S>
     where
         L: PublicBalanceOracle<C>,
         R: RngCore + ?Sized,
-        A: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
+        F: FnOnce(&mut R) -> Result<Option<Address<C>>, Error<C, L, S>>,
     {
         let action = if is_self {
             ActionType::SelfTransfer
