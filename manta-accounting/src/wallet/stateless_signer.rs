@@ -17,7 +17,7 @@
 //! Stateless Signer Methods
 
 use crate::{
-    asset::{AssetMap, AssetMetadata},
+    asset::AssetMap,
     key::{self, Account, AccountCollection, DeriveAddress, DeriveAddresses},
     transfer::{
         self,
@@ -413,5 +413,172 @@ where
             Asset::<C>::new(asset_id.clone(), total),
             rng,
         ))
+    }
+
+    /// Prepares the final pre-senders for the last part of the transaction.
+    #[inline]
+    fn prepare_final_pre_senders(
+        accounts: &AccountTable<C>,
+        mut utxo_accumulator: C::UtxoAccumulator,
+        assets: &C::AssetMap,
+        parameters: &Parameters<C>,
+        asset_id: &C::AssetId,
+        mut new_zeroes: Vec<PreSender<C>>,
+        pre_senders: Vec<PreSender<C>>,
+        rng: &mut C::Rng,
+    ) -> Result<(Vec<Sender<C>>, C::UtxoAccumulator), SignError<C>> {
+        let mut senders = pre_senders
+            .into_iter()
+            .map(|s| s.try_upgrade(parameters, &mut utxo_accumulator))
+            .collect::<Option<Vec<_>>>()
+            .expect("Unable to upgrade expected UTXOs.");
+        let mut needed_zeroes = PrivateTransferShape::SENDERS - senders.len();
+        if needed_zeroes == 0 {
+            return Ok((senders, utxo_accumulator));
+        }
+        let zeroes = assets.zeroes(needed_zeroes, asset_id);
+        needed_zeroes -= zeroes.len();
+        for zero in zeroes {
+            let pre_sender = Self::build_pre_sender(
+                accounts,
+                parameters,
+                zero,
+                Asset::<C>::new(asset_id.clone(), Default::default()),
+                rng,
+            );
+            senders.push(
+                pre_sender
+                    .try_upgrade(parameters, &mut utxo_accumulator)
+                    .expect("Unable to upgrade expected UTXOs."),
+            );
+        }
+        if needed_zeroes == 0 {
+            return Ok((senders, utxo_accumulator));
+        }
+        let needed_fake_zeroes = needed_zeroes.saturating_sub(new_zeroes.len());
+        for _ in 0..needed_zeroes {
+            match new_zeroes.pop() {
+                Some(zero) => senders.push(
+                    zero.try_upgrade(parameters, &mut utxo_accumulator)
+                        .expect("Unable to upgrade expected UTXOs."),
+                ),
+                _ => break,
+            }
+        }
+        if needed_fake_zeroes == 0 {
+            return Ok((senders, utxo_accumulator));
+        }
+        for _ in 0..needed_fake_zeroes {
+            let identifier = rng.gen();
+            senders.push(
+                Self::build_pre_sender(
+                    accounts,
+                    parameters,
+                    identifier,
+                    Asset::<C>::new(asset_id.clone(), Default::default()),
+                    rng,
+                )
+                .upgrade_unchecked(Default::default()),
+            );
+        }
+        Ok((senders, utxo_accumulator))
+    }
+
+    /// Builds two virtual [`Sender`]s for `pre_sender`.
+    #[inline]
+    fn virtual_senders(
+        accounts: &AccountTable<C>,
+        utxo_accumulator_model: &UtxoAccumulatorModel<C>,
+        parameters: &Parameters<C>,
+        asset_id: &C::AssetId,
+        pre_sender: PreSender<C>,
+        rng: &mut C::Rng,
+    ) -> Result<[Sender<C>; PrivateTransferShape::SENDERS], SignError<C>> {
+        let mut utxo_accumulator = C::UtxoAccumulator::empty(utxo_accumulator_model);
+        let sender = pre_sender
+            .insert_and_upgrade(parameters, &mut utxo_accumulator)
+            .expect("Unable to upgrade expected UTXO.");
+        let mut senders = Vec::new();
+        senders.push(sender);
+        let identifier = rng.gen();
+        senders.push(
+            Self::build_pre_sender(
+                accounts,
+                parameters,
+                identifier,
+                Asset::<C>::new(asset_id.clone(), Default::default()),
+                rng,
+            )
+            .upgrade_unchecked(Default::default()),
+        );
+        Ok(into_array_unchecked(senders))
+    }
+
+    /// Computes the batched transactions for rebalancing before a final transfer.
+    #[inline]
+    fn compute_batched_transactions(
+        &mut self,
+        accounts: &AccountTable<C>,
+        assets: &C::AssetMap,
+        mut utxo_accumulator: C::UtxoAccumulator,
+        parameters: &Parameters<C>,
+        proving_context: &MultiProvingContext<C>,
+        asset_id: &C::AssetId,
+        mut pre_senders: Vec<PreSender<C>>,
+        posts: &mut Vec<TransferPost<C>>,
+        rng: &mut C::Rng,
+    ) -> Result<
+        (
+            [Sender<C>; PrivateTransferShape::SENDERS],
+            C::UtxoAccumulator,
+        ),
+        SignError<C>,
+    > {
+        let mut new_zeroes = Vec::new();
+        while pre_senders.len() > PrivateTransferShape::SENDERS {
+            let mut joins = Vec::new();
+            let mut iter = pre_senders
+                .into_iter()
+                .chunk_by::<{ PrivateTransferShape::SENDERS }>();
+            for chunk in &mut iter {
+                let senders = array_map(chunk, |s| {
+                    s.try_upgrade(parameters, &mut utxo_accumulator)
+                        .expect("Unable to upgrade expected UTXO.")
+                });
+                let (receivers, mut join) = Self::next_join(
+                    accounts,
+                    parameters,
+                    asset_id,
+                    senders.iter().map(|s| s.asset().value).sum(),
+                    rng,
+                )?;
+                let authorization =
+                    Self::authorization_for_default_spending_key(accounts, parameters, rng);
+                posts.push(Self::build_post(
+                    accounts,
+                    utxo_accumulator.model(),
+                    parameters,
+                    &proving_context.private_transfer,
+                    PrivateTransfer::build(authorization, senders, receivers),
+                    rng,
+                )?);
+                join.insert_utxos(parameters, &mut utxo_accumulator);
+                joins.push(join.pre_sender);
+                new_zeroes.append(&mut join.zeroes);
+            }
+            joins.append(&mut iter.remainder());
+            pre_senders = joins;
+        }
+        let (final_presenders, utxo_accumulator) = Self::prepare_final_pre_senders(
+            accounts,
+            utxo_accumulator,
+            assets,
+            parameters,
+            asset_id,
+            new_zeroes,
+            pre_senders,
+            rng,
+        )?;
+        Ok((into_array_unchecked(final_presenders), utxo_accumulator))
     }
 }
