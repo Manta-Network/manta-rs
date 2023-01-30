@@ -19,7 +19,7 @@
 // TODO: Add typing for `ProvingContext` and `VerifyingContext` against the canonical shapes.
 
 use crate::{
-    asset::{self, AssetMap, AssetMetadata, MetadataDisplay},
+    asset::{self, AssetMap},
     transfer::{
         has_public_participants, internal_pair, requires_authorization, utxo::UtxoReconstruct,
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, Configuration,
@@ -28,7 +28,7 @@ use crate::{
         TransferPost, TransferPostingKeyRef, Utxo, VerifyingContext,
     },
 };
-use alloc::{string::String, vec::Vec};
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{create_seal, seal};
@@ -419,22 +419,6 @@ where
         C::AssetValue: Default + PartialEq,
     {
         self.value() == &Default::default()
-    }
-
-    /// Returns a display for the asset and address internal to `self` given the asset `metadata`.
-    #[inline]
-    pub fn display<F>(&self, metadata: &AssetMetadata, f: F) -> (String, Option<String>)
-    where
-        F: FnOnce(&Address<C>) -> String,
-        C::AssetValue: MetadataDisplay,
-    {
-        match self {
-            Self::ToPrivate(asset) => (asset.value.display(metadata), None),
-            Self::PrivateTransfer(asset, address) => {
-                (asset.value.display(metadata), Some(f(address)))
-            }
-            Self::ToPublic(asset) => (asset.value.display(metadata), None),
-        }
     }
 }
 

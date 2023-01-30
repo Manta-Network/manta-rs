@@ -28,7 +28,7 @@
 //! [`Ledger`]: ledger::Connection
 
 use crate::{
-    asset::{AssetList, AssetMetadata},
+    asset::AssetList,
     transfer::{
         canonical::{Transaction, TransactionKind},
         Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel,
@@ -372,7 +372,7 @@ where
     pub async fn sign(
         &mut self,
         transaction: Transaction<C>,
-        metadata: Option<AssetMetadata>,
+        metadata: Option<S::AssetMetadata>,
     ) -> Result<SignResponse<C>, Error<C, L, S>> {
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
@@ -459,7 +459,7 @@ where
     pub async fn post(
         &mut self,
         transaction: Transaction<C>,
-        metadata: Option<AssetMetadata>,
+        metadata: Option<S::AssetMetadata>,
     ) -> Result<L::Response, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>

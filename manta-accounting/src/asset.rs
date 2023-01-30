@@ -17,16 +17,12 @@
 //! Assets
 //!
 //! This module defines the data structures and canonical encodings of a standard notion of "asset".
-//! Assets are defined by an `AssetId` field and an `AssetValue` field. For describing an [`Asset`]
-//! with a particular `AssetId` we use [`AssetMetadata`] to assign a symbol and decimals for
-//! human-readable display purposes.
+//! Assets are defined by an `AssetId` field and an `AssetValue` field.
 
 #![allow(clippy::uninlined_format_args)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9715 on Display implementation on Asset below
 
 use alloc::{
     collections::btree_map::{BTreeMap, Entry as BTreeMapEntry},
-    format,
-    string::{String, ToString},
     vec,
     vec::Vec,
 };
@@ -35,12 +31,11 @@ use core::{
     fmt::Debug,
     hash::Hash,
     iter::{self, FusedIterator},
-    ops::{Add, AddAssign, Deref, Div, Sub, SubAssign},
+    ops::{Add, AddAssign, Deref, Sub, SubAssign},
     slice,
 };
 use derive_more::{Display, From};
 use manta_crypto::{
-    arkworks::std,
     constraint::{HasInput, Input},
     eclair::{
         self,
@@ -65,7 +60,7 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
-use self::std::{
+use std::{
     collections::hash_map::{Entry as HashMapEntry, HashMap, RandomState},
     hash::BuildHasher,
 };
@@ -1057,98 +1052,3 @@ where
 }
 
 impl<'s, I, V, M> FusedIterator for SelectionKeys<'s, I, V, M> where M: AssetMap<I, V> + ?Sized {}
-
-/// Asset Metadata
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde")
-)]
-#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
-pub struct AssetMetadata {
-    /// Number of Decimals
-    pub decimals: u32,
-
-    /// Asset Symbol
-    pub symbol: String,
-}
-
-impl AssetMetadata {
-    /// Returns a string formatting of only the `value` with `digits` fractional digits,
-    /// interpreted using `self` as the metadata.
-    #[inline]
-    pub fn display_value<V>(&self, value: V, digits: u32) -> String
-    where
-        for<'v> &'v V: Div<u128, Output = u128>,
-        V: manta_crypto::arkworks::std::fmt::Display,
-        V: std::ops::Sub<u128, Output = u128>,
-    {
-        let value_base_units = &value / (10u128.pow(self.decimals));
-        let fractional_digits =
-            &value / (10u128.pow(self.decimals - digits)) % (10u128.pow(digits));
-
-        let decimals: u128 = value - (value_base_units * 10u128.pow(digits));
-        let decimals_length: u32 = decimals.to_string().len().try_into().unwrap();
-        let leading_zeros = "0".repeat((digits - decimals_length).try_into().unwrap());
-        format!("{value_base_units}.{leading_zeros}{fractional_digits}")
-    }
-
-    /// Returns a string formatting of `value` with `digits` fractional digits, interpreted using
-    /// `self` as the metadata including the symbol.
-    #[inline]
-    pub fn display<V>(&self, value: V, digits: u32) -> String
-    where
-        for<'v> &'v V: Div<u128, Output = u128>,
-        V: manta_crypto::arkworks::std::fmt::Display,
-        V: std::ops::Sub<u128, Output = u128>,
-    {
-        format!("{} {}", self.display_value(value, digits), self.symbol)
-    }
-}
-
-/// Metadata Display
-pub trait MetadataDisplay {
-    /// Returns a string representation of `self` given the asset `metadata`.
-    fn display(&self, metadata: &AssetMetadata) -> String;
-}
-
-/// Asset Manager
-pub trait AssetManager<I> {
-    /// Returns the metadata associated to `id`.
-    fn metadata(&self, id: &I) -> Option<&AssetMetadata>;
-}
-
-/// Implements [`AssetManager`] for map types.
-macro_rules! impl_asset_manager_for_maps_body {
-    ($I:ident) => {
-        #[inline]
-        fn metadata(&self, id: &$I) -> Option<&AssetMetadata> {
-            self.get(id)
-        }
-    };
-}
-
-/// B-Tree Map [`AssetManager`] Implementation
-pub type BTreeAssetManager<I> = BTreeMap<I, AssetMetadata>;
-
-impl<I> AssetManager<I> for BTreeAssetManager<I>
-where
-    I: Ord,
-{
-    impl_asset_manager_for_maps_body! { I }
-}
-
-/// Hash Map [`AssetManager`] Implementation
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-pub type HashAssetManager<I, S = RandomState> = HashMap<I, AssetMetadata, S>;
-
-#[cfg(feature = "std")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
-impl<I, S> AssetManager<I> for HashAssetManager<I, S>
-where
-    I: Eq + Hash,
-    S: BuildHasher + Default,
-{
-    impl_asset_manager_for_maps_body! { I }
-}
