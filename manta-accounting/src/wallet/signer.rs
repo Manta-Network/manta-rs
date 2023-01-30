@@ -59,6 +59,8 @@ use manta_util::{
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use super::stateless_signer::{StatelessSignResponse, StatelessSigner, StatelessSyncResponse};
+
 /// Signer Connection
 pub trait Connection<C>
 where
@@ -603,10 +605,10 @@ where
 pub trait Configuration: transfer::Configuration {
     /// Checkpoint Type
     type Checkpoint: Checkpoint<
-        Self,
-        UtxoAccumulator = Self::UtxoAccumulator,
-        UtxoAccumulatorItemHash = Self::UtxoAccumulatorItemHash,
-    >;
+            Self,
+            UtxoAccumulator = Self::UtxoAccumulator,
+            UtxoAccumulatorItemHash = Self::UtxoAccumulatorItemHash,
+        > + Clone;
 
     /// Account Type
     type Account: AccountCollection<SpendingKey = SpendingKey<Self>>
@@ -617,10 +619,11 @@ pub trait Configuration: transfer::Configuration {
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
         + ExactSizeAccumulator
         + OptimizedAccumulator
-        + Rollback;
+        + Rollback
+        + Clone;
 
     /// Asset Map Type
-    type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
+    type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>> + Clone;
 
     /// Asset Metadata Type
     type AssetMetadata;
@@ -1272,8 +1275,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "SignerParameters<C>: Deserialize<'de>, SignerState<C>: Deserialize<'de>",
-            serialize = "SignerParameters<C>: Serialize, SignerState<C>: Serialize",
+            deserialize = "StatelessSigner<C>: Deserialize<'de>, SignerState<C>: Deserialize<'de>",
+            serialize = "StatelessSigner<C>: Serialize, SignerState<C>: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -1281,18 +1284,18 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "SignerParameters<C>: Clone, SignerState<C>: Clone"),
-    Debug(bound = "SignerParameters<C>: Debug, SignerState<C>: Debug"),
-    Eq(bound = "SignerParameters<C>: Eq, SignerState<C>: Eq"),
-    Hash(bound = "SignerParameters<C>: Hash, SignerState<C>: Hash"),
-    PartialEq(bound = "SignerParameters<C>: PartialEq, SignerState<C>: PartialEq")
+    Clone(bound = "StatelessSigner<C>: Clone, SignerState<C>: Clone"),
+    Debug(bound = "StatelessSigner<C>: Debug, SignerState<C>: Debug"),
+    Eq(bound = "StatelessSigner<C>: Eq, SignerState<C>: Eq"),
+    Hash(bound = "StatelessSigner<C>: Hash, SignerState<C>: Hash"),
+    PartialEq(bound = "StatelessSigner<C>: PartialEq, SignerState<C>: PartialEq")
 )]
 pub struct Signer<C>
 where
     C: Configuration,
 {
-    /// Signer Parameters
-    parameters: SignerParameters<C>,
+    /// Stateless Signer
+    stateless_signer: StatelessSigner<C>,
 
     /// Signer State
     state: SignerState<C>,
@@ -1305,7 +1308,10 @@ where
     /// Builds a new [`Signer`] from `parameters` and `state`.
     #[inline]
     pub fn from_parts(parameters: SignerParameters<C>, state: SignerState<C>) -> Self {
-        Self { parameters, state }
+        Self {
+            stateless_signer: StatelessSigner::from_parameters(parameters),
+            state,
+        }
     }
 
     /// Builds a new [`Signer`].
@@ -1354,7 +1360,7 @@ where
     /// Returns a shared reference to the signer parameters.
     #[inline]
     pub fn parameters(&self) -> &SignerParameters<C> {
-        &self.parameters
+        self.stateless_signer.parameters()
     }
 
     /// Returns a shared reference to the signer state.
@@ -1369,81 +1375,25 @@ where
         &mut self,
         mut request: SyncRequest<C, C::Checkpoint>,
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
-        // TODO: Do a capacity check on the current UTXO accumulator?
-        //
-        // if self.utxo_accumulator.capacity() < starting_index {
-        //    panic!("full capacity")
-        // }
-        let checkpoint = &self.state.checkpoint;
-        if checkpoint < &request.origin_checkpoint {
-            Err(SyncError::InconsistentSynchronization {
-                checkpoint: checkpoint.clone(),
-            })
-        } else {
-            let has_pruned = request.prune(
-                self.parameters.parameters.utxo_accumulator_item_hash(),
-                checkpoint,
-            );
-            let SyncData {
-                utxo_note_data,
-                nullifier_data,
-            } = request.data;
-            let response = self.state.sync_with(
-                &self.parameters.parameters,
-                utxo_note_data.into_iter(),
-                nullifier_data,
-                !has_pruned,
-            );
-            self.state.utxo_accumulator.commit();
-            Ok(response)
-        }
-    }
-
-    /// Signs a withdraw transaction for `asset` sent to `address`.
-    #[inline]
-    fn sign_withdraw(
-        &mut self,
-        asset: Asset<C>,
-        address: Option<Address<C>>,
-    ) -> Result<SignResponse<C>, SignError<C>> {
-        let selection = self.state.select(&self.parameters.parameters, &asset)?;
-        let mut posts = Vec::new();
-        let senders = self.state.compute_batched_transactions(
-            &self.parameters.parameters,
-            &self.parameters.proving_context,
-            &asset.id,
-            selection.pre_senders,
-            &mut posts,
+        let StatelessSyncResponse {
+            checkpoint,
+            balance_update,
+            utxo_accumulator,
+            assets,
+        } = self.stateless_signer.sync(
+            &self.state.accounts,
+            self.state.assets.clone(),
+            self.state.checkpoint.clone(),
+            self.state.utxo_accumulator.clone(),
+            request,
+            &mut self.state.rng,
         )?;
-        let change = self.state.default_receiver(
-            &self.parameters.parameters,
-            Asset::<C>::new(asset.id.clone(), selection.change),
-        );
-        let authorization = self
-            .state
-            .authorization_for_default_spending_key(&self.parameters.parameters);
-        let final_post = match address {
-            Some(address) => {
-                let receiver = self.state.receiver(
-                    &self.parameters.parameters,
-                    address,
-                    asset,
-                    Default::default(),
-                );
-                self.state.build_post(
-                    &self.parameters.parameters,
-                    &self.parameters.proving_context.private_transfer,
-                    PrivateTransfer::build(authorization, senders, [change, receiver]),
-                )?
-            }
-            _ => self.state.build_post(
-                &self.parameters.parameters,
-                &self.parameters.proving_context.to_public,
-                ToPublic::build(authorization, senders, [change], asset),
-            )?,
-        };
-        posts.push(final_post);
-        Ok(SignResponse::new(posts))
+        self.state.utxo_accumulator = utxo_accumulator;
+        self.state.assets = assets;
+        Ok(SyncResponse {
+            checkpoint,
+            balance_update,
+        })
     }
 
     /// Generates an [`IdentityProof`] for `identified_asset` by
@@ -1453,67 +1403,29 @@ where
         &mut self,
         identified_asset: IdentifiedAsset<C>,
     ) -> Option<IdentityProof<C>> {
-        let presender = self.state.build_pre_sender(
-            &self.parameters.parameters,
-            identified_asset.identifier,
-            identified_asset.asset.clone(),
-        );
-        let senders = self
-            .state
-            .virtual_senders(
-                &self.parameters.parameters,
-                &identified_asset.asset.id,
-                presender,
-            )
-            .ok()?;
-        let change = self.state.default_receiver(
-            &self.parameters.parameters,
-            Asset::<C>::new(identified_asset.asset.id.clone(), Default::default()),
-        );
-        let authorization = self
-            .state
-            .authorization_for_default_spending_key(&self.parameters.parameters);
-        let transfer_post = self
-            .state
-            .build_post(
-                &self.parameters.parameters,
-                &self.parameters.proving_context.to_public,
-                ToPublic::build(authorization, senders, [change], identified_asset.asset),
-            )
-            .ok()?;
-        Some(IdentityProof { transfer_post })
-    }
-
-    /// Signs the `transaction`, generating transfer posts without releasing resources.
-    #[inline]
-    fn sign_internal(
-        &mut self,
-        transaction: Transaction<C>,
-    ) -> Result<SignResponse<C>, SignError<C>> {
-        match transaction {
-            Transaction::ToPrivate(asset) => {
-                let receiver = self
-                    .state
-                    .default_receiver(&self.parameters.parameters, asset.clone());
-                Ok(SignResponse::new(vec![self.state.build_post(
-                    &self.parameters.parameters,
-                    &self.parameters.proving_context.to_private,
-                    ToPrivate::build(asset, receiver),
-                )?]))
-            }
-            Transaction::PrivateTransfer(asset, address) => {
-                self.sign_withdraw(asset, Some(address))
-            }
-            Transaction::ToPublic(asset) => self.sign_withdraw(asset, None),
-        }
+        self.stateless_signer.identity_proof(
+            &self.state.accounts().clone(),
+            self.state.utxo_accumulator.model(),
+            identified_asset,
+            &mut self.state.rng,
+        )
     }
 
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
-        let result = self.sign_internal(transaction);
-        self.state.utxo_accumulator.rollback();
-        result
+        let StatelessSignResponse {
+            posts,
+            utxo_accumulator,
+        } = self.stateless_signer.sign(
+            &self.state.accounts().clone(),
+            &self.state.assets.clone(),
+            self.state.utxo_accumulator.clone(),
+            transaction,
+            &mut self.state.rng,
+        )?;
+        self.state.utxo_accumulator = utxo_accumulator;
+        Ok(SignResponse { posts })
     }
 
     /// Returns a vector with the [`IdentityProof`] corresponding to each [`IdentifiedAsset`] in `identified_assets`.
@@ -1533,8 +1445,7 @@ where
     /// Returns the [`Address`] corresponding to `self`.
     #[inline]
     pub fn address(&mut self) -> Address<C> {
-        let account = self.state.accounts.get_default();
-        account.address(&self.parameters.parameters)
+        self.stateless_signer.address(self.state.accounts())
     }
 
     /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
@@ -1542,41 +1453,8 @@ where
     /// underlying assets in `post`.
     #[inline]
     pub fn transaction_data(&self, post: TransferPost<C>) -> Option<TransactionData<C>> {
-        let shape = TransferShape::from_post(&post)?;
-        let parameters = &self.parameters.parameters;
-        let mut authorization_context = self.state.default_authorization_context(parameters);
-        let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
-        match shape {
-            TransferShape::ToPrivate => {
-                let ReceiverPost { utxo, note } = post.body.receiver_posts.take_first();
-                let (identifier, asset) =
-                    parameters.open_with_check(&decryption_key, &utxo, note)?;
-                Some(TransactionData::<C>::ToPrivate(identifier, asset))
-            }
-            TransferShape::PrivateTransfer => {
-                let mut transaction_data = Vec::new();
-                let receiver_posts = post.body.receiver_posts;
-                for receiver_post in receiver_posts.into_iter() {
-                    let ReceiverPost { utxo, note } = receiver_post;
-                    if let Some(identified_asset) =
-                        parameters.open_with_check(&decryption_key, &utxo, note)
-                    {
-                        transaction_data.push(identified_asset);
-                    }
-                }
-                if transaction_data.is_empty() {
-                    None
-                } else {
-                    Some(TransactionData::<C>::PrivateTransfer(transaction_data))
-                }
-            }
-            TransferShape::ToPublic => {
-                let ReceiverPost { utxo, note } = post.body.receiver_posts.take_first();
-                let (identifier, asset) =
-                    parameters.open_with_check(&decryption_key, &utxo, note)?;
-                Some(TransactionData::<C>::ToPublic(identifier, asset))
-            }
-        }
+        self.stateless_signer
+            .transaction_data(self.state.accounts(), post)
     }
 
     /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by
