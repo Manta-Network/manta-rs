@@ -28,17 +28,18 @@
 //! [`Ledger`]: ledger::Connection
 
 use crate::{
-    asset::{AssetList, AssetMetadata},
+    asset::AssetList,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Address, Asset, Configuration, TransferPost,
+        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, SignError, SignRequest, SignResponse, SyncData, SyncError, SyncRequest,
-            SyncResponse, TransactionDataRequest, TransactionDataResponse,
+            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
+            SyncData, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
+            TransactionDataResponse,
         },
     },
 };
@@ -371,7 +372,7 @@ where
     pub async fn sign(
         &mut self,
         transaction: Transaction<C>,
-        metadata: Option<AssetMetadata>,
+        metadata: Option<S::AssetMetadata>,
     ) -> Result<SignResponse<C>, Error<C, L, S>> {
         self.check(&transaction)
             .map_err(Error::InsufficientBalance)?;
@@ -393,6 +394,22 @@ where
     ) -> Result<TransactionDataResponse<C>, Error<C, L, S>> {
         self.signer
             .transaction_data(TransactionDataRequest(transfer_posts))
+            .await
+            .map_err(Error::SignerConnectionError)
+    }
+
+    /// Attempts to process [`IdentifiedAsset`]s and returns the corresponding
+    /// [`IdentityProof`](crate::transfer::IdentityProof)s.
+    #[inline]
+    pub async fn identity_proof(
+        &mut self,
+        virtual_assets: Vec<IdentifiedAsset<C>>,
+    ) -> Result<IdentityResponse<C>, Error<C, L, S>>
+    where
+        UtxoAccumulatorModel<C>: Clone,
+    {
+        self.signer
+            .identity_proof(IdentityRequest(virtual_assets))
             .await
             .map_err(Error::SignerConnectionError)
     }
@@ -420,7 +437,7 @@ where
     pub async fn post(
         &mut self,
         transaction: Transaction<C>,
-        metadata: Option<AssetMetadata>,
+        metadata: Option<S::AssetMetadata>,
     ) -> Result<L::Response, Error<C, L, S>>
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>

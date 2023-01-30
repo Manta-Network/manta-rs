@@ -200,6 +200,12 @@ pub type SpendingKey = transfer::SpendingKey<Config>;
 /// Address Type
 pub type Address = transfer::Address<Config>;
 
+/// Identified Asset Type
+pub type IdentifiedAsset = transfer::IdentifiedAsset<Config>;
+
+/// Identity Type
+pub type IdentityProof = transfer::IdentityProof<Config>;
+
 /// Converts an [`Address`] into a base58-encoded string.
 #[cfg(feature = "bs58")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bs58")))]

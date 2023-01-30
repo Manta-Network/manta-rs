@@ -19,6 +19,9 @@
 use crate::eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable};
 use core::{fmt::Debug, hash::Hash};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Accumulator Membership Model Types
 pub trait Types {
     /// Item Type
@@ -123,6 +126,12 @@ pub trait Accumulator: Types {
     /// Returns a membership proof for `item` if it is contained in `self`.
     fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>>;
 
+    /// Returns the output for `item` if it is contained in `self`.
+    fn output_from(&self, item: &Self::Item) -> Option<Self::Output>;
+
+    /// Returns an empty instance of `Self`.
+    fn empty(model: &Self::Model) -> Self;
+
     /// Returns `true` if `item` is stored in `self`.
     ///
     /// # Implementation Note
@@ -134,33 +143,6 @@ pub trait Accumulator: Types {
     #[inline]
     fn contains(&self, item: &Self::Item) -> bool {
         self.prove(item).is_some()
-    }
-}
-
-impl<A> Accumulator for &mut A
-where
-    A: Accumulator + ?Sized,
-{
-    type Model = A::Model;
-
-    #[inline]
-    fn model(&self) -> &Self::Model {
-        (**self).model()
-    }
-
-    #[inline]
-    fn insert(&mut self, item: &Self::Item) -> bool {
-        (**self).insert(item)
-    }
-
-    #[inline]
-    fn prove(&self, item: &Self::Item) -> Option<MembershipProof<Self::Model>> {
-        (**self).prove(item)
-    }
-
-    #[inline]
-    fn contains(&self, item: &Self::Item) -> bool {
-        (**self).contains(item)
     }
 }
 
@@ -221,6 +203,18 @@ pub trait OptimizedAccumulator: Accumulator {
 }
 
 /// Accumulator Membership Proof
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "M::Witness: Deserialize<'de>, M::Output: Deserialize<'de>",
+            serialize = "M::Witness: Serialize, M::Output: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "M::Witness: Clone, M::Output: Clone"),
