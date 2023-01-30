@@ -17,7 +17,7 @@
 //! Poseidon Configuration
 
 use crate::{config::ConstraintField, crypto::poseidon};
-use manta_crypto::eclair::alloc::Constant;
+use eclair::alloc::Constant;
 
 /// Poseidon Specification Configuration
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -89,11 +89,9 @@ pub mod test {
         },
     };
     use alloc::boxed::Box;
-    use manta_crypto::{
-        arkworks::constraint::fp::Fp,
-        encryption::{Decrypt, Encrypt},
-        rand::{OsRng, Sample},
-    };
+    use openzl_crypto::encryption::{Decrypt, Encrypt};
+    use openzl_plugin_arkworks::constraint::fp::Fp;
+    use openzl_util::rand::{OsRng, Sample};
 
     /// Tests Poseidon duplexer encryption works.
     #[test]

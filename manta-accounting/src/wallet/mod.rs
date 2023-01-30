@@ -45,10 +45,10 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::AddAssign};
-use manta_util::ops::ControlFlow;
+use openzl_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 pub mod balance;
 pub mod ledger;
@@ -67,7 +67,7 @@ pub mod test;
             deserialize = "L: Deserialize<'de>, S::Checkpoint: Deserialize<'de>, S: Deserialize<'de>, B: Deserialize<'de>",
             serialize = "L: Serialize, S::Checkpoint: Serialize, S: Serialize, B: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -466,7 +466,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum InconsistencyError {
@@ -516,7 +516,7 @@ pub enum InconsistencyError {
                 S::Error: Serialize
             "
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

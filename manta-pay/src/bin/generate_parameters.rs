@@ -23,7 +23,7 @@ use manta_pay::{
     config::{utxo::protocol::BaseParameters, Parameters},
     parameters,
 };
-use manta_util::codec::{Encode, IoWriter};
+use openzl_util::codec::{Encode, IoWriter};
 use std::{
     env,
     fs::{self, OpenOptions},

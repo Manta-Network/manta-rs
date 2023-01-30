@@ -47,17 +47,22 @@ use crate::{
 };
 use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
-use manta_crypto::{
-    accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
-    rand::{CryptoRng, FromEntropy, Rand, RngCore},
+use openzl_crypto::accumulator::{
+    Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator,
 };
-use manta_util::{
-    array_map, cmp::Independence, future::LocalBoxFutureResult, into_array_unchecked,
-    iter::IteratorExt, persistence::Rollback, vec::VecExt,
+use openzl_util::{
+    array_map,
+    cmp::Independence,
+    future::LocalBoxFutureResult,
+    into_array_unchecked,
+    iter::IteratorExt,
+    persistence::Rollback,
+    rand::{CryptoRng, FromEntropy, Rand, RngCore},
+    vec::VecExt,
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Signer Connection
 pub trait Connection<C>
@@ -125,7 +130,7 @@ where
                 Nullifier<C>: Serialize
             ",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -175,7 +180,7 @@ where
             deserialize = "T: Deserialize<'de>, SyncData<C>: Deserialize<'de>",
             serialize = "T: Serialize, SyncData<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -239,7 +244,7 @@ where
             deserialize = "T: Deserialize<'de>, BalanceUpdate<C>: Deserialize<'de>",
             serialize = "T: Serialize, BalanceUpdate<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -274,7 +279,7 @@ where
             deserialize = "TransferPost<C>: Deserialize<'de>",
             serialize = "TransferPost<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -300,7 +305,7 @@ where
             deserialize = "TransactionData<C>: Deserialize<'de>",
             serialize = "TransactionData<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -326,7 +331,7 @@ where
             deserialize = "Asset<C>: Deserialize<'de>",
             serialize = "Asset<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -372,7 +377,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SyncError<T>
@@ -406,7 +411,7 @@ pub type SyncResult<C, T> = Result<SyncResponse<C, T>, SyncError<T>>;
             deserialize = "Transaction<C>: Deserialize<'de>, A: Deserialize<'de>",
             serialize = "Transaction<C>: Serialize, A: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -441,7 +446,7 @@ where
             deserialize = "TransferPost<C>: Deserialize<'de>",
             serialize = "TransferPost<C>: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -534,7 +539,7 @@ where
             deserialize = "Asset<C>: Deserialize<'de>, ProofSystemError<C>: Deserialize<'de>",
             serialize = "Asset<C>: Serialize, ProofSystemError<C>: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -641,7 +646,7 @@ pub type AccountTable<C> = key::AccountTable<<C as Configuration>::Account>;
             deserialize = "Parameters<C>: Deserialize<'de>, MultiProvingContext<C>: Deserialize<'de>",
             serialize = "Parameters<C>: Serialize, MultiProvingContext<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -697,7 +702,7 @@ where
                 C::Checkpoint: Serialize
             ",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1275,7 +1280,7 @@ where
             deserialize = "SignerParameters<C>: Deserialize<'de>, SignerState<C>: Deserialize<'de>",
             serialize = "SignerParameters<C>: Serialize, SignerState<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

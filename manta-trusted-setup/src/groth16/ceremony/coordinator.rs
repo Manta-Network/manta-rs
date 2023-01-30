@@ -37,19 +37,19 @@ use crate::{
     mpc::ChallengeType,
 };
 use core::{fmt::Debug, mem};
-use manta_crypto::arkworks::{
+use openzl_plugin_arkworks::{
     bn254::{G1Affine, G2Affine},
     pairing::Pairing,
     relations::r1cs::ConstraintSynthesizer,
 };
-use manta_util::{time::lock::Timed, Array, BoxArray};
+use openzl_util::{time::lock::Timed, Array, BoxArray};
 use std::{
     fs::OpenOptions,
     path::{Path, PathBuf},
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Queue and Participant Lock
 #[derive(derivative::Derivative)]
@@ -175,7 +175,7 @@ where
                 C::Participant: Deserialize<'de>,
             "
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

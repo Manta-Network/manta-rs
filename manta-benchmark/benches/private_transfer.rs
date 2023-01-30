@@ -17,11 +17,11 @@
 //! Private Transfer Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_crypto::rand::OsRng;
 use manta_pay::{
     parameters,
     test::payment::{private_transfer::prove as prove_private_transfer, UtxoAccumulator},
 };
+use openzl_util::rand::OsRng;
 
 fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");

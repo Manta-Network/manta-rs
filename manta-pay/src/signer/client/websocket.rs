@@ -30,8 +30,8 @@ use alloc::boxed::Box;
 use core::marker::Unpin;
 use futures::{SinkExt, StreamExt};
 use manta_accounting::wallet::{self, signer};
-use manta_util::{
-    from_variant,
+use openzl_util::{
+    derivative, from_variant,
     future::LocalBoxFutureResult,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
 };
@@ -72,7 +72,7 @@ from_variant!(Error, WebSocket, WebSocketError);
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]

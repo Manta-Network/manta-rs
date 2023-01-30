@@ -18,7 +18,7 @@
 
 use crate::ceremony::registry::Registry;
 use core::fmt::Debug;
-use manta_util::serde::de::DeserializeOwned;
+use openzl_util::serde::de::DeserializeOwned;
 use std::{
     fs::{File, OpenOptions},
     io::{Seek, SeekFrom},

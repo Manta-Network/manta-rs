@@ -24,14 +24,14 @@ use crate::transfer::{
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::{
-    accumulator::Accumulator,
+use openzl_crypto::accumulator::Accumulator;
+use openzl_util::{
+    into_array_unchecked,
     rand::{CryptoRng, RngCore},
 };
-use manta_util::into_array_unchecked;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Batch Join Structure
 #[cfg_attr(
@@ -42,7 +42,7 @@ use manta_util::serde::{Deserialize, Serialize};
             deserialize = "PreSender<C>: Deserialize<'de>",
             serialize = "PreSender<C>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

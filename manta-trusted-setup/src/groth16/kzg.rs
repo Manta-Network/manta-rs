@@ -19,19 +19,20 @@
 use crate::util::{power_pairs, scalar_mul, Deserializer, NonZero, Serializer};
 use alloc::{vec, vec::Vec};
 use core::{iter, ops::Mul};
-use manta_crypto::{
-    arkworks::{
-        ff::{One, UniformRand},
-        pairing::{Pairing, PairingEngineExt},
-        ratio::{HashToGroup, RatioProof},
-        serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
-    },
-    rand::{CryptoRng, RngCore, Sample},
+use openzl_plugin_arkworks::{
+    ff::{One, UniformRand},
+    pairing::{Pairing, PairingEngineExt},
+    ratio::{HashToGroup, RatioProof},
+    serialize::{CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write},
 };
-use manta_util::{cfg_iter, cfg_iter_mut, from_variant, vec::VecExt};
+use openzl_util::{
+    cfg_iter, cfg_iter_mut, from_variant,
+    rand::{CryptoRng, RngCore, Sample},
+    vec::VecExt,
+};
 
 #[cfg(feature = "rayon")]
-use manta_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use openzl_util::rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 /// G1 Marker Type
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

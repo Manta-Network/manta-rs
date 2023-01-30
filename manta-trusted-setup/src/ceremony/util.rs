@@ -16,7 +16,7 @@
 
 //! Trusted Setup Ceremony Utilities
 
-use manta_util::serde::{de::DeserializeOwned, Serialize};
+use openzl_util::serde::{de::DeserializeOwned, Serialize};
 use std::{
     fs::{File, OpenOptions},
     path::Path,

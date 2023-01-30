@@ -18,14 +18,12 @@
 
 use alloc::vec::Vec;
 use core::fmt::Debug;
-use manta_crypto::{
-    dalek::ed25519::{Ed25519, SignatureError},
-    signature,
-};
-use manta_util::AsBytes;
+use openzl_crypto::signature;
+use openzl_plugin_dalek::ed25519::{Ed25519, SignatureError};
+use openzl_util::AsBytes;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Nonce
 pub trait Nonce: Default + PartialEq {
@@ -191,7 +189,7 @@ where
                 T: Serialize,
             ",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields,
     )
 )]

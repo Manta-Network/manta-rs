@@ -19,7 +19,7 @@
 use crate::crypto::poseidon::Specification;
 
 #[cfg(feature = "std")]
-use {manta_util::num::Ceil, security::SecurityCondition};
+use {openzl_util::num::Ceil, security::SecurityCondition};
 
 /// Poseidon Security Parameters
 ///
@@ -155,7 +155,7 @@ impl Constants {
 /// Security
 pub mod security {
     #[cfg(feature = "std")]
-    use {core::cmp, manta_util::num::Ceil};
+    use {core::cmp, openzl_util::num::Ceil};
 
     /// Security Conditions
     ///

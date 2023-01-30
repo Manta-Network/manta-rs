@@ -31,7 +31,7 @@ use manta_accounting::{
         test::PublicBalanceOracle,
     },
 };
-use manta_util::{
+use openzl_util::{
     future::{LocalBoxFuture, LocalBoxFutureResult},
     http::reqwest::{Error, IntoUrl, KnownUrlClient},
 };

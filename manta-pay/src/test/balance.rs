@@ -24,7 +24,7 @@ use manta_accounting::{
         test::{assert_full_withdraw_should_remove_entry, assert_valid_withdraw},
     },
 };
-use manta_crypto::rand::OsRng;
+use openzl_util::rand::OsRng;
 
 /// Asset List Type
 type AssetList = asset::AssetList<AssetId, AssetValue>;

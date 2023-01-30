@@ -28,36 +28,34 @@ use alloc::{
 };
 use core::{
     borrow::Borrow,
-    fmt::Debug,
+    fmt::{Debug, Display},
     hash::Hash,
     iter::{self, FusedIterator},
     ops::{Add, AddAssign, Deref, Sub, SubAssign},
     slice,
 };
 use derive_more::{Display, From};
-use manta_crypto::{
-    constraint::{HasInput, Input},
-    eclair::{
-        self,
-        alloc::{
-            mode::{Public, Secret},
-            Allocate, Allocator, Variable,
-        },
-        bool::{Assert, AssertEq, Bool, ConditionalSelect},
-        num::Zero,
-        ops::BitAnd,
-        Has,
+use eclair::{
+    self,
+    alloc::{
+        mode::{Public, Secret},
+        Allocate, Allocator, Variable,
     },
-    rand::{Rand, RngCore, Sample},
+    bool::{Assert, AssertEq, Bool, ConditionalSelect},
+    num::Zero,
+    ops::BitAnd,
+    Has,
 };
-use manta_util::{
+use openzl_crypto::constraint::{HasInput, Input};
+use openzl_util::{
     codec::{Decode, DecodeError, Encode, Write},
     num::CheckedSub,
+    rand::{Rand, RngCore, Sample},
     SizeLimit,
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "std")]
 use std::{
@@ -69,7 +67,7 @@ use std::{
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative, Display, From)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -327,7 +325,7 @@ where
     #[inline]
     fn decode<R>(mut reader: R) -> Result<Self, DecodeError<R::Error, Self::Error>>
     where
-        R: manta_util::codec::Read,
+        R: openzl_util::codec::Read,
     {
         let asset_id = I::decode(&mut reader).map_err(|e| match e {
             DecodeError::Decode(r) => DecodeError::Decode(AssetDecodeError::AssetIdDecodeError(r)),
@@ -364,7 +362,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Debug, Default(bound = ""), Eq, Hash, PartialEq)]

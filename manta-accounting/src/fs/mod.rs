@@ -365,7 +365,7 @@ pub mod cocoon {
     use super::{Block, OpenOptions};
     use cocoon::{Error as CocoonError, MiniCocoon};
     use core::fmt;
-    use manta_util::from_variant;
+    use openzl_util::from_variant;
     use std::{fs, io::Error as IoError, path::Path};
 
     /// Cocoon Loading/Saving Error

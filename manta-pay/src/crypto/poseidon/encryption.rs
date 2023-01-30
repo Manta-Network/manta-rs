@@ -19,33 +19,34 @@
 use crate::crypto::poseidon::{Permutation, Specification, State};
 use alloc::{boxed::Box, vec::Vec};
 use core::{fmt::Debug, hash::Hash, iter, ops::Deref, slice};
-use manta_crypto::{
-    constraint::{HasInput, Input},
-    eclair::{
-        self,
-        alloc::{
-            mode::{Public, Secret},
-            Allocate, Allocator, Constant, Var, Variable,
-        },
-        bool::{Assert, Bool},
-        num::Zero,
-        ops::BitAnd,
-        Has,
+use eclair::{
+    self,
+    alloc::{
+        mode::{Public, Secret},
+        Allocate, Allocator, Constant, Var, Variable,
     },
+    bool::{Assert, Bool},
+    num::Zero,
+    ops::BitAnd,
+    Has,
+};
+use openzl_crypto::{
+    constraint::{HasInput, Input},
     permutation::{
         duplex::{self, Setup, Types, Verify},
         sponge::{Read, Write},
     },
-    rand::{Rand, RngCore, Sample},
 };
-use manta_util::{
+use openzl_util::{
     codec::{self, Decode, DecodeError, Encode},
+    derivative,
+    rand::{Rand, RngCore, Sample},
     vec::padded_chunks_with,
     BoxArray,
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Fixed Encryption Duplexer
 pub type FixedDuplexer<const N: usize, S, COM = ()> =
@@ -69,7 +70,7 @@ pub trait BlockElement<COM = ()> {
             deserialize = "S::Field: Deserialize<'de>",
             serialize = "S::Field: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -130,7 +131,7 @@ where
             deserialize = "S::Field: Deserialize<'de>",
             serialize = "S::Field: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -242,7 +243,7 @@ where
             deserialize = "S::Field: Deserialize<'de>",
             serialize = "S::Field: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -353,7 +354,7 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(deserialize = "B: Deserialize<'de>", serialize = "B: Serialize"),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -473,7 +474,7 @@ pub type FixedCiphertext<const N: usize, S, COM = ()> = BlockArray<CiphertextBlo
             deserialize = "S::Field: Deserialize<'de>",
             serialize = "S::Field: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -567,7 +568,7 @@ where
             deserialize = "S::Field: Deserialize<'de>",
             serialize = "S::Field: Serialize"
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

@@ -18,19 +18,21 @@
 
 use crate::transfer::utxo::{DeriveMint, Identifier, Mint, Note, QueryIdentifier};
 use core::{fmt::Debug, hash::Hash, iter};
-use manta_crypto::{
+use eclair::alloc::{
+    mode::{Derived, Public, Secret},
+    Allocate, Allocator, Constant, Var, Variable,
+};
+use openzl_crypto::{
     accumulator::{Accumulator, ItemHashFunction},
     constraint::{HasInput, Input},
-    eclair::alloc::{
-        mode::{Derived, Public, Secret},
-        Allocate, Allocator, Constant, Var, Variable,
-    },
+};
+use openzl_util::{
+    codec::{Encode, Write},
     rand::RngCore,
 };
-use manta_util::codec::{Encode, Write};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Receiver
 #[cfg_attr(
@@ -41,7 +43,7 @@ use manta_util::serde::{Deserialize, Serialize};
             deserialize = "M::Secret: Deserialize<'de>, M::Utxo: Deserialize<'de>, M::Note: Deserialize<'de>",
             serialize = "M::Secret: Serialize, M::Utxo: Serialize, M::Note: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -276,14 +278,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "Error: Deserialize<'de>",
-            serialize = "Error: Serialize"
-        ),
-        crate = "manta_util::serde",
-        deny_unknown_fields
-    )
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -315,7 +310,7 @@ pub enum ReceiverPostError<Error> {
             deserialize = "M::Utxo: Deserialize<'de>, M::Note: Deserialize<'de>",
             serialize = "M::Utxo: Serialize, M::Note: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -403,7 +398,7 @@ where
             deserialize = "L::ValidUtxo: Deserialize<'de>, M::Note: Deserialize<'de>",
             serialize = "L::ValidUtxo: Serialize, M::Note: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

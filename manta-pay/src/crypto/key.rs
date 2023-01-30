@@ -17,11 +17,11 @@
 //! Cryptographic Key Primitive Implementations
 
 use blake2::{Blake2s, Digest};
-use manta_crypto::{
-    key::kdf::KeyDerivationFunction,
+use openzl_crypto::key::kdf::KeyDerivationFunction;
+use openzl_util::{
+    impl_empty_codec, into_array_unchecked,
     rand::{RngCore, Sample},
 };
-use manta_util::{impl_empty_codec, into_array_unchecked};
 
 /// Blake2s KDF
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]

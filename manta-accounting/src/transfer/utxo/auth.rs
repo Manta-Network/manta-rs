@@ -17,17 +17,15 @@
 //! Authorization
 
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::{
-    eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable},
-    rand::RngCore,
-};
-use manta_util::{
+use eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable};
+use openzl_util::{
     codec::{Encode, Write},
     convert::Field,
+    rand::RngCore,
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Spending Key
 pub trait SpendingKeyType {
@@ -182,7 +180,7 @@ pub trait VerifySignature<M>: AuthorizationKeyType + SignatureType {
             deserialize = "T::AuthorizationContext: Deserialize<'de>, T::AuthorizationProof: Deserialize<'de>",
             serialize = "T::AuthorizationContext: Serialize, T::AuthorizationProof: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -327,7 +325,7 @@ where
             deserialize = "T::AuthorizationKey: Deserialize<'de>, T::Signature: Deserialize<'de>",
             serialize = "T::AuthorizationKey: Serialize, T::Signature: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

@@ -17,13 +17,11 @@
 //! UTXO Utilities
 
 use alloc::vec::Vec;
-use manta_crypto::{
-    arkworks::{
-        constraint::SynthesisError,
-        ff::Field,
-        r1cs_std::{R1CSVar, ToBytesGadget},
-    },
-    eclair::num::UnsignedInteger,
+use eclair::num::{UnsignedInteger, Zero};
+use openzl_plugin_arkworks::{
+    constraint::SynthesisError,
+    ff::Field,
+    r1cs_std::{R1CSVar, ToBytesGadget},
 };
 
 /// From a little endian vector `v` of a certain length, it returns a vector of length `n` after removing some zeroes.
@@ -34,7 +32,7 @@ use manta_crypto::{
 /// beyond index `n` are non-zero.
 pub fn from_little_endian<T>(vec: Vec<T>, n: usize) -> Vec<T>
 where
-    T: manta_crypto::eclair::num::Zero + PartialEq + Clone,
+    T: Clone + PartialEq + Zero,
 {
     let vec_len = vec.len();
     assert!(vec_len >= n, "Vector length must be at least equal to N");

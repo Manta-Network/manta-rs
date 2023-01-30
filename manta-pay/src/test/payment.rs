@@ -22,11 +22,11 @@ use crate::config::{
     Parameters, PrivateTransfer, ProvingContext, Receiver, ToPrivate, ToPublic, TransferPost,
 };
 use manta_accounting::transfer::{self, internal_pair, test::value_distribution};
-use manta_crypto::{
+use openzl_crypto::{
     accumulator::Accumulator,
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
-    rand::{CryptoRng, Rand, RngCore, Sample},
 };
+use openzl_util::rand::{CryptoRng, Rand, RngCore, Sample};
 
 /// Spending Key Type
 pub type SpendingKey = transfer::SpendingKey<Config>;

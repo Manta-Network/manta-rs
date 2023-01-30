@@ -26,7 +26,7 @@ maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "generate_parameters"
-required-features = ["groth16", "manta-util/std", "parameters", "serde"]
+required-features = ["groth16", "openzl-util/std", "parameters", "serde"]
 
 [[bin]]
 name = "simulation"
@@ -35,11 +35,10 @@ required-features = ["clap", "groth16", "simulation"]
 [features]
 # Enable Arkworks Backend
 arkworks = [
-    "manta-crypto/ark-bls12-381",
-    "manta-crypto/ark-bn254",
-    "manta-crypto/ark-ed-on-bls12-381",
-    "manta-crypto/ark-ed-on-bn254",
-    "manta-crypto/arkworks",
+    "openzl-plugin-arkworks/bls12-381",
+    "openzl-plugin-arkworks/bn254",
+    "openzl-plugin-arkworks/ed-on-bls12-381",
+    "openzl-plugin-arkworks/ed-on-bn254",
     "num-bigint",
 ]
 
@@ -47,10 +46,13 @@ arkworks = [
 download = ["manta-parameters/download", "std"]
 
 # Enable Groth16 ZKP System
-groth16 = ["manta-crypto/ark-groth16", "arkworks"]
+groth16 = [
+    "arkworks",
+    "openzl-plugin-arkworks/groth16",
+]
 
 # Enable HTTP Signer Client
-http = ["manta-util/reqwest", "serde", "network"]
+http = ["openzl-util/reqwest", "serde", "network"]
 
 # Key Features
 key = ["bip32", "bip0039"]
@@ -59,7 +61,7 @@ key = ["bip32", "bip0039"]
 network = []
 
 # Parameter Loading
-parameters = ["groth16", "manta-crypto/test", "manta-parameters"]
+parameters = ["groth16", "openzl-crypto/test", "manta-parameters"]
 
 # SCALE Codec and Type Info
 scale = ["scale-codec", "scale-info"]
@@ -68,15 +70,15 @@ scale = ["scale-codec", "scale-info"]
 scale-std = ["scale", "scale-codec/std", "scale-info/std", "std"]
 
 # Serde
-serde = ["manta-accounting/serde", "manta-crypto/serde"]
+serde = ["manta-accounting/serde", "openzl-crypto/serde"]
 
 # Simulation Framework
 simulation = [
     "indexmap",
     "parking_lot",
-    "manta-util/rayon",
+    "openzl-util/rayon",
     "test",
-    "manta-util/tide",
+    "openzl-util/tide",
     "tokio/io-std",
     "tokio/io-util",
     "tokio/macros",
@@ -88,15 +90,19 @@ simulation = [
 # Standard Library
 std = [
     "manta-accounting/std",
-    "manta-crypto/std",
-    "manta-util/std",
+    "openzl-crypto/std",
+    "openzl-util/std",
 ]
 
 # Testing Frameworks
-test = ["manta-accounting/test", "manta-crypto/test", "tempfile"]
+test = [
+    "manta-accounting/test",
+    "openzl-crypto/test",
+    "tempfile",
+]
 
 # Wallet
-wallet = ["key", "manta-crypto/getrandom", "std"]
+wallet = ["key", "openzl-util/getrandom", "std"]
 
 # Enable WebSocket Signer Client
 websocket = [
@@ -116,14 +122,15 @@ bip32 = { version = "0.3.0", optional = true, default-features = false, features
 blake2 = { version = "0.10.6", default-features = false }
 bs58 = { version = "0.4.0", optional = true, default-features = false, features = ["alloc"] }
 clap = { version = "3.2.23", optional = true, default-features = false, features = ["color", "derive", "std", "suggestions", "unicode", "wrap_help"] }
-derivative = { version = "2.2.0", default-features = false, features = ["use_core"] }
+eclair = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false }
 futures = { version = "0.3.25", optional = true, default-features = false }
 indexmap = { version = "1.9.2", optional = true, default-features = false }
 manta-accounting = { path = "../manta-accounting", default-features = false }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["rand_chacha"] }
 manta-parameters = { path = "../manta-parameters", optional = true, default-features = false }
-manta-util = { path = "../manta-util", default-features = false }
 num-bigint = { version = "0.4.3", optional = true, default-features = false }
+openzl-crypto = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false }
+openzl-plugin-arkworks = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["algebra", "serialize"] }
+openzl-util = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["rand_chacha"] }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 scale-codec = { package = "parity-scale-codec", version = "3.1.2", optional = true, default-features = false, features = ["derive", "max-encoded-len"] }
 scale-info = { version = "2.1.2", optional = true, default-features = false, features = ["derive"] }
@@ -135,5 +142,5 @@ ws_stream_wasm = { version = "0.7.3", optional = true, default-features = false 
 
 [dev-dependencies]
 bincode = { version = "1.3.3", default-features = false }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
 manta-pay = { path = ".", default-features = false, features = ["download", "parameters", "groth16", "scale", "scale-std", "serde", "serde_json", "std", "test", "wallet"] }
+openzl-util = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["getrandom"] }

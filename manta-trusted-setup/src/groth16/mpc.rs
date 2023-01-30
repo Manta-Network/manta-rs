@@ -22,38 +22,36 @@ use crate::{
     util::{batch_into_projective, batch_mul_fixed_scalar, merge_pairs_affine},
 };
 use alloc::{vec, vec::Vec};
-use ark_groth16::{ProvingKey, VerifyingKey};
-use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use core::iter::once;
-use manta_crypto::{
-    arkworks::{
-        ec::{
-            models::short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine,
-            ProjectiveCurve, SWModelParameters,
-        },
-        ff::{Field, PrimeField, UniformRand, Zero},
-        pairing::{Pairing, PairingEngineExt},
-        ratio::{HashToGroup, RatioProof},
-        relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
-        serialize::SerializationError,
+use openzl_plugin_arkworks::{
+    ec::{
+        models::short_weierstrass_jacobian::GroupAffine, AffineCurve, PairingEngine,
+        ProjectiveCurve, SWModelParameters,
     },
-    rand::{CryptoRng, RngCore},
+    ff::{Field, PrimeField, UniformRand, Zero},
+    groth16::{ProvingKey, VerifyingKey},
+    pairing::{Pairing, PairingEngineExt},
+    poly::{EvaluationDomain, Radix2EvaluationDomain},
+    ratio::{HashToGroup, RatioProof},
+    relations::r1cs::{ConstraintSynthesizer, ConstraintSystem, SynthesisError},
+    serialize::SerializationError,
 };
+use openzl_util::rand::{CryptoRng, RngCore};
 
 #[cfg(feature = "serde")]
 use {
-    manta_crypto::arkworks::serialize::{
+    openzl_plugin_arkworks::serialize::{
         canonical_deserialize, canonical_deserialize_unchecked, canonical_serialize,
         canonical_serialize_uncompressed,
     },
-    manta_util::serde::{Deserialize, Serialize},
+    openzl_util::serde::{Deserialize, Serialize},
 };
 
 /// MPC State
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""), Debug(bound = ""))]
@@ -126,7 +124,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone(bound = ""))]
@@ -159,7 +157,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct StateSize {
@@ -569,8 +567,8 @@ where
 pub mod util {
     use super::*;
     use crate::{ceremony::util::deserialize_from_file, groth16::ceremony::UnexpectedError};
-    use manta_crypto::arkworks::{groth16::ProvingContext, serialize::HasSerialization};
-    use manta_util::codec::{Encode, IoWriter};
+    use openzl_plugin_arkworks::{groth16::ProvingContext, serialize::HasSerialization};
+    use openzl_util::codec::{Encode, IoWriter};
     use std::{fs::OpenOptions, path::Path};
 
     /// Extracts prover key and verifier key from state located at `path` and writes

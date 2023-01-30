@@ -78,10 +78,10 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use manta_crypto::arkworks::{bls12_381::Fr, constraint::fp::Fp, ff::field_new};
+    use openzl_plugin_arkworks::{bls12_381::Fr, constraint::fp::Fp, ff::field_new};
 
-    #[allow(clippy::needless_borrow)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9710
     /// Checks if [`GrainLFSR`] matches hardcoded sage outputs.
+    #[allow(clippy::needless_borrow)] // NOTE: Clippy false positive https://github.com/rust-lang/rust-clippy/issues/9710
     #[test]
     fn grain_lfsr_is_consistent() {
         let test_cases = include!("parameters_hardcoded_test/lfsr_values");

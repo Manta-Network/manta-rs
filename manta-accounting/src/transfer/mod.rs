@@ -39,29 +39,29 @@ use crate::{
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
-use manta_crypto::{
-    accumulator::{self, Accumulator, ItemHashFunction, MembershipProof, Model},
-    constraint::{HasInput, Input, ProofSystem},
-    eclair::{
-        self,
-        alloc::{
-            mode::{Derived, Public, Secret},
-            Allocate, Allocator, Constant, Var, Variable,
-        },
-        bool::{Assert, AssertEq},
-        ops::Add,
+use eclair::{
+    self,
+    alloc::{
+        mode::{Derived, Public, Secret},
+        Allocate, Allocator, Constant, Var, Variable,
     },
-    rand::{CryptoRng, RngCore, Sample},
+    bool::{Assert, AssertEq},
+    ops::Add,
 };
-use manta_util::{
+use openzl_crypto::{
+    accumulator::{self, ItemHashFunction},
+    constraint::{HasInput, Input, ProofSystem},
+};
+use openzl_util::{
     cmp::Independence,
     codec::{Encode, Write},
     convert::Field,
+    rand::{CryptoRng, RngCore, Sample},
     vec::{all_unequal, Vec},
 };
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 pub mod batch;
 pub mod canonical;
@@ -1151,7 +1151,7 @@ pub type TransferLedgerSuperPostingKey<C, L> = <L as TransferLedger<C>>::SuperPo
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum InvalidAuthorizationSignature {
@@ -1172,7 +1172,7 @@ pub enum InvalidAuthorizationSignature {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
@@ -1204,7 +1204,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
@@ -1262,7 +1262,7 @@ pub type TransferLedgerPostError<C, L> = TransferPostError<
                 C::AssetId: Serialize,
                 C::AssetValue: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1404,7 +1404,7 @@ where
                 Proof<C>: Serialize,
             ",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1587,7 +1587,7 @@ where
                 TransferPostBody<C>: Serialize,
             ",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -1881,7 +1881,7 @@ where
                 L::ValidProof: Serialize,
                 L::Event: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

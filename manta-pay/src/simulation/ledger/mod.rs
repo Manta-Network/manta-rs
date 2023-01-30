@@ -45,7 +45,7 @@ use manta_accounting::{
         test::PublicBalanceOracle,
     },
 };
-use manta_crypto::{
+use openzl_crypto::{
     accumulator::ItemHashFunction,
     constraint::ProofSystem as _,
     merkle_tree::{
@@ -53,12 +53,15 @@ use manta_crypto::{
         forest::{Configuration, FixedIndex},
     },
 };
-use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
+use openzl_util::{
+    derivative,
+    future::{LocalBoxFuture, LocalBoxFutureResult},
+};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 #[cfg(feature = "http")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
@@ -78,7 +81,7 @@ pub type UtxoMerkleForest = merkle_tree::forest::TreeArrayMerkleForest<
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Wrap<T>(T);
@@ -94,7 +97,7 @@ impl<T> AsRef<T> for Wrap<T> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct WrapPair<L, R>(L, R);
@@ -110,7 +113,7 @@ impl<L, R> AsRef<R> for WrapPair<L, R> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
+    serde(crate = "openzl_util::serde", deny_unknown_fields, transparent)
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AccountId(pub u64);
@@ -229,7 +232,7 @@ impl Ledger {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -265,7 +268,7 @@ impl From<SenderLedgerError> for SenderPostError<SenderLedgerError> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -295,7 +298,7 @@ impl From<ReceiverLedgerError> for ReceiverPostError<ReceiverLedgerError> {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]

@@ -24,7 +24,7 @@ use manta_trusted_setup::groth16::ceremony::{
     config::ppot::{client_contribute, display_on_error, get_client_keys, register, Config},
     CeremonyError,
 };
-use manta_util::Array;
+use openzl_util::Array;
 
 /// Welcome Message
 pub const TITLE: &str = r" __  __             _          _____               _           _

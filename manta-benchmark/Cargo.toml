@@ -51,11 +51,13 @@ harness = false
 getrandom = { version = "0.2.8", default-features = false, features = ["js"] }
 instant = { version = "0.1.12", default-features = false, features = [ "wasm-bindgen" ] }
 manta-accounting = { path = "../manta-accounting", default-features = false, features = ["test"] }
-manta-crypto = { path = "../manta-crypto", default-features = false, features = ["ark-bls12-381", "getrandom", "test"] }
 manta-pay = { path = "../manta-pay", default-features = false, features = ["groth16", "parameters", "test"] }
+openzl-crypto = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["test"] }
+openzl-plugin-arkworks = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["bls12-381"] }
+openzl-util = { git = "https://github.com/openzklib/openzl", branch = "feat/plonky2-plugin", default-features = false, features = ["getrandom"] }
 wasm-bindgen = { version = "0.2.83", default-features = false }
 wasm-bindgen-test = { version = "0.3.33", default-features = false }
 web-sys = { version = "0.3.60", default-features = false, features = ["console"] }
 
 [dev-dependencies]
-criterion = { version = "0.3.6", default-features = false }
+criterion = { version = "0.4.0", default-features = false }

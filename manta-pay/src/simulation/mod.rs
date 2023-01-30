@@ -37,7 +37,7 @@ use manta_accounting::{
         Error,
     },
 };
-use manta_crypto::rand::{ChaCha20Rng, CryptoRng, Rand, RngCore, SeedableRng};
+use openzl_util::rand::{ChaCha20Rng, CryptoRng, Rand, RngCore, SeedableRng};
 use tokio::{
     io::{self, AsyncWriteExt},
     sync::RwLock,

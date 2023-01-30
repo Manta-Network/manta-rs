@@ -21,11 +21,12 @@ use crate::{
     test::payment::UtxoAccumulator,
 };
 use manta_accounting::transfer::test::validity_check_with_fuzzing;
-use manta_crypto::{
+use openzl_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    rand::{OsRng, Rand, Sample},
+    signature,
 };
+use openzl_util::rand::{OsRng, Rand, Sample};
 
 /// Tests the generation of proving/verifying contexts for [`ToPrivate`].
 #[test]
@@ -110,7 +111,7 @@ fn to_public() {
 fn check_empty_message_signature() {
     let mut rng = OsRng;
     assert!(
-        manta_crypto::signature::test::correctness(
+        signature::test::correctness(
             &Parameters::gen(&mut rng).signature_scheme(),
             &rng.gen(),
             &rng.gen(),

@@ -42,7 +42,7 @@ use core::{
     fmt::{Debug, Display},
     time::Duration,
 };
-use manta_util::{
+use openzl_util::{
     into_array_unchecked,
     serde::{de::DeserializeOwned, Serialize},
     BoxArray,

@@ -17,8 +17,8 @@
 //! Manta Pay Simulation
 
 use clap::{error::ErrorKind, CommandFactory, Parser};
-use manta_crypto::rand::OsRng;
 use manta_pay::{parameters::load_parameters, simulation::Simulation};
+use openzl_util::rand::{OsRng, Rand};
 
 /// Runs the Manta Pay simulation.
 pub fn main() {

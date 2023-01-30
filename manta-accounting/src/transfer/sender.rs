@@ -20,19 +20,21 @@ use crate::transfer::utxo::{
     DeriveSpend, QueryAsset, Spend, UtxoAccumulatorItem, UtxoAccumulatorOutput, UtxoMembershipProof,
 };
 use core::{fmt::Debug, hash::Hash, iter};
-use manta_crypto::{
+use eclair::alloc::{
+    mode::{Derived, Public, Secret},
+    Allocate, Allocator, Const, Constant, Var, Variable,
+};
+use openzl_crypto::{
     accumulator::{self, Accumulator, ItemHashFunction},
     constraint::{HasInput, Input},
-    eclair::alloc::{
-        mode::{Derived, Public, Secret},
-        Allocate, Allocator, Const, Constant, Var, Variable,
-    },
+};
+use openzl_util::{
+    codec::{Encode, Write},
     rand::RngCore,
 };
-use manta_util::codec::{Encode, Write};
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use openzl_util::serde::{Deserialize, Serialize};
 
 /// Pre-Sender
 #[cfg_attr(
@@ -49,7 +51,7 @@ use manta_util::serde::{Deserialize, Serialize};
                 S::Utxo: Serialize,
                 S::Nullifier: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -213,7 +215,7 @@ where
             deserialize = r"UtxoMembershipProof<S>: Deserialize<'de>",
             serialize = r"UtxoMembershipProof<S>: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -263,7 +265,7 @@ where
                 UtxoMembershipProof<S, COM>: Serialize,
                 S::Nullifier: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -561,14 +563,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(
-        bound(
-            deserialize = "Error: Deserialize<'de>",
-            serialize = "Error: Serialize"
-        ),
-        crate = "manta_util::serde",
-        deny_unknown_fields
-    )
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
@@ -616,7 +611,7 @@ pub enum SenderPostError<Error> {
                 UtxoAccumulatorOutput<S>: Serialize,
                 S::Nullifier: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -713,7 +708,7 @@ where
                 L::ValidUtxoAccumulatorOutput: Serialize,
                 L::ValidNullifier: Serialize",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]

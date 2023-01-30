@@ -23,16 +23,16 @@ use crate::{
     },
     util::{BlakeHasher, Deserializer, Serializer},
 };
-use ark_std::io;
 use blake2::Digest;
 use core::marker::PhantomData;
-use manta_crypto::arkworks::{
+use openzl_plugin_arkworks::{
     bn254::{Bn254, Fr, G1Affine, G2Affine},
     ec::{AffineCurve, PairingEngine},
     pairing::Pairing,
     serialize::{CanonicalSerialize, Read, Write},
+    std::io,
 };
-use manta_util::into_array_unchecked;
+use openzl_util::into_array_unchecked;
 
 /// Configuration of the Perpetual Powers of Tau Ceremony
 #[derive(derivative::Derivative)]

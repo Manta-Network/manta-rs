@@ -19,10 +19,8 @@
 use core::iter::repeat_with;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use manta_benchmark::ecc;
-use manta_crypto::{
-    arkworks::bls12_381::{G1Affine, G1Projective},
-    rand::OsRng,
-};
+use openzl_plugin_arkworks::bn254::{G1Affine, G1Projective};
+use openzl_util::rand::OsRng;
 
 #[inline]
 fn affine_affine_addition(c: &mut Criterion) {

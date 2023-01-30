@@ -31,8 +31,8 @@ use core::{
     fmt::{self, Debug, Display},
     time::Duration,
 };
-use manta_crypto::arkworks::{constraint::R1CS, ff::PrimeField, pairing::Pairing};
-use manta_util::{
+use openzl_plugin_arkworks::{constraint::R1CS, ff::PrimeField, pairing::Pairing};
+use openzl_util::{
     collections::vec_deque::MultiVecDeque,
     serde::{Deserialize, Serialize},
 };
@@ -121,7 +121,7 @@ impl CeremonySize {
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Metadata {
@@ -141,7 +141,7 @@ pub struct Metadata {
             serialize = "C::Nonce: Serialize",
             deserialize = "C::Nonce: Deserialize<'de>",
         ),
-        crate = "manta_util::serde",
+        crate = "openzl_util::serde",
         deny_unknown_fields
     )
 )]
@@ -234,7 +234,7 @@ where
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
+    serde(crate = "openzl_util::serde", deny_unknown_fields)
 )]
 #[derive(Debug)]
 pub enum UnexpectedError {
