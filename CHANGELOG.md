@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - [\#289](https://github.com/Manta-Network/manta-rs/pull/289) AssetMetadata upgrade and NFT support.
 - [\#310](https://github.com/Manta-Network/manta-rs/pull/310) Add identity verification algorithm using ToPublic circuit
+
 ### Changed
 
 ### Deprecated
@@ -14,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Removed
 
 ### Fixed
+- [\#313](https://github.com/Manta-Network/manta-rs/pull/313) Use correct failure case for identity verification
 
 ### Security
 
