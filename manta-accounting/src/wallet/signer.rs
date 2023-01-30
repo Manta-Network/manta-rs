@@ -1390,6 +1390,7 @@ where
         )?;
         self.state.utxo_accumulator = utxo_accumulator;
         self.state.assets = assets;
+        self.state.checkpoint = checkpoint.clone();
         Ok(SyncResponse {
             checkpoint,
             balance_update,
