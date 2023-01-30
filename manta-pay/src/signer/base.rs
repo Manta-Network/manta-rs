@@ -19,17 +19,18 @@
 use crate::{
     config::{
         utxo::{self, MerkleTreeConfiguration},
-        Config,
+        Address, Config, IdentifiedAsset, IdentityProof, Parameters, UtxoAccumulatorModel,
+        VerifyingContext,
     },
     key::{CoinType, KeySecret, Testnet},
-    signer::Checkpoint,
+    signer::{AssetMetadata, Checkpoint},
 };
 use alloc::collections::BTreeMap;
 use core::{cmp, mem};
 use manta_accounting::{
     asset::HashAssetMap,
     key::{AccountCollection, AccountIndex, DeriveAddresses},
-    transfer::{utxo::protocol, Identifier, SpendingKey},
+    transfer::{utxo::protocol, Identifier, IdentityVerificationError, SpendingKey},
     wallet::{
         self,
         signer::{self, SyncData},
@@ -88,6 +89,7 @@ impl wallet::signer::Configuration for Config {
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = HashAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
+    type AssetMetadata = AssetMetadata;
     type Rng = ChaCha20Rng;
 }
 
@@ -195,3 +197,26 @@ pub type SignerState = wallet::signer::SignerState<Config>;
 
 /// Signer Base Type
 pub type Signer = wallet::signer::Signer<Config>;
+
+/// Runs the identity verification method on `identity_proof` with [`Config`] and
+/// [`UtxoAccumulator`], checking that `virtual_asset` is opaque and not zero for extra security.
+#[inline]
+pub fn identity_verification(
+    identity_proof: &IdentityProof,
+    parameters: &Parameters,
+    verifying_context: &VerifyingContext,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+    virtual_asset: IdentifiedAsset,
+    address: Address,
+) -> Result<(), IdentityVerificationError> {
+    if virtual_asset.identifier.is_transparent || virtual_asset.asset.is_empty(&mut ()) {
+        return Err(IdentityVerificationError::InvalidVirtualAsset);
+    }
+    identity_proof.identity_verification::<UtxoAccumulator>(
+        parameters,
+        verifying_context,
+        utxo_accumulator_model,
+        virtual_asset,
+        address,
+    )
+}

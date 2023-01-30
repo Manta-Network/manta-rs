@@ -32,9 +32,10 @@
 use crate::{
     asset,
     transfer::{
+        canonical::TransferShape,
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
-        utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence},
+        utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence, UtxoReconstruct},
     },
 };
 use core::{fmt::Debug, hash::Hash, iter::Sum, ops::AddAssign};
@@ -306,6 +307,9 @@ pub type UtxoAccumulatorWitness<C> = utxo::UtxoAccumulatorWitness<Parameters<C>>
 
 /// UTXO Accumulator Output Type
 pub type UtxoAccumulatorOutput<C> = utxo::UtxoAccumulatorOutput<Parameters<C>>;
+
+/// UTXO Membership Proof Type
+pub type UtxoMembershipProof<C> = MembershipProof<UtxoAccumulatorModel<C>>;
 
 /// Address Type
 pub type Address<C> = utxo::Address<Parameters<C>>;
@@ -2108,5 +2112,149 @@ where
         self.sinks
             .iter()
             .for_each(|sink| C::ProofSystem::extend(input, sink.as_ref()));
+    }
+}
+
+/// Identity Verification Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(derivative::Derivative)]
+#[derivative(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum IdentityVerificationError {
+    /// Invalid Signature
+    InvalidSignature,
+
+    /// Invalid Shape
+    InvalidShape,
+
+    /// Invalid Proof
+    InvalidProof,
+
+    /// Inconsistent Utxo Accumulator Output
+    InconsistentUtxoAccumulatorOutput,
+
+    /// Invalid Identified Asset
+    InvalidVirtualAsset,
+}
+
+/// Identity Proof
+///
+/// # Note
+///
+/// To verify your identity, i.e., that you have the spending rights of a certain
+/// [`Address`], you are prompted to generate a valid ToPublic [`TransferPost`]
+/// spending a virtual [`IdentifiedAsset`].
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "TransferPost<C>: Deserialize<'de>, UtxoMembershipProof<C>: Deserialize<'de>",
+            serialize = "TransferPost<C>: Serialize, UtxoMembershipProof<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "TransferPost<C>: Clone, UtxoMembershipProof<C>: Clone"),
+    Copy(bound = "TransferPost<C>: Copy, UtxoMembershipProof<C>: Copy"),
+    Debug(bound = "TransferPost<C>: Debug, UtxoMembershipProof<C>: Debug"),
+    Eq(bound = "TransferPost<C>: Eq, UtxoMembershipProof<C>: Eq"),
+    Hash(bound = "TransferPost<C>: Hash, UtxoMembershipProof<C>: Hash"),
+    PartialEq(bound = "TransferPost<C>: PartialEq, UtxoMembershipProof<C>: PartialEq")
+)]
+pub struct IdentityProof<C>
+where
+    C: Configuration,
+{
+    /// TransferPost
+    pub transfer_post: TransferPost<C>,
+}
+
+impl<C> IdentityProof<C>
+where
+    C: Configuration,
+{
+    /// Verifies `self` for `address` against `virtual_asset`.
+    ///
+    /// # Note
+    ///
+    /// It performs four checks:
+    ///
+    /// 1) `identity_proof.transfer_post` has a [`ToPublic`](crate::transfer::canonical::ToPublic)
+    /// shape.
+    ///
+    /// 2) `identity_proof.transfer_post` has a valid authorization signature.
+    ///
+    /// 3) `identity_proof.transfer_post` has a valid proof.
+    ///
+    /// 4) The [`UtxoAccumulatorOutput`] in `identity_proof.transfer_post` has been computed from
+    /// `virtual_asset` and `address`.
+    #[inline]
+    pub fn identity_verification<A>(
+        &self,
+        parameters: &Parameters<C>,
+        verifying_context: &VerifyingContext<C>,
+        utxo_accumulator_model: &UtxoAccumulatorModel<C>,
+        virtual_asset: IdentifiedAsset<C>,
+        address: Address<C>,
+    ) -> Result<(), IdentityVerificationError>
+    where
+        C::UtxoAccumulatorOutput: PartialEq,
+        UtxoAccumulatorModel<C>: Model<Verification = bool>,
+        A: Accumulator<
+            Item = UtxoAccumulatorItem<C>,
+            Model = UtxoAccumulatorModel<C>,
+            Output = UtxoAccumulatorOutput<C>,
+        >,
+        Asset<C>: Default,
+    {
+        TransferShape::from_post(&self.transfer_post).map_or(
+            Err(IdentityVerificationError::InvalidShape),
+            |shape| match shape {
+                TransferShape::ToPublic => Ok(()),
+                _ => Err(IdentityVerificationError::InvalidShape),
+            },
+        )?;
+        self.transfer_post
+            .has_valid_authorization_signature(parameters)
+            .map_err(|_| IdentityVerificationError::InvalidSignature)?;
+        if !self
+            .transfer_post
+            .has_valid_proof(verifying_context)
+            .map_err(|_| IdentityVerificationError::InvalidProof)?
+        {
+            return Err(IdentityVerificationError::InvalidProof);
+        }
+        let IdentifiedAsset::<C> { identifier, asset } = virtual_asset;
+        let utxo = parameters.utxo_reconstruct(&asset, &identifier, &address);
+        let mut utxo_accumulator = A::empty(utxo_accumulator_model);
+        utxo_accumulator.insert(
+            &parameters
+                .utxo_accumulator_item_hash()
+                .item_hash(&utxo, &mut ()),
+        );
+        let utxo_accumulator_output = utxo_accumulator
+            .output_from(
+                &parameters
+                    .utxo_accumulator_item_hash()
+                    .item_hash(&utxo, &mut ()),
+            )
+            .expect("Failed to obtain UtxoAccumulatorOutput");
+        if !self
+            .transfer_post
+            .body
+            .sender_posts
+            .iter()
+            .any(|sender_post| sender_post.utxo_accumulator_output == utxo_accumulator_output)
+        {
+            return Err(IdentityVerificationError::InconsistentUtxoAccumulatorOutput);
+        }
+        Ok(())
     }
 }
