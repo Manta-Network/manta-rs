@@ -104,7 +104,7 @@ where
     /// associated [`TransactionData`] if successful.
     fn sign_with_transaction_data(
         &mut self,
-        request: SignRequest<C>,
+        request: SignRequest<Self::AssetMetadata, C>,
     ) -> LocalBoxFutureResult<Result<SignWithTransactionDataResponse<C>, SignError<C>>, Self::Error>
     where
         TransferPost<C>: Clone;
@@ -1698,7 +1698,7 @@ where
     #[inline]
     fn sign_with_transaction_data(
         &mut self,
-        request: SignRequest<C>,
+        request: SignRequest<Self::AssetMetadata, C>,
     ) -> LocalBoxFutureResult<Result<SignWithTransactionDataResponse<C>, SignError<C>>, Self::Error>
     where
         TransferPost<C>: Clone,

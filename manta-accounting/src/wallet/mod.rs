@@ -403,7 +403,7 @@ where
     pub async fn sign_with_transaction_data(
         &mut self,
         transaction: Transaction<C>,
-        metadata: Option<AssetMetadata>,
+        metadata: Option<S::AssetMetadata>,
     ) -> Result<SignWithTransactionDataResponse<C>, Error<C, L, S>>
     where
         TransferPost<C>: Clone,
