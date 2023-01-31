@@ -955,7 +955,7 @@ where
     }
 
     /// Generates an [`IdentityProof`] for `identified_asset` by
-    /// signing a virtual [`ToPublic`] transaction.
+    /// signing a virtual [`ToPublic`](transfer::canonical::ToPublic) transaction.
     #[inline]
     pub fn identity_proof(
         &mut self,
