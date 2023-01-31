@@ -206,6 +206,9 @@ pub type IdentifiedAsset = transfer::IdentifiedAsset<Config>;
 /// Identity Type
 pub type IdentityProof = transfer::IdentityProof<Config>;
 
+/// Transaction Data Type
+pub type TransactionData = transfer::canonical::TransactionData<Config>;
+
 /// Converts an [`Address`] into a base58-encoded string.
 #[cfg(feature = "bs58")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "bs58")))]

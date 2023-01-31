@@ -47,7 +47,7 @@ use alloc::{boxed::Box, vec, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ItemHashFunction, OptimizedAccumulator},
-    rand::Rand,
+    rand::{FromEntropy, Rand},
 };
 use manta_util::{
     array_map, cmp::Independence, future::LocalBoxFutureResult, into_array_unchecked,
@@ -58,6 +58,11 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 /// Stateless Signer Connection
+///
+/// # Implementation Note
+///
+/// The methods below take a mutable reference to `self` for compatibility reasons with websocket,
+/// but they don't actually mutate `self`.
 pub trait StatelessSignerConnection<C>
 where
     C: Configuration,
@@ -70,48 +75,35 @@ where
 
     /// Pushes updates from the ledger to the wallet, synchronizing
     /// `assets`, `checkpoint` and `utxo_accumulator` with the ledger state.
-    fn sync<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
-        assets: C::AssetMap,
-        checkpoint: C::Checkpoint,
-        utxo_accumulator: C::UtxoAccumulator,
-        request: SyncRequest<C, C::Checkpoint>,
-        rng: &'a mut C::Rng,
+    fn sync(
+        &mut self,
+        request: StatelessSyncRequest<C>,
     ) -> LocalBoxFutureResult<StatelessSyncResult<C, C::Checkpoint>, Self::Error>;
 
     /// Signs a transaction and returns the ledger transfer posts if successful, as well as
     /// the updated utxo accumulator.
-    fn sign<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
-        assets: &'a C::AssetMap,
-        utxo_accumulator: C::UtxoAccumulator,
-        request: SignRequest<C::AssetMetadata, C>,
-        rng: &'a mut C::Rng,
+    fn sign(
+        &mut self,
+        request: StatelessSignRequest<C>,
     ) -> LocalBoxFutureResult<StatelessSignResult<C>, Self::Error>;
 
     /// Returns the [`Address`] corresponding to `accounts`.
-    fn address<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
+    fn address(
+        &mut self,
+        request: StatelessAddressRequest<C>,
     ) -> LocalBoxFutureResult<Address<C>, Self::Error>;
 
-    /// Returns the [`TransactionData`] of the [`TransferPost`]s in `request` owned by `accounts`.
-    fn transaction_data<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
-        request: TransactionDataRequest<C>,
+    /// Returns the [`TransactionData`] of the [`TransferPost`]s in `request`.
+    fn transaction_data(
+        &mut self,
+        request: StatelessTransactionDataRequest<C>,
     ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error>;
 
-    /// Generates an [`IdentityProof`] for `accounts` which can be verified against
+    /// Generates an [`IdentityProof`] for `accounts` in `request` which can be verified against
     /// the [`IdentifiedAsset`]s in `request`.
-    fn identity_proof<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
-        utxo_accumulator_model: &'a UtxoAccumulatorModel<C>,
-        request: IdentityRequest<C>,
-        rng: &'a mut C::Rng,
+    fn identity_proof(
+        &mut self,
+        request: StatelessIdentityRequest<C>,
     ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>;
 }
 
@@ -126,6 +118,138 @@ pub type StatelessBatchedTransaction<C> = (
     [Sender<C>; PrivateTransferShape::SENDERS],
     <C as Configuration>::UtxoAccumulator,
 );
+
+/// Stateless Synchronization Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"AccountTable<C>: Deserialize<'de>, 
+                C::AssetMap: Deserialize<'de>, 
+                C::Checkpoint: Deserialize<'de>, 
+                C::UtxoAccumulator: Deserialize<'de>, 
+                SyncRequest<C, C::Checkpoint>: Deserialize<'de>, 
+                C::Rng: Deserialize<'de>",
+            serialize = r"AccountTable<C>: Serialize, 
+                C::AssetMap: Serialize, 
+                C::Checkpoint: Serialize, 
+                C::UtxoAccumulator: Serialize, 
+                SyncRequest<C, C::Checkpoint>: Serialize, 
+                C::Rng: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = r"AccountTable<C>: Clone, 
+        C::AssetMap: Clone, 
+        C::Checkpoint: Clone, 
+        C::UtxoAccumulator: Clone, 
+        SyncRequest<C, C::Checkpoint>: Clone, 
+        C::Rng: Clone"),
+    Copy(bound = r"AccountTable<C>: Copy, 
+        C::AssetMap: Copy, 
+        C::Checkpoint: Copy, 
+        C::UtxoAccumulator: Copy, 
+        SyncRequest<C, C::Checkpoint>: Copy, 
+        C::Rng: Copy"),
+    Debug(bound = r"AccountTable<C>: Debug, 
+        C::AssetMap: Debug, 
+        C::Checkpoint: Debug, 
+        C::UtxoAccumulator: Debug, 
+        SyncRequest<C, C::Checkpoint>: Debug, 
+        C::Rng: Debug"),
+    Default(bound = r"AccountTable<C>: Default, 
+        C::AssetMap: Default, 
+        C::Checkpoint: Default, 
+        C::UtxoAccumulator: Default, 
+        SyncRequest<C, C::Checkpoint>: Default, 
+        C::Rng: Default"),
+    Eq(bound = r"AccountTable<C>: Eq, 
+        C::AssetMap: Eq, 
+        C::Checkpoint: Eq, 
+        C::UtxoAccumulator: Eq, 
+        SyncRequest<C, C::Checkpoint>: Eq, 
+        C::Rng: Eq"),
+    Hash(bound = r"AccountTable<C>: Hash, 
+        C::AssetMap: Hash, 
+        C::Checkpoint: Hash, 
+        C::UtxoAccumulator: Hash, 
+        SyncRequest<C, C::Checkpoint>: Hash, 
+        C::Rng: Hash"),
+    PartialEq(bound = r"AccountTable<C>: PartialEq, 
+        C::AssetMap: PartialEq, 
+        C::Checkpoint: PartialEq, 
+        C::UtxoAccumulator: PartialEq, 
+        SyncRequest<C, C::Checkpoint>: PartialEq, 
+        C::Rng: PartialEq")
+)]
+pub struct StatelessSyncRequest<C>
+where
+    C: Configuration,
+{
+    /// Accounts
+    accounts: AccountTable<C>,
+
+    /// Assets
+    assets: C::AssetMap,
+
+    /// Checkpoint
+    checkpoint: C::Checkpoint,
+
+    /// Utxo Accumulator
+    utxo_accumulator: C::UtxoAccumulator,
+
+    /// Synchronization Request
+    request: SyncRequest<C, C::Checkpoint>,
+
+    /// Rng
+    rng: C::Rng,
+}
+
+impl<C> StatelessSyncRequest<C>
+where
+    C: Configuration,
+{
+    /// Builds a new [`StatelessSyncRequest`] from `accounts`, `utxo_accumulator`,
+    /// `assets`, `rng` and `request`.
+    #[inline]
+    fn build(
+        accounts: AccountTable<C>,
+        utxo_accumulator: C::UtxoAccumulator,
+        assets: C::AssetMap,
+        rng: C::Rng,
+        request: SyncRequest<C, C::Checkpoint>,
+    ) -> Self {
+        Self {
+            accounts,
+            assets,
+            checkpoint: C::Checkpoint::from_utxo_accumulator(&utxo_accumulator),
+            utxo_accumulator,
+            request,
+            rng,
+        }
+    }
+
+    /// Builds a new [`StatelessSyncRequest`] from `keys`, `utxo_accumulator` and `request`.
+    #[inline]
+    pub fn new(
+        keys: C::Account,
+        utxo_accumulator: C::UtxoAccumulator,
+        request: SyncRequest<C, C::Checkpoint>,
+    ) -> Self {
+        Self::build(
+            AccountTable::<C>::new(keys),
+            utxo_accumulator,
+            Default::default(),
+            FromEntropy::from_entropy(),
+            request,
+        )
+    }
+}
 
 /// Stateless Synchronization Response
 #[cfg_attr(
@@ -182,6 +306,125 @@ where
     pub assets: C::AssetMap,
 }
 
+/// Stateless Signing Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"AccountTable<C>: Deserialize<'de>, 
+                C::AssetMap: Deserialize<'de>, 
+                C::UtxoAccumulator: Deserialize<'de>, 
+                SignRequest<C::AssetMetadata, C>: Deserialize<'de>, 
+                C::Rng: Deserialize<'de>",
+            serialize = r"AccountTable<C>: Serialize, 
+                C::AssetMap: Serialize, 
+                C::UtxoAccumulator: Serialize, 
+                SignRequest<C::AssetMetadata, C>: Serialize, 
+                C::Rng: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = r"AccountTable<C>: Clone, 
+        C::AssetMap: Clone,  
+        C::UtxoAccumulator: Clone, 
+        SignRequest<C::AssetMetadata, C>: Clone, 
+        C::Rng: Clone"),
+    Copy(bound = r"AccountTable<C>: Copy, 
+        C::AssetMap: Copy, 
+        C::UtxoAccumulator: Copy, 
+        SignRequest<C::AssetMetadata, C>: Copy, 
+        C::Rng: Copy"),
+    Debug(bound = r"AccountTable<C>: Debug, 
+        C::AssetMap: Debug, 
+        C::UtxoAccumulator: Debug, 
+        SignRequest<C::AssetMetadata, C>: Debug, 
+        C::Rng: Debug"),
+    Default(bound = r"AccountTable<C>: Default, 
+        C::AssetMap: Default, 
+        C::UtxoAccumulator: Default, 
+        SignRequest<C::AssetMetadata, C>: Default, 
+        C::Rng: Default"),
+    Eq(bound = r"AccountTable<C>: Eq, 
+        C::AssetMap: Eq, 
+        C::UtxoAccumulator: Eq, 
+        SignRequest<C::AssetMetadata, C>: Eq, 
+        C::Rng: Eq"),
+    Hash(bound = r"AccountTable<C>: Hash, 
+        C::AssetMap: Hash, 
+        C::UtxoAccumulator: Hash, 
+        SignRequest<C::AssetMetadata, C>: Hash, 
+        C::Rng: Hash"),
+    PartialEq(bound = r"AccountTable<C>: PartialEq, 
+        C::AssetMap: PartialEq, 
+        C::UtxoAccumulator: PartialEq, 
+        SignRequest<C::AssetMetadata, C>: PartialEq, 
+        C::Rng: PartialEq")
+)]
+pub struct StatelessSignRequest<C>
+where
+    C: Configuration,
+{
+    /// Accounts
+    accounts: AccountTable<C>,
+
+    /// Assets
+    assets: C::AssetMap,
+
+    /// Utxo Accumulator
+    utxo_accumulator: C::UtxoAccumulator,
+
+    /// Signing Request
+    request: SignRequest<C::AssetMetadata, C>,
+
+    /// Rng
+    rng: C::Rng,
+}
+
+impl<C> StatelessSignRequest<C>
+where
+    C: Configuration,
+{
+    /// Builds a new [`StatelessSignRequest`] from `accounts`, `utxo_accumulator`,
+    /// `assets`, `rng` and `request`.
+    #[inline]
+    fn build(
+        accounts: AccountTable<C>,
+        utxo_accumulator: C::UtxoAccumulator,
+        assets: C::AssetMap,
+        rng: C::Rng,
+        request: SignRequest<C::AssetMetadata, C>,
+    ) -> Self {
+        Self {
+            accounts,
+            assets,
+            utxo_accumulator,
+            request,
+            rng,
+        }
+    }
+
+    /// Builds a new [`StatelessSignRequest`] from `keys`, `utxo_accumulator` and `request`.
+    #[inline]
+    pub fn new(
+        keys: C::Account,
+        utxo_accumulator: C::UtxoAccumulator,
+        request: SignRequest<C::AssetMetadata, C>,
+    ) -> Self {
+        Self::build(
+            AccountTable::<C>::new(keys),
+            utxo_accumulator,
+            Default::default(),
+            FromEntropy::from_entropy(),
+            request,
+        )
+    }
+}
+
 /// Stateless Signing Response
 #[cfg_attr(
     feature = "serde",
@@ -223,6 +466,179 @@ where
         Self {
             posts,
             utxo_accumulator,
+        }
+    }
+}
+
+/// Stateless Address Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "AccountTable<C>: Deserialize<'de>",
+            serialize = "AccountTable<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AccountTable<C>: Clone"),
+    Copy(bound = "AccountTable<C>: Copy"),
+    Debug(bound = "AccountTable<C>: Debug"),
+    Default(bound = "AccountTable<C>: Default"),
+    Eq(bound = "AccountTable<C>: Eq"),
+    Hash(bound = "AccountTable<C>: Hash"),
+    PartialEq(bound = "AccountTable<C>: PartialEq")
+)]
+pub struct StatelessAddressRequest<C>(AccountTable<C>)
+where
+    C: Configuration;
+
+impl<C> StatelessAddressRequest<C>
+where
+    C: Configuration,
+{
+    /// Creates a new [`StatelessAddressRequest`] from `accounts`.
+    #[inline]
+    pub fn new(accounts: AccountTable<C>) -> Self {
+        Self(accounts)
+    }
+}
+
+/// Stateless Transaction Data Request\
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "AccountTable<C>: Deserialize<'de>, TransactionDataRequest<C>: Deserialize<'de>",
+            serialize = "AccountTable<C>: Serialize, TransactionDataRequest<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "AccountTable<C>: Clone, TransactionDataRequest<C>: Clone"),
+    Copy(bound = "AccountTable<C>: Copy, TransactionDataRequest<C>: Copy"),
+    Debug(bound = "AccountTable<C>: Debug, TransactionDataRequest<C>: Debug"),
+    Default(bound = "AccountTable<C>: Default, TransactionDataRequest<C>: Default"),
+    Eq(bound = "AccountTable<C>: Eq, TransactionDataRequest<C>: Eq"),
+    Hash(bound = "AccountTable<C>: Hash, TransactionDataRequest<C>: Hash"),
+    PartialEq(bound = "AccountTable<C>: PartialEq, TransactionDataRequest<C>: PartialEq")
+)]
+pub struct StatelessTransactionDataRequest<C>
+where
+    C: Configuration,
+{
+    /// Accounts
+    accounts: AccountTable<C>,
+
+    /// Transaction Data Request
+    request: TransactionDataRequest<C>,
+}
+
+impl<C> StatelessTransactionDataRequest<C>
+where
+    C: Configuration,
+{
+    /// Builds a new [`StatelessTransactionDataRequest`] from `accounts` and
+    /// `request`.
+    #[inline]
+    pub fn new(accounts: AccountTable<C>, request: TransactionDataRequest<C>) -> Self {
+        Self { accounts, request }
+    }
+}
+
+/// Stateless Identity Proof Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"AccountTable<C>: Deserialize<'de>, 
+                UtxoAccumulatorModel<C>: Deserialize<'de>, 
+                IdentityRequest<C>: Deserialize<'de>, 
+                C::Rng: Deserialize<'de>",
+            serialize = r"AccountTable<C>: Serialize, 
+                UtxoAccumulatorModel<C>: Serialize,
+                IdentityRequest<C>: Serialize, 
+                C::Rng: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = r"AccountTable<C>: Clone, 
+        UtxoAccumulatorModel<C>: Clone,  
+        IdentityRequest<C>: Clone, 
+        C::Rng: Clone"),
+    Copy(bound = r"AccountTable<C>: Copy, 
+        UtxoAccumulatorModel<C>: Copy, 
+        IdentityRequest<C>: Copy, 
+        C::Rng: Copy"),
+    Debug(bound = r"AccountTable<C>: Debug, 
+        UtxoAccumulatorModel<C>: Debug, 
+        IdentityRequest<C>: Debug, 
+        C::Rng: Debug"),
+    Default(bound = r"AccountTable<C>: Default, 
+        UtxoAccumulatorModel<C>: Default, 
+        IdentityRequest<C>: Default, 
+        C::Rng: Default"),
+    Eq(bound = r"AccountTable<C>: Eq, 
+        UtxoAccumulatorModel<C>: Eq, 
+        IdentityRequest<C>: Eq, 
+        C::Rng: Eq"),
+    Hash(bound = r"AccountTable<C>: Hash, 
+        UtxoAccumulatorModel<C>: Hash, 
+        IdentityRequest<C>: Hash, 
+        C::Rng: Hash"),
+    PartialEq(bound = r"AccountTable<C>: PartialEq, 
+        UtxoAccumulatorModel<C>: PartialEq, 
+        IdentityRequest<C>: PartialEq, 
+        C::Rng: PartialEq")
+)]
+pub struct StatelessIdentityRequest<C>
+where
+    C: Configuration,
+{
+    /// Accounts
+    accounts: AccountTable<C>,
+
+    /// Utxo Accumulator Model
+    utxo_accumulator_model: UtxoAccumulatorModel<C>,
+
+    /// Identity Proof Request
+    request: IdentityRequest<C>,
+
+    /// Rng
+    rng: C::Rng,
+}
+
+impl<C> StatelessIdentityRequest<C>
+where
+    C: Configuration,
+{
+    /// Builds a new [`StatelessIdentityRequest`] from `accounts`,
+    /// `utxo_accumulator_model`, `request` and `rng`.
+    #[inline]
+    pub fn new(
+        accounts: AccountTable<C>,
+        utxo_accumulator_model: UtxoAccumulatorModel<C>,
+        request: IdentityRequest<C>,
+        rng: C::Rng,
+    ) -> Self {
+        Self {
+            accounts,
+            utxo_accumulator_model,
+            request,
+            rng,
         }
     }
 }
@@ -1047,7 +1463,7 @@ where
         )
     }
 
-    /// Returns the [`Address`] corresponding to `self`.
+    /// Returns the [`Address`] corresponding to `accounts`.
     #[inline]
     pub fn address(&self, accounts: &AccountTable<C>) -> Address<C> {
         let account = default_account::<C>(accounts);
@@ -1055,7 +1471,7 @@ where
     }
 
     /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
-    /// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `self` doesn't own the
+    /// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `accounts` doesn't own the
     /// underlying assets in `post`.
     #[inline]
     pub fn transaction_data(
@@ -1124,61 +1540,70 @@ where
     type Error = Infallible;
 
     #[inline]
-    fn sync<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
-        assets: C::AssetMap,
-        checkpoint: C::Checkpoint,
-        utxo_accumulator: C::UtxoAccumulator,
-        request: SyncRequest<C, C::Checkpoint>,
-        rng: &'a mut C::Rng,
+    fn sync(
+        &mut self,
+        mut request: StatelessSyncRequest<C>,
     ) -> LocalBoxFutureResult<StatelessSyncResult<C, C::Checkpoint>, Self::Error> {
         Box::pin(async move {
-            Ok(self.sync(accounts, assets, checkpoint, utxo_accumulator, request, rng))
+            Ok(Self::sync(
+                self,
+                &request.accounts,
+                request.assets,
+                request.checkpoint,
+                request.utxo_accumulator,
+                request.request,
+                &mut request.rng,
+            ))
         })
     }
 
     #[inline]
-    fn sign<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
-        assets: &'a C::AssetMap,
-        utxo_accumulator: C::UtxoAccumulator,
-        request: SignRequest<C::AssetMetadata, C>,
-        rng: &'a mut C::Rng,
+    fn sign(
+        &mut self,
+        mut request: StatelessSignRequest<C>,
     ) -> LocalBoxFutureResult<StatelessSignResult<C>, Self::Error> {
         Box::pin(async move {
-            Ok(self.sign(accounts, assets, utxo_accumulator, request.transaction, rng))
+            Ok(Self::sign(
+                self,
+                &request.accounts,
+                &request.assets,
+                request.utxo_accumulator,
+                request.request.transaction,
+                &mut request.rng,
+            ))
         })
     }
 
     #[inline]
-    fn address<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
+    fn address(
+        &mut self,
+        request: StatelessAddressRequest<C>,
     ) -> LocalBoxFutureResult<Address<C>, Self::Error> {
-        Box::pin(async move { Ok(self.address(accounts)) })
+        Box::pin(async move { Ok(Self::address(self, &request.0)) })
     }
 
     #[inline]
-    fn transaction_data<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
-        request: TransactionDataRequest<C>,
+    fn transaction_data(
+        &mut self,
+        request: StatelessTransactionDataRequest<C>,
     ) -> LocalBoxFutureResult<TransactionDataResponse<C>, Self::Error> {
-        Box::pin(async move { Ok(self.batched_transaction_data(accounts, request.0)) })
+        Box::pin(
+            async move { Ok(self.batched_transaction_data(&request.accounts, request.request.0)) },
+        )
     }
 
     #[inline]
-    fn identity_proof<'a>(
-        &'a self,
-        accounts: &'a AccountTable<C>,
-        utxo_accumulator_model: &'a UtxoAccumulatorModel<C>,
-        request: IdentityRequest<C>,
-        rng: &'a mut C::Rng,
+    fn identity_proof(
+        &mut self,
+        mut request: StatelessIdentityRequest<C>,
     ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error> {
         Box::pin(async move {
-            Ok(self.batched_identity_proof(accounts, utxo_accumulator_model, request.0, rng))
+            Ok(self.batched_identity_proof(
+                &request.accounts,
+                &request.utxo_accumulator_model,
+                request.request.0,
+                &mut request.rng,
+            ))
         })
     }
 }

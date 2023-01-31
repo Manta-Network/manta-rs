@@ -35,6 +35,10 @@ pub mod client;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]
 pub mod base;
 
+#[cfg(feature = "wallet")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]
+pub mod stateless_signer;
+
 /// Synchronization Request
 pub type SyncRequest = signer::SyncRequest<Config, Checkpoint>;
 
@@ -70,6 +74,15 @@ pub type IdentityRequest = signer::IdentityRequest<Config>;
 
 /// Identity Verification Response
 pub type IdentityResponse = signer::IdentityResponse<Config>;
+
+/// Account Table Type
+pub type AccountTable = signer::AccountTable<Config>;
+
+/// AssetMap Type
+pub type AssetMap = <Config as signer::Configuration>::AssetMap;
+
+/// Rng Type
+pub type SignerRng = <Config as signer::Configuration>::Rng;
 
 /// Receiving Key Request
 #[cfg_attr(

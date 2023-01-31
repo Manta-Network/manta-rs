@@ -21,6 +21,11 @@
 use crate::{
     config::{utxo::Address, Config},
     signer::{
+        stateless_signer::{
+            self, StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest,
+            StatelessSignResult, StatelessSyncRequest, StatelessSyncResult,
+            StatelessTransactionDataRequest,
+        },
         AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError,
         SignRequest, SignResponse, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
         TransactionDataResponse,
@@ -165,6 +170,50 @@ impl signer::Connection<Config> for Client {
     fn identity_proof(
         &mut self,
         request: IdentityRequest,
+    ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
+        Box::pin(async move { self.send("identity", request).await })
+    }
+}
+
+impl stateless_signer::StatelessSignerConnection<Config> for Client {
+    type Error = Error;
+
+    #[inline]
+    fn sync(
+        &mut self,
+        request: StatelessSyncRequest,
+    ) -> LocalBoxFutureResult<StatelessSyncResult, Self::Error> {
+        Box::pin(async move { self.send("sync", request).await })
+    }
+
+    #[inline]
+    fn sign(
+        &mut self,
+        request: StatelessSignRequest,
+    ) -> LocalBoxFutureResult<StatelessSignResult, Self::Error> {
+        Box::pin(async move { self.send("sign", request).await })
+    }
+
+    #[inline]
+    fn address(
+        &mut self,
+        request: StatelessAddressRequest,
+    ) -> LocalBoxFutureResult<Address, Self::Error> {
+        Box::pin(async move { self.send("address", request).await })
+    }
+
+    #[inline]
+    fn transaction_data(
+        &mut self,
+        request: StatelessTransactionDataRequest,
+    ) -> LocalBoxFutureResult<TransactionDataResponse, Self::Error> {
+        Box::pin(async move { self.send("transaction_data", request).await })
+    }
+
+    #[inline]
+    fn identity_proof(
+        &mut self,
+        request: StatelessIdentityRequest,
     ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
         Box::pin(async move { self.send("identity", request).await })
     }
