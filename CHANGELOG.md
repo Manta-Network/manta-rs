@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#314](https://github.com/Manta-Network/manta-rs/pull/314) Add stateless signer API.
 - [\#289](https://github.com/Manta-Network/manta-rs/pull/289) AssetMetadata upgrade and NFT support.
 - [\#310](https://github.com/Manta-Network/manta-rs/pull/310) Add identity verification algorithm using ToPublic circuit
 
