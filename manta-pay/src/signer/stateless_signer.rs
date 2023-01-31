@@ -92,9 +92,8 @@ pub fn address(stateless_signer: &StatelessSigner, accounts: &AccountTable) -> A
     stateless_signer.address(accounts)
 }
 
-/// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
-/// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `accounts` doesn't own the
-/// underlying assets in `post`.
+/// Returns the associated [`TransactionData`] of `post`. Returns `None` if `post` has an invalid shape,
+/// or if `accounts` doesn't own the underlying assets in `post`.
 #[inline]
 pub fn transaction_data(
     stateless_signer: &StatelessSigner,
