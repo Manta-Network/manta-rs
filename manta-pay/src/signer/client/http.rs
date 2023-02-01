@@ -20,11 +20,6 @@ use crate::{
     config::{utxo::Address, Config},
     signer::{
         client::network::{Message, Network},
-        stateless_signer::{
-            self, StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest,
-            StatelessSignResult, StatelessSyncRequest, StatelessSyncResult,
-            StatelessTransactionDataRequest,
-        },
         AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError,
         SignRequest, SignResponse, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
         TransactionDataResponse,
@@ -35,6 +30,13 @@ use manta_accounting::wallet::{self, signer};
 use manta_util::{
     future::LocalBoxFutureResult,
     http::reqwest::{self, IntoUrl, KnownUrlClient},
+};
+
+#[cfg(feature = "wallet")]
+use crate::signer::stateless_signer::{
+    self, StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest,
+    StatelessSignResult, StatelessSyncRequest, StatelessSyncResult,
+    StatelessTransactionDataRequest,
 };
 
 #[doc(inline)]
@@ -138,6 +140,7 @@ impl signer::Connection<Config> for Client {
     }
 }
 
+#[cfg(feature = "wallet")]
 impl stateless_signer::StatelessSignerConnection<Config> for Client {
     type Error = Error;
 

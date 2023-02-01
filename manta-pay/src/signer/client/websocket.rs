@@ -21,11 +21,6 @@
 use crate::{
     config::{utxo::Address, Config},
     signer::{
-        stateless_signer::{
-            self, StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest,
-            StatelessSignResult, StatelessSyncRequest, StatelessSyncResult,
-            StatelessTransactionDataRequest,
-        },
         AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError,
         SignRequest, SignResponse, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
         TransactionDataResponse,
@@ -45,6 +40,13 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::{self, client::IntoClientRequest, Message},
     MaybeTlsStream, WebSocketStream,
+};
+
+#[cfg(feature = "wallet")]
+use crate::signer::stateless_signer::{
+    self, StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest,
+    StatelessSignResult, StatelessSyncRequest, StatelessSyncResult,
+    StatelessTransactionDataRequest,
 };
 
 /// Web Socket Error
@@ -175,6 +177,7 @@ impl signer::Connection<Config> for Client {
     }
 }
 
+#[cfg(feature = "wallet")]
 impl stateless_signer::StatelessSignerConnection<Config> for Client {
     type Error = Error;
 

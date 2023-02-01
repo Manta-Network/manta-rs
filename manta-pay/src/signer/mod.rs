@@ -16,15 +16,13 @@
 
 //! Manta Pay Signer Tools
 
+use crate::config::{utxo::Checkpoint, Config};
 use alloc::{
     format,
     string::{String, ToString},
 };
 use core::ops::{Div, Sub};
 use manta_accounting::wallet::signer;
-
-#[cfg(feature = "groth16")]
-use crate::config::{utxo::Checkpoint, Config};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
