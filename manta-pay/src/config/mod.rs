@@ -32,7 +32,6 @@ use {alloc::string::String, manta_util::codec::Encode};
 
 pub mod poseidon;
 pub mod utxo;
-pub mod utxo_utilities;
 
 /// Pairing Curve Type
 pub type PairingCurve = Bn254;
