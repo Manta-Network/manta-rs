@@ -26,7 +26,7 @@ use crate::{
     },
 };
 use alloc::boxed::Box;
-use manta_accounting::wallet::{self, signer};
+use manta_accounting::wallet::{self, signer, stateless_signer};
 use manta_util::{
     future::LocalBoxFutureResult,
     http::reqwest::{self, IntoUrl, KnownUrlClient},
@@ -34,9 +34,8 @@ use manta_util::{
 
 #[cfg(feature = "wallet")]
 use crate::signer::stateless_signer::{
-    self, StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest,
-    StatelessSignResult, StatelessSyncRequest, StatelessSyncResult,
-    StatelessTransactionDataRequest,
+    StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest, StatelessSignResult,
+    StatelessSyncRequest, StatelessSyncResult, StatelessTransactionDataRequest,
 };
 
 #[doc(inline)]

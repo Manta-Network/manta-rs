@@ -29,7 +29,7 @@ use crate::{
 use alloc::boxed::Box;
 use core::marker::Unpin;
 use futures::{SinkExt, StreamExt};
-use manta_accounting::wallet::{self, signer};
+use manta_accounting::wallet::{self, signer, stateless_signer};
 use manta_util::{
     from_variant,
     future::LocalBoxFutureResult,
@@ -44,9 +44,8 @@ use tokio_tungstenite::{
 
 #[cfg(feature = "wallet")]
 use crate::signer::stateless_signer::{
-    self, StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest,
-    StatelessSignResult, StatelessSyncRequest, StatelessSyncResult,
-    StatelessTransactionDataRequest,
+    StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest, StatelessSignResult,
+    StatelessSyncRequest, StatelessSyncResult, StatelessTransactionDataRequest,
 };
 
 /// Web Socket Error

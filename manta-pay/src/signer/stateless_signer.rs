@@ -25,8 +25,6 @@ use crate::{
 };
 use manta_accounting::wallet::{self, stateless_signer};
 
-pub use wallet::stateless_signer::StatelessSignerConnection;
-
 /// Stateless Signer Type
 pub type StatelessSigner = wallet::stateless_signer::StatelessSigner<Config>;
 
