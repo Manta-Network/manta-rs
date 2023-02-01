@@ -35,10 +35,7 @@ use crate::{
         ProofSystemError, SpendingKey, TransferPost, Utxo, UtxoAccumulatorItem,
         UtxoAccumulatorModel, UtxoMembershipProof,
     },
-    wallet::{
-        ledger::{self, Data},
-        stateless_signer::{StatelessSignResponse, StatelessSigner, StatelessSyncResponse},
-    },
+    wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
@@ -50,6 +47,8 @@ use manta_util::{future::LocalBoxFutureResult, persistence::Rollback};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+
+pub mod methods;
 
 /// Signer Connection
 pub trait Connection<C>
@@ -607,13 +606,12 @@ pub trait Configuration: transfer::Configuration {
 
     /// [`Utxo`] Accumulator Type
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
-        + Clone
         + ExactSizeAccumulator
         + OptimizedAccumulator
         + Rollback;
 
     /// Asset Map Type
-    type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>> + Clone;
+    type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
 
     /// Asset Metadata Type
     type AssetMetadata;
@@ -832,8 +830,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "StatelessSigner<C>: Deserialize<'de>, SignerState<C>: Deserialize<'de>",
-            serialize = "StatelessSigner<C>: Serialize, SignerState<C>: Serialize",
+            deserialize = "SignerParameters<C>: Deserialize<'de>, SignerState<C>: Deserialize<'de>",
+            serialize = "SignerParameters<C>: Serialize, SignerState<C>: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -841,18 +839,18 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "StatelessSigner<C>: Clone, SignerState<C>: Clone"),
-    Debug(bound = "StatelessSigner<C>: Debug, SignerState<C>: Debug"),
-    Eq(bound = "StatelessSigner<C>: Eq, SignerState<C>: Eq"),
-    Hash(bound = "StatelessSigner<C>: Hash, SignerState<C>: Hash"),
-    PartialEq(bound = "StatelessSigner<C>: PartialEq, SignerState<C>: PartialEq")
+    Clone(bound = "SignerParameters<C>: Clone, SignerState<C>: Clone"),
+    Debug(bound = "SignerParameters<C>: Debug, SignerState<C>: Debug"),
+    Eq(bound = "SignerParameters<C>: Eq, SignerState<C>: Eq"),
+    Hash(bound = "SignerParameters<C>: Hash, SignerState<C>: Hash"),
+    PartialEq(bound = "SignerParameters<C>: PartialEq, SignerState<C>: PartialEq")
 )]
 pub struct Signer<C>
 where
     C: Configuration,
 {
-    /// Stateless Signer
-    stateless_signer: StatelessSigner<C>,
+    /// Signer Parameters
+    parameters: SignerParameters<C>,
 
     /// Signer State
     state: SignerState<C>,
@@ -865,10 +863,7 @@ where
     /// Builds a new [`Signer`] from `parameters` and `state`.
     #[inline]
     pub fn from_parts(parameters: SignerParameters<C>, state: SignerState<C>) -> Self {
-        Self {
-            stateless_signer: StatelessSigner::from_parameters(parameters),
-            state,
-        }
+        Self { parameters, state }
     }
 
     /// Builds a new [`Signer`].
@@ -917,7 +912,7 @@ where
     /// Returns a shared reference to the signer parameters.
     #[inline]
     pub fn parameters(&self) -> &SignerParameters<C> {
-        self.stateless_signer.parameters()
+        &self.parameters
     }
 
     /// Returns a shared reference to the signer state.
@@ -932,26 +927,15 @@ where
         &mut self,
         request: SyncRequest<C, C::Checkpoint>,
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
-        let StatelessSyncResponse {
-            checkpoint,
-            balance_update,
-            utxo_accumulator,
-            assets,
-        } = self.stateless_signer.sync(
+        methods::sync(
+            &self.parameters,
             &self.state.accounts,
-            self.state.assets.clone(),
-            self.state.checkpoint.clone(),
-            self.state.utxo_accumulator.clone(),
+            &mut self.state.assets,
+            &mut self.state.checkpoint,
+            &mut self.state.utxo_accumulator,
             request,
             &mut self.state.rng,
-        )?;
-        self.state.utxo_accumulator = utxo_accumulator;
-        self.state.assets = assets;
-        self.state.checkpoint = checkpoint.clone();
-        Ok(SyncResponse {
-            checkpoint,
-            balance_update,
-        })
+        )
     }
 
     /// Generates an [`IdentityProof`] for `identified_asset` by
@@ -961,8 +945,9 @@ where
         &mut self,
         identified_asset: IdentifiedAsset<C>,
     ) -> Option<IdentityProof<C>> {
-        self.stateless_signer.identity_proof(
-            &self.state.accounts().clone(),
+        methods::identity_proof(
+            &self.parameters,
+            &self.state.accounts,
             self.state.utxo_accumulator.model(),
             identified_asset,
             &mut self.state.rng,
@@ -972,18 +957,14 @@ where
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
-        let StatelessSignResponse {
-            posts,
-            utxo_accumulator,
-        } = self.stateless_signer.sign(
-            &self.state.accounts().clone(),
-            &self.state.assets.clone(),
-            self.state.utxo_accumulator.clone(),
+        methods::sign(
+            &self.parameters,
+            &self.state.accounts,
+            &self.state.assets,
+            &mut self.state.utxo_accumulator,
             transaction,
             &mut self.state.rng,
-        )?;
-        self.state.utxo_accumulator = utxo_accumulator;
-        Ok(SignResponse { posts })
+        )
     }
 
     /// Returns a vector with the [`IdentityProof`] corresponding to each [`IdentifiedAsset`] in `identified_assets`.
@@ -1003,7 +984,7 @@ where
     /// Returns the [`Address`] corresponding to `self`.
     #[inline]
     pub fn address(&mut self) -> Address<C> {
-        self.stateless_signer.address(self.state.accounts())
+        methods::address(self.parameters(), self.state.accounts())
     }
 
     /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
@@ -1011,8 +992,7 @@ where
     /// underlying assets in `post`.
     #[inline]
     pub fn transaction_data(&self, post: TransferPost<C>) -> Option<TransactionData<C>> {
-        self.stateless_signer
-            .transaction_data(self.state.accounts(), post)
+        methods::transaction_data(self.parameters(), self.state.accounts(), post)
     }
 
     /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by

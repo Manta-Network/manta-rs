@@ -32,16 +32,6 @@ use manta_util::{
     http::reqwest::{self, IntoUrl, KnownUrlClient},
 };
 
-#[cfg(feature = "wallet")]
-use {
-    crate::signer::stateless_signer::{
-        StatelessAddressRequest, StatelessIdentityRequest, StatelessSignRequest,
-        StatelessSignResult, StatelessSyncRequest, StatelessSyncResult,
-        StatelessTransactionDataRequest,
-    },
-    manta_accounting::wallet::stateless_signer,
-};
-
 #[doc(inline)]
 pub use reqwest::Error;
 
@@ -134,59 +124,6 @@ impl signer::Connection<Config> for Client {
     fn identity_proof(
         &mut self,
         request: IdentityRequest,
-    ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
-        Box::pin(async move {
-            self.base
-                .post("identity", &self.wrap_request(request))
-                .await
-        })
-    }
-}
-
-#[cfg(feature = "wallet")]
-impl stateless_signer::StatelessSignerConnection<Config> for Client {
-    type Error = Error;
-
-    #[inline]
-    fn sync(
-        &mut self,
-        request: StatelessSyncRequest,
-    ) -> LocalBoxFutureResult<StatelessSyncResult, Self::Error> {
-        Box::pin(async move { self.base.post("sync", &self.wrap_request(request)).await })
-    }
-
-    #[inline]
-    fn sign(
-        &mut self,
-        request: StatelessSignRequest,
-    ) -> LocalBoxFutureResult<StatelessSignResult, Self::Error> {
-        Box::pin(async move { self.base.post("sign", &self.wrap_request(request)).await })
-    }
-
-    #[inline]
-    fn address(
-        &mut self,
-        request: StatelessAddressRequest,
-    ) -> LocalBoxFutureResult<Address, Self::Error> {
-        Box::pin(async move { self.base.post("address", &self.wrap_request(request)).await })
-    }
-
-    #[inline]
-    fn transaction_data(
-        &mut self,
-        request: StatelessTransactionDataRequest,
-    ) -> LocalBoxFutureResult<TransactionDataResponse, Self::Error> {
-        Box::pin(async move {
-            self.base
-                .post("transaction_data", &self.wrap_request(request))
-                .await
-        })
-    }
-
-    #[inline]
-    fn identity_proof(
-        &mut self,
-        request: StatelessIdentityRequest,
     ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
         Box::pin(async move {
             self.base

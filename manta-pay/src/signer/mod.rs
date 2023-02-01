@@ -35,7 +35,7 @@ pub mod base;
 
 #[cfg(feature = "wallet")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]
-pub mod stateless_signer;
+pub mod methods;
 
 /// Synchronization Request
 pub type SyncRequest = signer::SyncRequest<Config, Checkpoint>;
