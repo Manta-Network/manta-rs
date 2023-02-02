@@ -1124,6 +1124,7 @@ where
     /// [`is_valid`](Self::is_valid) for more.
     fn update_public_balances(
         &mut self,
+        asset_type: AssetType,
         super_key: &TransferLedgerSuperPostingKey<C, Self>,
         asset_id: C::AssetId,
         sources: Vec<SourcePostingKey<C, Self>>,
@@ -1572,6 +1573,24 @@ where
     }
 }
 
+///
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum AssetType {
+    ///
+    FT,
+    ///
+    NFT,
+    ///
+    SBT,
+    ///
+    PFT, // permissionless fungible token
+}
+
 /// Transfer Post
 #[cfg_attr(
     feature = "serde",
@@ -1813,6 +1832,7 @@ where
     #[inline]
     pub fn post<L>(
         self,
+        asset_type: AssetType,
         parameters: &C::Parameters,
         ledger: &mut L,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
@@ -1823,7 +1843,7 @@ where
         L: TransferLedger<C>,
     {
         self.validate(parameters, ledger, source_accounts, sink_accounts)?
-            .post(ledger, super_key)
+            .post(asset_type,ledger, super_key)
             .map_err(TransferPostError::UnexpectedError)
     }
 }
@@ -1978,6 +1998,7 @@ where
     #[inline]
     pub fn post(
         self,
+        asset_type: AssetType,
         ledger: &mut L,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
     ) -> Result<L::Event, <L as TransferLedger<C>>::Error> {
@@ -1990,6 +2011,7 @@ where
         )?;
         if let Some(asset_id) = self.asset_id {
             ledger.update_public_balances(
+                asset_type,
                 super_key,
                 asset_id,
                 self.source_posting_keys,

@@ -41,9 +41,9 @@ pub mod parameters;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod signer;
 
-#[cfg(all(feature = "groth16", feature = "simulation"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "simulation"))))]
-pub mod simulation;
+// #[cfg(all(feature = "groth16", feature = "simulation"))]
+// #[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "simulation"))))]
+// pub mod simulation;
 
 #[cfg(any(test, feature = "test"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
