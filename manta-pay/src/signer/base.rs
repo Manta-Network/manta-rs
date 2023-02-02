@@ -25,10 +25,10 @@ use crate::{
     key::{CoinType, KeySecret, Testnet},
     signer::{AssetMetadata, Checkpoint},
 };
-use alloc::collections::BTreeMap;
+use alloc::{collections::BTreeMap, vec, vec::Vec};
 use core::{cmp, mem};
 use manta_accounting::{
-    asset::HashAssetMap,
+    asset::BTreeAssetMap,
     key::{AccountCollection, AccountIndex, DeriveAddresses},
     transfer::{utxo::protocol, Identifier, IdentityVerificationError, SpendingKey},
     wallet::{
@@ -88,7 +88,7 @@ impl wallet::signer::Configuration for Config {
     type Account = KeySecret<Testnet>;
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
-    type AssetMap = HashAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
+    type AssetMap = BTreeAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
     type AssetMetadata = AssetMetadata;
     type Rng = ChaCha20Rng;
 }

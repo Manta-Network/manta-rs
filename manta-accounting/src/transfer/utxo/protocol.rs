@@ -2397,9 +2397,11 @@ where
     Default(bound = "UtxoCommitmentRandomness<C>: Default"),
     Eq(bound = "UtxoCommitmentRandomness<C>: Eq"),
     Hash(bound = "UtxoCommitmentRandomness<C>: Hash"),
+    Ord(bound = "UtxoCommitmentRandomness<C>: Ord"),
     PartialEq(
         bound = "UtxoCommitmentRandomness<C>: core::cmp::PartialEq<UtxoCommitmentRandomness<C>>"
-    )
+    ),
+    PartialOrd(bound = "UtxoCommitmentRandomness<C>: PartialOrd")
 )]
 pub struct Identifier<C>
 where
