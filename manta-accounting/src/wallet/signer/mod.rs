@@ -984,7 +984,7 @@ where
     /// Returns the [`Address`] corresponding to `self`.
     #[inline]
     pub fn address(&mut self) -> Address<C> {
-        methods::address(self.parameters(), self.state.accounts())
+        methods::address(&self.parameters, &self.state.accounts)
     }
 
     /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
@@ -992,7 +992,7 @@ where
     /// underlying assets in `post`.
     #[inline]
     pub fn transaction_data(&self, post: TransferPost<C>) -> Option<TransactionData<C>> {
-        methods::transaction_data(self.parameters(), self.state.accounts(), post)
+        methods::transaction_data(&self.parameters, &self.state.accounts, post)
     }
 
     /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by
