@@ -268,6 +268,11 @@ impl Constant<Compiler> for GroupGeneratorVar {
 }
 
 /// Utxo Commitment Scheme Domain Tag
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UtxoCommitmentSchemeDomainTag;
 
@@ -292,6 +297,18 @@ impl<COM> Constant<COM> for UtxoCommitmentSchemeDomainTag {
 type UtxoCommitmentSchemeType<COM = ()> = Hasher<Poseidon5, UtxoCommitmentSchemeDomainTag, 5, COM>;
 
 /// Utxo Commitment Scheme
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "UtxoCommitmentSchemeType<COM>: Deserialize<'de>",
+            serialize = "UtxoCommitmentSchemeType<COM>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoCommitmentSchemeType<COM>: Clone"),
@@ -401,6 +418,11 @@ impl protocol::UtxoCommitmentScheme<Compiler> for UtxoCommitmentScheme<Compiler>
 }
 
 /// Viewing Key Derivation Function Domain Tag
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ViewingKeyDerivationFunctionDomainTag;
 
@@ -426,6 +448,18 @@ type ViewingKeyDerivationFunctionType<COM = ()> =
     Hasher<Poseidon2, ViewingKeyDerivationFunctionDomainTag, 2, COM>;
 
 /// Viewing Key Derivation Function
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "ViewingKeyDerivationFunctionType<COM>: Deserialize<'de>",
+            serialize = "ViewingKeyDerivationFunctionType<COM>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "ViewingKeyDerivationFunctionType<COM>: Clone"),
@@ -523,6 +557,11 @@ impl protocol::ViewingKeyDerivationFunction<Compiler> for ViewingKeyDerivationFu
 }
 
 /// Incoming Encryption Scheme Converter
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IncomingEncryptionSchemeConverter<COM = ()>(PhantomData<COM>);
@@ -723,6 +762,11 @@ pub const AES_CIPHERTEXT_SIZE: usize = AES_PLAINTEXT_SIZE + 16;
 pub type AES = aes::FixedNonceAesGcm<AES_PLAINTEXT_SIZE, AES_CIPHERTEXT_SIZE>;
 
 /// Incoming AES Encryption Scheme
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IncomingAESEncryptionScheme<COM = ()>(PhantomData<COM>);
@@ -827,6 +871,11 @@ impl<COM> encryption::Decrypt for IncomingAESEncryptionScheme<COM> {
 }
 
 /// Incoming AES Converter
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IncomingAESConverter<COM = ()>(PhantomData<COM>);
@@ -1001,6 +1050,11 @@ pub type IncomingBaseAES<COM = ()> = encryption::convert::key::Converter<
 >;
 
 /// Utxo Accumulator Item Hash Domain Tag
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UtxoAccumulatorItemHashDomainTag;
 
@@ -1026,6 +1080,18 @@ type UtxoAccumulatorItemHashType<COM = ()> =
     Hasher<Poseidon4, UtxoAccumulatorItemHashDomainTag, 4, COM>;
 
 /// Utxo Accumulator Item Hash
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "UtxoAccumulatorItemHashType<COM>: Deserialize<'de>",
+            serialize = "UtxoAccumulatorItemHashType<COM>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "UtxoAccumulatorItemHashType<COM>: Clone"),
@@ -1122,6 +1188,11 @@ pub type LeafHash = merkle_tree::IdentityLeafHash<UtxoAccumulatorItem>;
 pub type LeafHashVar = merkle_tree::IdentityLeafHash<UtxoAccumulatorItemVar, Compiler>;
 
 /// Inner Hash Domain Tag
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct InnerHashDomainTag;
 
@@ -1291,6 +1362,11 @@ impl merkle_tree::test::HashParameterSampling for MerkleTreeConfiguration {
 }
 
 /// Nullifier Commitment Scheme Domain Tag
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct NullifierCommitmentSchemeDomainTag;
 
@@ -1316,6 +1392,18 @@ type NullifierCommitmentSchemeType<COM = ()> =
     Hasher<Poseidon3, NullifierCommitmentSchemeDomainTag, 3, COM>;
 
 /// Nullifier Commitment Scheme
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "NullifierCommitmentSchemeType<COM>: Deserialize<'de>",
+            serialize = "NullifierCommitmentSchemeType<COM>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "NullifierCommitmentSchemeType<COM>: Clone"),
@@ -1427,6 +1515,11 @@ pub const OUT_AES_CIPHERTEXT_SIZE: usize = OUT_AES_PLAINTEXT_SIZE + 16;
 pub type OutAes = aes::FixedNonceAesGcm<OUT_AES_PLAINTEXT_SIZE, OUT_AES_CIPHERTEXT_SIZE>;
 
 /// Outgoing AES Encryption Scheme
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct OutgoingAESEncryptionScheme<COM = ()>(PhantomData<COM>);
@@ -1531,6 +1624,11 @@ impl<COM> encryption::Decrypt for OutgoingAESEncryptionScheme<COM> {
 }
 
 /// Outgoing AES Converter
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct OutgoingAESConverter<COM = ()>(PhantomData<COM>);
@@ -1700,6 +1798,11 @@ pub type OutgoingBaseAES<COM = ()> = encryption::convert::key::Converter<
 >;
 
 /// Address Partition Function
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AddressPartitionFunction;
 
@@ -1762,6 +1865,11 @@ impl Sample for AddressPartitionFunction {
 }
 
 /// Schnorr Hash Function
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SchnorrHashFunction;
 
