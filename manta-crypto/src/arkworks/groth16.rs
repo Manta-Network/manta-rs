@@ -22,9 +22,8 @@ use crate::{
         ec::PairingEngine,
         relations::r1cs::SynthesisError,
         serialize::{
-            canonical_deserialize, canonical_serialize, ArkReader, ArkWriter, CanonicalDeserialize,
-            CanonicalSerialize, HasDeserialization, HasSerialization, Read, SerializationError,
-            Write,
+            ArkReader, ArkWriter, CanonicalDeserialize, CanonicalSerialize, HasDeserialization,
+            HasSerialization, Read, SerializationError, Write,
         },
     },
     constraint::{Input, ProofSystem},
@@ -43,7 +42,10 @@ use manta_util::codec::{self, DecodeError};
 use crate::crypto::ecc::arkworks::Group;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize, Serializer};
+use {
+    crate::arkworks::serialize::{canonical_deserialize, canonical_serialize},
+    manta_util::serde::{Deserialize, Serialize, Serializer},
+};
 
 /// Proof System Error
 ///

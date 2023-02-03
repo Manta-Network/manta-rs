@@ -82,6 +82,9 @@ pub type AssetMap = <Config as signer::Configuration>::AssetMap;
 /// Rng Type
 pub type SignerRng = <Config as signer::Configuration>::Rng;
 
+/// Identity Result Type
+pub type IdentityResult = signer::IdentityResult<Config>;
+
 /// Receiving Key Request
 #[cfg_attr(
     feature = "serde",
