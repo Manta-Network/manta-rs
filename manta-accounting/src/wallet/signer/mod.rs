@@ -498,7 +498,7 @@ where
     Hash(bound = "TransferPost<C>: Hash, UtxoMembershipProof<C>: Hash"),
     PartialEq(bound = "TransferPost<C>: PartialEq, UtxoMembershipProof<C>: PartialEq")
 )]
-pub struct IdentityResponse<C>(pub Vec<IdentityResult<C>>)
+pub struct IdentityResponse<C>(pub Vec<Option<IdentityProof<C>>>)
 where
     C: transfer::Configuration;
 
@@ -551,21 +551,6 @@ where
 
 /// Signing Result
 pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
-
-/// Identity Error
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields)
-)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum IdentityError {
-    /// Identity Proof Generation Error
-    IdentityError(u8),
-}
-
-/// Identity Result
-pub type IdentityResult<C> = Result<IdentityProof<C>, IdentityError>;
 
 /// Signer Checkpoint
 pub trait Checkpoint<C>: ledger::Checkpoint
@@ -956,7 +941,7 @@ where
     /// Generates an [`IdentityProof`] for `identified_asset` by
     /// signing a virtual [`ToPublic`](transfer::canonical::ToPublic) transaction.
     #[inline]
-    pub fn identity_proof(&mut self, identified_asset: IdentifiedAsset<C>) -> IdentityResult<C> {
+    pub fn identity_proof(&mut self, identified_asset: IdentifiedAsset<C>) -> Option<IdentityProof<C>> {
         methods::identity_proof(
             &self.parameters,
             &self.state.accounts,
@@ -964,7 +949,6 @@ where
             identified_asset,
             &mut self.state.rng,
         )
-        .ok_or(IdentityError::IdentityError(Default::default()))
     }
 
     /// Signs the `transaction`, generating transfer posts.
