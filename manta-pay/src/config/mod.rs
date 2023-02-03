@@ -199,6 +199,9 @@ pub type SpendingKey = transfer::SpendingKey<Config>;
 /// Address Type
 pub type Address = transfer::Address<Config>;
 
+/// Identifier Type
+pub type Identifier = transfer::Identifier<Config>;
+
 /// Identified Asset Type
 pub type IdentifiedAsset = transfer::IdentifiedAsset<Config>;
 
