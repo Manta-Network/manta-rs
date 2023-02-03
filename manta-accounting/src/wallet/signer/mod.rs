@@ -561,7 +561,7 @@ pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum IdentityError {
     /// Identity Proof Generation Error
-    IdentityError,
+    IdentityError(u8),
 }
 
 /// Identity Result
@@ -964,7 +964,7 @@ where
             identified_asset,
             &mut self.state.rng,
         )
-        .ok_or(IdentityError::IdentityError)
+        .ok_or(IdentityError::IdentityError(Default::default()))
     }
 
     /// Signs the `transaction`, generating transfer posts.
