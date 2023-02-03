@@ -32,7 +32,10 @@ use crate::{
 use alloc::vec::Vec;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey, VerifyingKey};
 use ark_snark::SNARK;
-use core::marker::PhantomData;
+use core::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 use manta_util::codec::{self, DecodeError};
 
 #[cfg(feature = "scale")]
@@ -73,6 +76,18 @@ pub struct Proof<E>(
 )
 where
     E: PairingEngine;
+
+impl<E> Hash for Proof<E>
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.a.hash(state);
+        self.0.b.hash(state);
+        self.0.c.hash(state);
+    }
+}
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
