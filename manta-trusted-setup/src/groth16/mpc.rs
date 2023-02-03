@@ -614,7 +614,7 @@ pub mod util {
                 message: "Unable to deserialize state at provided path".to_string(),
             })?,
         };
-        let proving_context = ProvingContext(state.0);
+        let proving_context = ProvingContext::new(state.0);
         proving_context
             .encode(IoWriter(pk_file))
             .map_err(|_| UnexpectedError::Serialization {
