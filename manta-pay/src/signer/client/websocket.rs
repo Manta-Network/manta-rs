@@ -21,9 +21,9 @@
 use crate::{
     config::{utxo::Address, Config},
     signer::{
-        Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError, SignRequest,
-        SignResponse, SignWithTransactionDataResponse, SyncError, SyncRequest, SyncResponse,
-        TransactionDataRequest, TransactionDataResponse,
+        AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError,
+        SignRequest, SignResponse, SignWithTransactionDataResponse, SyncError, SyncRequest,
+        SyncResponse, TransactionDataRequest, TransactionDataResponse,
     },
 };
 use alloc::boxed::Box;
