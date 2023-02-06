@@ -38,8 +38,8 @@ use crate::{
         ledger::ReadResponse,
         signer::{
             BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
-            SyncData, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
-            TransactionDataResponse,
+            SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
+            TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -455,6 +455,29 @@ where
     #[inline]
     pub async fn address(&mut self) -> Result<Address<C>, S::Error> {
         self.signer.address().await
+    }
+
+    /// Signs `transaction` and returns the [`TransferPost`]s and the
+    /// associated [`TransactionData`] if successful.
+    #[inline]
+    pub async fn sign_with_transaction_data(
+        &mut self,
+        transaction: Transaction<C>,
+        metadata: Option<S::AssetMetadata>,
+    ) -> Result<SignWithTransactionDataResponse<C>, Error<C, L, S>>
+    where
+        TransferPost<C>: Clone,
+    {
+        self.check(&transaction)
+            .map_err(Error::InsufficientBalance)?;
+        self.signer
+            .sign_with_transaction_data(SignRequest {
+                transaction,
+                metadata,
+            })
+            .await
+            .map_err(Error::SignerConnectionError)?
+            .map_err(Error::SignError)
     }
 }
 

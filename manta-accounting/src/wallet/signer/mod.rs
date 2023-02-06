@@ -97,6 +97,15 @@ where
         &mut self,
         request: IdentityRequest<C>,
     ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error>;
+
+    /// Signs a transaction and returns the ledger transfer posts and the
+    /// associated [`TransactionData`] if successful.
+    fn sign_with_transaction_data(
+        &mut self,
+        request: SignRequest<Self::AssetMetadata, C>,
+    ) -> LocalBoxFutureResult<SignWithTransactionDataResult<C>, Self::Error>
+    where
+        TransferPost<C>: Clone;
 }
 
 /// Signer Synchronization Data
@@ -305,6 +314,32 @@ where
     PartialEq(bound = "TransactionData<C>: PartialEq")
 )]
 pub struct TransactionDataResponse<C>(pub Vec<Option<TransactionData<C>>>)
+where
+    C: transfer::Configuration;
+
+/// Sign with Transaction Data Response
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "TransferPost<C>: Deserialize<'de>, TransactionData<C>: Deserialize<'de>, SignError<C>: Deserialize<'de>",
+            serialize = "TransferPost<C>: Serialize, TransactionData<C>: Serialize, SignError<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "TransferPost<C>: Clone, TransactionData<C>: Clone, SignError<C>: Clone"),
+    Debug(bound = "TransferPost<C>: Debug, TransactionData<C>: Debug, SignError<C>: Debug"),
+    Eq(bound = "TransferPost<C>: Eq, TransactionData<C>: Eq, SignError<C>: Eq"),
+    PartialEq(
+        bound = "TransferPost<C>: PartialEq, TransactionData<C>: PartialEq, SignError<C>: PartialEq"
+    )
+)]
+pub struct SignWithTransactionDataResponse<C>(pub Vec<(TransferPost<C>, TransactionData<C>)>)
 where
     C: transfer::Configuration;
 
@@ -561,6 +596,10 @@ where
 
 /// Signing Result
 pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
+
+/// Signing with Transaction Data Error
+pub type SignWithTransactionDataResult<C> =
+    Result<SignWithTransactionDataResponse<C>, SignError<C>>;
 
 /// Signer Checkpoint
 pub trait Checkpoint<C>: ledger::Checkpoint
@@ -1019,6 +1058,25 @@ where
                 .collect(),
         )
     }
+
+    /// Signs the `transaction`, generating transfer posts and returning their associated [`TransactionData`].
+    #[inline]
+    pub fn sign_with_transaction_data(
+        &mut self,
+        transaction: Transaction<C>,
+    ) -> Result<SignWithTransactionDataResponse<C>, SignError<C>>
+    where
+        TransferPost<C>: Clone,
+    {
+        functions::sign_with_transaction_data(
+            &self.parameters,
+            &self.state.accounts,
+            &self.state.assets,
+            &mut self.state.utxo_accumulator,
+            transaction,
+            &mut self.state.rng,
+        )
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
@@ -1064,5 +1122,16 @@ where
         request: IdentityRequest<C>,
     ) -> LocalBoxFutureResult<IdentityResponse<C>, Self::Error> {
         Box::pin(async move { Ok(self.batched_identity_proof(request.0)) })
+    }
+
+    #[inline]
+    fn sign_with_transaction_data(
+        &mut self,
+        request: SignRequest<Self::AssetMetadata, C>,
+    ) -> LocalBoxFutureResult<SignWithTransactionDataResult<C>, Self::Error>
+    where
+        TransferPost<C>: Clone,
+    {
+        Box::pin(async move { Ok(self.sign_with_transaction_data(request.transaction)) })
     }
 }

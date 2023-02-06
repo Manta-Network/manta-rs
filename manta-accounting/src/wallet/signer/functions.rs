@@ -49,6 +49,8 @@ use manta_util::{
     vec::VecExt,
 };
 
+use super::{SignWithTransactionDataResponse, SignWithTransactionDataResult};
+
 /// Returns the default account for `accounts`.
 #[inline]
 pub fn default_account<C>(accounts: &AccountTable<C>) -> Account<C::Account>
@@ -879,4 +881,37 @@ where
             Some(TransactionData::<C>::ToPublic(identifier, asset))
         }
     }
+}
+
+/// Signs the `transaction`, generating transfer posts and returning their [`TransactionData`].
+#[inline]
+pub fn sign_with_transaction_data<C>(
+    parameters: &SignerParameters<C>,
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    transaction: Transaction<C>,
+    rng: &mut C::Rng,
+) -> SignWithTransactionDataResult<C>
+where
+    C: Configuration,
+    TransferPost<C>: Clone,
+{
+    Ok(SignWithTransactionDataResponse(
+        sign(
+            parameters,
+            accounts,
+            assets,
+            utxo_accumulator,
+            transaction,
+            rng,
+        )?
+        .posts
+        .into_iter()
+        .map(|post| {
+            (post.clone(), transaction_data(parameters, accounts, post)
+    .expect("Retrieving transaction data from your own TransferPosts is not allowed to fail"))
+        })
+        .collect(),
+    ))
 }
