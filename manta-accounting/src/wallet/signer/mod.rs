@@ -323,8 +323,8 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "TransferPost<C>: Deserialize<'de>, TransactionData<C>: Deserialize<'de>, SignError<C>: Deserialize<'de>",
-            serialize = "TransferPost<C>: Serialize, TransactionData<C>: Serialize, SignError<C>: Serialize",
+            deserialize = "TransferPost<C>: Deserialize<'de>, TransactionData<C>: Deserialize<'de>",
+            serialize = "TransferPost<C>: Serialize, TransactionData<C>: Serialize",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -332,12 +332,11 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "TransferPost<C>: Clone, TransactionData<C>: Clone, SignError<C>: Clone"),
-    Debug(bound = "TransferPost<C>: Debug, TransactionData<C>: Debug, SignError<C>: Debug"),
-    Eq(bound = "TransferPost<C>: Eq, TransactionData<C>: Eq, SignError<C>: Eq"),
-    PartialEq(
-        bound = "TransferPost<C>: PartialEq, TransactionData<C>: PartialEq, SignError<C>: PartialEq"
-    )
+    Clone(bound = "TransferPost<C>: Clone, TransactionData<C>: Clone"),
+    Debug(bound = "TransferPost<C>: Debug, TransactionData<C>: Debug"),
+    Eq(bound = "TransferPost<C>: Eq, TransactionData<C>: Eq"),
+    Hash(bound = "TransferPost<C>: Hash, TransactionData<C>: Hash"),
+    PartialEq(bound = "TransferPost<C>: PartialEq, TransactionData<C>: PartialEq")
 )]
 pub struct SignWithTransactionDataResponse<C>(pub Vec<(TransferPost<C>, TransactionData<C>)>)
 where
