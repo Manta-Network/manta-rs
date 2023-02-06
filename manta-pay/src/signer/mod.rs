@@ -85,6 +85,9 @@ pub type SignerRng = <Config as signer::Configuration>::Rng;
 /// Sign With Transaction Data Result
 pub type SignWithTransactionDataResult = signer::SignWithTransactionDataResult<Config>;
 
+/// Sign With Transaction Data Response
+pub type SignWithTransactionDataResponse = signer::SignWithTransactionDataResponse<Config>;
+
 /// Receiving Key Request
 #[cfg_attr(
     feature = "serde",
