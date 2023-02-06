@@ -883,7 +883,8 @@ where
     }
 }
 
-/// Signs the `transaction`, generating transfer posts and returning their [`TransactionData`].
+/// Signs the `transaction`, generating transfer posts 
+/// and returning their [`TransactionData`].
 #[inline]
 pub fn sign_with_transaction_data<C>(
     parameters: &SignerParameters<C>,
@@ -895,7 +896,7 @@ pub fn sign_with_transaction_data<C>(
 ) -> SignWithTransactionDataResult<C>
 where
     C: Configuration,
-    TransferPost<C>: Clone,
+    TransferPost<C>: Clone
 {
     Ok(SignWithTransactionDataResponse(
         sign(
