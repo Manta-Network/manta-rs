@@ -48,7 +48,7 @@ use manta_util::{future::LocalBoxFutureResult, persistence::Rollback};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
-pub mod methods;
+pub mod functions;
 
 /// Signer Connection
 pub trait Connection<C>
@@ -927,7 +927,7 @@ where
         &mut self,
         request: SyncRequest<C, C::Checkpoint>,
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
-        methods::sync(
+        functions::sync(
             &self.parameters,
             &self.state.accounts,
             &mut self.state.assets,
@@ -941,8 +941,11 @@ where
     /// Generates an [`IdentityProof`] for `identified_asset` by
     /// signing a virtual [`ToPublic`](transfer::canonical::ToPublic) transaction.
     #[inline]
-    pub fn identity_proof(&mut self, identified_asset: IdentifiedAsset<C>) -> Option<IdentityProof<C>> {
-        methods::identity_proof(
+    pub fn identity_proof(
+        &mut self,
+        identified_asset: IdentifiedAsset<C>,
+    ) -> Option<IdentityProof<C>> {
+        functions::identity_proof(
             &self.parameters,
             &self.state.accounts,
             self.state.utxo_accumulator.model(),
@@ -954,7 +957,7 @@ where
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
-        methods::sign(
+        functions::sign(
             &self.parameters,
             &self.state.accounts,
             &self.state.assets,
@@ -981,7 +984,7 @@ where
     /// Returns the [`Address`] corresponding to `self`.
     #[inline]
     pub fn address(&mut self) -> Address<C> {
-        methods::address(&self.parameters, &self.state.accounts)
+        functions::address(&self.parameters, &self.state.accounts)
     }
 
     /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
@@ -989,7 +992,7 @@ where
     /// underlying assets in `post`.
     #[inline]
     pub fn transaction_data(&self, post: TransferPost<C>) -> Option<TransactionData<C>> {
-        methods::transaction_data(&self.parameters, &self.state.accounts, post)
+        functions::transaction_data(&self.parameters, &self.state.accounts, post)
     }
 
     /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by

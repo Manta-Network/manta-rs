@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Manta Pay Signer Methods
+//! Manta Pay Signer Functions
 
 use crate::{
     config::{
@@ -26,7 +26,7 @@ use crate::{
         AccountTable, AssetMap, Checkpoint, SignResult, SignerRng, SyncRequest, SyncResult,
     },
 };
-use manta_accounting::wallet::signer::methods;
+use manta_accounting::wallet::signer::functions;
 
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
 #[allow(clippy::result_large_err)]
@@ -40,7 +40,7 @@ pub fn sync(
     request: SyncRequest,
     rng: &mut SignerRng,
 ) -> SyncResult {
-    methods::sync(
+    functions::sync(
         parameters,
         accounts,
         assets,
@@ -61,7 +61,7 @@ pub fn sign(
     transaction: Transaction,
     rng: &mut SignerRng,
 ) -> SignResult {
-    methods::sign(
+    functions::sign(
         parameters,
         accounts,
         assets,
@@ -74,7 +74,7 @@ pub fn sign(
 /// Returns the [`Address`] corresponding to `accounts`.
 #[inline]
 pub fn address(parameters: &SignerParameters, accounts: &AccountTable) -> Address {
-    methods::address(parameters, accounts)
+    functions::address(parameters, accounts)
 }
 
 /// Returns the associated [`TransactionData`] of `post`. Returns `None` if `post` has an invalid shape,
@@ -85,7 +85,7 @@ pub fn transaction_data(
     accounts: &AccountTable,
     post: TransferPost,
 ) -> Option<TransactionData> {
-    methods::transaction_data(parameters, accounts, post)
+    functions::transaction_data(parameters, accounts, post)
 }
 
 /// Generates an [`IdentityProof`] for `identified_asset` by signing a
@@ -98,7 +98,7 @@ pub fn identity_proof(
     identified_asset: IdentifiedAsset,
     rng: &mut SignerRng,
 ) -> Option<IdentityProof> {
-    methods::identity_proof(
+    functions::identity_proof(
         parameters,
         accounts,
         utxo_accumulator_model,
