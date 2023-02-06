@@ -502,6 +502,16 @@ pub struct IdentityResponse<C>(pub Vec<Option<IdentityProof<C>>>)
 where
     C: transfer::Configuration;
 
+impl<C> IdentityResponse<C>
+where
+    C: transfer::Configuration,
+{
+    ///
+    pub fn new(identity_proofs: Vec<Option<IdentityProof<C>>>) -> Self {
+        Self(identity_proofs)
+    }
+}
+
 impl<C> SignResponse<C>
 where
     C: transfer::Configuration,
