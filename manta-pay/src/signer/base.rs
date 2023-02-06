@@ -198,6 +198,12 @@ pub type SignerState = wallet::signer::SignerState<Config>;
 /// Signer Base Type
 pub type Signer = wallet::signer::Signer<Config>;
 
+/// Wallet Associated to [`Signer`]
+pub type Wallet<L> = wallet::Wallet<Config, L, Signer>;
+
+/// Wallet Error Type
+pub type WalletError<L> = wallet::Error<Config, L, Signer>;
+
 /// Runs the identity verification method on `identity_proof` with [`Config`] and
 /// [`UtxoAccumulator`], checking that `virtual_asset` is opaque and not zero for extra security.
 #[inline]
