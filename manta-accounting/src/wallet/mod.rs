@@ -386,7 +386,7 @@ where
             .map_err(Error::SignError)
     }
 
-    /// Attempts to process TransferPosts and returns the corresponding TransactionData.
+    /// Attempts to process [`TransferPost`]s and returns the corresponding TransactionData.
     #[inline]
     pub async fn transaction_data(
         &mut self,
@@ -458,7 +458,7 @@ where
     }
 
     /// Signs `transaction` and returns the [`TransferPost`]s and the
-    /// associated [`TransactionData`] if successful.
+    /// associated [`TransactionData`](crate::transfer::canonical::TransactionData) if successful.
     #[inline]
     pub async fn sign_with_transaction_data(
         &mut self,
