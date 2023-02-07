@@ -41,7 +41,7 @@ use manta_crypto::{
     arkworks::{
         constraint::fp::Fp,
         ed_on_bn254::FrParameters,
-        ff::{Fp256, PrimeField},
+        ff::{Fp256, PrimeField, Zero},
     },
     merkle_tree::{self, forest::Configuration},
     rand::ChaCha20Rng,
@@ -209,7 +209,7 @@ pub fn identity_verification(
     virtual_asset: IdentifiedAsset,
     address: Address,
 ) -> Result<(), IdentityVerificationError> {
-    if virtual_asset.identifier.is_transparent || virtual_asset.asset.is_empty(&mut ()) {
+    if virtual_asset.identifier.is_transparent || virtual_asset.asset.id.0.is_zero() {
         return Err(IdentityVerificationError::InvalidVirtualAsset);
     }
     identity_proof.identity_verification::<UtxoAccumulator>(
