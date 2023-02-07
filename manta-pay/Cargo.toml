@@ -50,13 +50,10 @@ download = ["manta-parameters/download", "std"]
 groth16 = ["manta-crypto/ark-groth16", "arkworks"]
 
 # Enable HTTP Signer Client
-http = ["manta-util/reqwest", "serde", "network"]
+http = ["manta-util/reqwest", "serde"]
 
 # Key Features
 key = ["bip32", "bip0039"]
-
-# Enable Multiple Network Support
-network = []
 
 # Parameter Loading
 parameters = ["groth16", "manta-crypto/test", "manta-parameters"]

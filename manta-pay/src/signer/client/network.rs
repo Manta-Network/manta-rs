@@ -53,6 +53,17 @@ impl Display for Network {
     }
 }
 
+impl From<Network> for u8 {
+    #[inline]
+    fn from(value: Network) -> Self {
+        match value {
+            Network::Dolphin => 0,
+            Network::Calamari => 1,
+            Network::Manta => 2,
+        }
+    }
+}
+
 /// Network-Specific Data
 #[cfg_attr(
     feature = "serde",
