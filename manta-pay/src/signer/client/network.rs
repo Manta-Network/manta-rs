@@ -53,7 +53,7 @@ impl Display for Network {
     }
 }
 
-impl From<Network> for u8 {
+impl From<Network> for usize {
     #[inline]
     fn from(value: Network) -> Self {
         match value {
