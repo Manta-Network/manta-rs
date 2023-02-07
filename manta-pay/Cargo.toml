@@ -77,6 +77,7 @@ simulation = [
     "manta-util/rayon",
     "test",
     "manta-util/tide",
+    "std",
     "tokio/io-std",
     "tokio/io-util",
     "tokio/macros",
