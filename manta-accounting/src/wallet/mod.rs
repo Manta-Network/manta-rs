@@ -386,7 +386,8 @@ where
             .map_err(Error::SignError)
     }
 
-    /// Attempts to process [`TransferPost`]s and returns the corresponding TransactionData.
+    /// Attempts to process [`TransferPost`]s and returns the corresponding
+    /// [`TransactionData`](crate::transfer::canonical::TransactionData).
     #[inline]
     pub async fn transaction_data(
         &mut self,

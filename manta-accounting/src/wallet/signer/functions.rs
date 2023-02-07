@@ -36,7 +36,8 @@ use crate::{
     },
     wallet::signer::{
         AccountTable, BalanceUpdate, Checkpoint, Configuration, SignError, SignResponse,
-        SignerParameters, SyncData, SyncError, SyncRequest, SyncResponse,
+        SignWithTransactionDataResponse, SignWithTransactionDataResult, SignerParameters, SyncData,
+        SyncError, SyncRequest, SyncResponse,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -48,8 +49,6 @@ use manta_util::{
     array_map, cmp::Independence, into_array_unchecked, iter::IteratorExt, persistence::Rollback,
     vec::VecExt,
 };
-
-use super::{SignWithTransactionDataResponse, SignWithTransactionDataResult};
 
 /// Returns the default account for `accounts`.
 #[inline]
