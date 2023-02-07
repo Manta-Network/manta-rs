@@ -64,6 +64,18 @@ impl From<Network> for usize {
     }
 }
 
+/// Network Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum NetworkError {
+    /// Inexistent Wallet
+    InexistentWallet(Network),
+}
+
 /// Network-Specific Data
 #[cfg_attr(
     feature = "serde",
