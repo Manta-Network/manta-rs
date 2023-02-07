@@ -22,11 +22,12 @@ use crate::{
     signer::base::identity_verification,
     simulation::sample_signer,
 };
-use manta_accounting::transfer::{IdentifiedAsset, Identifier};
+use manta_accounting::transfer::{canonical::Transaction, IdentifiedAsset, Identifier};
 use manta_crypto::{
     arkworks::constraint::fp::Fp,
     rand::{fuzz::Fuzz, OsRng, Rand},
 };
+use manta_util::vec::VecExt;
 
 /// Checks the generation and verification of [`IdentityProof`](manta_accounting::transfer::IdentityProof)s.
 #[test]
@@ -106,5 +107,34 @@ fn identity_proof_test() {
         )
         .is_err(),
         "Verification should have failed"
+    );
+}
+
+/// Signs a [`ToPrivate`](manta_accounting::transfer::canonical::ToPrivate) transaction, computes its
+/// [`TransactionData`](manta_accounting::transfer::canonical::TransactionData), and checks its correctness.
+#[test]
+fn transaction_data_test() {
+    let mut rng = OsRng;
+    let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
+    let (proving_context, _, parameters, utxo_accumulator_model) =
+        load_parameters(directory.path()).expect("Failed to load parameters");
+    let mut signer = sample_signer(
+        &proving_context,
+        &parameters,
+        &utxo_accumulator_model,
+        &mut rng,
+    );
+    let transaction = Transaction::ToPrivate(rng.gen());
+    let response = signer
+        .sign_with_transaction_data(transaction)
+        .expect("Signing a ToPrivate transaction is not allowed to fail.")
+        .0
+        .take_first();
+    let utxo = response.0.body.receiver_posts.take_first().utxo;
+    assert!(
+        response
+            .1
+            .check_transaction_data(&parameters, &signer.address(), &vec![utxo]),
+        "Invalid Transaction Data"
     );
 }
