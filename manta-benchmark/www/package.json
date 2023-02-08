@@ -25,7 +25,8 @@
   },
   "homepage": "https://github.com/Manta-Network/manta-rs/blob/main/manta-benchmark/README.md",
   "dependencies": {
-    "wasm-prover": "file:../pkg"
+    "wasm-prover": "file:../pkg",
+    "circomlibjs": "iden3/circomlibjs#main"
   },
   "devDependencies": {
     "webpack": "^4.29.3",
