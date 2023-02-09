@@ -72,8 +72,8 @@ impl From<Network> for usize {
 )]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum NetworkError {
-    /// Inexistent Wallet
-    InexistentWallet(Network),
+    /// Nonexistent Wallet
+    NonexistentWallet(Network),
 }
 
 /// Network-Specific Data

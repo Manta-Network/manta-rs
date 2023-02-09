@@ -540,7 +540,7 @@ impl<C> IdentityResponse<C>
 where
     C: transfer::Configuration,
 {
-    ///
+    /// Builds a new [`IdentityResponse`] from a vector of [`IdentityProof`]s.
     pub fn new(identity_proofs: Vec<Option<IdentityProof<C>>>) -> Self {
         Self(identity_proofs)
     }
