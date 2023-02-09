@@ -18,15 +18,52 @@
 
 use crate::{
     config::{
-        Address, IdentifiedAsset, IdentityProof, Transaction, TransactionData, TransferPost,
-        UtxoAccumulatorModel,
+        Address, Config, IdentifiedAsset, IdentityProof, MultiProvingContext, Parameters,
+        Transaction, TransactionData, TransferPost, UtxoAccumulatorModel,
     },
+    key::{KeySecret, Mnemonic},
     signer::{
-        base::{SignerParameters, UtxoAccumulator},
+        base::{Signer, SignerParameters, UtxoAccumulator},
         AccountTable, AssetMap, Checkpoint, SignResult, SignerRng, SyncRequest, SyncResult,
     },
 };
-use manta_accounting::wallet::signer::functions;
+use manta_accounting::wallet::signer::{functions, StorageState};
+use manta_crypto::rand::FromEntropy;
+
+/// Builds a new [`Signer`] from `mnemonic`, `password`, `parameters`, `proving_context`
+/// and `utxo_accumulator`.
+#[inline]
+pub fn new_signer(
+    mnemonic: Mnemonic,
+    password: &str,
+    parameters: Parameters,
+    proving_context: MultiProvingContext,
+    utxo_accumulator: UtxoAccumulator,
+) -> Signer {
+    Signer::new(
+        AccountTable::new(KeySecret::new(mnemonic, password)),
+        parameters,
+        proving_context,
+        utxo_accumulator,
+        FromEntropy::from_entropy(),
+    )
+}
+
+/// Initializes a [`Signer`] from `storage_state`, `mnemonic`, `password`,
+/// `parameters` and `proving_context`.
+pub fn initialize_signer_from_storage(
+    storage_state: &StorageState<Config>,
+    mnemonic: Mnemonic,
+    password: &str,
+    parameters: Parameters,
+    proving_context: MultiProvingContext,
+) -> Signer {
+    storage_state.initialize_signer(
+        AccountTable::new(KeySecret::new(mnemonic, password)),
+        parameters,
+        proving_context,
+    )
+}
 
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
 #[allow(clippy::result_large_err)]

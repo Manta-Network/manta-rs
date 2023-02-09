@@ -1134,3 +1134,107 @@ where
         Box::pin(async move { Ok(self.sign_with_transaction_data(request.transaction)) })
     }
 }
+
+/// Storage State
+///
+/// This struct stores the [`Checkpoint`],
+/// [`UtxoAccumulator`](Configuration::UtxoAccumulator) and [`AssetMap`] of
+/// a [`SignerState`].
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "C::Checkpoint: Deserialize<'de>, C::UtxoAccumulator: Deserialize<'de>, C::AssetMap: Deserialize<'de>",
+            serialize = "C::Checkpoint: Serialize, C::UtxoAccumulator: Serialize, C::AssetMap: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "C::Checkpoint: Clone, C::UtxoAccumulator: Clone, C::AssetMap: Clone"),
+    Debug(bound = "C::Checkpoint: Debug, C::UtxoAccumulator: Debug, C::AssetMap: Debug"),
+    Eq(bound = "C::Checkpoint: Eq, C::UtxoAccumulator: Eq, C::AssetMap: Eq"),
+    Hash(bound = "C::Checkpoint: Hash, C::UtxoAccumulator: Hash, C::AssetMap: Hash"),
+    PartialEq(
+        bound = "C::Checkpoint: PartialEq, C::UtxoAccumulator: PartialEq, C::AssetMap: PartialEq"
+    )
+)]
+pub struct StorageState<C>
+where
+    C: Configuration,
+{
+    /// Checkpoint
+    checkpoint: C::Checkpoint,
+
+    /// Utxo Accumulator
+    utxo_accumulator: C::UtxoAccumulator,
+
+    /// Assets
+    assets: C::AssetMap,
+}
+
+impl<C> StorageState<C>
+where
+    C: Configuration,
+{
+    /// Builds a new [`StorageState`] with default values from `utxo_accumulator_model`.
+    #[inline]
+    pub fn new(utxo_accumulator_model: &UtxoAccumulatorModel<C>) -> Self {
+        let utxo_accumulator = Accumulator::empty(utxo_accumulator_model);
+        Self {
+            checkpoint: Checkpoint::from_utxo_accumulator(&utxo_accumulator),
+            utxo_accumulator,
+            assets: Default::default(),
+        }
+    }
+
+    /// Updates `self` from `signer`
+    #[inline]
+    pub fn update_from_signer(&mut self, signer: &Signer<C>)
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        self.checkpoint = signer.state.checkpoint.clone();
+        self.utxo_accumulator = signer.state.utxo_accumulator.clone();
+        self.assets = signer.state.assets.clone();
+    }
+
+    /// Updates `signer` from `self`.
+    #[inline]
+    pub fn update_signer(&self, signer: &mut Signer<C>)
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        signer.state.checkpoint = self.checkpoint.clone();
+        signer.state.utxo_accumulator = self.utxo_accumulator.clone();
+        signer.state.assets = self.assets.clone();
+    }
+
+    /// Initializes a [`Signer`] from `self`, `accounts`, `parameters` and `proving_context`.
+    #[inline]
+    pub fn initialize_signer(
+        &self,
+        accounts: AccountTable<C>,
+        parameters: Parameters<C>,
+        proving_context: MultiProvingContext<C>,
+    ) -> Signer<C>
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        let mut signer = Signer::new(
+            accounts,
+            parameters,
+            proving_context,
+            self.utxo_accumulator.clone(),
+            FromEntropy::from_entropy(),
+        );
+        self.update_signer(&mut signer);
+        signer
+    }
+}
