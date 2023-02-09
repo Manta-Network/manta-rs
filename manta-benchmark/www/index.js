@@ -50,6 +50,22 @@ function bench_prove_to_public() {
   return `prove to_public performance: ${median(perf)} ms \n`;
 }
 
+const REPEAT_POSEIDON = 1000;
+
+async function bench_poseidon_js() {
+  let poseidonWasm = await buildPoseidon();
+  const inp = [1, 2];
+  const st = 0;
+  const nOut = 1;
+  const perf = Array.from({ length: REPEAT_POSEIDON }, (_, i) => {
+    const t0 = performance.now();
+    poseidonWasm(inp, st, nOut);
+    const t1 = performance.now();
+    return t1 - t0;
+  });
+  return `poseidon_js performance: ${median(perf)} ms \n`;
+}
+
 // benchmarks proof time for to_private
 pre.textContent = bench_prove_to_private();
 
@@ -59,19 +75,7 @@ pre.textContent += bench_prove_private_transfer();
 // benchmarks proof time for to_public
 pre.textContent += bench_prove_to_public();
 
-function bench_poseidon_js() {
-  let poseidonWasm = buildPoseidon();
-  const inp = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-  const st = 0;
-  const nOut = 17;
-  const perf = Array.from({ length: REPEAT }, (_, i) => {
-    const t0 = performance.now();
-    poseidonWasm(inp, st, nOut);
-    const t1 = performance.now();
-    return t1 - t0;
-  });
-  return `poseidon_js performance: ${median(perf)} ms \n`;
-}
-
 // benchmarks proof for poseidon hash
-pre.textContent += bench_poseidon_js();
+bench_poseidon_js().then(function (resolvedValue) {
+  pre.textContent += resolvedValue;
+});
