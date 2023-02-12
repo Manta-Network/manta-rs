@@ -51,11 +51,11 @@ pub fn new_signer(
 
 /// Builds a new [`Signer`] from `mnemonic`, `password`, `parameters`, `proving_context`
 /// and `utxo_accumulator_model`.
-/// 
+///
 /// # Implementation Note
-/// 
-/// The signer initialized in this way has an empty state and must be synchronized from scratch, 
-/// which is a time-consuming operation. One should favor the `new_signer` and 
+///
+/// The signer initialized in this way has an empty state and must be synchronized from scratch,
+/// which is a time-consuming operation. One should favor the `new_signer` and
 /// `initialize_signer_from_storage` functions when possible.
 #[inline]
 pub fn new_signer_from_model(
