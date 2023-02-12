@@ -28,7 +28,7 @@ use crate::{
     },
 };
 use manta_accounting::wallet::signer::{functions, StorageState};
-use manta_crypto::rand::FromEntropy;
+use manta_crypto::{accumulator::Accumulator, rand::FromEntropy};
 
 /// Builds a new [`Signer`] from `mnemonic`, `password`, `parameters`, `proving_context`
 /// and `utxo_accumulator`.
@@ -45,6 +45,31 @@ pub fn new_signer(
         parameters,
         proving_context,
         utxo_accumulator,
+        FromEntropy::from_entropy(),
+    )
+}
+
+/// Builds a new [`Signer`] from `mnemonic`, `password`, `parameters`, `proving_context`
+/// and `utxo_accumulator_model`.
+/// 
+/// # Implementation Note
+/// 
+/// The signer initialized in this way has an empty state and must be synchronized from scratch, 
+/// which is a time-consuming operation. One should favor the `new_signer` and 
+/// `initialize_signer_from_storage` functions when possible.
+#[inline]
+pub fn new_signer_from_model(
+    mnemonic: Mnemonic,
+    password: &str,
+    parameters: Parameters,
+    proving_context: MultiProvingContext,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+) -> Signer {
+    Signer::new(
+        AccountTable::new(KeySecret::new(mnemonic, password)),
+        parameters,
+        proving_context,
+        Accumulator::empty(utxo_accumulator_model),
         FromEntropy::from_entropy(),
     )
 }
