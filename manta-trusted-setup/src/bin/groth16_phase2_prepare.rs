@@ -22,7 +22,7 @@
 
 use clap::Parser;
 use manta_trusted_setup::groth16::ceremony::{
-    config::ppot::{Config, Record, Registry},
+    config::ppot::{Config, Registry},
     coordinator::prepare,
     CeremonyError,
 };
@@ -42,7 +42,7 @@ impl Arguments {
     /// Prepares for phase 2 ceremony
     #[inline]
     pub fn run(self) -> Result<(), CeremonyError<Config>> {
-        prepare::<Config, Registry, Record>(self.phase_one_param_path, self.recovery_directory);
+        prepare::<Config, Registry>(self.phase_one_param_path, self.recovery_directory);
         Ok(())
     }
 }

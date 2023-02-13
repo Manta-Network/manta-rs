@@ -65,12 +65,12 @@ pub fn new_signer_from_model(
     proving_context: MultiProvingContext,
     utxo_accumulator_model: &UtxoAccumulatorModel,
 ) -> Signer {
-    Signer::new(
-        AccountTable::new(KeySecret::new(mnemonic, password)),
+    new_signer(
+        mnemonic,
+        password,
         parameters,
         proving_context,
         Accumulator::empty(utxo_accumulator_model),
-        FromEntropy::from_entropy(),
     )
 }
 
