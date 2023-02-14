@@ -21,8 +21,8 @@ use crate::{
     signer::{
         client::network::{Message, Network},
         AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError,
-        SignRequest, SignResponse, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
-        TransactionDataResponse,
+        SignRequest, SignResponse, SignWithTransactionDataResult, SyncError, SyncRequest,
+        SyncResponse, TransactionDataRequest, TransactionDataResponse,
     },
 };
 use alloc::boxed::Box;
@@ -128,6 +128,18 @@ impl signer::Connection<Config> for Client {
         Box::pin(async move {
             self.base
                 .post("identity", &self.wrap_request(request))
+                .await
+        })
+    }
+
+    #[inline]
+    fn sign_with_transaction_data(
+        &mut self,
+        request: SignRequest,
+    ) -> LocalBoxFutureResult<SignWithTransactionDataResult, Self::Error> {
+        Box::pin(async move {
+            self.base
+                .post("sign_with_transaction_data", &self.wrap_request(request))
                 .await
         })
     }

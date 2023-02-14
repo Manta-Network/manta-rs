@@ -22,8 +22,8 @@ use crate::{
     config::{utxo::Address, Config},
     signer::{
         AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError,
-        SignRequest, SignResponse, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
-        TransactionDataResponse,
+        SignRequest, SignResponse, SignWithTransactionDataResult, SyncError, SyncRequest,
+        SyncResponse, TransactionDataRequest, TransactionDataResponse,
     },
 };
 use alloc::boxed::Box;
@@ -167,5 +167,13 @@ impl signer::Connection<Config> for Client {
         request: IdentityRequest,
     ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
         Box::pin(async move { self.send("identity", request).await })
+    }
+
+    #[inline]
+    fn sign_with_transaction_data(
+        &mut self,
+        request: SignRequest,
+    ) -> LocalBoxFutureResult<SignWithTransactionDataResult, Self::Error> {
+        Box::pin(async move { self.send("sign_with_transaction_data", request).await })
     }
 }

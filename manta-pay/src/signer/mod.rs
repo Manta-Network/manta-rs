@@ -16,15 +16,13 @@
 
 //! Manta Pay Signer Tools
 
+use crate::config::{utxo::Checkpoint, Config};
 use alloc::{
     format,
     string::{String, ToString},
 };
 use core::ops::{Div, Sub};
 use manta_accounting::wallet::signer;
-
-#[cfg(feature = "groth16")]
-use crate::config::{utxo::Checkpoint, Config};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -34,6 +32,10 @@ pub mod client;
 #[cfg(feature = "wallet")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]
 pub mod base;
+
+#[cfg(feature = "wallet")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "wallet")))]
+pub mod functions;
 
 /// Synchronization Request
 pub type SyncRequest = signer::SyncRequest<Config, Checkpoint>;
@@ -70,6 +72,21 @@ pub type IdentityRequest = signer::IdentityRequest<Config>;
 
 /// Identity Verification Response
 pub type IdentityResponse = signer::IdentityResponse<Config>;
+
+/// Account Table Type
+pub type AccountTable = signer::AccountTable<Config>;
+
+/// AssetMap Type
+pub type AssetMap = <Config as signer::Configuration>::AssetMap;
+
+/// Rng Type
+pub type SignerRng = <Config as signer::Configuration>::Rng;
+
+/// Sign With Transaction Data Result
+pub type SignWithTransactionDataResult = signer::SignWithTransactionDataResult<Config>;
+
+/// Sign With Transaction Data Response
+pub type SignWithTransactionDataResponse = signer::SignWithTransactionDataResponse<Config>;
 
 /// Receiving Key Request
 #[cfg_attr(
