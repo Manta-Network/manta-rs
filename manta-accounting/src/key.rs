@@ -236,6 +236,30 @@ pub trait DeriveAddresses {
     fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address;
 }
 
+/// Derive Viewing Key Trait
+pub trait DeriveViewingKey {
+    /// Viewing Key Generation Parameters
+    type Parameters;
+
+    /// Viewing Key Type
+    type ViewingKey;
+
+    /// Returns the [`ViewingKey`](Self::ViewingKey) corresponding to `self`.
+    fn viewing_key(&self, parameters: &Self::Parameters) -> Self::ViewingKey;
+}
+
+/// Derive Viewing Keys Trait
+pub trait DeriveViewingKeys {
+    /// Viewing Key Generation Parameters
+    type Parameters;
+
+    /// Viewing Key Type
+    type ViewingKey;
+
+    /// Returns the [`ViewingKey`](Self::ViewingKey) corresponding to `index`.
+    fn viewing_key(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::ViewingKey;
+}
+
 /// Account
 #[cfg_attr(
     feature = "serde",
@@ -299,6 +323,19 @@ where
     #[inline]
     fn address(&self, parameters: &Self::Parameters) -> Self::Address {
         self.key.address(parameters, self.index)
+    }
+}
+
+impl<H> DeriveViewingKey for Account<H>
+where
+    H: AccountCollection + DeriveViewingKeys,
+{
+    type Parameters = H::Parameters;
+    type ViewingKey = H::ViewingKey;
+
+    #[inline]
+    fn viewing_key(&self, parameters: &Self::Parameters) -> Self::ViewingKey {
+        self.key.viewing_key(parameters, self.index)
     }
 }
 

@@ -27,10 +27,11 @@
 
 use crate::{
     asset::AssetMap,
-    key::{self, Account, AccountCollection, DeriveAddresses},
+    key::{self, Account, AccountCollection, DeriveAddresses, DeriveViewingKeys},
     transfer::{
         self,
         canonical::{MultiProvingContext, Transaction, TransactionData},
+        utxo::DeriveDecryptionKey,
         Address, Asset, IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters,
         ProofSystemError, SpendingKey, TransferPost, Utxo, UtxoAccumulatorItem,
         UtxoAccumulatorModel, UtxoMembershipProof,
@@ -650,7 +651,11 @@ pub trait Configuration: transfer::Configuration {
     /// Account Type
     type Account: AccountCollection<SpendingKey = SpendingKey<Self>>
         + Clone
-        + DeriveAddresses<Parameters = Self::Parameters, Address = Self::Address>;
+        + DeriveAddresses<Parameters = Self::Parameters, Address = Self::Address>
+        + DeriveViewingKeys<
+            Parameters = Self::Parameters,
+            ViewingKey = <Self::Parameters as DeriveDecryptionKey>::DecryptionKey,
+        >;
 
     /// [`Utxo`] Accumulator Type
     type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>

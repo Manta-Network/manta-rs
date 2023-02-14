@@ -29,7 +29,7 @@ use alloc::{collections::BTreeMap, vec, vec::Vec};
 use core::{cmp, mem};
 use manta_accounting::{
     asset::BTreeAssetMap,
-    key::{AccountCollection, AccountIndex, DeriveAddresses},
+    key::{AccountCollection, AccountIndex, DeriveAddresses, DeriveViewingKeys},
     transfer::{utxo::protocol, Identifier, IdentityVerificationError, SpendingKey},
     wallet::{
         self,
@@ -71,6 +71,19 @@ where
     #[inline]
     fn address(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::Address {
         parameters.address_from_spending_key(&AccountCollection::spending_key(&self, &index))
+    }
+}
+
+impl<C> DeriveViewingKeys for KeySecret<C>
+where
+    C: CoinType,
+{
+    type Parameters = protocol::Parameters<utxo::Config>;
+    type ViewingKey = <utxo::Config as protocol::BaseConfiguration>::Scalar;
+
+    #[inline]
+    fn viewing_key(&self, parameters: &Self::Parameters, index: AccountIndex) -> Self::ViewingKey {
+        parameters.viewing_key_from_spending_key(&AccountCollection::spending_key(&self, &index))
     }
 }
 

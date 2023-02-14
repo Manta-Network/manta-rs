@@ -890,6 +890,22 @@ where
         )
     }
 
+    /// Computes the viewing key corresponding to `spending_key`.
+    #[inline]
+    pub fn viewing_key_from_spending_key(&self, spending_key: &SpendingKey<Self>) -> C::Scalar
+    where
+        C: Configuration,
+    {
+        self.base.viewing_key_derivation_function.viewing_key(
+            &self
+                .base
+                .group_generator
+                .generator()
+                .scalar_mul(spending_key, &mut ()),
+            &mut (),
+        )
+    }
+
     /// Computes the [`Address`] corresponding to `spending_key`.
     #[inline]
     pub fn address_from_spending_key(&self, spending_key: &SpendingKey<Self>) -> Address<C>
