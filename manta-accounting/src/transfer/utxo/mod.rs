@@ -259,6 +259,18 @@ pub trait NoteOpen: AssetType + DeriveDecryptionKey + IdentifierType + NoteType 
     }
 }
 
+/// Outgoing Note Opening
+pub trait OutgoingNoteOpen:
+    AssetType + DeriveDecryptionKey + IdentifierType + NullifierType
+{
+    /// Tries to open `nullifier` with `decryption_key`, returning its stored [`Asset`].
+    fn open(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        nullifier: Self::Nullifier,
+    ) -> Option<Self::Asset>;
+}
+
 /// Derive Address
 pub trait DeriveAddress: AddressType {
     /// Secret Key Type

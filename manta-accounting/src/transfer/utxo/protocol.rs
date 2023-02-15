@@ -1424,6 +1424,31 @@ where
     }
 }
 
+impl<C> utxo::OutgoingNoteOpen for Parameters<C>
+where
+    C: Configuration<Bool = bool>,
+    C::OutgoingBaseEncryptionScheme:
+        Decrypt<DecryptionKey = C::Group, DecryptedPlaintext = Option<Asset<C>>>,
+{
+    #[inline]
+    fn open(
+        &self,
+        decryption_key: &Self::DecryptionKey,
+        nullifier: Self::Nullifier,
+    ) -> Option<Self::Asset> {
+        Hybrid::new(
+            StandardDiffieHellman::new(self.base.group_generator.generator().clone()),
+            self.base.outgoing_base_encryption_scheme.clone(),
+        )
+        .decrypt(
+            decryption_key,
+            &C::OutgoingHeader::default(),
+            &nullifier.outgoing_note.ciphertext,
+            &mut (),
+        )
+    }
+}
+
 impl<C> utxo::DeriveAddress for Parameters<C>
 where
     C: Configuration<Bool = bool>,
