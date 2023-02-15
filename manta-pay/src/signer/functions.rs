@@ -18,8 +18,8 @@
 
 use crate::{
     config::{
-        Address, Config, IdentifiedAsset, IdentityProof, MultiProvingContext, Parameters,
-        Transaction, TransactionData, TransferPost, UtxoAccumulatorModel,
+        Address, AuthorizationContext, Config, IdentifiedAsset, IdentityProof, MultiProvingContext,
+        Parameters, Transaction, TransactionData, TransferPost, UtxoAccumulatorModel,
     },
     key::{KeySecret, Mnemonic},
     signer::{
@@ -30,18 +30,30 @@ use crate::{
 use manta_accounting::wallet::signer::{functions, StorageState};
 use manta_crypto::{accumulator::Accumulator, rand::FromEntropy};
 
-/// Builds a new [`Signer`] from `mnemonic`, `password`, `parameters`, `proving_context`
-/// and `utxo_accumulator`.
+/// Builds a new [`Signer`] from `parameters` and `proving_context`,
+/// loading its state from `storage_state`, if possible.
 #[inline]
 pub fn new_signer(
-    mnemonic: Mnemonic,
-    password: &str,
+    parameters: Parameters,
+    proving_context: MultiProvingContext,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+    storage_state: &Option<StorageState<Config>>,
+) -> Signer {
+    let mut signer = new_signer_from_model(parameters, proving_context, utxo_accumulator_model);
+    if let Some(state) = storage_state {
+        state.update_signer(&mut signer);
+    }
+    signer
+}
+
+/// Builds a new [`Signer`] `parameters`, `proving_context` and `utxo_accumulator`.
+#[inline]
+fn new_signer_from_accumulator(
     parameters: Parameters,
     proving_context: MultiProvingContext,
     utxo_accumulator: UtxoAccumulator,
 ) -> Signer {
     Signer::new(
-        AccountTable::new(KeySecret::new(mnemonic, password)),
         parameters,
         proving_context,
         utxo_accumulator,
@@ -49,7 +61,7 @@ pub fn new_signer(
     )
 }
 
-/// Builds a new [`Signer`] from `mnemonic`, `password`, `parameters`, `proving_context`
+/// Builds a new [`Signer`] from `parameters`, `proving_context`
 /// and `utxo_accumulator_model`.
 ///
 /// # Implementation Note
@@ -58,36 +70,32 @@ pub fn new_signer(
 /// which is a time-consuming operation. One should favor the `new_signer` and
 /// `initialize_signer_from_storage` functions when possible.
 #[inline]
-pub fn new_signer_from_model(
-    mnemonic: Mnemonic,
-    password: &str,
+fn new_signer_from_model(
     parameters: Parameters,
     proving_context: MultiProvingContext,
     utxo_accumulator_model: &UtxoAccumulatorModel,
 ) -> Signer {
-    new_signer(
-        mnemonic,
-        password,
+    new_signer_from_accumulator(
         parameters,
         proving_context,
         Accumulator::empty(utxo_accumulator_model),
     )
 }
 
-/// Initializes a [`Signer`] from `storage_state`, `mnemonic`, `password`,
-/// `parameters` and `proving_context`.
-pub fn initialize_signer_from_storage(
-    storage_state: &StorageState<Config>,
-    mnemonic: Mnemonic,
-    password: &str,
-    parameters: Parameters,
-    proving_context: MultiProvingContext,
-) -> Signer {
-    storage_state.initialize_signer(
-        AccountTable::new(KeySecret::new(mnemonic, password)),
-        parameters,
-        proving_context,
-    )
+/// Loads the [`AccountTable`] from `mnemonic` to `signer`.
+#[inline]
+pub fn load_accounts(signer: &mut Signer, mnemonic: Mnemonic) {
+    signer.load_accounts(AccountTable::new(KeySecret::new(mnemonic, "")))
+}
+
+/// Loads the [`AuthorizationContext`] from `mnemonic` to `signer`.
+#[inline]
+pub fn load_authorization_context(signer: &mut Signer, mnemonic: Mnemonic) {
+    let authorization_context = functions::default_authorization_context::<Config>(
+        &AccountTable::new(KeySecret::new(mnemonic, "")),
+        &signer.parameters().parameters,
+    );
+    signer.load_authorization_context(authorization_context)
 }
 
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
@@ -95,7 +103,7 @@ pub fn initialize_signer_from_storage(
 #[inline]
 pub fn sync(
     parameters: &SignerParameters,
-    accounts: &AccountTable,
+    authorization_context: &mut AuthorizationContext,
     assets: &mut AssetMap,
     checkpoint: &mut Checkpoint,
     utxo_accumulator: &mut UtxoAccumulator,
@@ -104,7 +112,7 @@ pub fn sync(
 ) -> SyncResult {
     functions::sync(
         parameters,
-        accounts,
+        authorization_context,
         assets,
         checkpoint,
         utxo_accumulator,

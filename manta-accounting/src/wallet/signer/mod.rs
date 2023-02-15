@@ -31,9 +31,9 @@ use crate::{
     transfer::{
         self,
         canonical::{MultiProvingContext, Transaction, TransactionData},
-        Address, Asset, IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters,
-        ProofSystemError, SpendingKey, TransferPost, Utxo, UtxoAccumulatorItem,
-        UtxoAccumulatorModel, UtxoMembershipProof,
+        Address, Asset, AuthorizationContext, IdentifiedAsset, Identifier, IdentityProof, Note,
+        Nullifier, Parameters, ProofSystemError, SpendingKey, TransferPost, Utxo,
+        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoMembershipProof,
     },
     wallet::ledger::{self, Data},
 };
@@ -83,7 +83,7 @@ where
     ) -> LocalBoxFutureResult<SignResult<C>, Self::Error>;
 
     /// Returns the [`Address`] corresponding to `self`.
-    fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error>;
+    fn address(&mut self) -> LocalBoxFutureResult<Option<Address<C>>, Self::Error>;
 
     /// Returns the [`TransactionData`] of the [`TransferPost`]s in `request` owned by `self`.
     fn transaction_data(
@@ -414,6 +414,9 @@ where
         /// Signer Checkpoint
         checkpoint: T,
     },
+
+    /// Missing Proof Authorization Key
+    MissingKey,
 }
 
 /// Synchronization Result
@@ -591,6 +594,9 @@ where
 
     /// Proof System Error
     ProofSystemError(ProofSystemError<C>),
+
+    /// Missing Spending Key
+    MissingKey,
 }
 
 /// Signing Result
@@ -725,12 +731,14 @@ where
         bound(
             deserialize = r"
                 AccountTable<C>: Deserialize<'de>,
+                AuthorizationContext<C>: Deserialize<'de>,
                 C::UtxoAccumulator: Deserialize<'de>,
                 C::AssetMap: Deserialize<'de>,
                 C::Checkpoint: Deserialize<'de>
             ",
             serialize = r"
                 AccountTable<C>: Serialize,
+                AuthorizationContext<C>: Serialize,
                 C::UtxoAccumulator: Serialize,
                 C::AssetMap: Serialize,
                 C::Checkpoint: Serialize
@@ -744,6 +752,7 @@ where
 #[derivative(
     Debug(bound = r"
         AccountTable<C>: Debug,
+        AuthorizationContext<C>: Debug,
         C::UtxoAccumulator: Debug,
         C::AssetMap: Debug,
         C::Checkpoint: Debug,
@@ -751,6 +760,7 @@ where
     "),
     Default(bound = r"
         AccountTable<C>: Default,
+        AuthorizationContext<C>: Default,
         C::UtxoAccumulator: Default,
         C::AssetMap: Default,
         C::Checkpoint: Default,
@@ -758,6 +768,7 @@ where
     "),
     Eq(bound = r"
         AccountTable<C>: Eq,
+        AuthorizationContext<C>: Eq,
         C::UtxoAccumulator: Eq,
         C::AssetMap: Eq,
         C::Checkpoint: Eq,
@@ -765,6 +776,7 @@ where
     "),
     Hash(bound = r"
         AccountTable<C>: Hash,
+        AuthorizationContext<C>: Hash,
         C::UtxoAccumulator: Hash,
         C::AssetMap: Hash,
         C::Checkpoint: Hash,
@@ -772,6 +784,7 @@ where
     "),
     PartialEq(bound = r"
         AccountTable<C>: PartialEq,
+        AuthorizationContext<C>: PartialEq,
         C::UtxoAccumulator: PartialEq,
         C::AssetMap: PartialEq,
         C::Checkpoint: PartialEq,
@@ -789,7 +802,10 @@ where
     /// For now, we only use the default account, and the rest of the storage data is related to
     /// this account. Eventually, we want to have a global `utxo_accumulator` for all accounts and
     /// a local `assets` map for each account.
-    accounts: AccountTable<C>,
+    accounts: Option<AccountTable<C>>,
+
+    /// Authorization Context
+    authorization_context: Option<AuthorizationContext<C>>,
 
     /// UTXO Accumulator
     utxo_accumulator: C::UtxoAccumulator,
@@ -813,16 +829,12 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`SignerState`] from `accounts`, `utxo_accumulator`, `assets`, and `rng`.
+    /// Builds a new [`SignerState`] from `utxo_accumulator`, `assets`, and `rng`.
     #[inline]
-    fn build(
-        accounts: AccountTable<C>,
-        utxo_accumulator: C::UtxoAccumulator,
-        assets: C::AssetMap,
-        rng: C::Rng,
-    ) -> Self {
+    fn build(utxo_accumulator: C::UtxoAccumulator, assets: C::AssetMap, rng: C::Rng) -> Self {
         Self {
-            accounts,
+            accounts: None,
+            authorization_context: None,
             checkpoint: C::Checkpoint::from_utxo_accumulator(&utxo_accumulator),
             utxo_accumulator,
             assets,
@@ -830,27 +842,56 @@ where
         }
     }
 
-    /// Builds a new [`SignerState`] from `keys` and `utxo_accumulator`.
+    /// Builds a new [`SignerState`] from `utxo_accumulator`.
     #[inline]
-    pub fn new(keys: C::Account, utxo_accumulator: C::UtxoAccumulator) -> Self {
+    pub fn new(utxo_accumulator: C::UtxoAccumulator) -> Self {
         Self::build(
-            AccountTable::<C>::new(keys),
             utxo_accumulator,
             Default::default(),
             FromEntropy::from_entropy(),
         )
     }
 
+    /// Loads `accounts` to `self`.
+    #[inline]
+    pub fn load_accounts(&mut self, accounts: AccountTable<C>) {
+        self.accounts = Some(accounts)
+    }
+
+    /// Drops `self.accounts`.
+    #[inline]
+    pub fn drop_accounts(&mut self) {
+        self.accounts = None
+    }
+
+    /// Loads `authorization_context` to `self`.
+    #[inline]
+    pub fn load_authorization_context(&mut self, authorization_context: AuthorizationContext<C>) {
+        self.authorization_context = Some(authorization_context)
+    }
+
+    /// Drops `self.authorization_context`.
+    #[inline]
+    pub fn drop_authorization_context(&mut self) {
+        self.authorization_context = None
+    }
+
     /// Returns the [`AccountTable`].
     #[inline]
-    pub fn accounts(&self) -> &AccountTable<C> {
+    pub fn accounts(&self) -> &Option<AccountTable<C>> {
         &self.accounts
+    }
+
+    /// Returns the [`AuthorizationContext`].
+    #[inline]
+    pub fn authorization_context(&self) -> &Option<AuthorizationContext<C>> {
+        &self.authorization_context
     }
 
     /// Returns the default account for `self`.
     #[inline]
-    pub fn default_account(&self) -> Account<C::Account> {
-        self.accounts.get_default()
+    pub fn default_account(&self) -> Option<Account<C::Account>> {
+        Some(self.accounts.as_ref()?.get_default())
     }
 }
 
@@ -858,17 +899,25 @@ impl<C> Clone for SignerState<C>
 where
     C: Configuration,
     AccountTable<C>: Clone,
+    AuthorizationContext<C>: Clone,
     C::UtxoAccumulator: Clone,
     C::AssetMap: Clone,
 {
     #[inline]
     fn clone(&self) -> Self {
-        Self::build(
-            self.accounts.clone(),
+        let mut signer_state = Self::build(
             self.utxo_accumulator.clone(),
             self.assets.clone(),
             FromEntropy::from_entropy(),
-        )
+        );
+        if self.accounts.is_some() {
+            signer_state.load_accounts(self.accounts.as_ref().unwrap().clone());
+        }
+        if self.authorization_context.is_some() {
+            signer_state
+                .load_authorization_context(self.authorization_context.as_ref().unwrap().clone());
+        }
+        signer_state
     }
 }
 
@@ -917,7 +966,6 @@ where
     /// Builds a new [`Signer`].
     #[inline]
     fn new_inner(
-        accounts: AccountTable<C>,
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
@@ -929,26 +977,19 @@ where
                 parameters,
                 proving_context,
             },
-            SignerState::build(accounts, utxo_accumulator, assets, rng),
+            SignerState::build(utxo_accumulator, assets, rng),
         )
     }
 
-    /// Builds a new [`Signer`] from a fresh set of `accounts`.
-    ///
-    /// # Warning
-    ///
-    /// This method assumes that `accounts` has never been used before, and does not attempt
-    /// to perform wallet recovery on this table.
+    /// Builds a new [`Signer`].
     #[inline]
     pub fn new(
-        accounts: AccountTable<C>,
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
-            accounts,
             parameters,
             proving_context,
             utxo_accumulator,
@@ -969,6 +1010,45 @@ where
         &self.state
     }
 
+    /// Loads `accounts` to `self`.
+    #[inline]
+    pub fn load_accounts(&mut self, accounts: AccountTable<C>) {
+        self.state.load_accounts(accounts)
+    }
+
+    /// Drops `self.state.accounts`
+    #[inline]
+    pub fn drop_accounts(&mut self) {
+        self.state.drop_accounts()
+    }
+
+    /// Loads `authorization_context` to `self`.
+    #[inline]
+    pub fn load_authorization_context(&mut self, authorization_context: AuthorizationContext<C>) {
+        self.state.load_authorization_context(authorization_context)
+    }
+
+    /// Updates `self.state.authorization_context` from `self.state.accounts`, if possible.
+    #[inline]
+    pub fn update_authorization_context(&mut self) -> bool {
+        match self.state.accounts() {
+            Some(accounts) => {
+                self.load_authorization_context(functions::default_authorization_context::<C>(
+                    accounts,
+                    &self.parameters.parameters,
+                ));
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Drops `self.state.authorization_context`
+    #[inline]
+    pub fn drop_authorization_context(&mut self) {
+        self.state.drop_authorization_context()
+    }
+
     /// Updates the internal ledger state, returning the new asset distribution.
     #[inline]
     pub fn sync(
@@ -977,7 +1057,10 @@ where
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
         functions::sync(
             &self.parameters,
-            &self.state.accounts,
+            self.state
+                .authorization_context
+                .as_mut()
+                .ok_or(SyncError::MissingKey)?,
             &mut self.state.assets,
             &mut self.state.checkpoint,
             &mut self.state.utxo_accumulator,
@@ -995,7 +1078,7 @@ where
     ) -> Option<IdentityProof<C>> {
         functions::identity_proof(
             &self.parameters,
-            &self.state.accounts,
+            self.state.accounts.as_ref()?,
             self.state.utxo_accumulator.model(),
             identified_asset,
             &mut self.state.rng,
@@ -1007,7 +1090,7 @@ where
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
         functions::sign(
             &self.parameters,
-            &self.state.accounts,
+            self.state.accounts.as_ref().ok_or(SignError::MissingKey)?,
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
@@ -1031,8 +1114,11 @@ where
 
     /// Returns the [`Address`] corresponding to `self`.
     #[inline]
-    pub fn address(&mut self) -> Address<C> {
-        functions::address(&self.parameters, &self.state.accounts)
+    pub fn address(&mut self) -> Option<Address<C>> {
+        Some(functions::address(
+            &self.parameters,
+            self.state.accounts.as_ref()?,
+        ))
     }
 
     /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
@@ -1040,7 +1126,7 @@ where
     /// underlying assets in `post`.
     #[inline]
     pub fn transaction_data(&self, post: TransferPost<C>) -> Option<TransactionData<C>> {
-        functions::transaction_data(&self.parameters, &self.state.accounts, post)
+        functions::transaction_data(&self.parameters, self.state.accounts.as_ref()?, post)
     }
 
     /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by
@@ -1069,7 +1155,7 @@ where
     {
         functions::sign_with_transaction_data(
             &self.parameters,
-            &self.state.accounts,
+            self.state.accounts.as_ref().ok_or(SignError::MissingKey)?,
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
@@ -1103,7 +1189,7 @@ where
     }
 
     #[inline]
-    fn address(&mut self) -> LocalBoxFutureResult<Address<C>, Self::Error> {
+    fn address(&mut self) -> LocalBoxFutureResult<Option<Address<C>>, Self::Error> {
         Box::pin(async move { Ok(self.address()) })
     }
 
@@ -1219,7 +1305,6 @@ where
     #[inline]
     pub fn initialize_signer(
         &self,
-        accounts: AccountTable<C>,
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
     ) -> Signer<C>
@@ -1228,7 +1313,6 @@ where
         C::AssetMap: Clone,
     {
         let mut signer = Signer::new(
-            accounts,
             parameters,
             proving_context,
             self.utxo_accumulator.clone(),
