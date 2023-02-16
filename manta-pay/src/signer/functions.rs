@@ -83,20 +83,22 @@ pub fn new_signer_from_model(
     )
 }
 
-/// Loads the [`AccountTable`] from `mnemonic` to `signer`.
+/// Creates an [`AccountTable`] from `mnemonic`.
 #[inline]
-pub fn load_accounts(signer: &mut Signer, mnemonic: Mnemonic) {
-    signer.load_accounts(AccountTable::new(KeySecret::new(mnemonic, "")))
+pub fn accounts_from_mnemonic(mnemonic: Mnemonic) -> AccountTable {
+    AccountTable::new(KeySecret::new(mnemonic, ""))
 }
 
-/// Loads the [`AuthorizationContext`] from `mnemonic` to `signer`.
+/// Creates an [`AuthorizationContext`] from `mnemonic` and `parameters`.
 #[inline]
-pub fn load_authorization_context(signer: &mut Signer, mnemonic: Mnemonic) {
-    let authorization_context = functions::default_authorization_context::<Config>(
+pub fn authorization_context_from_mnemonic(
+    mnemonic: Mnemonic,
+    parameters: &Parameters,
+) -> AuthorizationContext {
+    functions::default_authorization_context::<Config>(
         &AccountTable::new(KeySecret::new(mnemonic, "")),
-        &signer.parameters().parameters,
-    );
-    signer.load_authorization_context(authorization_context)
+        parameters,
+    )
 }
 
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
