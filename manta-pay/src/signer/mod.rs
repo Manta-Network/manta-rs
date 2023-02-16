@@ -88,6 +88,9 @@ pub type SignWithTransactionDataResult = signer::SignWithTransactionDataResult<C
 /// Sign With Transaction Data Response
 pub type SignWithTransactionDataResponse = signer::SignWithTransactionDataResponse<Config>;
 
+/// Storage State Option
+pub type StorageStateOption = Option<signer::StorageState<Config>>;
+
 /// Receiving Key Request
 #[cfg_attr(
     feature = "serde",

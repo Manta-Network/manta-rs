@@ -24,10 +24,11 @@ use crate::{
     key::{KeySecret, Mnemonic},
     signer::{
         base::{Signer, SignerParameters, UtxoAccumulator},
-        AccountTable, AssetMap, Checkpoint, SignResult, SignerRng, SyncRequest, SyncResult,
+        AccountTable, AssetMap, Checkpoint, SignResult, SignerRng, StorageStateOption, SyncRequest,
+        SyncResult,
     },
 };
-use manta_accounting::wallet::signer::{functions, StorageState};
+use manta_accounting::wallet::signer::functions;
 use manta_crypto::{accumulator::Accumulator, rand::FromEntropy};
 
 /// Builds a new [`Signer`] from `parameters` and `proving_context`,
@@ -37,7 +38,7 @@ pub fn new_signer(
     parameters: Parameters,
     proving_context: MultiProvingContext,
     utxo_accumulator_model: &UtxoAccumulatorModel,
-    storage_state: &Option<StorageState<Config>>,
+    storage_state: &StorageStateOption,
 ) -> Signer {
     let mut signer = new_signer_from_model(parameters, proving_context, utxo_accumulator_model);
     if let Some(state) = storage_state {
