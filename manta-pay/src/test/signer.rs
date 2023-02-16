@@ -47,7 +47,7 @@ fn identity_proof_test() {
     let identity_proof = signer
         .identity_proof(virtual_asset)
         .expect("Error producing identity proof");
-    let address = signer.address();
+    let address = signer.address().expect("Sampled signer has a spending key");
     assert!(
         identity_verification(
             &identity_proof,
@@ -132,9 +132,11 @@ fn transaction_data_test() {
         .take_first();
     let utxo = response.0.body.receiver_posts.take_first().utxo;
     assert!(
-        response
-            .1
-            .check_transaction_data(&parameters, &signer.address(), &vec![utxo]),
+        response.1.check_transaction_data(
+            &parameters,
+            &signer.address().expect("Sampled signer has a spending key"),
+            &vec![utxo]
+        ),
         "Invalid Transaction Data"
     );
 }

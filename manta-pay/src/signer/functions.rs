@@ -70,7 +70,7 @@ fn new_signer_from_accumulator(
 /// which is a time-consuming operation. One should favor the `new_signer` and
 /// `initialize_signer_from_storage` functions when possible.
 #[inline]
-fn new_signer_from_model(
+pub fn new_signer_from_model(
     parameters: Parameters,
     proving_context: MultiProvingContext,
     utxo_accumulator_model: &UtxoAccumulatorModel,

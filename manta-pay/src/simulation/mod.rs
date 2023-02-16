@@ -22,7 +22,7 @@ use crate::{
         Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
     },
     key::KeySecret,
-    signer::base::{Signer, UtxoAccumulator},
+    signer::{base::Signer, functions},
     simulation::ledger::{AccountId, Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
@@ -37,7 +37,7 @@ use manta_accounting::{
         Error,
     },
 };
-use manta_crypto::rand::{ChaCha20Rng, CryptoRng, Rand, RngCore, SeedableRng};
+use manta_crypto::rand::{ChaCha20Rng, CryptoRng, RngCore, SeedableRng};
 use tokio::{
     io::{self, AsyncWriteExt},
     sync::RwLock,
@@ -56,13 +56,14 @@ pub fn sample_signer<R>(
 where
     R: CryptoRng + RngCore + ?Sized,
 {
-    Signer::new(
-        AccountTable::new(KeySecret::sample(rng)),
+    let mut signer = functions::new_signer_from_model(
         parameters.clone(),
         proving_context.clone(),
-        UtxoAccumulator::new(utxo_accumulator_model.clone()),
-        rng.seed_rng().expect("Failed to sample PRNG for signer."),
-    )
+        utxo_accumulator_model,
+    );
+    signer.load_accounts(AccountTable::new(KeySecret::sample(rng)));
+    signer.update_authorization_context();
+    signer
 }
 
 /// Simulation Configuration
