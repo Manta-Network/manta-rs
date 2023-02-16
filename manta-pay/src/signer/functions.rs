@@ -18,8 +18,9 @@
 
 use crate::{
     config::{
-        Address, AuthorizationContext, Config, IdentifiedAsset, IdentityProof, MultiProvingContext,
-        Parameters, Transaction, TransactionData, TransferPost, UtxoAccumulatorModel,
+        Address, AuthorizationContext, Config, EmbeddedScalar, IdentifiedAsset, IdentityProof,
+        MultiProvingContext, Parameters, Transaction, TransactionData, TransferPost,
+        UtxoAccumulatorModel,
     },
     key::{KeySecret, Mnemonic},
     signer::{
@@ -28,7 +29,7 @@ use crate::{
         SyncResult,
     },
 };
-use manta_accounting::wallet::signer::functions;
+use manta_accounting::{key::DeriveAddress, wallet::signer::functions};
 use manta_crypto::{accumulator::Accumulator, rand::FromEntropy};
 
 /// Builds a new [`Signer`] from `parameters` and `proving_context`,
@@ -99,6 +100,21 @@ pub fn authorization_context_from_mnemonic(
         &AccountTable::new(KeySecret::new(mnemonic, "")),
         parameters,
     )
+}
+
+/// Creates a viewing key from `mnemonic`.
+#[inline]
+pub fn viewing_key_from_mnemonic(mnemonic: Mnemonic, parameters: &Parameters) -> EmbeddedScalar {
+    *authorization_context_from_mnemonic(mnemonic, parameters)
+        .viewing_key(&parameters.base.viewing_key_derivation_function, &mut ())
+}
+
+/// Creates an [`Address`] from `mnemonic`.
+#[inline]
+pub fn address_from_mnemonic(mnemonic: Mnemonic, parameters: &Parameters) -> Address {
+    accounts_from_mnemonic(mnemonic)
+        .get_default()
+        .address(parameters)
 }
 
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.

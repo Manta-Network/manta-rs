@@ -18,12 +18,17 @@
 
 use crate::{
     config::{Asset, Config},
+    key::Mnemonic,
     parameters::load_parameters,
-    signer::base::identity_verification,
+    signer::{
+        base::identity_verification,
+        functions::{address_from_mnemonic, authorization_context_from_mnemonic},
+    },
     simulation::sample_signer,
 };
 use manta_accounting::transfer::{canonical::Transaction, IdentifiedAsset, Identifier};
 use manta_crypto::{
+    algebra::HasGenerator,
     arkworks::constraint::fp::Fp,
     rand::{fuzz::Fuzz, OsRng, Rand},
 };
@@ -138,5 +143,27 @@ fn transaction_data_test() {
             &vec![utxo]
         ),
         "Invalid Transaction Data"
+    );
+}
+
+/// Checks that both methods to derive a receiving key from a [`Mnemonic`] give
+/// the same result.
+#[test]
+pub fn derive_address_works() {
+    let mut rng = OsRng;
+    let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
+    let (_, _, parameters, _) =
+        load_parameters(directory.path()).expect("Failed to load parameters");
+    let mnemonic = Mnemonic::sample(&mut rng);
+    let receiving_key_1 = address_from_mnemonic(mnemonic.clone(), &parameters).receiving_key;
+    let receiving_key_2 = *authorization_context_from_mnemonic(mnemonic, &parameters)
+        .receiving_key(
+            parameters.base.group_generator.generator(),
+            &parameters.base.viewing_key_derivation_function,
+            &mut (),
+        );
+    assert_eq!(
+        receiving_key_1, receiving_key_2,
+        "Both receiving keys should be the same"
     );
 }
