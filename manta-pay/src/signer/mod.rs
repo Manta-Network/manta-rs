@@ -88,8 +88,11 @@ pub type SignWithTransactionDataResult = signer::SignWithTransactionDataResult<C
 /// Sign With Transaction Data Response
 pub type SignWithTransactionDataResponse = signer::SignWithTransactionDataResponse<Config>;
 
+/// Storage State
+pub type StorageState = signer::StorageState<Config>;
+
 /// Storage State Option
-pub type StorageStateOption = Option<signer::StorageState<Config>>;
+pub type StorageStateOption = Option<StorageState>;
 
 /// Receiving Key Request
 #[cfg_attr(
