@@ -1295,6 +1295,20 @@ where
         self.assets = signer.state.assets.clone();
     }
 
+    /// Builds a new [`StorageState`] from `signer`.
+    #[inline]
+    pub fn from_signer(signer: &Signer<C>) -> Self
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        Self {
+            checkpoint: signer.state.checkpoint.clone(),
+            utxo_accumulator: signer.state.utxo_accumulator.clone(),
+            assets: signer.state.assets.clone(),
+        }
+    }
+
     /// Updates `signer` from `self`.
     #[inline]
     pub fn update_signer(&self, signer: &mut Signer<C>)
