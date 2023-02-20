@@ -344,7 +344,9 @@ where
                     InconsistencyError::SignerSynchronization,
                 ))
             }
-            Err(SyncError::MissingKey) => Err(Error::MissingPAKey),
+            Err(SyncError::MissingProofAuthorizationKey) => {
+                Err(Error::MissingProofAuthorizationKey)
+            }
         }
     }
 
@@ -583,7 +585,7 @@ where
     MissingSpendingKey,
 
     /// Missing Proof Authorization Key Error
-    MissingPAKey,
+    MissingProofAuthorizationKey,
 }
 
 impl<C, L, S> From<InconsistencyError> for Error<C, L, S>

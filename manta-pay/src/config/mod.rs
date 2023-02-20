@@ -125,6 +125,9 @@ pub type UtxoAccumulatorOutput = transfer::UtxoAccumulatorOutput<Config>;
 pub type UtxoAccumulatorModel = transfer::UtxoAccumulatorModel<Config>;
 
 /// Full Transfer Parameters
+pub type FullParameters = transfer::FullParameters<'static, Config>;
+
+/// Full Transfer Parameters
 pub type FullParametersRef<'p> = transfer::FullParametersRef<'p, Config>;
 
 /// Authorization Context Type

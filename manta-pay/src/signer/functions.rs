@@ -18,8 +18,8 @@
 
 use crate::{
     config::{
-        Address, AuthorizationContext, Config, EmbeddedScalar, IdentifiedAsset, IdentityProof,
-        MultiProvingContext, Parameters, Transaction, TransactionData, TransferPost,
+        Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters, IdentifiedAsset,
+        IdentityProof, MultiProvingContext, Parameters, Transaction, TransactionData, TransferPost,
         UtxoAccumulatorModel,
     },
     key::{KeySecret, Mnemonic},
@@ -36,12 +36,15 @@ use manta_crypto::{accumulator::Accumulator, rand::FromEntropy};
 /// loading its state from `storage_state`, if possible.
 #[inline]
 pub fn new_signer(
-    parameters: Parameters,
+    parameters: FullParameters,
     proving_context: MultiProvingContext,
-    utxo_accumulator_model: &UtxoAccumulatorModel,
     storage_state: &StorageStateOption,
 ) -> Signer {
-    let mut signer = new_signer_from_model(parameters, proving_context, utxo_accumulator_model);
+    let mut signer = new_signer_from_model(
+        parameters.base,
+        proving_context,
+        &parameters.utxo_accumulator_model,
+    );
     if let Some(state) = storage_state {
         state.update_signer(&mut signer);
     }

@@ -416,7 +416,7 @@ where
     },
 
     /// Missing Proof Authorization Key
-    MissingKey,
+    MissingProofAuthorizationKey,
 }
 
 /// Synchronization Result
@@ -596,7 +596,7 @@ where
     ProofSystemError(ProofSystemError<C>),
 
     /// Missing Spending Key
-    MissingKey,
+    MissingSpendingKey,
 }
 
 /// Signing Result
@@ -1060,7 +1060,7 @@ where
             self.state
                 .authorization_context
                 .as_mut()
-                .ok_or(SyncError::MissingKey)?,
+                .ok_or(SyncError::MissingProofAuthorizationKey)?,
             &mut self.state.assets,
             &mut self.state.checkpoint,
             &mut self.state.utxo_accumulator,
@@ -1090,7 +1090,10 @@ where
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
         functions::sign(
             &self.parameters,
-            self.state.accounts.as_ref().ok_or(SignError::MissingKey)?,
+            self.state
+                .accounts
+                .as_ref()
+                .ok_or(SignError::MissingSpendingKey)?,
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
@@ -1155,7 +1158,10 @@ where
     {
         functions::sign_with_transaction_data(
             &self.parameters,
-            self.state.accounts.as_ref().ok_or(SignError::MissingKey)?,
+            self.state
+                .accounts
+                .as_ref()
+                .ok_or(SignError::MissingSpendingKey)?,
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
