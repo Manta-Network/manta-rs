@@ -71,7 +71,7 @@ where
 
 /// Returns the default authorization context for `accounts`.
 #[inline]
-fn default_authorization_context<C>(
+pub fn default_authorization_context<C>(
     accounts: &AccountTable<C>,
     parameters: &C::Parameters,
 ) -> AuthorizationContext<C>
@@ -198,7 +198,7 @@ where
 #[allow(clippy::too_many_arguments)]
 #[inline]
 fn sync_with<C, I>(
-    accounts: &AccountTable<C>,
+    authorization_context: &mut AuthorizationContext<C>,
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
@@ -215,13 +215,12 @@ where
     let nullifier_count = nullifiers.len();
     let mut deposit = Vec::new();
     let mut withdraw = Vec::new();
-    let mut authorization_context = default_authorization_context::<C>(accounts, parameters);
-    let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
+    let decryption_key = parameters.derive_decryption_key(authorization_context);
     for (utxo, note) in inserts {
         if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
         {
             insert_next_item::<C>(
-                &mut authorization_context,
+                authorization_context,
                 utxo_accumulator,
                 assets,
                 parameters,
@@ -238,7 +237,7 @@ where
     assets.retain(|identifier, assets| {
         assets.retain(|asset| {
             is_asset_unspent::<C>(
-                &mut authorization_context,
+                authorization_context,
                 utxo_accumulator,
                 parameters,
                 identifier.clone(),
@@ -604,7 +603,7 @@ where
 #[inline]
 pub fn sync<C>(
     parameters: &SignerParameters<C>,
-    accounts: &AccountTable<C>,
+    authorization_context: &mut AuthorizationContext<C>,
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
@@ -633,7 +632,7 @@ where
             nullifier_data,
         } = request.data;
         let response = sync_with::<C, _>(
-            accounts,
+            authorization_context,
             assets,
             checkpoint,
             utxo_accumulator,

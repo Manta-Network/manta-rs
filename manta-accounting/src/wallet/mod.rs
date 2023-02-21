@@ -344,6 +344,9 @@ where
                     InconsistencyError::SignerSynchronization,
                 ))
             }
+            Err(SyncError::MissingProofAuthorizationKey) => {
+                Err(Error::MissingProofAuthorizationKey)
+            }
         }
     }
 
@@ -454,7 +457,7 @@ where
 
     /// Returns the address.
     #[inline]
-    pub async fn address(&mut self) -> Result<Address<C>, S::Error> {
+    pub async fn address(&mut self) -> Result<Option<Address<C>>, S::Error> {
         self.signer.address().await
     }
 
@@ -577,6 +580,12 @@ where
 
     /// Ledger Connection Error
     LedgerConnectionError(L::Error),
+
+    /// Missing Spending Key Error
+    MissingSpendingKey,
+
+    /// Missing Proof Authorization Key Error
+    MissingProofAuthorizationKey,
 }
 
 impl<C, L, S> From<InconsistencyError> for Error<C, L, S>

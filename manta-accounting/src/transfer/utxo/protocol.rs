@@ -2256,6 +2256,13 @@ where
     }
 }
 
+impl<C> cmp::Eq for AuthorizationContext<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+    C::Group: cmp::PartialEq,
+{
+}
+
 impl<C, COM> Variable<Secret, COM> for AuthorizationContext<C, COM>
 where
     COM: Has<bool, Type = C::Bool>,

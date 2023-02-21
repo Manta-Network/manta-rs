@@ -149,7 +149,7 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
-    fn address(&mut self) -> LocalBoxFutureResult<Address, Self::Error> {
+    fn address(&mut self) -> LocalBoxFutureResult<Option<Address>, Self::Error> {
         Box::pin(async move { self.send("address", GetRequest::Get).await })
     }
 

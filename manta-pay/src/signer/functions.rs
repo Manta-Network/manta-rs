@@ -18,30 +18,63 @@
 
 use crate::{
     config::{
-        Address, Config, IdentifiedAsset, IdentityProof, MultiProvingContext, Parameters,
-        Transaction, TransactionData, TransferPost, UtxoAccumulatorModel,
+        Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters, IdentifiedAsset,
+        IdentityProof, MultiProvingContext, Parameters, Transaction, TransactionData, TransferPost,
+        UtxoAccumulatorModel,
     },
     key::{KeySecret, Mnemonic},
     signer::{
         base::{Signer, SignerParameters, UtxoAccumulator},
-        AccountTable, AssetMap, Checkpoint, SignResult, SignerRng, SyncRequest, SyncResult,
+        AccountTable, AssetMap, Checkpoint, SignResult, SignerRng, StorageState,
+        StorageStateOption, SyncRequest, SyncResult,
     },
 };
-use manta_accounting::wallet::signer::{functions, StorageState};
+use manta_accounting::{key::DeriveAddress, wallet::signer::functions};
 use manta_crypto::{accumulator::Accumulator, rand::FromEntropy};
 
-/// Builds a new [`Signer`] from `mnemonic`, `password`, `parameters`, `proving_context`
-/// and `utxo_accumulator`.
+/// Builds a new [`Signer`] from `parameters` and `proving_context`,
+/// loading its state from `storage_state`, if possible.
 #[inline]
 pub fn new_signer(
-    mnemonic: Mnemonic,
-    password: &str,
+    parameters: FullParameters,
+    proving_context: MultiProvingContext,
+    storage_state: &StorageStateOption,
+) -> Signer {
+    let mut signer = new_signer_from_model(
+        parameters.base,
+        proving_context,
+        &parameters.utxo_accumulator_model,
+    );
+    if let Some(state) = storage_state {
+        state.update_signer(&mut signer);
+    }
+    signer
+}
+
+/// Builds a new [`StorageStateOption`] from `signer`.
+#[inline]
+pub fn set_storage(signer: &Signer) -> StorageStateOption {
+    Some(StorageState::from_signer(signer))
+}
+
+/// Tries to update `signer` from `storage_state`.
+#[inline]
+pub fn get_storage(signer: &mut Signer, storage_state: &StorageStateOption) -> bool {
+    if let Some(storage_state) = storage_state {
+        storage_state.update_signer(signer);
+        return true;
+    }
+    false
+}
+
+/// Builds a new [`Signer`] `parameters`, `proving_context` and `utxo_accumulator`.
+#[inline]
+fn new_signer_from_accumulator(
     parameters: Parameters,
     proving_context: MultiProvingContext,
     utxo_accumulator: UtxoAccumulator,
 ) -> Signer {
     Signer::new(
-        AccountTable::new(KeySecret::new(mnemonic, password)),
         parameters,
         proving_context,
         utxo_accumulator,
@@ -49,7 +82,7 @@ pub fn new_signer(
     )
 }
 
-/// Builds a new [`Signer`] from `mnemonic`, `password`, `parameters`, `proving_context`
+/// Builds a new [`Signer`] from `parameters`, `proving_context`
 /// and `utxo_accumulator_model`.
 ///
 /// # Implementation Note
@@ -59,35 +92,48 @@ pub fn new_signer(
 /// `initialize_signer_from_storage` functions when possible.
 #[inline]
 pub fn new_signer_from_model(
-    mnemonic: Mnemonic,
-    password: &str,
     parameters: Parameters,
     proving_context: MultiProvingContext,
     utxo_accumulator_model: &UtxoAccumulatorModel,
 ) -> Signer {
-    new_signer(
-        mnemonic,
-        password,
+    new_signer_from_accumulator(
         parameters,
         proving_context,
         Accumulator::empty(utxo_accumulator_model),
     )
 }
 
-/// Initializes a [`Signer`] from `storage_state`, `mnemonic`, `password`,
-/// `parameters` and `proving_context`.
-pub fn initialize_signer_from_storage(
-    storage_state: &StorageState<Config>,
+/// Creates an [`AccountTable`] from `mnemonic`.
+#[inline]
+pub fn accounts_from_mnemonic(mnemonic: Mnemonic) -> AccountTable {
+    AccountTable::new(KeySecret::new(mnemonic, ""))
+}
+
+/// Creates an [`AuthorizationContext`] from `mnemonic` and `parameters`.
+#[inline]
+pub fn authorization_context_from_mnemonic(
     mnemonic: Mnemonic,
-    password: &str,
-    parameters: Parameters,
-    proving_context: MultiProvingContext,
-) -> Signer {
-    storage_state.initialize_signer(
-        AccountTable::new(KeySecret::new(mnemonic, password)),
+    parameters: &Parameters,
+) -> AuthorizationContext {
+    functions::default_authorization_context::<Config>(
+        &AccountTable::new(KeySecret::new(mnemonic, "")),
         parameters,
-        proving_context,
     )
+}
+
+/// Creates a viewing key from `mnemonic`.
+#[inline]
+pub fn viewing_key_from_mnemonic(mnemonic: Mnemonic, parameters: &Parameters) -> EmbeddedScalar {
+    *authorization_context_from_mnemonic(mnemonic, parameters)
+        .viewing_key(&parameters.base.viewing_key_derivation_function, &mut ())
+}
+
+/// Creates an [`Address`] from `mnemonic`.
+#[inline]
+pub fn address_from_mnemonic(mnemonic: Mnemonic, parameters: &Parameters) -> Address {
+    accounts_from_mnemonic(mnemonic)
+        .get_default()
+        .address(parameters)
 }
 
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
@@ -95,7 +141,7 @@ pub fn initialize_signer_from_storage(
 #[inline]
 pub fn sync(
     parameters: &SignerParameters,
-    accounts: &AccountTable,
+    authorization_context: &mut AuthorizationContext,
     assets: &mut AssetMap,
     checkpoint: &mut Checkpoint,
     utxo_accumulator: &mut UtxoAccumulator,
@@ -104,7 +150,7 @@ pub fn sync(
 ) -> SyncResult {
     functions::sync(
         parameters,
-        accounts,
+        authorization_context,
         assets,
         checkpoint,
         utxo_accumulator,
