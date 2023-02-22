@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Security
 
-## [0.5.11] - 2023-01-21
+## [0.5.11] - 2023-02-22
 ### Added
 - [\#319](https://github.com/Manta-Network/manta-rs/pull/319) Key-dependent signer function APIs.
 - [\#314](https://github.com/Manta-Network/manta-rs/pull/314) Prepares the signer export to wasm.
