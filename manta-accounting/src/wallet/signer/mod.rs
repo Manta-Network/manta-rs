@@ -41,7 +41,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
-    rand::{CryptoRng, FromEntropy, RngCore},
+    rand::{CryptoRng, FromEntropy, OsRng, RngCore},
 };
 use manta_util::{future::LocalBoxFutureResult, persistence::Rollback};
 
@@ -671,7 +671,7 @@ pub trait Configuration: transfer::Configuration {
     type AssetMetadata;
 
     /// Random Number Generator Type
-    type Rng: CryptoRng + FromEntropy + RngCore;
+    type Rng: CryptoRng + Default + RngCore;
 }
 
 /// Account Table Type
@@ -821,7 +821,7 @@ where
     /// We use this entropy source to add randomness to various cryptographic constructions. The
     /// state of the RNG should not be saved to the file system and instead should be resampled
     /// from local entropy whenever the [`SignerState`] is deserialized.
-    #[cfg_attr(feature = "serde", serde(skip, default = "FromEntropy::from_entropy"))]
+    #[cfg_attr(feature = "serde", serde(skip, default = "Default::default"))]
     rng: C::Rng,
 }
 
@@ -845,11 +845,7 @@ where
     /// Builds a new [`SignerState`] from `utxo_accumulator`.
     #[inline]
     pub fn new(utxo_accumulator: C::UtxoAccumulator) -> Self {
-        Self::build(
-            utxo_accumulator,
-            Default::default(),
-            FromEntropy::from_entropy(),
-        )
+        Self::build(utxo_accumulator, Default::default(), Default::default())
     }
 
     /// Loads `accounts` to `self`.
@@ -908,7 +904,7 @@ where
         let mut signer_state = Self::build(
             self.utxo_accumulator.clone(),
             self.assets.clone(),
-            FromEntropy::from_entropy(),
+            Default::default(),
         );
         if self.accounts.is_some() {
             signer_state.load_accounts(self.accounts.as_ref().unwrap().clone());
@@ -1336,7 +1332,7 @@ where
             parameters,
             proving_context,
             self.utxo_accumulator.clone(),
-            FromEntropy::from_entropy(),
+            Default::default(),
         );
         self.update_signer(&mut signer);
         signer

@@ -30,7 +30,10 @@ use crate::{
     },
 };
 use manta_accounting::{key::DeriveAddress, wallet::signer::functions};
-use manta_crypto::{accumulator::Accumulator, rand::FromEntropy};
+use manta_crypto::{
+    accumulator::Accumulator,
+    rand::{FromEntropy, OsRng},
+};
 
 /// Builds a new [`Signer`] from `parameters` and `proving_context`,
 /// loading its state from `storage_state`, if possible.
@@ -74,12 +77,7 @@ fn new_signer_from_accumulator(
     proving_context: MultiProvingContext,
     utxo_accumulator: UtxoAccumulator,
 ) -> Signer {
-    Signer::new(
-        parameters,
-        proving_context,
-        utxo_accumulator,
-        FromEntropy::from_entropy(),
-    )
+    Signer::new(parameters, proving_context, utxo_accumulator, OsRng)
 }
 
 /// Builds a new [`Signer`] from `parameters`, `proving_context`

@@ -44,7 +44,7 @@ use manta_crypto::{
         ff::{Fp256, PrimeField, Zero},
     },
     merkle_tree::{self, forest::Configuration},
-    rand::ChaCha20Rng,
+    rand::{ChaCha20Rng, OsRng},
 };
 
 impl<C> AccountCollection for KeySecret<C>
@@ -90,7 +90,7 @@ impl wallet::signer::Configuration for Config {
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = BTreeAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
     type AssetMetadata = AssetMetadata;
-    type Rng = ChaCha20Rng;
+    type Rng = OsRng;
 }
 
 impl signer::Checkpoint<Config> for Checkpoint {
