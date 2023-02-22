@@ -821,7 +821,10 @@ where
     /// We use this entropy source to add randomness to various cryptographic constructions. The
     /// state of the RNG should not be saved to the file system and instead should be resampled
     /// from local entropy whenever the [`SignerState`] is deserialized.
-    #[cfg_attr(feature = "serde", serde(skip, default = "Default::default"))]
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip, serialize_with = "Default::default")
+    )]
     rng: C::Rng,
 }
 
