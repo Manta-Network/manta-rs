@@ -32,14 +32,20 @@ use crate::{
 use alloc::vec::Vec;
 use ark_groth16::{Groth16 as ArkGroth16, PreparedVerifyingKey, ProvingKey, VerifyingKey};
 use ark_snark::SNARK;
-use core::marker::PhantomData;
+use core::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 use manta_util::codec::{self, DecodeError};
 
 #[cfg(feature = "scale")]
 use crate::crypto::ecc::arkworks::Group;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize, Serializer};
+use {
+    crate::arkworks::serialize::{canonical_deserialize, canonical_serialize},
+    manta_util::serde::{Deserialize, Serialize, Serializer},
+};
 
 /// Proof System Error
 ///
@@ -73,6 +79,18 @@ pub struct Proof<E>(
 )
 where
     E: PairingEngine;
+
+impl<E> Hash for Proof<E>
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.a.hash(state);
+        self.0.b.hash(state);
+        self.0.c.hash(state);
+    }
+}
 
 #[cfg(feature = "scale")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "scale")))]
@@ -188,11 +206,26 @@ where
 }
 
 /// Proving Context
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(derivative::Derivative, CanonicalSerialize, CanonicalDeserialize)]
 #[derivative(Clone, Debug, Eq, PartialEq)]
-pub struct ProvingContext<E>(pub ProvingKey<E>)
+pub struct ProvingContext<E>
 where
-    E: PairingEngine;
+    E: PairingEngine,
+{
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "canonical_serialize::<ProvingKey<E>, _>",
+            deserialize_with = "canonical_deserialize::<'de, _, ProvingKey<E>>"
+        )
+    )]
+    proving_key: ProvingKey<E>,
+}
 
 impl<E> ProvingContext<E>
 where
@@ -201,13 +234,34 @@ where
     /// Builds a new [`ProvingContext`] from `proving_key`.
     #[inline]
     pub fn new(proving_key: ProvingKey<E>) -> Self {
-        Self(proving_key)
+        Self { proving_key }
     }
 
     /// Returns the [`VerifyingContext`] for `self`.
     #[inline]
     pub fn get_verifying_context(&self) -> Result<VerifyingContext<E>, SynthesisError> {
         VerifyingContext::from_proving_context(self)
+    }
+}
+
+impl<E> Hash for ProvingContext<E>
+where
+    E: PairingEngine,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.proving_key.vk.alpha_g1.hash(state);
+        self.proving_key.vk.beta_g2.hash(state);
+        self.proving_key.vk.gamma_g2.hash(state);
+        self.proving_key.vk.delta_g2.hash(state);
+        self.proving_key.vk.gamma_abc_g1.hash(state);
+        self.proving_key.beta_g1.hash(state);
+        self.proving_key.delta_g1.hash(state);
+        self.proving_key.a_query.hash(state);
+        self.proving_key.b_g1_query.hash(state);
+        self.proving_key.b_g2_query.hash(state);
+        self.proving_key.h_query.hash(state);
+        self.proving_key.l_query.hash(state);
     }
 }
 
@@ -226,7 +280,7 @@ where
         match CanonicalDeserialize::deserialize_unchecked(&mut reader) {
             Ok(value) => reader
                 .finish()
-                .map(move |_| Self(value))
+                .map(move |_| Self::new(value))
                 .map_err(DecodeError::Read),
             Err(err) => Err(DecodeError::Decode(err)),
         }
@@ -243,7 +297,7 @@ where
         W: codec::Write,
     {
         let mut writer = ArkWriter::new(writer);
-        let _ = self.0.serialize_unchecked(&mut writer);
+        let _ = self.proving_key.serialize_unchecked(&mut writer);
         writer.finish().map(move |_| ())
     }
 }
@@ -276,7 +330,7 @@ where
     pub fn from_proving_context(
         proving_context: &ProvingContext<E>,
     ) -> Result<Self, SynthesisError> {
-        Self::new(&proving_context.0.vk)
+        Self::new(&proving_context.proving_key.vk)
     }
 }
 
@@ -526,7 +580,7 @@ where
         let (proving_key, verifying_key) =
             ArkGroth16::circuit_specific_setup(compiler, &mut SizedRng(rng)).map_err(|_| Error)?;
         Ok((
-            ProvingContext(proving_key),
+            ProvingContext::new(proving_key),
             VerifyingContext(ArkGroth16::process_vk(&verifying_key).map_err(|_| Error)?),
         ))
     }
@@ -540,7 +594,7 @@ where
     where
         R: CryptoRng + RngCore + ?Sized,
     {
-        ArkGroth16::prove(&context.0, compiler, &mut SizedRng(rng))
+        ArkGroth16::prove(&context.proving_key, compiler, &mut SizedRng(rng))
             .map(Proof)
             .map_err(|_| Error)
     }

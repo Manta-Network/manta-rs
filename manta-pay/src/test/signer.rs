@@ -18,15 +18,21 @@
 
 use crate::{
     config::{Asset, Config},
+    key::Mnemonic,
     parameters::load_parameters,
-    signer::base::identity_verification,
+    signer::{
+        base::identity_verification,
+        functions::{address_from_mnemonic, authorization_context_from_mnemonic},
+    },
     simulation::sample_signer,
 };
-use manta_accounting::transfer::{IdentifiedAsset, Identifier};
+use manta_accounting::transfer::{canonical::Transaction, IdentifiedAsset, Identifier};
 use manta_crypto::{
+    algebra::HasGenerator,
     arkworks::constraint::fp::Fp,
     rand::{fuzz::Fuzz, OsRng, Rand},
 };
+use manta_util::vec::VecExt;
 
 /// Checks the generation and verification of [`IdentityProof`](manta_accounting::transfer::IdentityProof)s.
 #[test]
@@ -46,7 +52,7 @@ fn identity_proof_test() {
     let identity_proof = signer
         .identity_proof(virtual_asset)
         .expect("Error producing identity proof");
-    let address = signer.address();
+    let address = signer.address().expect("Sampled signer has a spending key");
     assert!(
         identity_verification(
             &identity_proof,
@@ -106,5 +112,58 @@ fn identity_proof_test() {
         )
         .is_err(),
         "Verification should have failed"
+    );
+}
+
+/// Signs a [`ToPrivate`](manta_accounting::transfer::canonical::ToPrivate) transaction, computes its
+/// [`TransactionData`](manta_accounting::transfer::canonical::TransactionData), and checks its correctness.
+#[test]
+fn transaction_data_test() {
+    let mut rng = OsRng;
+    let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
+    let (proving_context, _, parameters, utxo_accumulator_model) =
+        load_parameters(directory.path()).expect("Failed to load parameters");
+    let mut signer = sample_signer(
+        &proving_context,
+        &parameters,
+        &utxo_accumulator_model,
+        &mut rng,
+    );
+    let transaction = Transaction::ToPrivate(rng.gen());
+    let response = signer
+        .sign_with_transaction_data(transaction)
+        .expect("Signing a ToPrivate transaction is not allowed to fail.")
+        .0
+        .take_first();
+    let utxo = response.0.body.receiver_posts.take_first().utxo;
+    assert!(
+        response.1.check_transaction_data(
+            &parameters,
+            &signer.address().expect("Sampled signer has a spending key"),
+            &vec![utxo]
+        ),
+        "Invalid Transaction Data"
+    );
+}
+
+/// Checks that both methods to derive a receiving key from a [`Mnemonic`] give
+/// the same result.
+#[test]
+pub fn derive_address_works() {
+    let mut rng = OsRng;
+    let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
+    let (_, _, parameters, _) =
+        load_parameters(directory.path()).expect("Failed to load parameters");
+    let mnemonic = Mnemonic::sample(&mut rng);
+    let receiving_key_1 = address_from_mnemonic(mnemonic.clone(), &parameters).receiving_key;
+    let receiving_key_2 = *authorization_context_from_mnemonic(mnemonic, &parameters)
+        .receiving_key(
+            parameters.base.group_generator.generator(),
+            &parameters.base.viewing_key_derivation_function,
+            &mut (),
+        );
+    assert_eq!(
+        receiving_key_1, receiving_key_2,
+        "Both receiving keys should be the same"
     );
 }

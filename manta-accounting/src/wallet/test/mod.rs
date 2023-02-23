@@ -460,7 +460,8 @@ where
         self.wallet
             .address()
             .await
-            .map_err(Error::SignerConnectionError)
+            .map_err(Error::SignerConnectionError)?
+            .ok_or(Error::MissingSpendingKey)
     }
 
     /// Returns the latest public balances from the ledger.
@@ -500,7 +501,7 @@ where
 
     /// Returns the [`Address`].
     #[inline]
-    pub async fn address(&mut self) -> Result<Address<C>, S::Error> {
+    pub async fn address(&mut self) -> Result<Option<Address<C>>, S::Error> {
         self.wallet.address().await
     }
 
@@ -1009,7 +1010,8 @@ impl Config {
                 .wallet
                 .address()
                 .await
-                .expect("Wallet should have address");
+                .expect("Wallet should have address")
+                .expect("Missing spending key");
             simulation.addresses.lock().insert(address);
         }
         let mut simulator = sim::Simulator::new(sim::ActionSim(simulation), actors);

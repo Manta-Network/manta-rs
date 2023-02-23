@@ -58,7 +58,7 @@ ceremony = [
     "reqwest",
     "serde",
     "tiny-bip39",
-    "tokio"
+    "tokio",
  ]
 
 # Trusted Setup Client
@@ -71,7 +71,7 @@ client = [
 ]
 
 # Trusted Setup Coordinator
-coordinator = ["client", "memmap", "parking_lot", "serde_json", "std",]
+coordinator = ["client", "memmap", "parking_lot", "serde_json", "std"]
 
 # CSV for Ceremony Registries
 csv = ["dep:csv", "serde", "std"]
@@ -88,7 +88,7 @@ serde = [
     "manta-crypto/serde",
     "manta-util/serde",
     "manta-util/serde-alloc",
-    "manta-util/serde-array"
+    "manta-util/serde-array",
 ]
 
 # Standard Library

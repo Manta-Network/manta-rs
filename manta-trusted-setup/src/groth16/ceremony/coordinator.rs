@@ -19,7 +19,7 @@
 use crate::{
     ceremony::{
         participant::{Participant, Priority},
-        registry::{self, csv::Record, Registry},
+        registry::{self, Registry},
         signature::{Nonce, SignedMessage},
         util::{deserialize_from_file, serialize_into_file},
     },
@@ -443,7 +443,7 @@ where
 /// Prepare by initalizing each circuit's prover key, challenge hash and saving
 /// to file. Creates a `_registry_0` file containing an empty registry.
 /// TODO: Generalize ProvingKeyHasher Output type and curves.
-pub fn prepare<C, R, T>(phase_one_param_path: PathBuf, target_path: PathBuf)
+pub fn prepare<C, R>(phase_one_param_path: PathBuf, target_path: PathBuf)
 where
     C: Ceremony
         + Configuration
@@ -461,8 +461,6 @@ where
         Registry = R,
     >,
     R: Debug,
-    T: Record<C::Identifier, C::Participant>,
-    T::Error: Debug,
     C::Identifier: Debug + Copy,
 {
     use memmap::MmapOptions;

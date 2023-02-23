@@ -25,10 +25,10 @@ use crate::{
     key::{CoinType, KeySecret, Testnet},
     signer::{AssetMetadata, Checkpoint},
 };
-use alloc::collections::BTreeMap;
+use alloc::{collections::BTreeMap, vec, vec::Vec};
 use core::{cmp, mem};
 use manta_accounting::{
-    asset::HashAssetMap,
+    asset::BTreeAssetMap,
     key::{AccountCollection, AccountIndex, DeriveAddresses},
     transfer::{utxo::protocol, Identifier, IdentityVerificationError, SpendingKey},
     wallet::{
@@ -41,7 +41,7 @@ use manta_crypto::{
     arkworks::{
         constraint::fp::Fp,
         ed_on_bn254::FrParameters,
-        ff::{Fp256, PrimeField},
+        ff::{Fp256, PrimeField, Zero},
     },
     merkle_tree::{self, forest::Configuration},
     rand::ChaCha20Rng,
@@ -88,7 +88,7 @@ impl wallet::signer::Configuration for Config {
     type Account = KeySecret<Testnet>;
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
-    type AssetMap = HashAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
+    type AssetMap = BTreeAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
     type AssetMetadata = AssetMetadata;
     type Rng = ChaCha20Rng;
 }
@@ -198,6 +198,12 @@ pub type SignerState = wallet::signer::SignerState<Config>;
 /// Signer Base Type
 pub type Signer = wallet::signer::Signer<Config>;
 
+/// Wallet Associated to [`Signer`]
+pub type Wallet<L> = wallet::Wallet<Config, L, Signer>;
+
+/// Wallet Error Type
+pub type WalletError<L> = wallet::Error<Config, L, Signer>;
+
 /// Runs the identity verification method on `identity_proof` with [`Config`] and
 /// [`UtxoAccumulator`], checking that `virtual_asset` is opaque and not zero for extra security.
 #[inline]
@@ -209,7 +215,7 @@ pub fn identity_verification(
     virtual_asset: IdentifiedAsset,
     address: Address,
 ) -> Result<(), IdentityVerificationError> {
-    if virtual_asset.identifier.is_transparent || virtual_asset.asset.is_empty(&mut ()) {
+    if virtual_asset.identifier.is_transparent || virtual_asset.asset.id.0.is_zero() {
         return Err(IdentityVerificationError::InvalidVirtualAsset);
     }
     identity_proof.identity_verification::<UtxoAccumulator>(

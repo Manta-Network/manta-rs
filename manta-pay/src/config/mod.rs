@@ -32,7 +32,6 @@ use {alloc::string::String, manta_util::codec::Encode};
 
 pub mod poseidon;
 pub mod utxo;
-pub mod utxo_utilities;
 
 /// Pairing Curve Type
 pub type PairingCurve = Bn254;
@@ -126,6 +125,9 @@ pub type UtxoAccumulatorOutput = transfer::UtxoAccumulatorOutput<Config>;
 pub type UtxoAccumulatorModel = transfer::UtxoAccumulatorModel<Config>;
 
 /// Full Transfer Parameters
+pub type FullParameters = transfer::FullParameters<'static, Config>;
+
+/// Full Transfer Parameters
 pub type FullParametersRef<'p> = transfer::FullParametersRef<'p, Config>;
 
 /// Authorization Context Type
@@ -200,11 +202,17 @@ pub type SpendingKey = transfer::SpendingKey<Config>;
 /// Address Type
 pub type Address = transfer::Address<Config>;
 
+/// Identifier Type
+pub type Identifier = transfer::Identifier<Config>;
+
 /// Identified Asset Type
 pub type IdentifiedAsset = transfer::IdentifiedAsset<Config>;
 
 /// Identity Type
 pub type IdentityProof = transfer::IdentityProof<Config>;
+
+/// Transaction Data Type
+pub type TransactionData = transfer::canonical::TransactionData<Config>;
 
 /// Converts an [`Address`] into a base58-encoded string.
 #[cfg(feature = "bs58")]

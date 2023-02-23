@@ -558,7 +558,6 @@ where
 }
 
 /// Fixed Encryption Configuration
-/* TODO:
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -571,7 +570,6 @@ where
         deny_unknown_fields
     )
 )]
-*/
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "S::Field: Clone"),

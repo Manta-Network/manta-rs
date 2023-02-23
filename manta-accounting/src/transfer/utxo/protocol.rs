@@ -2256,6 +2256,13 @@ where
     }
 }
 
+impl<C> cmp::Eq for AuthorizationContext<C>
+where
+    C: BaseConfiguration<Bool = bool>,
+    C::Group: cmp::PartialEq,
+{
+}
+
 impl<C, COM> Variable<Secret, COM> for AuthorizationContext<C, COM>
 where
     COM: Has<bool, Type = C::Bool>,
@@ -2397,9 +2404,11 @@ where
     Default(bound = "UtxoCommitmentRandomness<C>: Default"),
     Eq(bound = "UtxoCommitmentRandomness<C>: Eq"),
     Hash(bound = "UtxoCommitmentRandomness<C>: Hash"),
+    Ord(bound = "UtxoCommitmentRandomness<C>: Ord"),
     PartialEq(
         bound = "UtxoCommitmentRandomness<C>: core::cmp::PartialEq<UtxoCommitmentRandomness<C>>"
-    )
+    ),
+    PartialOrd(bound = "UtxoCommitmentRandomness<C>: PartialOrd")
 )]
 pub struct Identifier<C>
 where

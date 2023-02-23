@@ -53,6 +53,29 @@ impl Display for Network {
     }
 }
 
+impl From<Network> for usize {
+    #[inline]
+    fn from(value: Network) -> Self {
+        match value {
+            Network::Dolphin => 0,
+            Network::Calamari => 1,
+            Network::Manta => 2,
+        }
+    }
+}
+
+/// Network Error
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum NetworkError {
+    /// Nonexistent Wallet
+    NonexistentWallet(Network),
+}
+
 /// Network-Specific Data
 #[cfg_attr(
     feature = "serde",

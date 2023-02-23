@@ -25,7 +25,10 @@
 //! [`BIP-0044`]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
 
 use alloc::{format, string::String, vec::Vec};
-use core::marker::PhantomData;
+use core::{
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 use manta_accounting::key::{self, AccountIndex};
 use manta_crypto::rand::{CryptoRng, RngCore};
 use manta_util::{create_seal, seal, Array};
@@ -133,7 +136,7 @@ type SeedBytes = Array<u8, { bip32::Seed::SIZE }>;
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Clone(bound = ""))]
+#[derivative(Clone(bound = ""), Debug, Eq, Hash, PartialEq)]
 pub struct KeySecret<C>
 where
     C: CoinType,
@@ -227,7 +230,7 @@ where
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields, try_from = "String")
 )]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Mnemonic(
     /// Underlying BIP39 Mnemonic
     #[cfg_attr(feature = "serde", serde(serialize_with = "Mnemonic::serialize"))]
@@ -285,6 +288,13 @@ impl PartialEq for Mnemonic {
     #[inline]
     fn eq(&self, rhs: &Self) -> bool {
         self.as_ref().eq(rhs.as_ref())
+    }
+}
+
+impl Hash for Mnemonic {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_ref().hash(state)
     }
 }
 

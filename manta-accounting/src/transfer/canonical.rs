@@ -738,4 +738,43 @@ where
     {
         self.reconstruct_utxo(parameters, address).eq(utxos)
     }
+
+    /// Returns the [`TransferShape`] of `self`.
+    #[inline]
+    pub fn shape(&self) -> TransferShape {
+        match self {
+            Self::ToPrivate(_, _) => TransferShape::ToPrivate,
+            Self::PrivateTransfer(_) => TransferShape::PrivateTransfer,
+            Self::ToPublic(_, _) => TransferShape::ToPublic,
+        }
+    }
+
+    /// Verifies `self` against `transferpost`.
+    #[inline]
+    pub fn verify(
+        &self,
+        parameters: &Parameters<C>,
+        address: &Address<C>,
+        transferpost: TransferPost<C>,
+    ) -> bool
+    where
+        Utxo<C>: PartialEq,
+    {
+        if !TransferShape::from_post(&transferpost)
+            .map(|shape| shape.eq(&self.shape()))
+            .unwrap_or(false)
+        {
+            return false;
+        }
+        self.check_transaction_data(
+            parameters,
+            address,
+            &transferpost
+                .body
+                .receiver_posts
+                .into_iter()
+                .map(|receiver_post| receiver_post.utxo)
+                .collect(),
+        )
+    }
 }

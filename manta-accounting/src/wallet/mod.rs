@@ -38,8 +38,8 @@ use crate::{
         ledger::ReadResponse,
         signer::{
             BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
-            SyncData, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
-            TransactionDataResponse,
+            SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
+            TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -344,6 +344,9 @@ where
                     InconsistencyError::SignerSynchronization,
                 ))
             }
+            Err(SyncError::MissingProofAuthorizationKey) => {
+                Err(Error::MissingProofAuthorizationKey)
+            }
         }
     }
 
@@ -386,7 +389,8 @@ where
             .map_err(Error::SignError)
     }
 
-    /// Attempts to process TransferPosts and returns the corresponding TransactionData.
+    /// Attempts to process [`TransferPost`]s and returns the corresponding
+    /// [`TransactionData`](crate::transfer::canonical::TransactionData).
     #[inline]
     pub async fn transaction_data(
         &mut self,
@@ -453,8 +457,31 @@ where
 
     /// Returns the address.
     #[inline]
-    pub async fn address(&mut self) -> Result<Address<C>, S::Error> {
+    pub async fn address(&mut self) -> Result<Option<Address<C>>, S::Error> {
         self.signer.address().await
+    }
+
+    /// Signs `transaction` and returns the [`TransferPost`]s and the
+    /// associated [`TransactionData`](crate::transfer::canonical::TransactionData) if successful.
+    #[inline]
+    pub async fn sign_with_transaction_data(
+        &mut self,
+        transaction: Transaction<C>,
+        metadata: Option<S::AssetMetadata>,
+    ) -> Result<SignWithTransactionDataResponse<C>, Error<C, L, S>>
+    where
+        TransferPost<C>: Clone,
+    {
+        self.check(&transaction)
+            .map_err(Error::InsufficientBalance)?;
+        self.signer
+            .sign_with_transaction_data(SignRequest {
+                transaction,
+                metadata,
+            })
+            .await
+            .map_err(Error::SignerConnectionError)?
+            .map_err(Error::SignError)
     }
 }
 
@@ -553,6 +580,12 @@ where
 
     /// Ledger Connection Error
     LedgerConnectionError(L::Error),
+
+    /// Missing Spending Key Error
+    MissingSpendingKey,
+
+    /// Missing Proof Authorization Key Error
+    MissingProofAuthorizationKey,
 }
 
 impl<C, L, S> From<InconsistencyError> for Error<C, L, S>
