@@ -292,7 +292,6 @@ where
         let temp = self
         .ledger
         .read(&self.checkpoint);
-        panic!("Sucessfully read");
         let ReadResponse {
             should_continue,
             data,
