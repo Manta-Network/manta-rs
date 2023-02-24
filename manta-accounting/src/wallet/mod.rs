@@ -289,10 +289,10 @@ where
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
-        panic!("Called sync with");
         let temp = self
         .ledger
         .read(&self.checkpoint);
+        panic!("Sucessfully read");
         let ReadResponse {
             should_continue,
             data,
