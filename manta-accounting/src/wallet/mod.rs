@@ -297,6 +297,7 @@ where
             .read(&self.checkpoint)
             .await
             .map_err(Error::LedgerConnectionError)?;
+        panic!("We didn't return an error here");
         self.signer_sync(SyncRequest {
             origin_checkpoint: self.checkpoint.clone(),
             data,
