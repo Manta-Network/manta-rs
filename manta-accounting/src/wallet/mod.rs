@@ -289,15 +289,16 @@ where
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
+        panic!("Called sync with");
+        let temp = self
+        .ledger
+        .read(&self.checkpoint);
         let ReadResponse {
             should_continue,
             data,
-        } = self
-            .ledger
-            .read(&self.checkpoint)
+        } = temp
             .await
             .map_err(Error::LedgerConnectionError)?;
-        panic!("We didn't return an error here");
         self.signer_sync(SyncRequest {
             origin_checkpoint: self.checkpoint.clone(),
             data,
