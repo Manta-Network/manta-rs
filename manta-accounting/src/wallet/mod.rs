@@ -295,13 +295,12 @@ where
     where
         L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
     {
-        let temp = self
-        .ledger
-        .read(&self.checkpoint);
         let ReadResponse {
             should_continue,
             data,
-        } = temp
+        } = self
+            .ledger
+            .read(&self.checkpoint)
             .await
             .map_err(Error::LedgerConnectionError)?;
         self.signer_sync(SyncRequest {
