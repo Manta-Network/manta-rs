@@ -144,6 +144,12 @@ where
         Self::new_unchecked(ledger, Default::default(), signer, Default::default())
     }
 
+    /// Returns the a reference to the [`Connection`](signer::Connection).
+    #[inline]
+    pub fn signer(&self) -> &S {
+        &self.signer
+    }
+
     /// Returns a mutable reference to the [`Connection`](signer::Connection).
     ///
     /// # Crypto Safety
