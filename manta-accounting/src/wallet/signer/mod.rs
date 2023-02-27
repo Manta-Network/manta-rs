@@ -108,6 +108,40 @@ where
         TransferPost<C>: Clone;
 }
 
+/// Signer Data Loading
+pub trait DataLoading<C>: Connection<C>
+where
+    C: Configuration,
+{
+    /// Loads `accounts` to `self`.
+    fn load_accounts(&mut self, accounts: AccountTable<C>)
+        -> LocalBoxFutureResult<(), Self::Error>;
+
+    /// Drops the [`AccountTable`] in `self`.
+    fn drop_accounts(&mut self) -> LocalBoxFutureResult<(), Self::Error>;
+
+    /// Loads `authorization_context` to `self`.
+    fn load_authorization_context(
+        &mut self,
+        authorization_context: AuthorizationContext<C>,
+    ) -> LocalBoxFutureResult<(), Self::Error>;
+
+    /// Drops the [`AuthorizationContext`] from `self`.
+    fn drop_authorization_context(&mut self) -> LocalBoxFutureResult<(), Self::Error>;
+
+    /// Loads the [`AuthorizationContext`] coming from the [`AccountTable`] in `self`, if possible.
+    fn update_authorization_context(&mut self) -> LocalBoxFutureResult<bool, Self::Error>;
+
+    /// Builds a new [`StorageState`] from `self`.
+    fn set_storage(&mut self) -> LocalBoxFutureResult<StorageStateOption<C>, Self::Error>;
+
+    /// Tries to update `self` from `storage_state`.
+    fn get_storage(
+        &mut self,
+        storage_state: StorageStateOption<C>,
+    ) -> LocalBoxFutureResult<bool, Self::Error>;
+}
+
 /// Signer Synchronization Data
 #[cfg_attr(
     feature = "serde",
@@ -1168,6 +1202,31 @@ where
             &mut self.state.rng,
         )
     }
+
+    /// Builds a new [`StorageStateOption`] from `self`.
+    #[inline]
+    pub fn set_storage(&self) -> StorageStateOption<C>
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        Some(StorageState::from_signer(self))
+    }
+
+    /// Tries to update `signer` from `storage_state`.
+    #[inline]
+    pub fn get_storage(&mut self, storage_state: StorageStateOption<C>) -> bool
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        if let Some(storage_state) = storage_state {
+            storage_state.update_signer(self);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
@@ -1224,6 +1283,69 @@ where
         TransferPost<C>: Clone,
     {
         Box::pin(async move { Ok(self.sign_with_transaction_data(request.transaction)) })
+    }
+}
+
+impl<C> DataLoading<C> for Signer<C>
+where
+    C: Configuration,
+    C::UtxoAccumulator: Clone,
+    C::AssetMap: Clone,
+{
+    #[inline]
+    fn load_accounts(
+        &mut self,
+        accounts: AccountTable<C>,
+    ) -> LocalBoxFutureResult<(), Self::Error> {
+        Box::pin(async move {
+            self.load_accounts(accounts);
+            Ok(())
+        })
+    }
+
+    #[inline]
+    fn drop_accounts(&mut self) -> LocalBoxFutureResult<(), Self::Error> {
+        Box::pin(async move {
+            self.drop_accounts();
+            Ok(())
+        })
+    }
+
+    #[inline]
+    fn load_authorization_context(
+        &mut self,
+        authorization_context: AuthorizationContext<C>,
+    ) -> LocalBoxFutureResult<(), Self::Error> {
+        Box::pin(async move {
+            self.load_authorization_context(authorization_context);
+            Ok(())
+        })
+    }
+
+    #[inline]
+    fn drop_authorization_context(&mut self) -> LocalBoxFutureResult<(), Self::Error> {
+        Box::pin(async move {
+            self.drop_authorization_context();
+            Ok(())
+        })
+    }
+
+    #[inline]
+    fn update_authorization_context(&mut self) -> LocalBoxFutureResult<bool, Self::Error> {
+        Box::pin(async move { Ok(self.update_authorization_context()) })
+    }
+
+    #[inline]
+    fn get_storage(
+        &mut self,
+        storage_state: StorageStateOption<C>,
+    ) -> LocalBoxFutureResult<bool, Self::Error> {
+        Box::pin(async move { Ok(self.get_storage(storage_state)) })
+    }
+
+    #[inline]
+    fn set_storage(&mut self) -> LocalBoxFutureResult<StorageStateOption<C>, Self::Error> {
+        Box::pin(async move { Ok(Self::set_storage(self)) })
     }
 }
 
@@ -1342,3 +1464,6 @@ where
         signer
     }
 }
+
+/// Storage State Option
+pub type StorageStateOption<C> = Option<StorageState<C>>;

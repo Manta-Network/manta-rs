@@ -31,15 +31,17 @@ use crate::{
     asset::AssetList,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel,
+        Address, Asset, AuthorizationContext, Configuration, IdentifiedAsset, TransferPost,
+        UtxoAccumulatorModel,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
-            SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
-            TransactionDataRequest, TransactionDataResponse,
+            AccountTable, BalanceUpdate, DataLoading, IdentityRequest, IdentityResponse, SignError,
+            SignRequest, SignResponse, SignWithTransactionDataResponse, StorageStateOption,
+            SyncData, SyncError, SyncRequest, SyncResponse, TransactionDataRequest,
+            TransactionDataResponse,
         },
     },
 };
@@ -488,6 +490,103 @@ where
             .await
             .map_err(Error::SignerConnectionError)?
             .map_err(Error::SignError)
+    }
+
+    /// Loads `accounts` to `self`.
+    #[inline]
+    pub async fn load_accounts(&mut self, accounts: AccountTable<C>) -> Result<(), Error<C, L, S>>
+    where
+        C: signer::Configuration,
+        S: DataLoading<C>,
+    {
+        self.signer
+            .load_accounts(accounts)
+            .await
+            .map_err(Error::SignerConnectionError)
+    }
+
+    /// Drops the [`AccountTable`] from `self`.
+    #[inline]
+    pub async fn drop_accounts(&mut self) -> Result<(), Error<C, L, S>>
+    where
+        C: signer::Configuration,
+        S: DataLoading<C>,
+    {
+        self.signer
+            .drop_accounts()
+            .await
+            .map_err(Error::SignerConnectionError)
+    }
+
+    /// Loads `authorization_context` to `self`.
+    #[inline]
+    pub async fn load_authorization_context(
+        &mut self,
+        authorization_context: AuthorizationContext<C>,
+    ) -> Result<(), Error<C, L, S>>
+    where
+        C: signer::Configuration,
+        S: DataLoading<C>,
+    {
+        self.signer
+            .load_authorization_context(authorization_context)
+            .await
+            .map_err(Error::SignerConnectionError)
+    }
+
+    /// Drops the [`AuthorizationContext`] from `self`.
+    #[inline]
+    pub async fn drop_authorization_context(&mut self) -> Result<(), Error<C, L, S>>
+    where
+        C: signer::Configuration,
+        S: DataLoading<C>,
+    {
+        self.signer
+            .drop_authorization_context()
+            .await
+            .map_err(Error::SignerConnectionError)
+    }
+
+    /// Loads the [`AuthorizationContext`] coming from the [`AccountTable`] in `self`, if possible.
+    #[inline]
+    pub async fn update_authorization_context(&mut self) -> Result<bool, Error<C, L, S>>
+    where
+        C: signer::Configuration,
+        S: DataLoading<C>,
+    {
+        self.signer
+            .update_authorization_context()
+            .await
+            .map_err(Error::SignerConnectionError)
+    }
+
+    /// Builds a new [`StorageStateOption`] from `self`.
+    #[inline]
+    pub async fn set_storage(&mut self) -> Result<StorageStateOption<C>, Error<C, L, S>>
+    where
+        C: signer::Configuration,
+        S: DataLoading<C>,
+    {
+        self.signer
+            .set_storage()
+            .await
+            .map_err(Error::SignerConnectionError)
+    }
+
+    /// Tries to update `self` from `storage_state`.
+    #[inline]
+    pub async fn get_storage(
+        &mut self,
+        storage_state: StorageStateOption<C>,
+    ) -> Result<bool, Error<C, L, S>>
+    where
+        C: signer::Configuration,
+        S: DataLoading<C>,
+    {
+        self.signer
+            .get_storage(storage_state)
+            .await
+            .map_err(Error::SignerConnectionError)
     }
 }
 
