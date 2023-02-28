@@ -1343,9 +1343,16 @@ impl<C, AccountId, SenderError, ReceiverError, Error> From<InvalidSourceAccount<
     for TransferPostError<C, AccountId, SenderError, ReceiverError, Error>
 where
     C: Configuration + ?Sized,
+    AccountId: Debug,
+    C::AssetId: Debug,
+    C::AssetValue: Debug,
 {
     #[inline]
     fn from(err: InvalidSourceAccount<C, AccountId>) -> Self {
+        panic!(
+            "Converting InvalidSourceAccount to TransferPostError: {:?}",
+            err
+        );
         Self::InvalidSourceAccount(err)
     }
 }
@@ -1713,6 +1720,9 @@ where
     ) -> Result<(Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>), TransferLedgerPostError<C, L>>
     where
         L: TransferLedger<C>,
+        L::AccountId: Debug,
+        C::AssetId: Debug,
+        C::AssetValue: Debug,
     {
         let sources = source_values.len();
         let sinks = sink_values.len();
@@ -1726,10 +1736,17 @@ where
             return Err(TransferPostError::InvalidShape);
         }
         let sources = if sources > 0 {
-            ledger.check_source_accounts(
-                asset_id.as_ref().unwrap(),
-                source_accounts.into_iter().zip(source_values),
-            )?
+            ledger
+                .check_source_accounts(
+                    asset_id.as_ref().unwrap(),
+                    source_accounts.into_iter().zip(source_values),
+                )
+                .unwrap_or_else(|err| {
+                    panic!(
+                        "check_public_participants \n Invalid Source Account: {:?}",
+                        err
+                    )
+                })
         } else {
             Vec::new()
         };
@@ -1756,6 +1773,9 @@ where
     ) -> Result<TransferPostingKey<C, L>, TransferLedgerPostError<C, L>>
     where
         L: TransferLedger<C>,
+        L::AccountId: Debug,
+        C::AssetId: Debug,
+        C::AssetValue: Debug,
     {
         self.has_valid_authorization_signature(parameters)?;
         let (source_posting_keys, sink_posting_keys) = Self::check_public_participants(
@@ -1821,6 +1841,9 @@ where
     ) -> Result<L::Event, TransferLedgerPostError<C, L>>
     where
         L: TransferLedger<C>,
+        L::AccountId: Debug,
+        C::AssetId: Debug,
+        C::AssetValue: Debug,
     {
         self.validate(parameters, ledger, source_accounts, sink_accounts)?
             .post(ledger, super_key)
