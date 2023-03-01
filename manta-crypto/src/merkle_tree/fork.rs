@@ -264,7 +264,10 @@ impl Default for BaseContribution {
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
     Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default")
+    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
+    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
 struct Branch<C, M = BTreeMap<C>>
 where
@@ -783,7 +786,12 @@ where
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "T: Clone, LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
-    Debug(bound = "T: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug")
+    Debug(bound = "T: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Eq(bound = "T: Eq, LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
+    Hash(bound = "T: Hash, LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
+    PartialEq(
+        bound = "T: PartialEq, LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq"
+    )
 )]
 pub struct ForkedTree<C, T, M = BTreeMap<C>>
 where
