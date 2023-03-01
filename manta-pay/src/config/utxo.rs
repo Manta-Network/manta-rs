@@ -380,6 +380,9 @@ impl protocol::UtxoCommitmentScheme for UtxoCommitmentScheme {
         receiving_key: &Self::ReceivingKey,
         compiler: &mut (),
     ) -> Self::Commitment {
+        unsafe {
+            crate::POSEIDON_COUNT += 1;
+        }
         self.0.hash(
             [
                 randomness,
@@ -409,6 +412,9 @@ impl protocol::UtxoCommitmentScheme<Compiler> for UtxoCommitmentScheme<Compiler>
         receiving_key: &Self::ReceivingKey,
         compiler: &mut Compiler,
     ) -> Self::Commitment {
+        unsafe {
+            crate::POSEIDON_COUNT += 1;
+        }
         self.0.hash(
             [
                 randomness,
@@ -870,6 +876,9 @@ impl<COM> encryption::Decrypt for IncomingAESEncryptionScheme<COM> {
         ciphertext: &Self::Ciphertext,
         compiler: &mut (),
     ) -> Self::DecryptedPlaintext {
+        unsafe {
+            crate::AES_COUNT += 1;
+        }
         let aes = AES::default();
         aes.decrypt(decryption_key, header, ciphertext, compiler)
     }
@@ -1235,6 +1244,9 @@ impl merkle_tree::InnerHash for InnerHash {
         rhs: &Self::Output,
         compiler: &mut (),
     ) -> Self::Output {
+        unsafe {
+            crate::POSEIDON_COUNT += 1;
+        }
         parameters.hash([lhs, rhs], compiler)
     }
 
@@ -1245,6 +1257,9 @@ impl merkle_tree::InnerHash for InnerHash {
         rhs: &Self::LeafDigest,
         compiler: &mut (),
     ) -> Self::Output {
+        unsafe {
+            crate::POSEIDON_COUNT += 1;
+        }
         parameters.hash([lhs, rhs], compiler)
     }
 }
@@ -1476,6 +1491,9 @@ impl protocol::NullifierCommitmentScheme for NullifierCommitmentScheme {
         item: &Self::UtxoAccumulatorItem,
         compiler: &mut (),
     ) -> Self::Commitment {
+        unsafe {
+            crate::POSEIDON_COUNT += 1;
+        }
         self.0.hash(
             [
                 &Fp(proof_authorization_key.0.x),
@@ -1499,6 +1517,9 @@ impl protocol::NullifierCommitmentScheme<Compiler> for NullifierCommitmentScheme
         item: &Self::UtxoAccumulatorItem,
         compiler: &mut Compiler,
     ) -> Self::Commitment {
+        unsafe {
+            crate::POSEIDON_COUNT += 1;
+        }
         self.0.hash(
             [
                 &proof_authorization_key.0.x,

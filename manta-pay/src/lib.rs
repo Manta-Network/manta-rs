@@ -62,3 +62,9 @@ pub use manta_parameters;
 
 #[doc(inline)]
 pub use manta_util;
+
+///
+static mut POSEIDON_COUNT: u32 = 0;
+
+///
+static mut AES_COUNT: u32 = 0;
