@@ -169,13 +169,6 @@ pub fn sign(
     transaction: Transaction,
     rng: &mut SignerRng,
 ) -> SignResult {
-    unsafe {
-        panic!(
-            "Poseidon count: {:?}\n AES count: {:?}",
-            crate::POSEIDON_COUNT,
-            crate::AES_COUNT
-        );
-    }
     functions::sign(
         parameters,
         accounts,
@@ -220,4 +213,15 @@ pub fn identity_proof(
         identified_asset,
         rng,
     )
+}
+
+///
+pub fn panic_and_give_count() {
+    unsafe {
+        panic!(
+            "Poseidon count: {:?}\n AES count: {:?}",
+            crate::POSEIDON_COUNT,
+            crate::AES_COUNT
+        );
+    }
 }
