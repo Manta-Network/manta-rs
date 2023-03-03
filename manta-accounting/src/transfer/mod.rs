@@ -1686,8 +1686,8 @@ impl<C> TransferPost<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`
-    /// and the `authorization_signature`.
+    /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`,
+    /// the `authorization_signature` and the `sink_accounts`.
     #[inline]
     fn new_unchecked_with_sinks(
         authorization_signature: Option<AuthorizationSignature<C>>,
