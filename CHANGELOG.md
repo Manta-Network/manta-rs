@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 ### Security
+-[\#324](https://github.com/Manta-Network/manta-rs/pull/324) Include the sink AccountId in the signed message for ToPublic transactions.
 
 ## [0.5.11] - 2023-02-22
 ### Added
