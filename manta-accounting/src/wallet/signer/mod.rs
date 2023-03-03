@@ -734,14 +734,16 @@ where
                 AuthorizationContext<C>: Deserialize<'de>,
                 C::UtxoAccumulator: Deserialize<'de>,
                 C::AssetMap: Deserialize<'de>,
-                C::Checkpoint: Deserialize<'de>
+                C::Checkpoint: Deserialize<'de>,
+                C::AccountId: Deserialize<'de>,
             ",
             serialize = r"
                 AccountTable<C>: Serialize,
                 AuthorizationContext<C>: Serialize,
                 C::UtxoAccumulator: Serialize,
                 C::AssetMap: Serialize,
-                C::Checkpoint: Serialize
+                C::Checkpoint: Serialize,
+                C::AccountId: Serialize,
             ",
         ),
         crate = "manta_util::serde",
@@ -756,6 +758,7 @@ where
         C::UtxoAccumulator: Debug,
         C::AssetMap: Debug,
         C::Checkpoint: Debug,
+        C::AccountId: Debug,
         C::Rng: Debug
     "),
     Default(bound = r"
@@ -764,6 +767,7 @@ where
         C::UtxoAccumulator: Default,
         C::AssetMap: Default,
         C::Checkpoint: Default,
+        C::AccountId: Default,
         C::Rng: Default
     "),
     Eq(bound = r"
@@ -772,6 +776,7 @@ where
         C::UtxoAccumulator: Eq,
         C::AssetMap: Eq,
         C::Checkpoint: Eq,
+        C::AccountId: Eq,
         C::Rng: Eq
     "),
     Hash(bound = r"
@@ -780,6 +785,7 @@ where
         C::UtxoAccumulator: Hash,
         C::AssetMap: Hash,
         C::Checkpoint: Hash,
+        C::AccountId: Hash,
         C::Rng: Hash
     "),
     PartialEq(bound = r"
@@ -788,6 +794,7 @@ where
         C::UtxoAccumulator: PartialEq,
         C::AssetMap: PartialEq,
         C::Checkpoint: PartialEq,
+        C::AccountId: PartialEq,
         C::Rng: PartialEq
     ")
 )]
@@ -816,6 +823,9 @@ where
     /// Current Checkpoint
     checkpoint: C::Checkpoint,
 
+    /// Public Account
+    public_account: C::AccountId,
+
     /// Random Number Generator
     ///
     /// We use this entropy source to add randomness to various cryptographic constructions. The
@@ -829,25 +839,32 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`SignerState`] from `utxo_accumulator`, `assets`, and `rng`.
+    /// Builds a new [`SignerState`] from `utxo_accumulator`, `assets`, `public_account` and `rng`.
     #[inline]
-    fn build(utxo_accumulator: C::UtxoAccumulator, assets: C::AssetMap, rng: C::Rng) -> Self {
+    fn build(
+        utxo_accumulator: C::UtxoAccumulator,
+        assets: C::AssetMap,
+        public_account: C::AccountId,
+        rng: C::Rng,
+    ) -> Self {
         Self {
             accounts: None,
             authorization_context: None,
             checkpoint: C::Checkpoint::from_utxo_accumulator(&utxo_accumulator),
             utxo_accumulator,
             assets,
+            public_account,
             rng,
         }
     }
 
-    /// Builds a new [`SignerState`] from `utxo_accumulator`.
+    /// Builds a new [`SignerState`] from `utxo_accumulator` and `public_account`.
     #[inline]
-    pub fn new(utxo_accumulator: C::UtxoAccumulator) -> Self {
+    pub fn new(utxo_accumulator: C::UtxoAccumulator, public_account: C::AccountId) -> Self {
         Self::build(
             utxo_accumulator,
             Default::default(),
+            public_account,
             FromEntropy::from_entropy(),
         )
     }
@@ -902,12 +919,14 @@ where
     AuthorizationContext<C>: Clone,
     C::UtxoAccumulator: Clone,
     C::AssetMap: Clone,
+    C::AccountId: Clone,
 {
     #[inline]
     fn clone(&self) -> Self {
         let mut signer_state = Self::build(
             self.utxo_accumulator.clone(),
             self.assets.clone(),
+            self.public_account.clone(),
             FromEntropy::from_entropy(),
         );
         if self.accounts.is_some() {
@@ -970,6 +989,7 @@ where
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
+        public_account: C::AccountId,
         rng: C::Rng,
     ) -> Self {
         Self::from_parts(
@@ -977,7 +997,7 @@ where
                 parameters,
                 proving_context,
             },
-            SignerState::build(utxo_accumulator, assets, rng),
+            SignerState::build(utxo_accumulator, assets, public_account, rng),
         )
     }
 
@@ -987,6 +1007,7 @@ where
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
+        public_account: C::AccountId,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
@@ -994,6 +1015,7 @@ where
             proving_context,
             utxo_accumulator,
             Default::default(),
+            public_account,
             rng,
         )
     }
@@ -1081,6 +1103,7 @@ where
             self.state.accounts.as_ref()?,
             self.state.utxo_accumulator.model(),
             identified_asset,
+            Vec::from([self.state.public_account.clone()]),
             &mut self.state.rng,
         )
     }
@@ -1097,6 +1120,7 @@ where
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
+            Vec::from([self.state.public_account.clone()]),
             &mut self.state.rng,
         )
     }
@@ -1165,6 +1189,7 @@ where
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
+            Vec::from([self.state.public_account.clone()]),
             &mut self.state.rng,
         )
     }
@@ -1327,6 +1352,7 @@ where
         &self,
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
+        public_account: C::AccountId,
     ) -> Signer<C>
     where
         C::UtxoAccumulator: Clone,
@@ -1336,6 +1362,7 @@ where
             parameters,
             proving_context,
             self.utxo_accumulator.clone(),
+            public_account,
             FromEntropy::from_entropy(),
         );
         self.update_signer(&mut signer);

@@ -18,9 +18,9 @@
 
 use crate::{
     config::{
-        Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters, IdentifiedAsset,
-        IdentityProof, MultiProvingContext, Parameters, Transaction, TransactionData, TransferPost,
-        UtxoAccumulatorModel,
+        AccountId, Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters,
+        IdentifiedAsset, IdentityProof, MultiProvingContext, Parameters, Transaction,
+        TransactionData, TransferPost, UtxoAccumulatorModel,
     },
     key::{KeySecret, Mnemonic},
     signer::{
@@ -39,11 +39,13 @@ pub fn new_signer(
     parameters: FullParameters,
     proving_context: MultiProvingContext,
     storage_state: &StorageStateOption,
+    public_account: AccountId,
 ) -> Signer {
     let mut signer = new_signer_from_model(
         parameters.base,
         proving_context,
         &parameters.utxo_accumulator_model,
+        public_account,
     );
     if let Some(state) = storage_state {
         state.update_signer(&mut signer);
@@ -73,11 +75,13 @@ fn new_signer_from_accumulator(
     parameters: Parameters,
     proving_context: MultiProvingContext,
     utxo_accumulator: UtxoAccumulator,
+    public_account: AccountId,
 ) -> Signer {
     Signer::new(
         parameters,
         proving_context,
         utxo_accumulator,
+        public_account,
         FromEntropy::from_entropy(),
     )
 }
@@ -95,11 +99,13 @@ pub fn new_signer_from_model(
     parameters: Parameters,
     proving_context: MultiProvingContext,
     utxo_accumulator_model: &UtxoAccumulatorModel,
+    public_account: AccountId,
 ) -> Signer {
     new_signer_from_accumulator(
         parameters,
         proving_context,
         Accumulator::empty(utxo_accumulator_model),
+        public_account,
     )
 }
 
@@ -167,6 +173,7 @@ pub fn sign(
     assets: &AssetMap,
     utxo_accumulator: &mut UtxoAccumulator,
     transaction: Transaction,
+    public_account: AccountId,
     rng: &mut SignerRng,
 ) -> SignResult {
     functions::sign(
@@ -175,6 +182,7 @@ pub fn sign(
         assets,
         utxo_accumulator,
         transaction,
+        Vec::from([public_account]),
         rng,
     )
 }
@@ -204,6 +212,7 @@ pub fn identity_proof(
     accounts: &AccountTable,
     utxo_accumulator_model: &UtxoAccumulatorModel,
     identified_asset: IdentifiedAsset,
+    public_account: AccountId,
     rng: &mut SignerRng,
 ) -> Option<IdentityProof> {
     functions::identity_proof(
@@ -211,6 +220,7 @@ pub fn identity_proof(
         accounts,
         utxo_accumulator_model,
         identified_asset,
+        Vec::from([public_account]),
         rng,
     )
 }

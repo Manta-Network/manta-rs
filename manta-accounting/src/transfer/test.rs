@@ -518,7 +518,7 @@ where
     );
     Ok((
         transaction
-            .into_post(parameters, proving_context, None, rng)?
+            .into_post(parameters, proving_context, None, Vec::new(), rng)?
             .expect("The `ToPrivate` transaction does not require authorization."),
         pre_sender,
     ))
