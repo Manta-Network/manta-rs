@@ -1606,7 +1606,7 @@ impl<'p, C> BodyWithAccountsRef<'p, C>
 where
     C: Configuration + ?Sized,
 {
-    ///
+    /// Builds a new [`BodyWithAccountsRef`] from `body` and `sink_accounts`.
     #[inline]
     pub fn new(body: &'p TransferPostBody<C>, sink_accounts: &'p Vec<C::AccountId>) -> Self {
         Self {
