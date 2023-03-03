@@ -69,9 +69,9 @@ pub mod receiver;
 pub mod sender;
 pub mod utxo;
 
-// #[cfg(feature = "test")]
-// #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-// pub mod test;
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test;
 
 #[doc(inline)]
 pub use canonical::Shape;

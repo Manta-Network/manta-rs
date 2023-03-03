@@ -19,11 +19,12 @@
 use crate::{
     config::{
         utxo::{AssetId, AssetValue},
-        Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
+        AccountId, Config, MultiProvingContext, MultiVerifyingContext, Parameters,
+        UtxoAccumulatorModel,
     },
     key::KeySecret,
     signer::{base::Signer, functions},
-    simulation::ledger::{AccountId, Ledger, LedgerConnection},
+    simulation::ledger::{Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
 use core::fmt::Debug;
@@ -37,13 +38,21 @@ use manta_accounting::{
         Error,
     },
 };
-use manta_crypto::rand::{ChaCha20Rng, CryptoRng, RngCore, SeedableRng};
+use manta_crypto::rand::{ChaCha20Rng, CryptoRng, Rand, RngCore, SeedableRng};
 use tokio::{
     io::{self, AsyncWriteExt},
     sync::RwLock,
 };
 
 pub mod ledger;
+
+/// Creates an [`AccountId`] from `i`.
+#[inline]
+pub fn account_id_from_u64(i: u64) -> AccountId {
+    let mut result = [0; 32];
+    result[..8].copy_from_slice(&i.to_le_bytes());
+    result
+}
 
 /// Samples a new signer.
 #[inline]
@@ -60,6 +69,7 @@ where
         parameters.clone(),
         proving_context.clone(),
         utxo_accumulator_model,
+        rng.gen(),
     );
     signer.load_accounts(AccountTable::new(KeySecret::sample(rng)));
     signer.update_authorization_context();
@@ -99,7 +109,7 @@ impl Simulation {
     pub fn setup(&self, ledger: &mut Ledger) {
         let starting_balance = self.starting_balance;
         for i in 0..self.actor_count {
-            let account = AccountId(i as u64);
+            let account = account_id_from_u64(i as u64);
             for id in 0..self.asset_id_count {
                 ledger.set_public_balance(
                     account,
@@ -130,7 +140,7 @@ impl Simulation {
         self.setup(&mut ledger);
         let ledger = Arc::new(RwLock::new(ledger));
         self.run_with(
-            move |i| LedgerConnection::new(AccountId(i as u64), ledger.clone()),
+            move |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
             move |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
         )
         .await
