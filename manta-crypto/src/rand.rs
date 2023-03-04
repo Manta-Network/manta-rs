@@ -585,6 +585,8 @@ pub mod fuzz {
         result
     }
 
+    #[cfg(feature = "rand")]
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
     impl Fuzz for u8 {
         #[inline]
         fn fuzz<R>(&self, rng: &mut R) -> Self
