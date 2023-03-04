@@ -560,6 +560,45 @@ pub mod fuzz {
         }
     }
 
+    /// Computes the little-endian representation of `number`.
+    #[inline]
+    pub fn to_bits_le(number: &u8) -> [bool; u8::BITS as usize] {
+        // TODO: this generalizes, see
+        // https://github.com/openzklib/openzl/blob/main/eclair/src/bool.rs#L112
+        let mut bits = [false; u8::BITS as usize];
+        for (i, item) in bits.iter_mut().enumerate() {
+            let power = 1 << i;
+            *item = (power & number) > 0;
+        }
+        bits
+    }
+
+    /// Computes a [`u8`] from its little-endian bit representation.
+    #[inline]
+    pub fn from_bits_le(bits: [bool; u8::BITS as usize]) -> u8 {
+        let mut result = 0u8;
+        for (i, item) in bits.iter().enumerate() {
+            if *item {
+                result |= 1 << i;
+            }
+        }
+        result
+    }
+
+    impl Fuzz for u8 {
+        #[inline]
+        fn fuzz<R>(&self, rng: &mut R) -> Self
+        where
+            R: RngCore + ?Sized,
+        {
+            let bits = to_bits_le(self).to_vec();
+            let fuzzed_bits = bits.fuzz(rng).try_into().expect(
+                "Getting an array of length 8 from a vector of length 8 is not allowed to fail.",
+            );
+            from_bits_le(fuzzed_bits)
+        }
+    }
+
     #[cfg(feature = "rand")]
     #[cfg_attr(doc_cfg, doc(cfg(feature = "rand")))]
     impl<M, T> Fuzz<Vec<M>> for Vec<T>
