@@ -17,7 +17,7 @@
 //! To Public Benchmarks
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_crypto::rand::OsRng;
+use manta_crypto::rand::{OsRng, Rand};
 use manta_pay::{
     parameters,
     test::payment::{to_public::prove as prove_to_public, UtxoAccumulator},
@@ -27,12 +27,14 @@ fn prove(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
     let (proving_context, _, parameters, utxo_accumulator_model) = parameters::generate().unwrap();
+    let public_account = rng.gen();
     group.bench_function("to public prove", |b| {
         b.iter(|| {
             prove_to_public(
                 &proving_context.to_public,
                 &parameters,
                 &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+                public_account,
                 &mut rng,
             );
         })
@@ -44,10 +46,12 @@ fn verify(c: &mut Criterion) {
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         parameters::generate().unwrap();
+    let public_account = rng.gen();
     let transferpost = black_box(prove_to_public(
         &proving_context.to_public,
         &parameters,
         &mut UtxoAccumulator::new(utxo_accumulator_model.clone()),
+        public_account,
         &mut rng,
     ));
     group.bench_function("to public verify", |b| {
