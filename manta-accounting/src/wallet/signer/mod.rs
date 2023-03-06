@@ -495,8 +495,12 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "Asset<C>: Deserialize<'de>, Identifier<C>: Deserialize<'de>",
-            serialize = "Asset<C>: Serialize, Identifier<C>: Serialize"
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Identifier<C>: Deserialize<'de>, 
+                C::AccountId: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Identifier<C>: Serialize, 
+                C::AccountId: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -504,13 +508,13 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
-    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
-    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
-    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
-    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone, C::AccountId: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug, C::AccountId: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq, C::AccountId: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash, C::AccountId: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq, C::AccountId: PartialEq")
 )]
-pub struct IdentityRequest<C>(pub Vec<IdentifiedAsset<C>>)
+pub struct IdentityRequest<C>(pub Vec<(IdentifiedAsset<C>, C::AccountId)>)
 where
     C: transfer::Configuration;
 
@@ -758,7 +762,6 @@ where
         C::UtxoAccumulator: Debug,
         C::AssetMap: Debug,
         C::Checkpoint: Debug,
-        C::AccountId: Debug,
         C::Rng: Debug
     "),
     Default(bound = r"
@@ -767,7 +770,6 @@ where
         C::UtxoAccumulator: Default,
         C::AssetMap: Default,
         C::Checkpoint: Default,
-        C::AccountId: Default,
         C::Rng: Default
     "),
     Eq(bound = r"
@@ -776,7 +778,6 @@ where
         C::UtxoAccumulator: Eq,
         C::AssetMap: Eq,
         C::Checkpoint: Eq,
-        C::AccountId: Eq,
         C::Rng: Eq
     "),
     Hash(bound = r"
@@ -785,7 +786,6 @@ where
         C::UtxoAccumulator: Hash,
         C::AssetMap: Hash,
         C::Checkpoint: Hash,
-        C::AccountId: Hash,
         C::Rng: Hash
     "),
     PartialEq(bound = r"
@@ -794,7 +794,6 @@ where
         C::UtxoAccumulator: PartialEq,
         C::AssetMap: PartialEq,
         C::Checkpoint: PartialEq,
-        C::AccountId: PartialEq,
         C::Rng: PartialEq
     ")
 )]
@@ -823,9 +822,6 @@ where
     /// Current Checkpoint
     checkpoint: C::Checkpoint,
 
-    /// Public Account
-    public_account: C::AccountId,
-
     /// Random Number Generator
     ///
     /// We use this entropy source to add randomness to various cryptographic constructions. The
@@ -839,32 +835,25 @@ impl<C> SignerState<C>
 where
     C: Configuration,
 {
-    /// Builds a new [`SignerState`] from `utxo_accumulator`, `assets`, `public_account` and `rng`.
+    /// Builds a new [`SignerState`] from `utxo_accumulator`, `assets`, and `rng`.
     #[inline]
-    fn build(
-        utxo_accumulator: C::UtxoAccumulator,
-        assets: C::AssetMap,
-        public_account: C::AccountId,
-        rng: C::Rng,
-    ) -> Self {
+    fn build(utxo_accumulator: C::UtxoAccumulator, assets: C::AssetMap, rng: C::Rng) -> Self {
         Self {
             accounts: None,
             authorization_context: None,
             checkpoint: C::Checkpoint::from_utxo_accumulator(&utxo_accumulator),
             utxo_accumulator,
             assets,
-            public_account,
             rng,
         }
     }
 
-    /// Builds a new [`SignerState`] from `utxo_accumulator` and `public_account`.
+    /// Builds a new [`SignerState`] from `utxo_accumulator`.
     #[inline]
-    pub fn new(utxo_accumulator: C::UtxoAccumulator, public_account: C::AccountId) -> Self {
+    pub fn new(utxo_accumulator: C::UtxoAccumulator) -> Self {
         Self::build(
             utxo_accumulator,
             Default::default(),
-            public_account,
             FromEntropy::from_entropy(),
         )
     }
@@ -919,14 +908,12 @@ where
     AuthorizationContext<C>: Clone,
     C::UtxoAccumulator: Clone,
     C::AssetMap: Clone,
-    C::AccountId: Clone,
 {
     #[inline]
     fn clone(&self) -> Self {
         let mut signer_state = Self::build(
             self.utxo_accumulator.clone(),
             self.assets.clone(),
-            self.public_account.clone(),
             FromEntropy::from_entropy(),
         );
         if self.accounts.is_some() {
@@ -989,7 +976,6 @@ where
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
-        public_account: C::AccountId,
         rng: C::Rng,
     ) -> Self {
         Self::from_parts(
@@ -997,7 +983,7 @@ where
                 parameters,
                 proving_context,
             },
-            SignerState::build(utxo_accumulator, assets, public_account, rng),
+            SignerState::build(utxo_accumulator, assets, rng),
         )
     }
 
@@ -1007,7 +993,6 @@ where
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
-        public_account: C::AccountId,
         rng: C::Rng,
     ) -> Self {
         Self::new_inner(
@@ -1015,7 +1000,6 @@ where
             proving_context,
             utxo_accumulator,
             Default::default(),
-            public_account,
             rng,
         )
     }
@@ -1097,13 +1081,14 @@ where
     pub fn identity_proof(
         &mut self,
         identified_asset: IdentifiedAsset<C>,
+        public_account: C::AccountId,
     ) -> Option<IdentityProof<C>> {
         functions::identity_proof(
             &self.parameters,
             self.state.accounts.as_ref()?,
             self.state.utxo_accumulator.model(),
             identified_asset,
-            Vec::from([self.state.public_account.clone()]),
+            public_account,
             &mut self.state.rng,
         )
     }
@@ -1120,7 +1105,6 @@ where
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
-            Vec::from([self.state.public_account.clone()]),
             &mut self.state.rng,
         )
     }
@@ -1129,12 +1113,14 @@ where
     #[inline]
     pub fn batched_identity_proof(
         &mut self,
-        identified_assets: Vec<IdentifiedAsset<C>>,
+        request: Vec<(IdentifiedAsset<C>, C::AccountId)>,
     ) -> IdentityResponse<C> {
         IdentityResponse(
-            identified_assets
+            request
                 .into_iter()
-                .map(|identified_asset| self.identity_proof(identified_asset))
+                .map(|(identified_asset, public_address)| {
+                    self.identity_proof(identified_asset, public_address)
+                })
                 .collect(),
         )
     }
@@ -1189,7 +1175,6 @@ where
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
-            Vec::from([self.state.public_account.clone()]),
             &mut self.state.rng,
         )
     }
@@ -1352,7 +1337,6 @@ where
         &self,
         parameters: Parameters<C>,
         proving_context: MultiProvingContext<C>,
-        public_account: C::AccountId,
     ) -> Signer<C>
     where
         C::UtxoAccumulator: Clone,
@@ -1362,7 +1346,6 @@ where
             parameters,
             proving_context,
             self.utxo_accumulator.clone(),
-            public_account,
             FromEntropy::from_entropy(),
         );
         self.update_signer(&mut signer);

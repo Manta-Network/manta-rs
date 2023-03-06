@@ -735,7 +735,6 @@ fn sign_internal<C>(
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
     transaction: Transaction<C>,
-    sink_accounts: Vec<C::AccountId>,
     rng: &mut C::Rng,
 ) -> Result<SignResponse<C>, SignError<C>>
 where
@@ -762,17 +761,17 @@ where
             utxo_accumulator,
             asset,
             Some(address),
-            sink_accounts,
+            Vec::new(),
             rng,
         ),
-        Transaction::ToPublic(asset) => sign_withdraw(
+        Transaction::ToPublic(asset, public_account) => sign_withdraw(
             parameters,
             accounts,
             assets,
             utxo_accumulator,
             asset,
             None,
-            sink_accounts,
+            Vec::from([public_account]),
             rng,
         ),
     }
@@ -786,7 +785,6 @@ pub fn sign<C>(
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
     transaction: Transaction<C>,
-    sink_accounts: Vec<C::AccountId>,
     rng: &mut C::Rng,
 ) -> Result<SignResponse<C>, SignError<C>>
 where
@@ -798,7 +796,6 @@ where
         assets,
         utxo_accumulator,
         transaction,
-        sink_accounts,
         rng,
     )?;
     utxo_accumulator.rollback();
@@ -813,7 +810,7 @@ pub fn identity_proof<C>(
     accounts: &AccountTable<C>,
     utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     identified_asset: IdentifiedAsset<C>,
-    sink_accounts: Vec<C::AccountId>,
+    public_account: C::AccountId,
     rng: &mut C::Rng,
 ) -> Option<IdentityProof<C>>
 where
@@ -849,7 +846,7 @@ where
         &parameters.parameters,
         &parameters.proving_context.to_public,
         ToPublic::build(authorization, senders, [change], identified_asset.asset),
-        sink_accounts,
+        Vec::from([public_account]),
         rng,
     )
     .ok()?;
@@ -912,7 +909,6 @@ pub fn sign_with_transaction_data<C>(
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
     transaction: Transaction<C>,
-    sink_accounts: Vec<C::AccountId>,
     rng: &mut C::Rng,
 ) -> SignWithTransactionDataResult<C>
 where
@@ -926,7 +922,6 @@ where
             assets,
             utxo_accumulator,
             transaction,
-            sink_accounts,
             rng,
         )?
         .posts

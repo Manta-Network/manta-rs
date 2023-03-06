@@ -54,9 +54,9 @@ pub mod balance;
 pub mod ledger;
 pub mod signer;
 
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod test;
+// #[cfg(feature = "test")]
+// #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+// pub mod test;
 
 /// Wallet
 #[cfg_attr(
@@ -407,13 +407,13 @@ where
     #[inline]
     pub async fn identity_proof(
         &mut self,
-        virtual_assets: Vec<IdentifiedAsset<C>>,
+        request: Vec<(IdentifiedAsset<C>, C::AccountId)>,
     ) -> Result<IdentityResponse<C>, Error<C, L, S>>
     where
         UtxoAccumulatorModel<C>: Clone,
     {
         self.signer
-            .identity_proof(IdentityRequest(virtual_assets))
+            .identity_proof(IdentityRequest(request))
             .await
             .map_err(Error::SignerConnectionError)
     }
