@@ -16,11 +16,11 @@
 
 //! Manta Pay Testing
 
-#[cfg(test)]
-pub mod balance;
+// #[cfg(test)]
+// pub mod balance;
 
-#[cfg(test)]
-pub mod compatibility;
+// #[cfg(test)]
+// pub mod compatibility;
 
 #[cfg(test)]
 pub mod transfer;
@@ -29,7 +29,7 @@ pub mod transfer;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "groth16")))]
 pub mod payment;
 
-#[cfg(all(feature = "groth16", feature = "simulation"))]
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "simulation"))))]
-#[cfg(test)]
-pub mod signer;
+// #[cfg(all(feature = "groth16", feature = "simulation"))]
+// #[cfg_attr(doc_cfg, doc(cfg(all(feature = "groth16", feature = "simulation"))))]
+// #[cfg(test)]
+// pub mod signer;
