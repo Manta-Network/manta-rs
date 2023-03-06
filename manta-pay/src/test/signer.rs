@@ -61,7 +61,8 @@ fn identity_proof_test() {
             &verifying_context.to_public,
             &utxo_accumulator_model,
             virtual_asset,
-            address
+            address,
+            public_account
         )
         .is_ok(),
         "Verification failed"
@@ -76,7 +77,8 @@ fn identity_proof_test() {
                 Identifier::<Config>::new(true, identifier.utxo_commitment_randomness),
                 virtual_asset.asset,
             ),
-            address
+            address,
+            public_account
         )
         .is_err(),
         "Verification should have failed"
@@ -94,7 +96,8 @@ fn identity_proof_test() {
                 ),
                 virtual_asset.asset,
             ),
-            address
+            address,
+            public_account
         )
         .is_err(),
         "Verification should have failed"
@@ -109,7 +112,8 @@ fn identity_proof_test() {
                 virtual_asset.identifier,
                 Asset::new(virtual_asset.asset.id, rng.gen()),
             ),
-            address
+            address,
+            public_account
         )
         .is_err(),
         "Verification should have failed"

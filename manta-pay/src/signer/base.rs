@@ -19,8 +19,8 @@
 use crate::{
     config::{
         utxo::{self, MerkleTreeConfiguration},
-        Address, Config, IdentifiedAsset, IdentityProof, Parameters, UtxoAccumulatorModel,
-        VerifyingContext,
+        AccountId, Address, Config, IdentifiedAsset, IdentityProof, Parameters,
+        UtxoAccumulatorModel, VerifyingContext,
     },
     key::{CoinType, KeySecret, Testnet},
     signer::{AssetMetadata, Checkpoint},
@@ -214,6 +214,7 @@ pub fn identity_verification(
     utxo_accumulator_model: &UtxoAccumulatorModel,
     virtual_asset: IdentifiedAsset,
     address: Address,
+    public_account: AccountId,
 ) -> Result<(), IdentityVerificationError> {
     if virtual_asset.identifier.is_transparent || virtual_asset.asset.id.0.is_zero() {
         return Err(IdentityVerificationError::InvalidVirtualAsset);
@@ -224,5 +225,6 @@ pub fn identity_verification(
         utxo_accumulator_model,
         virtual_asset,
         address,
+        public_account,
     )
 }

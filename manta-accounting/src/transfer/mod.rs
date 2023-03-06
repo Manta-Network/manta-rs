@@ -2223,6 +2223,9 @@ pub enum IdentityVerificationError {
 
     /// Invalid Identified Asset
     InvalidVirtualAsset,
+
+    /// Invalid Sink Account
+    InvalidSinkAccount,
 }
 
 /// Identity Proof
@@ -2265,20 +2268,23 @@ impl<C> IdentityProof<C>
 where
     C: Configuration,
 {
-    /// Verifies `self` for `address` against `virtual_asset`.
+    /// Verifies `self` for `address` against `virtual_asset` and `public_account`.
     ///
     /// # Note
     ///
-    /// It performs four checks:
+    /// It performs five checks:
     ///
     /// 1) `identity_proof.transfer_post` has a [`ToPublic`](crate::transfer::canonical::ToPublic)
     /// shape.
     ///
-    /// 2) `identity_proof.transfer_post` has a valid authorization signature.
+    /// 2) `identity_proof.transfer_post.sink_accounts` has only one element and is equal to
+    /// `public_account`.
     ///
-    /// 3) `identity_proof.transfer_post` has a valid proof.
+    /// 3) `identity_proof.transfer_post` has a valid authorization signature.
     ///
-    /// 4) The [`UtxoAccumulatorOutput`] in `identity_proof.transfer_post` has been computed from
+    /// 4) `identity_proof.transfer_post` has a valid proof.
+    ///
+    /// 5) The [`UtxoAccumulatorOutput`] in `identity_proof.transfer_post` has been computed from
     /// `virtual_asset` and `address`.
     #[inline]
     pub fn identity_verification<A>(
@@ -2288,9 +2294,11 @@ where
         utxo_accumulator_model: &UtxoAccumulatorModel<C>,
         virtual_asset: IdentifiedAsset<C>,
         address: Address<C>,
+        public_account: C::AccountId,
     ) -> Result<(), IdentityVerificationError>
     where
         C::UtxoAccumulatorOutput: PartialEq,
+        C::AccountId: PartialEq,
         UtxoAccumulatorModel<C>: Model<Verification = bool>,
         A: Accumulator<
             Item = UtxoAccumulatorItem<C>,
@@ -2306,6 +2314,13 @@ where
                 _ => Err(IdentityVerificationError::InvalidShape),
             },
         )?;
+        if !self
+            .transfer_post
+            .sink_accounts
+            .eq(&Vec::from([public_account]))
+        {
+            return Err(IdentityVerificationError::InvalidSinkAccount);
+        }
         self.transfer_post
             .has_valid_authorization_signature(parameters)
             .map_err(|_| IdentityVerificationError::InvalidSignature)?;

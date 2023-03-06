@@ -201,7 +201,7 @@ fn to_public_check_signature() {
         .try_into()
         .expect("Getting an array from a vector of equal length is not allowed to fail")];
     let new_post = TransferPost {
-        authorization_signature: post.authorization_signature.clone(),
+        authorization_signature: post.authorization_signature,
         body: post.body.clone(),
         sink_accounts: fuzzed_account,
     };
