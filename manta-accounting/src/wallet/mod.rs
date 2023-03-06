@@ -54,9 +54,9 @@ pub mod balance;
 pub mod ledger;
 pub mod signer;
 
-// #[cfg(feature = "test")]
-// #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-// pub mod test;
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test;
 
 /// Wallet
 #[cfg_attr(

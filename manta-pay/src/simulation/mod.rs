@@ -38,7 +38,7 @@ use manta_accounting::{
         Error,
     },
 };
-use manta_crypto::rand::{ChaCha20Rng, CryptoRng, Rand, RngCore, SeedableRng};
+use manta_crypto::rand::{ChaCha20Rng, CryptoRng, RngCore, SeedableRng};
 use tokio::{
     io::{self, AsyncWriteExt},
     sync::RwLock,
@@ -69,7 +69,6 @@ where
         parameters.clone(),
         proving_context.clone(),
         utxo_accumulator_model,
-        rng.gen(),
     );
     signer.load_accounts(AccountTable::new(KeySecret::sample(rng)));
     signer.update_authorization_context();
@@ -142,6 +141,7 @@ impl Simulation {
         self.run_with(
             move |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
             move |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
+            move |i| account_id_from_u64(i as u64),
         )
         .await
     }
@@ -153,18 +153,19 @@ impl Simulation {
     /// In this case, the ledger must be set up ahead of time with the [`setup`](Self::setup) method
     /// since this simulation only knows about connections to the ledger.
     #[inline]
-    pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
+    pub async fn run_with<L, S, GL, GS, GP>(&self, ledger: GL, signer: GS, public_account: GP)
     where
         L: wallet::test::Ledger<Config> + PublicBalanceOracle<Config>,
         S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
         S::Error: Debug,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
+        GP: FnMut(usize) -> AccountId,
         Error<Config, L, S>: Debug,
     {
         assert!(
             self.config()
-                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |_| ChaCha20Rng::from_entropy(), |event| {
+                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _, _>(ledger, signer, public_account, |_| ChaCha20Rng::from_entropy(), |event| {
                     let event = format!("{event:?}\n");
                     async move {
                         let _ = write_stdout(event.as_bytes()).await;

@@ -49,8 +49,9 @@ fn identity_proof_test() {
     );
     let identifier = Identifier::<Config>::new(false, rng.gen());
     let virtual_asset = IdentifiedAsset::<Config>::new(identifier, rng.gen());
+    let public_account = rng.gen();
     let identity_proof = signer
-        .identity_proof(virtual_asset)
+        .identity_proof(virtual_asset, public_account)
         .expect("Error producing identity proof");
     let address = signer.address().expect("Sampled signer has a spending key");
     assert!(
