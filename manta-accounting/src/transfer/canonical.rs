@@ -338,8 +338,12 @@ impl TransferShape {
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "Asset<C>: Deserialize<'de>, Address<C>: Deserialize<'de>",
-            serialize = "Asset<C>: Serialize, Address<C>: Serialize"
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Address<C>: Deserialize<'de>, 
+                C::AccountId: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Address<C>: Serialize, 
+                C::AccountId: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -347,12 +351,12 @@ impl TransferShape {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Asset<C>: Clone, Address<C>: Clone"),
-    Copy(bound = "Asset<C>: Copy, Address<C>: Copy"),
-    Debug(bound = "Asset<C>: Debug, Address<C>: Debug"),
-    Eq(bound = "Asset<C>: Eq, Address<C>: Eq"),
-    Hash(bound = "Asset<C>: Hash, Address<C>: Hash"),
-    PartialEq(bound = "Asset<C>: PartialEq, Address<C>: PartialEq")
+    Clone(bound = "Asset<C>: Clone, Address<C>: Clone, C::AccountId: Clone"),
+    Copy(bound = "Asset<C>: Copy, Address<C>: Copy, C::AccountId: Copy"),
+    Debug(bound = "Asset<C>: Debug, Address<C>: Debug, C::AccountId: Debug"),
+    Eq(bound = "Asset<C>: Eq, Address<C>: Eq, C::AccountId: Eq"),
+    Hash(bound = "Asset<C>: Hash, Address<C>: Hash, C::AccountId: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Address<C>: PartialEq, C::AccountId: PartialEq")
 )]
 pub enum Transaction<C>
 where
@@ -365,7 +369,7 @@ where
     PrivateTransfer(Asset<C>, Address<C>),
 
     /// Convert Private Asset into Public Asset
-    ToPublic(Asset<C>),
+    ToPublic(Asset<C>, C::AccountId),
 }
 
 impl<C> Transaction<C>
@@ -382,7 +386,7 @@ where
     {
         match self {
             Self::ToPrivate(asset) => Ok(TransactionKind::Deposit(asset.clone())),
-            Self::PrivateTransfer(asset, _) | Self::ToPublic(asset) => {
+            Self::PrivateTransfer(asset, _) | Self::ToPublic(asset, _) => {
                 if balance(asset) {
                     Ok(TransactionKind::Withdraw(asset.clone()))
                 } else {
@@ -398,7 +402,7 @@ where
         match self {
             Self::ToPrivate(_) => TransferShape::ToPrivate,
             Self::PrivateTransfer(_, _) => TransferShape::PrivateTransfer,
-            Self::ToPublic(_) => TransferShape::ToPublic,
+            Self::ToPublic(_, _) => TransferShape::ToPublic,
         }
     }
 
@@ -408,7 +412,7 @@ where
         match self {
             Self::ToPrivate(asset) => &asset.value,
             Self::PrivateTransfer(asset, _) => &asset.value,
-            Self::ToPublic(asset) => &asset.value,
+            Self::ToPublic(asset, _) => &asset.value,
         }
     }
 

@@ -49,8 +49,9 @@ fn identity_proof_test() {
     );
     let identifier = Identifier::<Config>::new(false, rng.gen());
     let virtual_asset = IdentifiedAsset::<Config>::new(identifier, rng.gen());
+    let public_account = rng.gen();
     let identity_proof = signer
-        .identity_proof(virtual_asset)
+        .identity_proof(virtual_asset, public_account)
         .expect("Error producing identity proof");
     let address = signer.address().expect("Sampled signer has a spending key");
     assert!(
@@ -60,7 +61,8 @@ fn identity_proof_test() {
             &verifying_context.to_public,
             &utxo_accumulator_model,
             virtual_asset,
-            address
+            address,
+            public_account
         )
         .is_ok(),
         "Verification failed"
@@ -75,7 +77,8 @@ fn identity_proof_test() {
                 Identifier::<Config>::new(true, identifier.utxo_commitment_randomness),
                 virtual_asset.asset,
             ),
-            address
+            address,
+            public_account
         )
         .is_err(),
         "Verification should have failed"
@@ -93,7 +96,8 @@ fn identity_proof_test() {
                 ),
                 virtual_asset.asset,
             ),
-            address
+            address,
+            public_account
         )
         .is_err(),
         "Verification should have failed"
@@ -108,7 +112,8 @@ fn identity_proof_test() {
                 virtual_asset.identifier,
                 Asset::new(virtual_asset.asset.id, rng.gen()),
             ),
-            address
+            address,
+            public_account
         )
         .is_err(),
         "Verification should have failed"

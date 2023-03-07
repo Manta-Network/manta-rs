@@ -23,7 +23,7 @@ use crate::config::{
     utxo::{
         AssetId, AssetValue, Checkpoint, FullIncomingNote, MerkleTreeConfiguration, Parameters,
     },
-    Config, MultiVerifyingContext, Nullifier, ProofSystem, TransferPost, Utxo,
+    AccountId, Config, MultiVerifyingContext, Nullifier, ProofSystem, TransferPost, Utxo,
     UtxoAccumulatorModel,
 };
 use alloc::{sync::Arc, vec::Vec};
@@ -105,15 +105,6 @@ impl<L, R> AsRef<R> for WrapPair<L, R> {
         &self.1
     }
 }
-
-/// Account Id
-#[cfg_attr(
-    feature = "serde",
-    derive(Deserialize, Serialize),
-    serde(crate = "manta_util::serde", deny_unknown_fields, transparent)
-)]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct AccountId(pub u64);
 
 /// Ledger
 #[derive(Debug)]
@@ -459,10 +450,9 @@ impl ReceiverLedger<Parameters> for Ledger {
 }
 
 impl TransferLedger<Config> for Ledger {
-    type AccountId = AccountId;
     type Event = ();
-    type ValidSourceAccount = WrapPair<Self::AccountId, AssetValue>;
-    type ValidSinkAccount = WrapPair<Self::AccountId, AssetValue>;
+    type ValidSourceAccount = WrapPair<AccountId, AssetValue>;
+    type ValidSinkAccount = WrapPair<AccountId, AssetValue>;
     type ValidProof = Wrap<()>;
     type SuperPostingKey = ();
     type Error = TransferLedgerError;
@@ -472,9 +462,9 @@ impl TransferLedger<Config> for Ledger {
         &self,
         asset_id: &AssetId,
         sources: I,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Config, Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<Config, AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>,
+        I: Iterator<Item = (AccountId, AssetValue)>,
     {
         sources
             .map(|(account_id, withdraw)| {
@@ -515,9 +505,9 @@ impl TransferLedger<Config> for Ledger {
         &self,
         asset_id: &AssetId,
         sinks: I,
-    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Config, Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<Config, AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, AssetValue)>,
+        I: Iterator<Item = (AccountId, AssetValue)>,
     {
         sinks
             .map(move |(account_id, deposit)| {

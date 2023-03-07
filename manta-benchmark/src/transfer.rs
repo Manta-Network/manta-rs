@@ -113,6 +113,7 @@ pub fn prove_to_public(context: &Context) -> TransferPost {
             &mut UtxoAccumulator::new(context.utxo_accumulator_model.clone()),
             rng.gen(),
             [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
+            rng.gen(),
             &mut rng,
         )
         .1,

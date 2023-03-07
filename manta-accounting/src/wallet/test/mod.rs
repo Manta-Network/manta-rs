@@ -126,8 +126,8 @@ where
 
     /// Generates a [`Transaction::ToPublic`] for `asset` which is maximal if `is_maximal` is `true`.
     #[inline]
-    pub fn to_public(is_maximal: bool, asset: Asset<C>) -> Self {
-        Self::self_post(is_maximal, Transaction::ToPublic(asset))
+    pub fn to_public(is_maximal: bool, asset: Asset<C>, public_account: C::AccountId) -> Self {
+        Self::self_post(is_maximal, Transaction::ToPublic(asset, public_account))
     }
 
     /// Computes the [`ActionType`] for a [`Post`](Self::Post) type with the `is_self`,
@@ -403,11 +403,11 @@ where
 /// Actor
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Wallet<C, L, S, B>: Clone"),
-    Debug(bound = "Wallet<C, L, S, B>: Debug"),
-    Default(bound = "Wallet<C, L, S, B>: Default"),
-    Eq(bound = "Wallet<C, L, S, B>: Eq"),
-    PartialEq(bound = "Wallet<C, L, S, B>: PartialEq")
+    Clone(bound = "Wallet<C, L, S, B>: Clone, C::AccountId: Clone"),
+    Debug(bound = "Wallet<C, L, S, B>: Debug, C::AccountId: Debug"),
+    Default(bound = "Wallet<C, L, S, B>: Default, C::AccountId: Default"),
+    Eq(bound = "Wallet<C, L, S, B>: Eq, C::AccountId: Eq"),
+    PartialEq(bound = "Wallet<C, L, S, B>: PartialEq, C::AccountId: PartialEq")
 )]
 pub struct Actor<C, L, S, B>
 where
@@ -424,6 +424,9 @@ where
 
     /// Actor Lifetime
     pub lifetime: usize,
+
+    /// Public Account
+    pub public_account: C::AccountId,
 }
 
 impl<C, L, S, B> Actor<C, L, S, B>
@@ -439,11 +442,13 @@ where
         wallet: Wallet<C, L, S, B>,
         distribution: ActionDistribution,
         lifetime: usize,
+        public_account: C::AccountId,
     ) -> Self {
         Self {
             wallet,
             distribution,
             lifetime,
+            public_account,
         }
     }
 
@@ -692,7 +697,7 @@ where
         R: RngCore + ?Sized,
     {
         match self.sample_withdraw(rng).await {
-            Ok(Some(asset)) => Ok(Action::to_public(false, asset)),
+            Ok(Some(asset)) => Ok(Action::to_public(false, asset, self.public_account.clone())),
             Ok(_) => self.sample_to_private(rng).await,
             Err(err) => Err(ActionType::ToPublic.label(err)),
         }
@@ -711,7 +716,13 @@ where
         Ok(self
             .sample_asset(ActionType::ToPublicZero, rng)
             .await?
-            .map(|asset| Action::to_public(false, Asset::<C>::zero(asset.id)))
+            .map(|asset| {
+                Action::to_public(
+                    false,
+                    Asset::<C>::zero(asset.id),
+                    self.public_account.clone(),
+                )
+            })
             .unwrap_or(Action::Skip))
     }
 
@@ -727,7 +738,7 @@ where
         Ok(self
             .sample_asset(ActionType::FlushToPublic, rng)
             .await?
-            .map(|asset| Action::to_public(true, asset))
+            .map(|asset| Action::to_public(true, asset, self.public_account.clone()))
             .unwrap_or(Action::Skip))
     }
 
@@ -970,10 +981,11 @@ impl Config {
     /// Runs the simulation on the configuration defined in `self`, sending events to the
     /// `event_subscriber`.
     #[inline]
-    pub async fn run<C, L, S, B, R, GL, GS, F, ES, ESFut>(
+    pub async fn run<C, L, S, B, R, GL, GS, GP, F, ES, ESFut>(
         &self,
         mut ledger: GL,
         mut signer: GS,
+        mut public_account: GP,
         rng: F,
         mut event_subscriber: ES,
     ) -> Result<bool, Error<C, L, S>>
@@ -988,6 +1000,7 @@ impl Config {
         R: CryptoRng + RngCore,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
+        GP: FnMut(usize) -> C::AccountId,
         F: FnMut(usize) -> R,
         ES: Copy + FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S, B>>>) -> ESFut,
         ESFut: Future<Output = ()>,
@@ -1001,6 +1014,7 @@ impl Config {
                     Wallet::new(ledger(i), signer(i)),
                     action_distribution.clone(),
                     self.actor_lifetime,
+                    public_account(i),
                 )
             })
             .collect();

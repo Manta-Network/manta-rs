@@ -231,14 +231,17 @@ where
     where
         A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
         for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
+        C::AccountId: Sample,
         R: CryptoRng + RngCore + ?Sized,
     {
         let (spending_key, distribution) =
             Self::generate_distribution(parameters, utxo_accumulator, spending_key, rng);
+        let sink_accounts: [C::AccountId; SINKS] = rng.gen();
         Self::sample(distribution, rng).into_post(
             FullParametersRef::<C>::new(parameters, utxo_accumulator.model()),
             proving_context,
             spending_key,
+            sink_accounts.to_vec(),
             rng,
         )
     }
@@ -256,6 +259,7 @@ where
     where
         A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
         for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
+        C::AccountId: Sample,
         R: CryptoRng + RngCore + ?Sized,
     {
         let (proving_context, verifying_context) = Self::generate_context(
@@ -287,6 +291,7 @@ where
     where
         A: Accumulator<Item = UtxoAccumulatorItem<C>, Model = UtxoAccumulatorModel<C>>,
         for<'s> Self: Sample<TransferDistribution<'s, C, A>>,
+        C::AccountId: Sample,
         R: CryptoRng + RngCore + ?Sized,
     {
         Self::sample_post(
@@ -324,7 +329,13 @@ where
         let (proving_context, _) = Self::generate_context(public_parameters, full_parameters, rng)?;
         Ok(transfer.generate_proof_input()
             == transfer
-                .into_post(full_parameters, &proving_context, spending_key, rng)?
+                .into_post(
+                    full_parameters,
+                    &proving_context,
+                    spending_key,
+                    Default::default(),
+                    rng,
+                )?
                 .expect("TransferPost should have been constructed correctly.")
                 .generate_proof_input())
     }
@@ -518,7 +529,7 @@ where
     );
     Ok((
         transaction
-            .into_post(parameters, proving_context, None, rng)?
+            .into_post(parameters, proving_context, None, Vec::new(), rng)?
             .expect("The `ToPrivate` transaction does not require authorization."),
         pre_sender,
     ))

@@ -18,9 +18,9 @@
 
 use crate::{
     config::{
-        Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters, IdentifiedAsset,
-        IdentityProof, MultiProvingContext, Parameters, Transaction, TransactionData, TransferPost,
-        UtxoAccumulatorModel,
+        AccountId, Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters,
+        IdentifiedAsset, IdentityProof, MultiProvingContext, Parameters, Transaction,
+        TransactionData, TransferPost, UtxoAccumulatorModel,
     },
     key::{KeySecret, Mnemonic},
     signer::{
@@ -204,6 +204,7 @@ pub fn identity_proof(
     accounts: &AccountTable,
     utxo_accumulator_model: &UtxoAccumulatorModel,
     identified_asset: IdentifiedAsset,
+    public_account: AccountId,
     rng: &mut SignerRng,
 ) -> Option<IdentityProof> {
     functions::identity_proof(
@@ -211,6 +212,7 @@ pub fn identity_proof(
         accounts,
         utxo_accumulator_model,
         identified_asset,
+        public_account,
         rng,
     )
 }

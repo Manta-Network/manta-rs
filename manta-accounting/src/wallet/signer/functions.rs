@@ -356,13 +356,20 @@ fn build_post_inner<
     proving_context: &ProvingContext<C>,
     spending_key: Option<&SpendingKey<C>>,
     transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
+    sink_accounts: Vec<C::AccountId>,
     rng: &mut C::Rng,
 ) -> Result<TransferPost<C>, SignError<C>>
 where
     C: Configuration,
 {
     transfer
-        .into_post(parameters, proving_context, spending_key, rng)
+        .into_post(
+            parameters,
+            proving_context,
+            spending_key,
+            sink_accounts,
+            rng,
+        )
         .map(|p| p.expect("Internally, all transfer posts are constructed correctly."))
         .map_err(SignError::ProofSystemError)
 }
@@ -381,6 +388,7 @@ fn build_post<
     parameters: &Parameters<C>,
     proving_context: &ProvingContext<C>,
     transfer: Transfer<C, SOURCES, SENDERS, RECEIVERS, SINKS>,
+    sink_accounts: Vec<C::AccountId>,
     rng: &mut C::Rng,
 ) -> Result<TransferPost<C>, SignError<C>>
 where
@@ -392,6 +400,7 @@ where
         proving_context,
         requires_authorization(SENDERS).then_some(&spending_key),
         transfer,
+        sink_accounts,
         rng,
     )
 }
@@ -567,6 +576,7 @@ where
                 parameters,
                 &proving_context.private_transfer,
                 PrivateTransfer::build(authorization, senders, receivers),
+                Vec::new(),
                 rng,
             )?);
             join.insert_utxos(parameters, utxo_accumulator);
@@ -648,6 +658,7 @@ where
 }
 
 /// Signs a withdraw transaction for `asset` sent to `address`.
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn sign_withdraw<C>(
     parameters: &SignerParameters<C>,
@@ -656,6 +667,7 @@ fn sign_withdraw<C>(
     utxo_accumulator: &mut C::UtxoAccumulator,
     asset: Asset<C>,
     address: Option<Address<C>>,
+    sink_accounts: Vec<C::AccountId>,
     rng: &mut C::Rng,
 ) -> Result<SignResponse<C>, SignError<C>>
 where
@@ -697,6 +709,7 @@ where
                 &parameters.parameters,
                 &parameters.proving_context.private_transfer,
                 PrivateTransfer::build(authorization, senders, [change, receiver]),
+                Vec::new(),
                 rng,
             )?
         }
@@ -706,6 +719,7 @@ where
             &parameters.parameters,
             &parameters.proving_context.to_public,
             ToPublic::build(authorization, senders, [change], asset),
+            sink_accounts,
             rng,
         )?,
     };
@@ -736,6 +750,7 @@ where
                 &parameters.parameters,
                 &parameters.proving_context.to_private,
                 ToPrivate::build(asset, receiver),
+                Vec::new(),
                 rng,
             )?]))
         }
@@ -746,15 +761,17 @@ where
             utxo_accumulator,
             asset,
             Some(address),
+            Vec::new(),
             rng,
         ),
-        Transaction::ToPublic(asset) => sign_withdraw(
+        Transaction::ToPublic(asset, public_account) => sign_withdraw(
             parameters,
             accounts,
             assets,
             utxo_accumulator,
             asset,
             None,
+            Vec::from([public_account]),
             rng,
         ),
     }
@@ -793,6 +810,7 @@ pub fn identity_proof<C>(
     accounts: &AccountTable<C>,
     utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     identified_asset: IdentifiedAsset<C>,
+    public_account: C::AccountId,
     rng: &mut C::Rng,
 ) -> Option<IdentityProof<C>>
 where
@@ -828,6 +846,7 @@ where
         &parameters.parameters,
         &parameters.proving_context.to_public,
         ToPublic::build(authorization, senders, [change], identified_asset.asset),
+        Vec::from([public_account]),
         rng,
     )
     .ok()?;

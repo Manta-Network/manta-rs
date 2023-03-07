@@ -94,6 +94,12 @@ pub const fn requires_authorization(senders: usize) -> bool {
     senders > 0
 }
 
+/// Returns `true` if the [`Transfer`] with this shape has sinks.
+#[inline]
+pub const fn has_sinks(sinks: usize) -> bool {
+    sinks > 0
+}
+
 /// Configuration
 pub trait Configuration {
     /// Compiler Type
@@ -104,6 +110,9 @@ pub trait Configuration {
 
     /// Asset Value Type
     type AssetValue: AddAssign + Clone + Default + PartialOrd + Sum;
+
+    /// Account Identifier
+    type AccountId: Clone;
 
     /// Associated Data Type
     type AssociatedData: Default;
@@ -143,8 +152,8 @@ pub trait Configuration {
         + auth::ProveAuthorization
         + auth::VerifyAuthorization
         + auth::DeriveSigningKey
-        + auth::Sign<TransferPostBody<Self>>
-        + auth::VerifySignature<TransferPostBody<Self>>
+        + for<'a> auth::Sign<BodyWithAccountsRef<'a, Self>>
+        + for<'a> auth::VerifySignature<BodyWithAccountsRef<'a, Self>>
         + utxo::AssetType<Asset = Asset<Self>>
         + utxo::AssociatedDataType<AssociatedData = Self::AssociatedData>
         + utxo::DeriveMint<
@@ -730,6 +739,7 @@ where
         parameters: FullParametersRef<C>,
         proving_context: &ProvingContext<C>,
         spending_key: Option<&SpendingKey<C>>,
+        sink_accounts: Vec<C::AccountId>,
         rng: &mut R,
     ) -> Result<Option<TransferPost<C>>, ProofSystemError<C>>
     where
@@ -743,17 +753,28 @@ where
             (true, true, Some(spending_key)) => {
                 let (body, authorization) =
                     self.into_post_body_with_authorization(parameters, proving_context, rng)?;
+                let body_with_accounts = BodyWithAccountsRef::new(&body, &sink_accounts);
                 match auth::sign(
                     parameters.base,
                     spending_key,
                     authorization.expect("It is known to be `Some` from the check above."),
-                    &body,
+                    &body_with_accounts,
                     rng,
                 ) {
-                    Some(authorization_signature) => Ok(Some(TransferPost::new_unchecked(
-                        Some(authorization_signature),
-                        body,
-                    ))),
+                    Some(authorization_signature) => {
+                        if has_sinks(SINKS) {
+                            Ok(Some(TransferPost::new_unchecked_with_sinks(
+                                Some(authorization_signature),
+                                body,
+                                sink_accounts,
+                            )))
+                        } else {
+                            Ok(Some(TransferPost::new_unchecked(
+                                Some(authorization_signature),
+                                body,
+                            )))
+                        }
+                    }
                     _ => Ok(None),
                 }
             }
@@ -1044,9 +1065,6 @@ where
     /// Type that allows super-traits of [`TransferLedger`] to customize posting key behavior.
     type SuperPostingKey: Copy;
 
-    /// Account Identifier
-    type AccountId;
-
     /// Ledger Event
     type Event;
 
@@ -1083,7 +1101,7 @@ where
         + Into<
             TransferPostError<
                 C,
-                Self::AccountId,
+                C::AccountId,
                 <Self as SenderLedger<Parameters<C>>>::Error,
                 <Self as ReceiverLedger<Parameters<C>>>::Error,
                 <Self as TransferLedger<C>>::Error,
@@ -1096,18 +1114,18 @@ where
         &self,
         asset_id: &C::AssetId,
         sources: I,
-    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<C, Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSourceAccount>, InvalidSourceAccount<C, C::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
+        I: Iterator<Item = (C::AccountId, C::AssetValue)>;
 
     /// Checks that the sink accounts exist and balance can be increased by the specified amounts.
     fn check_sink_accounts<I>(
         &self,
         asset_id: &C::AssetId,
         sinks: I,
-    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<C, Self::AccountId>>
+    ) -> Result<Vec<Self::ValidSinkAccount>, InvalidSinkAccount<C, C::AccountId>>
     where
-        I: Iterator<Item = (Self::AccountId, C::AssetValue)>;
+        I: Iterator<Item = (C::AccountId, C::AssetValue)>;
 
     /// Checks that the transfer proof stored in `posting_key` is valid.
     fn is_valid(
@@ -1232,7 +1250,7 @@ where
 /// Transfer Ledger Post Error
 pub type TransferLedgerPostError<C, L> = TransferPostError<
     C,
-    <L as TransferLedger<C>>::AccountId,
+    <C as Configuration>::AccountId,
     <L as SenderLedger<Parameters<C>>>::Error,
     <L as ReceiverLedger<Parameters<C>>>::Error,
     <L as TransferLedger<C>>::Error,
@@ -1572,6 +1590,49 @@ where
     }
 }
 
+/// Body With Accounts Reference
+pub struct BodyWithAccountsRef<'p, C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Transfer Post Body
+    pub body: &'p TransferPostBody<C>,
+
+    /// Sink Accounts
+    pub sink_accounts: &'p Vec<C::AccountId>,
+}
+
+impl<'p, C> BodyWithAccountsRef<'p, C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Builds a new [`BodyWithAccountsRef`] from `body` and `sink_accounts`.
+    #[inline]
+    pub fn new(body: &'p TransferPostBody<C>, sink_accounts: &'p Vec<C::AccountId>) -> Self {
+        Self {
+            body,
+            sink_accounts,
+        }
+    }
+}
+
+impl<'p, C> Encode for BodyWithAccountsRef<'p, C>
+where
+    C: Configuration + ?Sized,
+    TransferPostBody<C>: Encode,
+    C::AccountId: Encode,
+{
+    #[inline]
+    fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
+    where
+        W: Write,
+    {
+        self.body.encode(&mut writer)?;
+        self.sink_accounts.encode(&mut writer)?;
+        Ok(())
+    }
+}
+
 /// Transfer Post
 #[cfg_attr(
     feature = "serde",
@@ -1581,10 +1642,12 @@ where
             deserialize = r"
                 AuthorizationSignature<C>: Deserialize<'de>,
                 TransferPostBody<C>: Deserialize<'de>,
+                C::AccountId: Deserialize<'de>,
             ",
             serialize = r"
                 AuthorizationSignature<C>: Serialize,
                 TransferPostBody<C>: Serialize,
+                C::AccountId: Serialize
             ",
         ),
         crate = "manta_util::serde",
@@ -1593,11 +1656,17 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "AuthorizationSignature<C>: Clone, TransferPostBody<C>: Clone"),
-    Debug(bound = "AuthorizationSignature<C>: Debug, TransferPostBody<C>: Debug"),
-    Eq(bound = "AuthorizationSignature<C>: Eq, TransferPostBody<C>: Eq"),
-    Hash(bound = "AuthorizationSignature<C>: Hash, TransferPostBody<C>: Hash"),
-    PartialEq(bound = "AuthorizationSignature<C>: PartialEq, TransferPostBody<C>: PartialEq")
+    Clone(
+        bound = "AuthorizationSignature<C>: Clone, TransferPostBody<C>: Clone, C::AccountId: Clone"
+    ),
+    Debug(
+        bound = "AuthorizationSignature<C>: Debug, TransferPostBody<C>: Debug, C::AccountId: Debug"
+    ),
+    Eq(bound = "AuthorizationSignature<C>: Eq, TransferPostBody<C>: Eq, C::AccountId: Eq"),
+    Hash(bound = "AuthorizationSignature<C>: Hash, TransferPostBody<C>: Hash, C::AccountId: Hash"),
+    PartialEq(
+        bound = "AuthorizationSignature<C>: PartialEq, TransferPostBody<C>: PartialEq, C::AccountId: PartialEq"
+    )
 )]
 pub struct TransferPost<C>
 where
@@ -1608,12 +1677,30 @@ where
 
     /// Transfer Post Body
     pub body: TransferPostBody<C>,
+
+    /// Sink Accounts
+    pub sink_accounts: Vec<C::AccountId>,
 }
 
 impl<C> TransferPost<C>
 where
     C: Configuration + ?Sized,
 {
+    /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`,
+    /// the `authorization_signature` and the `sink_accounts`.
+    #[inline]
+    fn new_unchecked_with_sinks(
+        authorization_signature: Option<AuthorizationSignature<C>>,
+        body: TransferPostBody<C>,
+        sink_accounts: Vec<C::AccountId>,
+    ) -> Self {
+        Self {
+            authorization_signature,
+            body,
+            sink_accounts,
+        }
+    }
+
     /// Builds a new [`TransferPost`] without checking the consistency conditions between the `body`
     /// and the `authorization_signature`.
     #[inline]
@@ -1621,10 +1708,7 @@ where
         authorization_signature: Option<AuthorizationSignature<C>>,
         body: TransferPostBody<C>,
     ) -> Self {
-        Self {
-            authorization_signature,
-            body,
-        }
+        Self::new_unchecked_with_sinks(authorization_signature, body, Vec::new())
     }
 
     /// Returns the `k`-th source in the transfer.
@@ -1687,7 +1771,8 @@ where
             requires_authorization(self.body.sender_posts.len()),
         ) {
             (Some(authorization_signature), true) => {
-                if authorization_signature.verify(parameters, &self.body) {
+                let body_with_accounts = BodyWithAccountsRef::new(&self.body, &self.sink_accounts);
+                if authorization_signature.verify(parameters, &body_with_accounts) {
                     Ok(())
                 } else {
                     Err(InvalidAuthorizationSignature::BadSignature)
@@ -1705,9 +1790,9 @@ where
     #[inline]
     fn check_public_participants<L>(
         asset_id: &Option<C::AssetId>,
-        source_accounts: Vec<L::AccountId>,
+        source_accounts: Vec<C::AccountId>,
         source_values: Vec<C::AssetValue>,
-        sink_accounts: Vec<L::AccountId>,
+        sink_accounts: Vec<C::AccountId>,
         sink_values: Vec<C::AssetValue>,
         ledger: &L,
     ) -> Result<(Vec<L::ValidSourceAccount>, Vec<L::ValidSinkAccount>), TransferLedgerPostError<C, L>>
@@ -1751,8 +1836,8 @@ where
         self,
         parameters: &C::Parameters,
         ledger: &L,
-        source_accounts: Vec<L::AccountId>,
-        sink_accounts: Vec<L::AccountId>,
+        source_accounts: Vec<C::AccountId>,
+        sink_accounts: Vec<C::AccountId>,
     ) -> Result<TransferPostingKey<C, L>, TransferLedgerPostError<C, L>>
     where
         L: TransferLedger<C>,
@@ -1816,8 +1901,8 @@ where
         parameters: &C::Parameters,
         ledger: &mut L,
         super_key: &TransferLedgerSuperPostingKey<C, L>,
-        source_accounts: Vec<L::AccountId>,
-        sink_accounts: Vec<L::AccountId>,
+        source_accounts: Vec<C::AccountId>,
+        sink_accounts: Vec<C::AccountId>,
     ) -> Result<L::Event, TransferLedgerPostError<C, L>>
     where
         L: TransferLedger<C>,
@@ -2138,6 +2223,9 @@ pub enum IdentityVerificationError {
 
     /// Invalid Identified Asset
     InvalidVirtualAsset,
+
+    /// Invalid Sink Account
+    InvalidSinkAccount,
 }
 
 /// Identity Proof
@@ -2180,20 +2268,23 @@ impl<C> IdentityProof<C>
 where
     C: Configuration,
 {
-    /// Verifies `self` for `address` against `virtual_asset`.
+    /// Verifies `self` for `address` against `virtual_asset` and `public_account`.
     ///
     /// # Note
     ///
-    /// It performs four checks:
+    /// It performs five checks:
     ///
     /// 1) `identity_proof.transfer_post` has a [`ToPublic`](crate::transfer::canonical::ToPublic)
     /// shape.
     ///
-    /// 2) `identity_proof.transfer_post` has a valid authorization signature.
+    /// 2) `identity_proof.transfer_post.sink_accounts` has only one element and is equal to
+    /// `public_account`.
     ///
-    /// 3) `identity_proof.transfer_post` has a valid proof.
+    /// 3) `identity_proof.transfer_post` has a valid authorization signature.
     ///
-    /// 4) The [`UtxoAccumulatorOutput`] in `identity_proof.transfer_post` has been computed from
+    /// 4) `identity_proof.transfer_post` has a valid proof.
+    ///
+    /// 5) The [`UtxoAccumulatorOutput`] in `identity_proof.transfer_post` has been computed from
     /// `virtual_asset` and `address`.
     #[inline]
     pub fn identity_verification<A>(
@@ -2203,9 +2294,11 @@ where
         utxo_accumulator_model: &UtxoAccumulatorModel<C>,
         virtual_asset: IdentifiedAsset<C>,
         address: Address<C>,
+        public_account: C::AccountId,
     ) -> Result<(), IdentityVerificationError>
     where
         C::UtxoAccumulatorOutput: PartialEq,
+        C::AccountId: PartialEq,
         UtxoAccumulatorModel<C>: Model<Verification = bool>,
         A: Accumulator<
             Item = UtxoAccumulatorItem<C>,
@@ -2221,6 +2314,13 @@ where
                 _ => Err(IdentityVerificationError::InvalidShape),
             },
         )?;
+        if !self
+            .transfer_post
+            .sink_accounts
+            .eq(&Vec::from([public_account]))
+        {
+            return Err(IdentityVerificationError::InvalidSinkAccount);
+        }
         self.transfer_post
             .has_valid_authorization_signature(parameters)
             .map_err(|_| IdentityVerificationError::InvalidSignature)?;

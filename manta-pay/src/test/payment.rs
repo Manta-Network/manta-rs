@@ -18,9 +18,11 @@
 
 use crate::config::{
     utxo::{MerkleTreeConfiguration, UtxoAccumulatorItem, UtxoAccumulatorModel},
-    Asset, AssetId, AssetValue, Authorization, Config, FullParametersRef, MultiProvingContext,
-    Parameters, PrivateTransfer, ProvingContext, Receiver, ToPrivate, ToPublic, TransferPost,
+    AccountId, Asset, AssetId, AssetValue, Authorization, Config, FullParametersRef,
+    MultiProvingContext, Parameters, PrivateTransfer, ProvingContext, Receiver, ToPrivate,
+    ToPublic, TransferPost,
 };
+use alloc::vec::Vec;
 use manta_accounting::transfer::{self, internal_pair, test::value_distribution};
 use manta_crypto::{
     accumulator::Accumulator,
@@ -67,6 +69,7 @@ pub mod to_private {
                 FullParametersRef::new(parameters, utxo_accumulator_model),
                 proving_context,
                 None,
+                Vec::new(),
                 rng,
             )
             .expect("Unable to build TO_PRIVATE proof.")
@@ -108,6 +111,7 @@ pub mod to_private {
                 FullParametersRef::new(parameters, utxo_accumulator.model()),
                 proving_context,
                 None,
+                Vec::new(),
                 rng,
             )
             .expect("Unable to build TO_PRIVATE proof.")
@@ -153,6 +157,7 @@ pub mod private_transfer {
                 FullParametersRef::new(parameters, utxo_accumulator.model()),
                 &proving_context.to_private,
                 None,
+                Vec::new(),
                 rng,
             )
             .expect("Unable to build TO_PRIVATE proof.")
@@ -175,6 +180,7 @@ pub mod private_transfer {
                 FullParametersRef::new(parameters, utxo_accumulator.model()),
                 &proving_context.to_private,
                 None,
+                Vec::new(),
                 rng,
             )
             .expect("Unable to build TO_PRIVATE proof.")
@@ -196,6 +202,7 @@ pub mod private_transfer {
             FullParametersRef::new(parameters, utxo_accumulator.model()),
             &proving_context.private_transfer,
             Some(&spending_key),
+            Vec::new(),
             rng,
         )
         .expect("Unable to build PRIVATE_TRANSFER proof.")
@@ -252,6 +259,7 @@ pub mod private_transfer {
             FullParametersRef::new(parameters, utxo_accumulator.model()),
             proving_context,
             Some(&spending_key),
+            Vec::new(),
             rng,
         )
         .expect("Unable to build PRIVATE_TRANSFER proof.")
@@ -272,6 +280,7 @@ pub mod to_public {
         utxo_accumulator: &mut A,
         asset_id: AssetId,
         values: [AssetValue; 2],
+        public_account: AccountId,
         rng: &mut R,
     ) -> ([TransferPost; 2], TransferPost)
     where
@@ -297,6 +306,7 @@ pub mod to_public {
                 FullParametersRef::new(parameters, utxo_accumulator.model()),
                 &proving_context.to_private,
                 None,
+                Vec::new(),
                 rng,
             )
             .expect("Unable to build TO_PRIVATE proof.")
@@ -318,6 +328,7 @@ pub mod to_public {
                 FullParametersRef::new(parameters, utxo_accumulator.model()),
                 &proving_context.to_private,
                 None,
+                Vec::new(),
                 rng,
             )
             .expect("Unable to build TO_PRIVATE proof.")
@@ -333,6 +344,7 @@ pub mod to_public {
                 FullParametersRef::new(parameters, utxo_accumulator.model()),
                 &proving_context.to_public,
                 Some(&spending_key),
+                Vec::from([public_account]),
                 rng,
             )
             .expect("Unable to build TO_PUBLIC proof.")
@@ -347,6 +359,7 @@ pub mod to_public {
         proving_context: &ProvingContext,
         parameters: &Parameters,
         utxo_accumulator: &mut A,
+        public_account: AccountId,
         rng: &mut R,
     ) -> TransferPost
     where
@@ -386,6 +399,7 @@ pub mod to_public {
                 FullParametersRef::new(parameters, utxo_accumulator.model()),
                 proving_context,
                 Some(&spending_key),
+                Vec::from([public_account]),
                 rng,
             )
             .expect("Unable to build TO_PUBLIC proof.")

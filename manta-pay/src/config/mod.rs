@@ -78,6 +78,9 @@ pub type ProofSystem = groth16::Groth16<PairingCurve>;
 /// Proof System Error
 pub type ProofSystemError = groth16::Error;
 
+/// Account Identifier
+pub type AccountId = [u8; 32];
+
 /// Transfer Configuration
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -87,6 +90,7 @@ impl transfer::Configuration for Config {
     type Compiler = Compiler;
     type AssetId = utxo::AssetId;
     type AssetValue = utxo::AssetValue;
+    type AccountId = AccountId;
     type AssociatedData = utxo::AssociatedData;
     type Utxo = utxo::Utxo;
     type Nullifier = utxo::Nullifier;
