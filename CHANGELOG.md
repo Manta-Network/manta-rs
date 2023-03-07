@@ -15,7 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 ### Security
--[\#324](https://github.com/Manta-Network/manta-rs/pull/324) Include the sink AccountId in the signed message for ToPublic transactions.
+
+## [0.5.12] - 2023-03-07
+### Security
+- [\#324](https://github.com/Manta-Network/manta-rs/pull/324) Include the sink AccountId in the signed message for ToPublic transactions.
 
 ## [0.5.11] - 2023-02-22
 ### Added
@@ -26,8 +29,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 - [\#313](https://github.com/Manta-Network/manta-rs/pull/313) Use correct failure case for identity verification
-
-### Security
 
 ## [0.5.10] - 2023-01-21
 ### Added
