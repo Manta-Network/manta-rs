@@ -26,7 +26,7 @@ use crate::{
         to_public::prove as prove_to_public,
     },
 };
-use manta_crypto::rand::OsRng;
+use manta_crypto::rand::{OsRng, Rand};
 
 /// Tests that the circuit is compatible with the current known parameters in `manta-parameters`.
 #[test]
@@ -54,6 +54,7 @@ fn compatibility() {
         &proving_context.to_public,
         &parameters,
         &mut utxo_accumulator,
+        rng.gen(),
         &mut rng,
     )
     .assert_valid_proof(&verifying_context.to_public);

@@ -19,11 +19,12 @@
 use crate::{
     config::{
         utxo::{AssetId, AssetValue},
-        Config, MultiProvingContext, MultiVerifyingContext, Parameters, UtxoAccumulatorModel,
+        AccountId, Config, MultiProvingContext, MultiVerifyingContext, Parameters,
+        UtxoAccumulatorModel,
     },
     key::KeySecret,
     signer::{base::Signer, functions},
-    simulation::ledger::{AccountId, Ledger, LedgerConnection},
+    simulation::ledger::{Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
 use core::fmt::Debug;
@@ -44,6 +45,14 @@ use tokio::{
 };
 
 pub mod ledger;
+
+/// Creates an [`AccountId`] from `i`.
+#[inline]
+pub fn account_id_from_u64(i: u64) -> AccountId {
+    let mut result = [0; 32];
+    result[..8].copy_from_slice(&i.to_le_bytes());
+    result
+}
 
 /// Samples a new signer.
 #[inline]
@@ -99,7 +108,7 @@ impl Simulation {
     pub fn setup(&self, ledger: &mut Ledger) {
         let starting_balance = self.starting_balance;
         for i in 0..self.actor_count {
-            let account = AccountId(i as u64);
+            let account = account_id_from_u64(i as u64);
             for id in 0..self.asset_id_count {
                 ledger.set_public_balance(
                     account,
@@ -130,8 +139,9 @@ impl Simulation {
         self.setup(&mut ledger);
         let ledger = Arc::new(RwLock::new(ledger));
         self.run_with(
-            move |i| LedgerConnection::new(AccountId(i as u64), ledger.clone()),
+            move |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
             move |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
+            move |i| account_id_from_u64(i as u64),
         )
         .await
     }
@@ -143,18 +153,19 @@ impl Simulation {
     /// In this case, the ledger must be set up ahead of time with the [`setup`](Self::setup) method
     /// since this simulation only knows about connections to the ledger.
     #[inline]
-    pub async fn run_with<L, S, GL, GS>(&self, ledger: GL, signer: GS)
+    pub async fn run_with<L, S, GL, GS, GP>(&self, ledger: GL, signer: GS, public_account: GP)
     where
         L: wallet::test::Ledger<Config> + PublicBalanceOracle<Config>,
         S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
         S::Error: Debug,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,
+        GP: FnMut(usize) -> AccountId,
         Error<Config, L, S>: Debug,
     {
         assert!(
             self.config()
-                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _>(ledger, signer, |_| ChaCha20Rng::from_entropy(), |event| {
+                .run::<_, _, _, AssetList<AssetId, AssetValue>, _, _, _, _, _, _, _>(ledger, signer, public_account, |_| ChaCha20Rng::from_entropy(), |event| {
                     let event = format!("{event:?}\n");
                     async move {
                         let _ = write_stdout(event.as_bytes()).await;

@@ -495,8 +495,12 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "Asset<C>: Deserialize<'de>, Identifier<C>: Deserialize<'de>",
-            serialize = "Asset<C>: Serialize, Identifier<C>: Serialize"
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Identifier<C>: Deserialize<'de>, 
+                C::AccountId: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Identifier<C>: Serialize, 
+                C::AccountId: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -504,13 +508,13 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
-    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
-    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
-    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
-    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone, C::AccountId: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug, C::AccountId: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq, C::AccountId: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash, C::AccountId: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq, C::AccountId: PartialEq")
 )]
-pub struct IdentityRequest<C>(pub Vec<IdentifiedAsset<C>>)
+pub struct IdentityRequest<C>(pub Vec<(IdentifiedAsset<C>, C::AccountId)>)
 where
     C: transfer::Configuration;
 
@@ -734,14 +738,16 @@ where
                 AuthorizationContext<C>: Deserialize<'de>,
                 C::UtxoAccumulator: Deserialize<'de>,
                 C::AssetMap: Deserialize<'de>,
-                C::Checkpoint: Deserialize<'de>
+                C::Checkpoint: Deserialize<'de>,
+                C::AccountId: Deserialize<'de>,
             ",
             serialize = r"
                 AccountTable<C>: Serialize,
                 AuthorizationContext<C>: Serialize,
                 C::UtxoAccumulator: Serialize,
                 C::AssetMap: Serialize,
-                C::Checkpoint: Serialize
+                C::Checkpoint: Serialize,
+                C::AccountId: Serialize,
             ",
         ),
         crate = "manta_util::serde",
@@ -1075,12 +1081,14 @@ where
     pub fn identity_proof(
         &mut self,
         identified_asset: IdentifiedAsset<C>,
+        public_account: C::AccountId,
     ) -> Option<IdentityProof<C>> {
         functions::identity_proof(
             &self.parameters,
             self.state.accounts.as_ref()?,
             self.state.utxo_accumulator.model(),
             identified_asset,
+            public_account,
             &mut self.state.rng,
         )
     }
@@ -1105,12 +1113,14 @@ where
     #[inline]
     pub fn batched_identity_proof(
         &mut self,
-        identified_assets: Vec<IdentifiedAsset<C>>,
+        request: Vec<(IdentifiedAsset<C>, C::AccountId)>,
     ) -> IdentityResponse<C> {
         IdentityResponse(
-            identified_assets
+            request
                 .into_iter()
-                .map(|identified_asset| self.identity_proof(identified_asset))
+                .map(|(identified_asset, public_address)| {
+                    self.identity_proof(identified_asset, public_address)
+                })
                 .collect(),
         )
     }

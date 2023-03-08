@@ -17,14 +17,17 @@
 //! Manta Pay Transfer Testing
 
 use crate::{
-    config::{FullParametersRef, Parameters, PrivateTransfer, ProofSystem, ToPrivate, ToPublic},
+    config::{
+        FullParametersRef, Parameters, PrivateTransfer, ProofSystem, ToPrivate, ToPublic,
+        TransferPost,
+    },
     test::payment::UtxoAccumulator,
 };
-use manta_accounting::transfer::test::validity_check_with_fuzzing;
+use manta_accounting::transfer::{test::validity_check_with_fuzzing, BodyWithAccountsRef};
 use manta_crypto::{
     accumulator::Accumulator,
     constraint::{measure::Measure, ProofSystem as _},
-    rand::{OsRng, Rand, Sample},
+    rand::{fuzz::Fuzz, OsRng, Rand, Sample},
 };
 
 /// Tests the generation of proving/verifying contexts for [`ToPrivate`].
@@ -178,14 +181,35 @@ fn to_public_check_signature() {
     .expect("Random To-Public should have produced a proof.")
     .expect("");
     post.assert_valid_proof(&verifying_context);
+    let body_with_accounts = BodyWithAccountsRef::new(&post.body, &post.sink_accounts);
     assert!(
         manta_accounting::transfer::utxo::auth::test::signature_correctness(
             &parameters,
             &spending_key,
-            &post.body,
+            &body_with_accounts,
             &mut rng,
         ),
         "Invalid signature."
+    );
+    assert!(
+        post.has_valid_authorization_signature(&parameters).is_ok(),
+        "Invalid signature."
+    );
+    let fuzzed_account = vec![post.sink_accounts[0]
+        .to_vec()
+        .fuzz(&mut rng)
+        .try_into()
+        .expect("Getting an array from a vector of equal length is not allowed to fail")];
+    let new_post = TransferPost {
+        authorization_signature: post.authorization_signature,
+        body: post.body.clone(),
+        sink_accounts: fuzzed_account,
+    };
+    assert!(
+        new_post
+            .has_valid_authorization_signature(&parameters)
+            .is_err(),
+        "Valid signature should have been invalid."
     );
 }
 
