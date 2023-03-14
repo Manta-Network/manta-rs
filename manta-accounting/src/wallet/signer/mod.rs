@@ -108,6 +108,45 @@ where
         TransferPost<C>: Clone;
 }
 
+/// Signer Initial Synchronization Data
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                Utxo<C>: Deserialize<'de>,
+                UtxoMembershipProof<C>: Deserialize<'de>
+            ",
+            serialize = r"
+                Utxo<C>: Serialize,
+                UtxoMembershipProof<C>: Serialize
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Utxo<C>: Clone, UtxoMembershipProof<C>: Clone"),
+    Debug(bound = "Utxo<C>: Debug, UtxoMembershipProof<C>: Debug"),
+    Default(bound = ""),
+    Eq(bound = "Utxo<C>: Eq, UtxoMembershipProof<C>: Eq"),
+    Hash(bound = "Utxo<C>: Hash, UtxoMembershipProof<C>: Hash"),
+    PartialEq(bound = "Utxo<C>: PartialEq, UtxoMembershipProof<C>: PartialEq")
+)]
+pub struct InitialSyncData<const NUMBER_OF_PROOFS: usize, C>
+where
+    C: transfer::Configuration + ?Sized,
+{
+    /// UTXO Data
+    pub utxo_data: Vec<Utxo<C>>,
+
+    /// Membership Proof Data
+    pub membership_proof_data: manta_util::Array<UtxoMembershipProof<C>, NUMBER_OF_PROOFS>,
+}
+
 /// Signer Synchronization Data
 #[cfg_attr(
     feature = "serde",
