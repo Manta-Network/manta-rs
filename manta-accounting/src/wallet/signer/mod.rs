@@ -108,6 +108,21 @@ where
         TransferPost<C>: Clone;
 }
 
+/// Signer State Loading and Saving
+pub trait LoadAndSave {
+    /// Storage Type
+    type Storage;
+
+    /// Saves `self` to storage.
+    fn set_storage(&self) -> Self::Storage;
+
+    /// Updates `self` from `storage`.
+    fn get_storage(&mut self, storage: &Self::Storage) -> bool;
+}
+
+/// Storage Type
+pub type Storage<L> = <L as LoadAndSave>::Storage;
+
 /// Signer Synchronization Data
 #[cfg_attr(
     feature = "serde",
@@ -1178,6 +1193,30 @@ where
             &mut self.state.rng,
         )
     }
+
+    /// Builds a new [`StorageStateOption`] from `self`.
+    #[inline]
+    pub fn set_storage(&self) -> StorageStateOption<C>
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        Some(StorageState::from_signer(self))
+    }
+
+    /// Tries to update `self` from `storage_state`.
+    #[inline]
+    pub fn get_storage(&mut self, storage_state: &StorageStateOption<C>) -> bool
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        if let Some(storage_state) = storage_state {
+            storage_state.update_signer(self);
+            return true;
+        }
+        false
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
@@ -1234,6 +1273,25 @@ where
         TransferPost<C>: Clone,
     {
         Box::pin(async move { Ok(self.sign_with_transaction_data(request.transaction)) })
+    }
+}
+
+impl<C> LoadAndSave for Signer<C>
+where
+    C: Configuration,
+    C::UtxoAccumulator: Clone,
+    C::AssetMap: Clone,
+{
+    type Storage = StorageStateOption<C>;
+
+    #[inline]
+    fn get_storage(&mut self, storage: &Self::Storage) -> bool {
+        self.get_storage(storage)
+    }
+
+    #[inline]
+    fn set_storage(&self) -> Self::Storage {
+        self.set_storage()
     }
 }
 
@@ -1352,3 +1410,6 @@ where
         signer
     }
 }
+
+/// Storage State Option
+pub type StorageStateOption<C> = Option<StorageState<C>>;

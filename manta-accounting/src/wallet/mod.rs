@@ -37,9 +37,9 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
-            SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
-            TransactionDataRequest, TransactionDataResponse,
+            BalanceUpdate, IdentityRequest, IdentityResponse, LoadAndSave, SignError, SignRequest,
+            SignResponse, SignWithTransactionDataResponse, Storage, SyncData, SyncError,
+            SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -168,7 +168,7 @@ where
 
     /// Resets the state of the wallet to the default starting state.
     #[inline]
-    fn reset_state(&mut self) {
+    pub fn reset_state(&mut self) {
         self.checkpoint = Default::default();
         self.assets = Default::default();
     }
@@ -242,7 +242,7 @@ where
     /// [`restart`](Self::restart) to avoid querying the ledger at genesis when a known later
     /// checkpoint exists.
     #[inline]
-    async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
+    pub async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
         self.signer_sync(Default::default()).await
     }
 
@@ -303,6 +303,30 @@ where
         })
         .await?;
         Ok(ControlFlow::should_continue(should_continue))
+    }
+
+    /// Pulls data from the ledger, synchronizing the wallet and balance state.
+    #[inline]
+    pub async fn sync_with_and_save(&mut self) -> Result<(ControlFlow, Storage<S>), Error<C, L, S>>
+    where
+        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
+        S: LoadAndSave,
+    {
+        let ReadResponse {
+            should_continue,
+            data,
+        } = self
+            .ledger
+            .read(&self.checkpoint)
+            .await
+            .map_err(Error::LedgerConnectionError)?;
+        self.signer_sync(SyncRequest {
+            origin_checkpoint: self.checkpoint.clone(),
+            data,
+        })
+        .await?;
+        let storage = self.signer.set_storage();
+        Ok((ControlFlow::should_continue(should_continue), storage))
     }
 
     /// Performs a synchronization with the signer against the given `request`.
