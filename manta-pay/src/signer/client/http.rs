@@ -30,6 +30,7 @@ use manta_accounting::wallet::{self, signer};
 use manta_util::{
     future::LocalBoxFutureResult,
     http::reqwest::{self, IntoUrl, KnownUrlClient},
+    serde::{de::DeserializeOwned, Serialize},
 };
 
 #[doc(inline)]
@@ -76,6 +77,16 @@ impl Client {
             message: request,
         }
     }
+
+    ///
+    #[inline]
+    pub async fn post_request<T, R>(&self, command: &str, request: T) -> reqwest::Result<R>
+    where
+        T: Serialize,
+        R: DeserializeOwned,
+    {
+        self.base.post(command, &self.wrap_request(request)).await
+    }
 }
 
 impl signer::Connection<Config> for Client {
@@ -88,7 +99,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SyncRequest,
     ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
-        Box::pin(async move { self.base.post("sync", &self.wrap_request(request)).await })
+        Box::pin(self.post_request("sync", request))
     }
 
     #[inline]
@@ -96,16 +107,12 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SignRequest,
     ) -> LocalBoxFutureResult<Result<SignResponse, SignError>, Self::Error> {
-        Box::pin(async move { self.base.post("sign", &self.wrap_request(request)).await })
+        Box::pin(self.post_request("sign", request))
     }
 
     #[inline]
     fn address(&mut self) -> LocalBoxFutureResult<Option<Address>, Self::Error> {
-        Box::pin(async move {
-            self.base
-                .post("address", &self.wrap_request(GetRequest::Get))
-                .await
-        })
+        Box::pin(self.post_request("address", GetRequest::Get))
     }
 
     #[inline]
@@ -113,11 +120,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: TransactionDataRequest,
     ) -> LocalBoxFutureResult<TransactionDataResponse, Self::Error> {
-        Box::pin(async move {
-            self.base
-                .post("transaction_data", &self.wrap_request(request))
-                .await
-        })
+        Box::pin(self.post_request("transaction_data", request))
     }
 
     #[inline]
@@ -125,11 +128,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: IdentityRequest,
     ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
-        Box::pin(async move {
-            self.base
-                .post("identity", &self.wrap_request(request))
-                .await
-        })
+        Box::pin(self.post_request("identity", request))
     }
 
     #[inline]
@@ -137,10 +136,6 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SignRequest,
     ) -> LocalBoxFutureResult<SignWithTransactionDataResult, Self::Error> {
-        Box::pin(async move {
-            self.base
-                .post("sign_with_transaction_data", &self.wrap_request(request))
-                .await
-        })
+        Box::pin(self.post_request("sign_with_transaction_data", request))
     }
 }

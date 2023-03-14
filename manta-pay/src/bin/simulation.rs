@@ -31,17 +31,13 @@ pub fn main() {
         .worker_threads(6)
         .build()
     {
-        Ok(runtime) => runtime.block_on(async {
-            simulation
-                .run(
-                    &parameters,
-                    &utxo_accumulator_model,
-                    &proving_context,
-                    verifying_context,
-                    &mut rng,
-                )
-                .await
-        }),
+        Ok(runtime) => runtime.block_on(simulation.run(
+            &parameters,
+            &utxo_accumulator_model,
+            &proving_context,
+            verifying_context,
+            &mut rng,
+        )),
         Err(err) => Simulation::command()
             .error(
                 ErrorKind::Io,

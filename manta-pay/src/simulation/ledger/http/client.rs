@@ -33,7 +33,8 @@ use manta_accounting::{
 };
 use manta_util::{
     future::{LocalBoxFuture, LocalBoxFutureResult},
-    http::reqwest::{Error, IntoUrl, KnownUrlClient},
+    http::reqwest::{self, Error, IntoUrl, KnownUrlClient},
+    serde::{de::DeserializeOwned, Serialize},
 };
 
 /// HTTP Ledger Client
@@ -57,6 +58,24 @@ impl Client {
             client: KnownUrlClient::new(server_url)?,
         })
     }
+
+    ///
+    #[inline]
+    pub async fn post_request<T, R>(&self, command: &str, request: T) -> reqwest::Result<R>
+    where
+        T: Serialize,
+        R: DeserializeOwned,
+    {
+        self.client
+            .post(
+                command,
+                &Request {
+                    account: self.account,
+                    request,
+                },
+            )
+            .await
+    }
 }
 
 impl ledger::Connection for Client {
@@ -71,17 +90,7 @@ impl ledger::Read<SyncData<Config>> for Client {
         &'s mut self,
         checkpoint: &'s Self::Checkpoint,
     ) -> LocalBoxFutureResult<'s, ReadResponse<SyncData<Config>>, Self::Error> {
-        Box::pin(async move {
-            self.client
-                .post(
-                    "pull",
-                    &Request {
-                        account: self.account,
-                        request: checkpoint,
-                    },
-                )
-                .await
-        })
+        Box::pin(self.post_request("pull", checkpoint))
     }
 }
 
@@ -93,17 +102,7 @@ impl ledger::Write<Vec<TransferPost>> for Client {
         &mut self,
         posts: Vec<TransferPost>,
     ) -> LocalBoxFutureResult<Self::Response, Self::Error> {
-        Box::pin(async move {
-            self.client
-                .post(
-                    "push",
-                    &Request {
-                        account: self.account,
-                        request: posts,
-                    },
-                )
-                .await
-        })
+        Box::pin(self.post_request("push", posts))
     }
 }
 

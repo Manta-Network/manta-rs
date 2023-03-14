@@ -45,7 +45,7 @@ where
     Fut: Future<Output = Result<R, E>>,
 {
     let args = request.body_json::<T>().await?;
-    into_body(move || async move { f(request.state().clone(), args).await }).await
+    into_body(move || f(request.state().clone(), args)).await
 }
 
 /// Registers a `POST` command with the given `path` and execution `f`.

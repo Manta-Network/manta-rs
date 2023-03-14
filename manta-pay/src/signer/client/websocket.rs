@@ -137,7 +137,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SyncRequest,
     ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
-        Box::pin(async move { self.send("sync", request).await })
+        Box::pin(self.send("sync", request))
     }
 
     #[inline]
@@ -145,12 +145,12 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SignRequest,
     ) -> LocalBoxFutureResult<Result<SignResponse, SignError>, Self::Error> {
-        Box::pin(async move { self.send("sign", request).await })
+        Box::pin(self.send("sign", request))
     }
 
     #[inline]
     fn address(&mut self) -> LocalBoxFutureResult<Option<Address>, Self::Error> {
-        Box::pin(async move { self.send("address", GetRequest::Get).await })
+        Box::pin(self.send("address", GetRequest::Get))
     }
 
     #[inline]
@@ -158,7 +158,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: TransactionDataRequest,
     ) -> LocalBoxFutureResult<TransactionDataResponse, Self::Error> {
-        Box::pin(async move { self.send("transaction_data", request).await })
+        Box::pin(self.send("transaction_data", request))
     }
 
     #[inline]
@@ -166,7 +166,7 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: IdentityRequest,
     ) -> LocalBoxFutureResult<IdentityResponse, Self::Error> {
-        Box::pin(async move { self.send("identity", request).await })
+        Box::pin(self.send("identity", request))
     }
 
     #[inline]
@@ -174,6 +174,6 @@ impl signer::Connection<Config> for Client {
         &mut self,
         request: SignRequest,
     ) -> LocalBoxFutureResult<SignWithTransactionDataResult, Self::Error> {
-        Box::pin(async move { self.send("sign_with_transaction_data", request).await })
+        Box::pin(self.send("sign_with_transaction_data", request))
     }
 }

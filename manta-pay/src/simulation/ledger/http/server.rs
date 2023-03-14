@@ -98,7 +98,7 @@ impl Server {
         Fut: Future<Output = R>,
     {
         let account = request.query::<AccountId>()?;
-        Self::into_body(move || async move { f(request.state().clone(), account).await }).await
+        Self::into_body(move || f(request.state().clone(), account)).await
     }
 
     /// Executes `f` on the incoming `request` parsing the full query.
@@ -114,10 +114,7 @@ impl Server {
         Fut: Future<Output = R>,
     {
         let args = request.query::<Request<T>>()?;
-        Self::into_body(move || async move {
-            f(request.state().clone(), args.account, args.request).await
-        })
-        .await
+        Self::into_body(move || f(request.state().clone(), args.account, args.request)).await
     }
 
     /// Generates the JSON body for the output of `f`, returning an HTTP reponse.

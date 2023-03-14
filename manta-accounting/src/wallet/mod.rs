@@ -37,9 +37,9 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest,
-            SignResponse, SignWithTransactionDataResponse, SyncData, SyncError,
-            SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
+            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
+            SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
+            TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
