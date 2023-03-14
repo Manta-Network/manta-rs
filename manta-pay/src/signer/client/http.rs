@@ -78,7 +78,7 @@ impl Client {
         }
     }
 
-    ///
+    /// Sends a POST of type `command` with query string `request`.
     #[inline]
     pub async fn post_request<T, R>(&self, command: &str, request: T) -> reqwest::Result<R>
     where
