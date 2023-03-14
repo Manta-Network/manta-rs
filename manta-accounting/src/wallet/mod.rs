@@ -37,8 +37,8 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, IdentityRequest, IdentityResponse, LoadAndSave, SignError, SignRequest,
-            SignResponse, SignWithTransactionDataResponse, Storage, SyncData, SyncError,
+            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest,
+            SignResponse, SignWithTransactionDataResponse, SyncData, SyncError,
             SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
         },
     },
@@ -303,30 +303,6 @@ where
         })
         .await?;
         Ok(ControlFlow::should_continue(should_continue))
-    }
-
-    /// Pulls data from the ledger, synchronizing the wallet and balance state.
-    #[inline]
-    pub async fn sync_with_and_save(&mut self) -> Result<(ControlFlow, Storage<S>), Error<C, L, S>>
-    where
-        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>,
-        S: LoadAndSave,
-    {
-        let ReadResponse {
-            should_continue,
-            data,
-        } = self
-            .ledger
-            .read(&self.checkpoint)
-            .await
-            .map_err(Error::LedgerConnectionError)?;
-        self.signer_sync(SyncRequest {
-            origin_checkpoint: self.checkpoint.clone(),
-            data,
-        })
-        .await?;
-        let storage = self.signer.set_storage();
-        Ok((ControlFlow::should_continue(should_continue), storage))
     }
 
     /// Performs a synchronization with the signer against the given `request`.
