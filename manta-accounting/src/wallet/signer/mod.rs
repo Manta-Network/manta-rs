@@ -33,7 +33,7 @@ use crate::{
         canonical::{MultiProvingContext, Transaction, TransactionData},
         Address, Asset, AuthorizationContext, IdentifiedAsset, Identifier, IdentityProof, Note,
         Nullifier, Parameters, ProofSystemError, SpendingKey, TransferPost, Utxo,
-        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoMembershipProof,
+        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorWitness, UtxoMembershipProof,
     },
     wallet::ledger::{self, Data},
 };
@@ -116,12 +116,12 @@ where
         bound(
             deserialize = r"
                 Utxo<C>: Deserialize<'de>,
-                UtxoMembershipProof<C>: Deserialize<'de>,
+                UtxoAccumulatorWitness<C>: Deserialize<'de>,
                 Nullifier<C>: Deserialize<'de>,
             ",
             serialize = r"
                 Utxo<C>: Serialize,
-                UtxoMembershipProof<C>: Serialize,
+                UtxoAccumulatorWitness<C>: Serialize,
                 Nullifier<C>: Serialize,
             ",
         ),
@@ -131,12 +131,12 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Utxo<C>: Clone, UtxoMembershipProof<C>: Clone, Nullifier<C>: Clone"),
-    Debug(bound = "Utxo<C>: Debug, UtxoMembershipProof<C>: Debug, Nullifier<C>: Debug"),
-    Eq(bound = "Utxo<C>: Eq, UtxoMembershipProof<C>: Eq, Nullifier<C>: Eq"),
-    Hash(bound = "Utxo<C>: Hash, UtxoMembershipProof<C>: Hash, Nullifier<C>: Hash"),
+    Clone(bound = "Utxo<C>: Clone, UtxoAccumulatorWitness<C>: Clone, Nullifier<C>: Clone"),
+    Debug(bound = "Utxo<C>: Debug, UtxoAccumulatorWitness<C>: Debug, Nullifier<C>: Debug"),
+    Eq(bound = "Utxo<C>: Eq, UtxoAccumulatorWitness<C>: Eq, Nullifier<C>: Eq"),
+    Hash(bound = "Utxo<C>: Hash, UtxoAccumulatorWitness<C>: Hash, Nullifier<C>: Hash"),
     PartialEq(
-        bound = "Utxo<C>: PartialEq, UtxoMembershipProof<C>: PartialEq, Nullifier<C>: PartialEq"
+        bound = "Utxo<C>: PartialEq, UtxoAccumulatorWitness<C>: PartialEq, Nullifier<C>: PartialEq"
     )
 )]
 pub struct InitialSyncData<const NUMBER_OF_PROOFS: usize, C>
@@ -150,7 +150,7 @@ where
     pub nullifier_data: Vec<Nullifier<C>>,
 
     /// Membership Proof Data
-    pub membership_proof_data: manta_util::Array<UtxoMembershipProof<C>, NUMBER_OF_PROOFS>,
+    pub membership_proof_data: manta_util::BoxArray<UtxoAccumulatorWitness<C>, NUMBER_OF_PROOFS>,
 }
 
 /// Signer Synchronization Data
@@ -708,8 +708,11 @@ pub trait Configuration: transfer::Configuration {
         + DeriveAddresses<Parameters = Self::Parameters, Address = Self::Address>;
 
     /// [`Utxo`] Accumulator Type
-    type UtxoAccumulator: Accumulator<Item = UtxoAccumulatorItem<Self>, Model = UtxoAccumulatorModel<Self>>
-        + ExactSizeAccumulator
+    type UtxoAccumulator: Accumulator<
+            Item = UtxoAccumulatorItem<Self>,
+            Model = UtxoAccumulatorModel<Self>,
+            Witness = UtxoAccumulatorWitness<Self>,
+        > + ExactSizeAccumulator
         + OptimizedAccumulator
         + Rollback;
 

@@ -32,7 +32,7 @@ use crate::{
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters, PreSender,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
-        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoMembershipProof,
+        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorWitness,
     },
     wallet::signer::{
         AccountTable, BalanceUpdate, Checkpoint, Configuration, InitialSyncData, SignError,
@@ -42,12 +42,12 @@ use crate::{
 };
 use alloc::{vec, vec::Vec};
 use manta_crypto::{
-    accumulator::{Accumulator, ItemHashFunction, OptimizedAccumulator},
+    accumulator::{Accumulator, FromItemsAndWitnesses, ItemHashFunction, OptimizedAccumulator},
     rand::Rand,
 };
 use manta_util::{
     array_map, cmp::Independence, into_array_unchecked, iter::IteratorExt, persistence::Rollback,
-    vec::VecExt, Array,
+    vec::VecExt, BoxArray,
 };
 
 /// Returns the default account for `accounts`.
@@ -938,15 +938,15 @@ where
 #[inline]
 pub fn intial_sync<const NUMBER_OF_PROOFS: usize, C>(
     parameters: &SignerParameters<C>,
-    authorization_context: &mut AuthorizationContext<C>,
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
+    utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     request: InitialSyncData<NUMBER_OF_PROOFS, C>,
-    rng: &mut C::Rng,
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
+    C::UtxoAccumulator: FromItemsAndWitnesses<NUMBER_OF_PROOFS>,
 {
     let InitialSyncData {
         utxo_data,
@@ -954,15 +954,14 @@ where
         nullifier_data,
     } = request;
     let response = initial_sync_with::<NUMBER_OF_PROOFS, C>(
-        authorization_context,
         assets,
         checkpoint,
         utxo_accumulator,
+        utxo_accumulator_model,
         &parameters.parameters,
         utxo_data,
         membership_proof_data,
         nullifier_data,
-        rng,
     );
     utxo_accumulator.commit();
     Ok(response)
@@ -972,19 +971,28 @@ where
 #[allow(clippy::too_many_arguments)]
 #[inline]
 fn initial_sync_with<const NUMBER_OF_PROOFS: usize, C>(
-    authorization_context: &mut AuthorizationContext<C>,
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
+    utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     parameters: &Parameters<C>,
     utxos: Vec<Utxo<C>>,
-    membership_proof_data: Array<UtxoMembershipProof<C>, NUMBER_OF_PROOFS>,
+    membership_proof_data: BoxArray<UtxoAccumulatorWitness<C>, NUMBER_OF_PROOFS>,
     nullifiers: Vec<Nullifier<C>>,
-    rng: &mut C::Rng,
 ) -> SyncResponse<C, C::Checkpoint>
 where
     C: Configuration,
+    C::UtxoAccumulator: FromItemsAndWitnesses<NUMBER_OF_PROOFS>,
 {
+    let accumulator = C::UtxoAccumulator::from_items_and_witnesses(
+        utxo_accumulator_model,
+        utxos
+            .iter()
+            .map(|utxo| item_hash::<C>(parameters, utxo))
+            .collect(),
+        membership_proof_data,
+    );
+    *utxo_accumulator = accumulator;
     checkpoint.update_from_nullifiers(nullifiers.len());
     checkpoint.update_from_utxo_accumulator(utxo_accumulator);
     SyncResponse {
