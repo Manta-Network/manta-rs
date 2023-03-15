@@ -40,7 +40,10 @@ use crate::{
 use alloc::{boxed::Box, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
-    accumulator::{Accumulator, ExactSizeAccumulator, ItemHashFunction, OptimizedAccumulator},
+    accumulator::{
+        Accumulator, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
+        OptimizedAccumulator,
+    },
     rand::{CryptoRng, FromEntropy, RngCore},
 };
 use manta_util::{future::LocalBoxFutureResult, persistence::Rollback};
@@ -1249,6 +1252,24 @@ where
             return true;
         }
         false
+    }
+
+    ///
+    #[inline]
+    pub fn initial_sync<const NUMBER_OF_PROOFS: usize>(
+        &mut self,
+        request: InitialSyncData<NUMBER_OF_PROOFS, C>,
+    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+    where
+        C::UtxoAccumulator: FromItemsAndWitnesses<NUMBER_OF_PROOFS>,
+    {
+        functions::intial_sync(
+            &self.parameters,
+            &mut self.state.assets,
+            &mut self.state.checkpoint,
+            &mut self.state.utxo_accumulator,
+            request,
+        )
     }
 }
 

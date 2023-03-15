@@ -941,7 +941,6 @@ pub fn intial_sync<const NUMBER_OF_PROOFS: usize, C>(
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
-    utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     request: InitialSyncData<NUMBER_OF_PROOFS, C>,
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
@@ -953,16 +952,16 @@ where
         membership_proof_data,
         nullifier_data,
     } = request;
-    let response = initial_sync_with::<NUMBER_OF_PROOFS, C>(
+    let (accumulator, response) = initial_sync_with::<NUMBER_OF_PROOFS, C>(
         assets,
         checkpoint,
-        utxo_accumulator,
-        utxo_accumulator_model,
+        utxo_accumulator.model(),
         &parameters.parameters,
         utxo_data,
         membership_proof_data,
         nullifier_data,
     );
+    *utxo_accumulator = accumulator;
     utxo_accumulator.commit();
     Ok(response)
 }
@@ -973,13 +972,12 @@ where
 fn initial_sync_with<const NUMBER_OF_PROOFS: usize, C>(
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
-    utxo_accumulator: &mut C::UtxoAccumulator,
     utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     parameters: &Parameters<C>,
     utxos: Vec<Utxo<C>>,
     membership_proof_data: BoxArray<UtxoAccumulatorWitness<C>, NUMBER_OF_PROOFS>,
     nullifiers: Vec<Nullifier<C>>,
-) -> SyncResponse<C, C::Checkpoint>
+) -> (C::UtxoAccumulator, SyncResponse<C, C::Checkpoint>)
 where
     C: Configuration,
     C::UtxoAccumulator: FromItemsAndWitnesses<NUMBER_OF_PROOFS>,
@@ -992,13 +990,15 @@ where
             .collect(),
         membership_proof_data,
     );
-    *utxo_accumulator = accumulator;
     checkpoint.update_from_nullifiers(nullifiers.len());
-    checkpoint.update_from_utxo_accumulator(utxo_accumulator);
-    SyncResponse {
-        checkpoint: checkpoint.clone(),
-        balance_update: BalanceUpdate::Full {
-            assets: assets.assets().into(),
+    checkpoint.update_from_utxo_accumulator(&accumulator);
+    (
+        accumulator,
+        SyncResponse {
+            checkpoint: checkpoint.clone(),
+            balance_update: BalanceUpdate::Full {
+                assets: assets.assets().into(),
+            },
         },
-    }
+    )
 }
