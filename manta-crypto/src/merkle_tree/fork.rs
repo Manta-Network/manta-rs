@@ -930,6 +930,27 @@ where
     }
 }
 
+impl<C> ForkedTree<C, Partial<C>>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: Clone + Default + PartialEq,
+{
+    /// Builds a new [`ForkedTree`] from `leaf_digests` and `path` without checking that
+    /// `path` is consistent with the leaves and that it is a [`CurrentPath`].
+    #[inline]
+    pub fn from_leaves_and_path_unchecked(
+        parameters: &Parameters<C>,
+        leaf_digests: Vec<LeafDigest<C>>,
+        path: Path<C>,
+    ) -> Self {
+        Self::new(
+            Partial::from_leaves_and_path_unchecked(parameters, leaf_digests, path),
+            parameters,
+        )
+    }
+}
+
 impl<C, T, M> Tree<C> for ForkedTree<C, T, M>
 where
     C: Configuration + ?Sized,

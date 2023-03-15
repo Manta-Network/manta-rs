@@ -30,6 +30,7 @@ use crate::{
     merkle_tree::{
         fork::ForkedTree,
         inner_tree::InnerMap,
+        partial::Partial,
         path::Path,
         tree::{self, Leaf, Parameters, Root, Tree},
         InnerDigest, LeafDigest, WithProofs,
@@ -522,6 +523,70 @@ where
             array,
             __: PhantomData,
         }
+    }
+}
+
+impl<C, const N: usize> TreeArray<C, Partial<C>, N>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: Clone + Default + PartialEq,
+{
+    /// Builds a new [`TreeArray`] from `leaves` and `paths` without checking that
+    /// the `paths` are consistent with the leaves and that they are
+    /// [`CurrentPath`](crate::merkle_tree::path::CurrentPath)s.
+    #[inline]
+    pub fn from_leaves_and_current_paths_unchecked(
+        parameters: &Parameters<C>,
+        leaves: Vec<Leaf<C>>,
+        paths: BoxArray<Path<C>, N>,
+    ) -> Self {
+        TreeArray::new(BoxArray::from_iter(paths.into_iter().enumerate().map(
+            |(tree_index, path)| {
+                Partial::from_leaves_and_path_unchecked(
+                    parameters,
+                    leaves
+                        .iter()
+                        .filter(|leaf| C::tree_index(leaf).into() == tree_index)
+                        .map(|leaf| parameters.digest(leaf))
+                        .collect(),
+                    path,
+                )
+            },
+        )))
+    }
+}
+
+impl<C, const N: usize> TreeArray<C, ForkedTree<C, Partial<C>>, N>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: Clone + Default + PartialEq,
+{
+    /// Builds a new [`TreeArray`] from `leaves` and `paths` without checking that
+    /// the `paths` are consistent with the leaves and that they are
+    /// [`CurrentPath`](crate::merkle_tree::path::CurrentPath)s.
+    #[inline]
+    pub fn from_leaves_and_current_paths_unchecked(
+        parameters: &Parameters<C>,
+        leaves: Vec<Leaf<C>>,
+        paths: BoxArray<Path<C>, N>,
+    ) -> Self {
+        TreeArray::new(BoxArray::from_iter(paths.into_iter().enumerate().map(
+            |(tree_index, path)| {
+                ForkedTree::from_leaves_and_path_unchecked(
+                    parameters,
+                    leaves
+                        .iter()
+                        .filter(|leaf| C::tree_index(leaf).into() == tree_index)
+                        .map(|leaf| parameters.digest(leaf))
+                        .collect(),
+                    path,
+                )
+            },
+        )))
     }
 }
 

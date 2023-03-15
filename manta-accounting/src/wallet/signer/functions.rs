@@ -46,9 +46,8 @@ use manta_crypto::{
     rand::Rand,
 };
 use manta_util::{
-    Array,
     array_map, cmp::Independence, into_array_unchecked, iter::IteratorExt, persistence::Rollback,
-    vec::VecExt,
+    vec::VecExt, Array,
 };
 
 /// Returns the default account for `accounts`.
