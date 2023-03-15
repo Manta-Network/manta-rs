@@ -116,11 +116,13 @@ where
         bound(
             deserialize = r"
                 Utxo<C>: Deserialize<'de>,
-                UtxoMembershipProof<C>: Deserialize<'de>
+                UtxoMembershipProof<C>: Deserialize<'de>,
+                Nullifier<C>: Deserialize<'de>,
             ",
             serialize = r"
                 Utxo<C>: Serialize,
-                UtxoMembershipProof<C>: Serialize
+                UtxoMembershipProof<C>: Serialize,
+                Nullifier<C>: Serialize,
             ",
         ),
         crate = "manta_util::serde",
@@ -129,12 +131,13 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "Utxo<C>: Clone, UtxoMembershipProof<C>: Clone"),
-    Debug(bound = "Utxo<C>: Debug, UtxoMembershipProof<C>: Debug"),
-    Default(bound = ""),
-    Eq(bound = "Utxo<C>: Eq, UtxoMembershipProof<C>: Eq"),
-    Hash(bound = "Utxo<C>: Hash, UtxoMembershipProof<C>: Hash"),
-    PartialEq(bound = "Utxo<C>: PartialEq, UtxoMembershipProof<C>: PartialEq")
+    Clone(bound = "Utxo<C>: Clone, UtxoMembershipProof<C>: Clone, Nullifier<C>: Clone"),
+    Debug(bound = "Utxo<C>: Debug, UtxoMembershipProof<C>: Debug, Nullifier<C>: Debug"),
+    Eq(bound = "Utxo<C>: Eq, UtxoMembershipProof<C>: Eq, Nullifier<C>: Eq"),
+    Hash(bound = "Utxo<C>: Hash, UtxoMembershipProof<C>: Hash, Nullifier<C>: Hash"),
+    PartialEq(
+        bound = "Utxo<C>: PartialEq, UtxoMembershipProof<C>: PartialEq, Nullifier<C>: PartialEq"
+    )
 )]
 pub struct InitialSyncData<const NUMBER_OF_PROOFS: usize, C>
 where
@@ -142,6 +145,9 @@ where
 {
     /// UTXO Data
     pub utxo_data: Vec<Utxo<C>>,
+
+    /// Nullifier Data
+    pub nullifier_data: Vec<Nullifier<C>>,
 
     /// Membership Proof Data
     pub membership_proof_data: manta_util::Array<UtxoMembershipProof<C>, NUMBER_OF_PROOFS>,

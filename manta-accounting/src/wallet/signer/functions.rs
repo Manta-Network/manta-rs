@@ -35,9 +35,9 @@ use crate::{
         UtxoAccumulatorItem, UtxoAccumulatorModel,
     },
     wallet::signer::{
-        AccountTable, BalanceUpdate, Checkpoint, Configuration, SignError, SignResponse,
-        SignWithTransactionDataResponse, SignWithTransactionDataResult, SignerParameters, SyncData,
-        SyncError, SyncRequest, SyncResponse,
+        AccountTable, BalanceUpdate, Checkpoint, Configuration, InitialSyncData, SignError,
+        SignResponse, SignWithTransactionDataResponse, SignWithTransactionDataResult,
+        SignerParameters, SyncData, SyncError, SyncRequest, SyncResponse,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -932,4 +932,63 @@ where
         })
         .collect(),
     ))
+}
+
+/// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
+#[inline]
+pub fn intial_sync<const NUMBER_OF_PROOFS: usize, C>(
+    parameters: &SignerParameters<C>,
+    authorization_context: &mut AuthorizationContext<C>,
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    request: InitialSyncData<NUMBER_OF_PROOFS, C>,
+    rng: &mut C::Rng,
+) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+where
+    C: Configuration,
+{
+    let InitialSyncData {
+        utxo_data,
+        membership_proof_data,
+        nullifier_data,
+    } = request;
+    let response = initial_sync_with::<C>(
+        authorization_context,
+        assets,
+        checkpoint,
+        utxo_accumulator,
+        &parameters.parameters,
+        utxo_data,
+        nullifier_data,
+        rng,
+    );
+    utxo_accumulator.commit();
+    Ok(response)
+}
+
+/// Updates the internal ledger state, returning the new asset distribution.
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn initial_sync_with<C>(
+    authorization_context: &mut AuthorizationContext<C>,
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    parameters: &Parameters<C>,
+    utxos: Vec<Utxo<C>>,
+    nullifiers: Vec<Nullifier<C>>,
+    rng: &mut C::Rng,
+) -> SyncResponse<C, C::Checkpoint>
+where
+    C: Configuration,
+{
+    checkpoint.update_from_nullifiers(nullifiers.len());
+    checkpoint.update_from_utxo_accumulator(utxo_accumulator);
+    SyncResponse {
+        checkpoint: checkpoint.clone(),
+        balance_update: BalanceUpdate::Full {
+            assets: assets.assets().into(),
+        },
+    }
 }
