@@ -32,7 +32,7 @@ use crate::{
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters, PreSender,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
-        UtxoAccumulatorItem, UtxoAccumulatorModel,
+        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoMembershipProof,
     },
     wallet::signer::{
         AccountTable, BalanceUpdate, Checkpoint, Configuration, InitialSyncData, SignError,
@@ -46,6 +46,7 @@ use manta_crypto::{
     rand::Rand,
 };
 use manta_util::{
+    Array,
     array_map, cmp::Independence, into_array_unchecked, iter::IteratorExt, persistence::Rollback,
     vec::VecExt,
 };
@@ -953,13 +954,14 @@ where
         membership_proof_data,
         nullifier_data,
     } = request;
-    let response = initial_sync_with::<C>(
+    let response = initial_sync_with::<NUMBER_OF_PROOFS, C>(
         authorization_context,
         assets,
         checkpoint,
         utxo_accumulator,
         &parameters.parameters,
         utxo_data,
+        membership_proof_data,
         nullifier_data,
         rng,
     );
@@ -970,13 +972,14 @@ where
 /// Updates the internal ledger state, returning the new asset distribution.
 #[allow(clippy::too_many_arguments)]
 #[inline]
-fn initial_sync_with<C>(
+fn initial_sync_with<const NUMBER_OF_PROOFS: usize, C>(
     authorization_context: &mut AuthorizationContext<C>,
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
     parameters: &Parameters<C>,
     utxos: Vec<Utxo<C>>,
+    membership_proof_data: Array<UtxoMembershipProof<C>, NUMBER_OF_PROOFS>,
     nullifiers: Vec<Nullifier<C>>,
     rng: &mut C::Rng,
 ) -> SyncResponse<C, C::Checkpoint>
