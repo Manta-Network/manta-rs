@@ -1181,7 +1181,7 @@ where
 
     /// Builds a new [`StorageStateOption`] from `self`.
     #[inline]
-    pub fn set_storage(&self) -> StorageStateOption<C>
+    pub fn get_storage(&self) -> StorageStateOption<C>
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
@@ -1191,7 +1191,7 @@ where
 
     /// Tries to update `self` from `storage_state`.
     #[inline]
-    pub fn get_storage(&mut self, storage_state: &StorageStateOption<C>) -> bool
+    pub fn set_storage(&mut self, storage_state: &StorageStateOption<C>) -> bool
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,

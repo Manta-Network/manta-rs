@@ -53,13 +53,13 @@ pub fn new_signer(
 
 /// Builds a new [`StorageStateOption`] from `signer`.
 #[inline]
-pub fn set_storage(signer: &Signer) -> StorageStateOption {
+pub fn get_storage(signer: &Signer) -> StorageStateOption {
     Some(StorageState::from_signer(signer))
 }
 
 /// Tries to update `signer` from `storage_state`.
 #[inline]
-pub fn get_storage(signer: &mut Signer, storage_state: &StorageStateOption) -> bool {
+pub fn set_storage(signer: &mut Signer, storage_state: &StorageStateOption) -> bool {
     if let Some(storage_state) = storage_state {
         storage_state.update_signer(signer);
         return true;
