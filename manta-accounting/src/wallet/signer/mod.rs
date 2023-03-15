@@ -79,6 +79,12 @@ where
         request: SyncRequest<C, Self::Checkpoint>,
     ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error>;
 
+    ///
+    fn initial_sync(
+        &mut self,
+        request: InitialSyncData<C>,
+    ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error>;
+
     /// Signs a transaction and returns the ledger transfer posts if successful.
     fn sign(
         &mut self,
@@ -142,7 +148,7 @@ where
         bound = "Utxo<C>: PartialEq, UtxoAccumulatorWitness<C>: PartialEq, Nullifier<C>: PartialEq"
     )
 )]
-pub struct InitialSyncData<const NUMBER_OF_PROOFS: usize, C>
+pub struct InitialSyncData<C>
 where
     C: transfer::Configuration + ?Sized,
 {
@@ -153,7 +159,7 @@ where
     pub nullifier_data: Vec<Nullifier<C>>,
 
     /// Membership Proof Data
-    pub membership_proof_data: manta_util::BoxArray<UtxoAccumulatorWitness<C>, NUMBER_OF_PROOFS>,
+    pub membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
 }
 
 /// Signer Synchronization Data
@@ -716,6 +722,7 @@ pub trait Configuration: transfer::Configuration {
             Model = UtxoAccumulatorModel<Self>,
             Witness = UtxoAccumulatorWitness<Self>,
         > + ExactSizeAccumulator
+        + FromItemsAndWitnesses
         + OptimizedAccumulator
         + Rollback;
 
@@ -1126,6 +1133,21 @@ where
         )
     }
 
+    ///
+    #[inline]
+    pub fn initial_sync(
+        &mut self,
+        request: InitialSyncData<C>,
+    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
+        functions::intial_sync(
+            &self.parameters,
+            &mut self.state.assets,
+            &mut self.state.checkpoint,
+            &mut self.state.utxo_accumulator,
+            request,
+        )
+    }
+
     /// Generates an [`IdentityProof`] for `identified_asset` by
     /// signing a virtual [`ToPublic`](transfer::canonical::ToPublic) transaction.
     #[inline]
@@ -1253,24 +1275,6 @@ where
         }
         false
     }
-
-    ///
-    #[inline]
-    pub fn initial_sync<const NUMBER_OF_PROOFS: usize>(
-        &mut self,
-        request: InitialSyncData<NUMBER_OF_PROOFS, C>,
-    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
-    where
-        C::UtxoAccumulator: FromItemsAndWitnesses<NUMBER_OF_PROOFS>,
-    {
-        functions::intial_sync(
-            &self.parameters,
-            &mut self.state.assets,
-            &mut self.state.checkpoint,
-            &mut self.state.utxo_accumulator,
-            request,
-        )
-    }
 }
 
 impl<C> Connection<C> for Signer<C>
@@ -1287,6 +1291,14 @@ where
         request: SyncRequest<C, C::Checkpoint>,
     ) -> LocalBoxFutureResult<SyncResult<C, C::Checkpoint>, Self::Error> {
         Box::pin(async move { Ok(self.sync(request)) })
+    }
+
+    #[inline]
+    fn initial_sync(
+        &mut self,
+        request: InitialSyncData<C>,
+    ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error> {
+        Box::pin(async move { Ok(self.initial_sync(request)) })
     }
 
     #[inline]

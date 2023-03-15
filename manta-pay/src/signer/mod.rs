@@ -40,6 +40,9 @@ pub mod functions;
 /// Synchronization Request
 pub type SyncRequest = signer::SyncRequest<Config, Checkpoint>;
 
+/// Initial Synchronization Data
+pub type InitialSyncData = signer::InitialSyncData<Config>;
+
 /// Synchronization Response
 pub type SyncResponse = signer::SyncResponse<Config, Checkpoint>;
 

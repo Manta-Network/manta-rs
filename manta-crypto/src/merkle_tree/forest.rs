@@ -540,7 +540,7 @@ where
     pub fn from_leaves_and_current_paths_unchecked(
         parameters: &Parameters<C>,
         leaves: Vec<Leaf<C>>,
-        paths: BoxArray<Path<C>, N>,
+        paths: Vec<Path<C>>,
     ) -> Self {
         TreeArray::new(BoxArray::from_iter(paths.into_iter().enumerate().map(
             |(tree_index, path)| {
@@ -572,7 +572,7 @@ where
     pub fn from_leaves_and_current_paths_unchecked(
         parameters: &Parameters<C>,
         leaves: Vec<Leaf<C>>,
-        paths: BoxArray<Path<C>, N>,
+        paths: Vec<Path<C>>,
     ) -> Self {
         TreeArray::new(BoxArray::from_iter(paths.into_iter().enumerate().map(
             |(tree_index, path)| {
@@ -590,7 +590,7 @@ where
     }
 }
 
-impl<C, const N: usize> FromItemsAndWitnesses<N> for TreeArrayMerkleForest<C, Partial<C>, N>
+impl<C, const N: usize> FromItemsAndWitnesses for TreeArrayMerkleForest<C, Partial<C>, N>
 where
     C: Configuration + ?Sized,
     C::Index: FixedIndex<N>,
@@ -598,12 +598,15 @@ where
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
+    const NUMBER_OF_PROOFS: usize = N;
+
     #[inline]
     fn from_items_and_witnesses(
         model: &Self::Model,
         items: Vec<Self::Item>,
-        witnesses: BoxArray<Self::Witness, N>,
+        witnesses: Vec<Self::Witness>,
     ) -> Self {
+        assert_eq!(witnesses.len(), N);
         Self::from_forest(
             TreeArray::<C, Partial<C>, N>::from_leaves_and_current_paths_unchecked(
                 model, items, witnesses,
@@ -613,7 +616,7 @@ where
     }
 }
 
-impl<C, const N: usize> FromItemsAndWitnesses<N>
+impl<C, const N: usize> FromItemsAndWitnesses
     for TreeArrayMerkleForest<C, ForkedTree<C, Partial<C>>, N>
 where
     C: Configuration + ?Sized,
@@ -622,12 +625,15 @@ where
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
+    const NUMBER_OF_PROOFS: usize = N;
+
     #[inline]
     fn from_items_and_witnesses(
         model: &Self::Model,
         items: Vec<Self::Item>,
-        witnesses: BoxArray<Self::Witness, N>,
+        witnesses: Vec<Self::Witness>,
     ) -> Self {
+        assert_eq!(witnesses.len(), N);
         Self::from_forest(
             TreeArray::<C, ForkedTree<C, Partial<C>>, N>::from_leaves_and_current_paths_unchecked(
                 model, items, witnesses,

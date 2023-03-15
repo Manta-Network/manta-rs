@@ -22,7 +22,6 @@ use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-use manta_util::BoxArray;
 
 /// Accumulator Membership Model Types
 pub trait Types {
@@ -204,13 +203,16 @@ pub trait OptimizedAccumulator: Accumulator {
     }
 }
 
-/// From Proofs and Witnesses
-pub trait FromItemsAndWitnesses<const NUMBER_OF_PROOFS: usize>: Accumulator {
+/// From Items and Witnesses
+pub trait FromItemsAndWitnesses: Accumulator {
+    /// Number of Proofs
+    const NUMBER_OF_PROOFS: usize;
+
     /// Builds a new [`Self`] from `items` and `proofs`.
     fn from_items_and_witnesses(
         model: &Self::Model,
         items: Vec<Self::Item>,
-        witnesses: BoxArray<Self::Witness, NUMBER_OF_PROOFS>,
+        witnesses: Vec<Self::Witness>,
     ) -> Self;
 }
 

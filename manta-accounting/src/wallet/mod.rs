@@ -37,9 +37,9 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
-            SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
-            TransactionDataRequest, TransactionDataResponse,
+            BalanceUpdate, IdentityRequest, IdentityResponse, InitialSyncData, SignError,
+            SignRequest, SignResponse, SignWithTransactionDataResponse, SyncData, SyncError,
+            SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -265,6 +265,24 @@ where
         Ok(())
     }
 
+    ///
+    #[inline]
+    pub async fn initial_sync(&mut self) -> Result<(), Error<C, L, S>>
+    where
+        L: ledger::Read<InitialSyncData<C>, Checkpoint = S::Checkpoint>,
+    {
+        let ReadResponse {
+            should_continue: _,
+            data,
+        } = self
+            .ledger
+            .read(&self.checkpoint)
+            .await
+            .map_err(Error::LedgerConnectionError)?;
+        self.signer_initial_sync(data).await?;
+        Ok(())
+    }
+
     /// Pulls data from the ledger, synchronizing the wallet and balance state. This method returns
     /// a [`ControlFlow`] for matching against to determine if the wallet requires more
     /// synchronization.
@@ -314,6 +332,51 @@ where
         match self
             .signer
             .sync(request)
+            .await
+            .map_err(Error::SignerConnectionError)?
+        {
+            Ok(SyncResponse {
+                checkpoint,
+                balance_update,
+            }) => {
+                match balance_update {
+                    BalanceUpdate::Partial { deposit, withdraw } => {
+                        self.assets.deposit_all(deposit);
+                        if !self.assets.withdraw_all(withdraw) {
+                            return Err(Error::Inconsistency(InconsistencyError::WalletBalance));
+                        }
+                    }
+                    BalanceUpdate::Full { assets } => {
+                        self.assets.clear();
+                        self.assets.deposit_all(assets);
+                    }
+                }
+                self.checkpoint = checkpoint;
+                Ok(())
+            }
+            Err(SyncError::InconsistentSynchronization { checkpoint }) => {
+                if checkpoint < self.checkpoint {
+                    self.checkpoint = checkpoint;
+                }
+                Err(Error::Inconsistency(
+                    InconsistencyError::SignerSynchronization,
+                ))
+            }
+            Err(SyncError::MissingProofAuthorizationKey) => {
+                Err(Error::MissingProofAuthorizationKey)
+            }
+        }
+    }
+
+    ///
+    #[inline]
+    async fn signer_initial_sync(
+        &mut self,
+        request: InitialSyncData<C>,
+    ) -> Result<(), Error<C, L, S>> {
+        match self
+            .signer
+            .initial_sync(request)
             .await
             .map_err(Error::SignerConnectionError)?
         {

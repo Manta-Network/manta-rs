@@ -20,9 +20,9 @@ use crate::{
     config::{utxo::Address, Config},
     signer::{
         client::network::{Message, Network},
-        AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, SignError,
-        SignRequest, SignResponse, SignWithTransactionDataResult, SyncError, SyncRequest,
-        SyncResponse, TransactionDataRequest, TransactionDataResponse,
+        AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, InitialSyncData,
+        SignError, SignRequest, SignResponse, SignWithTransactionDataResult, SyncError,
+        SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
     },
 };
 use alloc::boxed::Box;
@@ -100,6 +100,14 @@ impl signer::Connection<Config> for Client {
         request: SyncRequest,
     ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
         Box::pin(self.post_request("sync", request))
+    }
+
+    #[inline]
+    fn initial_sync(
+        &mut self,
+        request: InitialSyncData,
+    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
+        Box::pin(self.post_request("initial_sync", request))
     }
 
     #[inline]

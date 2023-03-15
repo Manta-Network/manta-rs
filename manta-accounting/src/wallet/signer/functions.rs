@@ -47,7 +47,7 @@ use manta_crypto::{
 };
 use manta_util::{
     array_map, cmp::Independence, into_array_unchecked, iter::IteratorExt, persistence::Rollback,
-    vec::VecExt, BoxArray,
+    vec::VecExt,
 };
 
 /// Returns the default account for `accounts`.
@@ -936,23 +936,22 @@ where
 
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
 #[inline]
-pub fn intial_sync<const NUMBER_OF_PROOFS: usize, C>(
+pub fn intial_sync<C>(
     parameters: &SignerParameters<C>,
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
-    request: InitialSyncData<NUMBER_OF_PROOFS, C>,
+    request: InitialSyncData<C>,
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
-    C::UtxoAccumulator: FromItemsAndWitnesses<NUMBER_OF_PROOFS>,
 {
     let InitialSyncData {
         utxo_data,
         membership_proof_data,
         nullifier_data,
     } = request;
-    let (accumulator, response) = initial_sync_with::<NUMBER_OF_PROOFS, C>(
+    let (accumulator, response) = initial_sync_with::<C>(
         assets,
         checkpoint,
         utxo_accumulator.model(),
@@ -969,18 +968,17 @@ where
 /// Updates the internal ledger state, returning the new asset distribution.
 #[allow(clippy::too_many_arguments)]
 #[inline]
-fn initial_sync_with<const NUMBER_OF_PROOFS: usize, C>(
+fn initial_sync_with<C>(
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     parameters: &Parameters<C>,
     utxos: Vec<Utxo<C>>,
-    membership_proof_data: BoxArray<UtxoAccumulatorWitness<C>, NUMBER_OF_PROOFS>,
+    membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
     nullifiers: Vec<Nullifier<C>>,
 ) -> (C::UtxoAccumulator, SyncResponse<C, C::Checkpoint>)
 where
     C: Configuration,
-    C::UtxoAccumulator: FromItemsAndWitnesses<NUMBER_OF_PROOFS>,
 {
     let accumulator = C::UtxoAccumulator::from_items_and_witnesses(
         utxo_accumulator_model,
