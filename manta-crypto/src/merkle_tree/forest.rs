@@ -24,8 +24,8 @@
 
 use crate::{
     accumulator::{
-        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
-        OptimizedAccumulator,
+        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator,
+        FromItemsAndWitnesses, MembershipProof, OptimizedAccumulator,
     },
     merkle_tree::{
         fork::ForkedTree,
@@ -587,6 +587,53 @@ where
                 )
             },
         )))
+    }
+}
+
+impl<C, const N: usize> FromItemsAndWitnesses<N> for TreeArrayMerkleForest<C, Partial<C>, N>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    Parameters<C>: Clone,
+    LeafDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Clone + Default + PartialEq,
+{
+    #[inline]
+    fn from_items_and_witnesses(
+        model: &Self::Model,
+        items: Vec<Self::Item>,
+        witnesses: BoxArray<Self::Witness, N>,
+    ) -> Self {
+        Self::from_forest(
+            TreeArray::<C, Partial<C>, N>::from_leaves_and_current_paths_unchecked(
+                model, items, witnesses,
+            ),
+            model.clone(),
+        )
+    }
+}
+
+impl<C, const N: usize> FromItemsAndWitnesses<N>
+    for TreeArrayMerkleForest<C, ForkedTree<C, Partial<C>>, N>
+where
+    C: Configuration + ?Sized,
+    C::Index: FixedIndex<N>,
+    Parameters<C>: Clone,
+    LeafDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Clone + Default + PartialEq,
+{
+    #[inline]
+    fn from_items_and_witnesses(
+        model: &Self::Model,
+        items: Vec<Self::Item>,
+        witnesses: BoxArray<Self::Witness, N>,
+    ) -> Self {
+        Self::from_forest(
+            TreeArray::<C, ForkedTree<C, Partial<C>>, N>::from_leaves_and_current_paths_unchecked(
+                model, items, witnesses,
+            ),
+            model.clone(),
+        )
     }
 }
 
