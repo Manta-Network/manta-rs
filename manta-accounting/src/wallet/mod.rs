@@ -168,7 +168,7 @@ where
 
     /// Resets the state of the wallet to the default starting state.
     #[inline]
-    fn reset_state(&mut self) {
+    pub fn reset_state(&mut self) {
         self.checkpoint = Default::default();
         self.assets = Default::default();
     }
@@ -242,7 +242,7 @@ where
     /// [`restart`](Self::restart) to avoid querying the ledger at genesis when a known later
     /// checkpoint exists.
     #[inline]
-    async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
+    pub async fn load_initial_state(&mut self) -> Result<(), Error<C, L, S>> {
         self.signer_sync(Default::default()).await
     }
 

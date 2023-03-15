@@ -1223,6 +1223,30 @@ where
             &mut self.state.rng,
         )
     }
+
+    /// Builds a new [`StorageStateOption`] from `self`.
+    #[inline]
+    pub fn get_storage(&self) -> StorageStateOption<C>
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        Some(StorageState::from_signer(self))
+    }
+
+    /// Tries to update `self` from `storage_state`.
+    #[inline]
+    pub fn set_storage(&mut self, storage_state: &StorageStateOption<C>) -> bool
+    where
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+    {
+        if let Some(storage_state) = storage_state {
+            storage_state.update_signer(self);
+            return true;
+        }
+        false
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
@@ -1397,3 +1421,6 @@ where
         signer
     }
 }
+
+/// Storage State Option
+pub type StorageStateOption<C> = Option<StorageState<C>>;
