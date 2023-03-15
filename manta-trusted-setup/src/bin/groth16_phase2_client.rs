@@ -94,8 +94,7 @@ impl Arguments {
                 {
                     Ok(runtime) => {
                         let pk = Array::from_unchecked(*pk.as_bytes());
-                        runtime
-                            .block_on(async { client_contribute::<Config>(sk, pk, self.url).await })
+                        runtime.block_on(client_contribute::<Config>(sk, pk, self.url))
                     }
                     Err(e) => panic!("I/O Error while setting up the tokio Runtime: {e:?}"),
                 }

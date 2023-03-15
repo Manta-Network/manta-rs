@@ -113,6 +113,7 @@ where
     }
 
     /// Recovers from disk files at `path` and uses `path` as the backup directory.
+    #[allow(clippy::redundant_async_block)] // Necessary to spawn a task with a server clone
     #[inline]
     pub fn recover(
         path: PathBuf,
