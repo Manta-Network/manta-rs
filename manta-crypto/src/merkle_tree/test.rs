@@ -17,15 +17,22 @@
 //! Testing Framework
 
 use crate::{
+    accumulator::{Accumulator, FromItemsAndWitnesses},
     merkle_tree::{
+        forest::{self, Forest, MerkleForest, TreeArrayMerkleForest},
+        fork::ForkedTree,
+        full::{Full, FullMerkleTree},
+        partial::{Partial, PartialMerkleTree},
         Configuration, HashConfiguration, IdentityLeafHash, InnerDigest, InnerHash,
         InnerHashParameters, Leaf, LeafHashParameters, MerkleTree, Parameters, Path, Tree,
         WithProofs,
     },
-    rand::{RngCore, Sample},
+    rand::{OsRng, Rand, RngCore, Sample},
 };
 use alloc::string::String;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+
+use super::forest::FixedIndex;
 
 /// Hash Parameter Sampling
 pub trait HashParameterSampling: HashConfiguration {
@@ -278,4 +285,185 @@ where
     {
         let _ = (distribution, rng);
     }
+}
+
+///
+#[test]
+fn test_from_leaves_and_path() {
+    let mut rng = OsRng;
+    const HEIGHT: usize = 7;
+    type Config = Test<u64, HEIGHT>;
+    let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
+    let number_of_insertions = rng.gen_range(5..(1 << (HEIGHT - 1)));
+    let inner_element_index = rng.gen_range(0..number_of_insertions - 3); // make sure this one isn't the last nor its sibling
+    println!("{number_of_insertions}, {inner_element_index}");
+    let mut tree = FullMerkleTree::<Config>::new(parameters);
+    let mut insertions = Vec::<u64>::with_capacity(number_of_insertions);
+    for _ in 0..number_of_insertions {
+        insertions.push(rng.gen());
+    }
+    for leaf in &insertions {
+        tree.insert(leaf);
+    }
+    let forked_tree = ForkedTree::<Config, Full<Config>>::new(tree.tree.clone(), &parameters);
+    let path = tree.current_path();
+    let partial_tree = PartialMerkleTree::<Test<u64, HEIGHT>> {
+        parameters,
+        tree: Partial::from_leaves_and_path_unchecked(
+            &parameters,
+            insertions.clone(),
+            path.clone().into(),
+        ),
+    };
+    let forked_partial_tree = ForkedTree::<Config, Partial<Config>>::from_leaves_and_path_unchecked(
+        &parameters,
+        insertions.clone(),
+        path.clone().into(),
+    );
+    let root = tree.root().clone();
+    let partial_root = partial_tree.root().clone();
+    let forked_root = forked_tree.root().clone();
+    let forked_partial_root = forked_partial_tree.root().clone();
+    assert_eq!(root, partial_root, "Roots must be equal");
+    assert_eq!(root, forked_root, "Roots must be equal");
+    assert_eq!(root, forked_partial_root, "Roots must be equal");
+    let proof_full_inner = tree
+        .prove(&insertions[inner_element_index])
+        .expect("Failed to generate proof");
+    let proof_partial_inner = partial_tree
+        .prove(&insertions[inner_element_index])
+        .expect("Failed to generate proof");
+    assert!(
+        proof_full_inner.verify(&parameters, &insertions[inner_element_index], &mut ()),
+        "Inner proof in the full tree must be valid"
+    );
+    assert!(
+        !proof_partial_inner.verify(&parameters, &insertions[inner_element_index], &mut ()),
+        "Inner proof in the partial tree must be invalid"
+    );
+    let proof_full = tree
+        .prove(&insertions[number_of_insertions - 1])
+        .expect("Failed to generate proof");
+    let proof_partial = partial_tree
+        .prove(&insertions[number_of_insertions - 1])
+        .expect("Failed to generate proof");
+    assert!(
+        proof_full.verify(&parameters, &insertions[number_of_insertions - 1], &mut ()),
+        "Final proof in the full tree must be valid"
+    );
+    assert!(
+        proof_partial.verify(&parameters, &insertions[number_of_insertions - 1], &mut ()),
+        "Final proof in the partial tree must be valid"
+    );
+}
+
+///
+#[derive(PartialEq)]
+pub enum Index {
+    ///
+    Zero,
+
+    ///
+    One,
+}
+
+impl From<Index> for usize {
+    fn from(value: Index) -> Self {
+        match value {
+            Index::Zero => 0,
+            Index::One => 1,
+        }
+    }
+}
+
+impl FixedIndex<2> for Index {
+    fn from_index(index: usize) -> Self {
+        if index % 2 == 0 {
+            Index::Zero
+        } else {
+            Index::One
+        }
+    }
+}
+
+impl<const HEIGHT: usize> forest::Configuration for Test<u64, HEIGHT> {
+    type Index = Index;
+    fn tree_index(leaf: &Leaf<Self>) -> Self::Index {
+        let parity = leaf % 2;
+        if parity == 0 {
+            Index::Zero
+        } else {
+            Index::One
+        }
+    }
+}
+///
+#[test]
+fn test_from_leaves_and_path_forest() {
+    let mut rng = OsRng;
+    const HEIGHT: usize = 7;
+    type Config = Test<u64, HEIGHT>;
+    let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
+    let mut forest =
+        TreeArrayMerkleForest::<Config, ForkedTree<Config, Full<Config>>, 2>::new(parameters);
+    let number_of_insertions = rng.gen_range(5..(1 << (HEIGHT - 1)));
+    let mut insertions = Vec::<u64>::with_capacity(number_of_insertions);
+    for _ in 0..number_of_insertions {
+        insertions.push(rng.gen());
+    }
+    for leaf in &insertions {
+        forest.insert(leaf);
+    }
+    let path_1 = Path::from(forest.forest.get(Index::Zero).current_path());
+    let path_2 = Path::from(forest.forest.get(Index::One).current_path());
+    let paths = vec![path_1, path_2];
+    let partial_forest =
+        TreeArrayMerkleForest::<_, ForkedTree<_, Partial<Config>>, 2>::from_items_and_witnesses(
+            &parameters,
+            insertions.clone(),
+            paths,
+        );
+    for leaf in &insertions {
+        assert_eq!(forest.output_from(leaf), partial_forest.output_from(leaf));
+    }
+}
+
+///
+#[test]
+fn visual_test_with_strings() {
+    const HEIGHT: usize = 5;
+    let mut rng = OsRng;
+    let parameters = Parameters::<Test<String, HEIGHT>>::sample(Default::default(), &mut rng);
+    let mut tree = FullMerkleTree::<Test<String, HEIGHT>>::new(parameters);
+    let insertions = vec![
+        "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect::<Vec<String>>();
+    for leaf in &insertions {
+        tree.insert(leaf);
+    }
+    let root = tree.root().clone();
+    let path = tree.current_path();
+    println!("{path:?}");
+    let partial_tree = PartialMerkleTree::<Test<String, HEIGHT>> {
+        parameters,
+        tree: Partial::from_leaves_and_path_unchecked(&parameters, insertions.clone(), path.into()),
+    };
+    let second_root = partial_tree.root().clone();
+    assert_eq!(root, second_root);
+    const INNER_ELEMENT_INDEX: usize = 10; // k
+    let proof = tree.prove(&insertions[INNER_ELEMENT_INDEX]).unwrap();
+    println!("{proof:?}");
+    let proof_2 = partial_tree
+        .prove(&insertions[INNER_ELEMENT_INDEX])
+        .unwrap();
+    println!("{proof_2:?}");
+    let proof_3 = tree.prove(&insertions[insertions.len() - 1]).unwrap();
+    let proof_4 = partial_tree
+        .prove(&insertions[insertions.len() - 1])
+        .unwrap();
+    println!("{proof_3:?}");
+    println!("{proof_4:?}");
 }

@@ -23,17 +23,18 @@ use crate::{
         UtxoAccumulatorModel,
     },
     key::KeySecret,
-    signer::{base::Signer, functions},
+    signer::{base::Signer, functions, InitialSyncData},
     simulation::ledger::{Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
-use core::fmt::Debug;
+use core::{fmt::Debug, ops::Deref};
 use manta_accounting::{
     self,
     asset::AssetList,
     key::AccountTable,
     wallet::{
         self,
+        signer::SyncData,
         test::{self, PublicBalanceOracle},
         Error,
     },
@@ -139,11 +140,18 @@ impl Simulation {
         self.setup(&mut ledger);
         let ledger = Arc::new(RwLock::new(ledger));
         self.run_with(
-            move |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
+            |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
+            |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
+            move |i| account_id_from_u64(i as u64),
+        )
+        .await;
+        println!("{:?}", ledger.read().await.utxos());
+        self.run_with(
+            |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
             move |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
             move |i| account_id_from_u64(i as u64),
         )
-        .await
+        .await;
     }
 
     /// Runs the simulation with the given ledger connections and signer connections.
@@ -155,8 +163,16 @@ impl Simulation {
     #[inline]
     pub async fn run_with<L, S, GL, GS, GP>(&self, ledger: GL, signer: GS, public_account: GP)
     where
-        L: wallet::test::Ledger<Config> + PublicBalanceOracle<Config>,
-        S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
+        L: wallet::test::Ledger<Config>
+            + PublicBalanceOracle<Config>
+            + wallet::ledger::Read<
+                InitialSyncData,
+                Checkpoint = <L as wallet::ledger::Read<SyncData<Config>>>::Checkpoint,
+            >,
+        S: wallet::signer::Connection<
+            Config,
+            Checkpoint = <L as wallet::ledger::Read<SyncData<Config>>>::Checkpoint,
+        >,
         S::Error: Debug,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,

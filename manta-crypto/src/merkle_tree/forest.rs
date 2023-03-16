@@ -537,7 +537,7 @@ where
     /// the `paths` are consistent with the leaves and that they are
     /// [`CurrentPath`](crate::merkle_tree::path::CurrentPath)s.
     #[inline]
-    pub fn from_leaves_and_current_paths_unchecked(
+    pub fn from_leaves_and_paths_unchecked(
         parameters: &Parameters<C>,
         leaves: Vec<Leaf<C>>,
         paths: Vec<Path<C>>,
@@ -569,7 +569,7 @@ where
     /// the `paths` are consistent with the leaves and that they are
     /// [`CurrentPath`](crate::merkle_tree::path::CurrentPath)s.
     #[inline]
-    pub fn from_leaves_and_current_paths_unchecked(
+    pub fn from_leaves_and_paths_unchecked(
         parameters: &Parameters<C>,
         leaves: Vec<Leaf<C>>,
         paths: Vec<Path<C>>,
@@ -608,9 +608,7 @@ where
     ) -> Self {
         assert_eq!(witnesses.len(), N);
         Self::from_forest(
-            TreeArray::<C, Partial<C>, N>::from_leaves_and_current_paths_unchecked(
-                model, items, witnesses,
-            ),
+            TreeArray::<C, Partial<C>, N>::from_leaves_and_paths_unchecked(model, items, witnesses),
             model.clone(),
         )
     }
@@ -635,7 +633,7 @@ where
     ) -> Self {
         assert_eq!(witnesses.len(), N);
         Self::from_forest(
-            TreeArray::<C, ForkedTree<C, Partial<C>>, N>::from_leaves_and_current_paths_unchecked(
+            TreeArray::<C, ForkedTree<C, Partial<C>>, N>::from_leaves_and_paths_unchecked(
                 model, items, witnesses,
             ),
             model.clone(),

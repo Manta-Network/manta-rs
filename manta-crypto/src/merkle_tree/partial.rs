@@ -106,14 +106,18 @@ where
                 Parity::Left => parameters.join_leaves(&leaf_digests[n - 1], &path.sibling_digest),
                 Parity::Right => parameters.join_leaves(&path.sibling_digest, &leaf_digests[n - 1]),
             };
-            Self::new_unchecked(
+            let mut partial_tree = Self::new_unchecked(
                 leaf_digests,
                 PartialInnerTree::from_current(
                     parameters,
                     base,
                     CurrentPath::from_path_unchecked(path).inner_path,
                 ),
-            )
+            );
+            partial_tree
+                .inner_digests
+                .reset_starting_leaf_index(Default::default());
+            partial_tree
         }
     }
 

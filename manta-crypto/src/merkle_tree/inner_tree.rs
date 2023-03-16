@@ -25,7 +25,7 @@ use crate::merkle_tree::{
     path_length, Configuration, InnerDigest, Node, Parameters, Parity,
 };
 use alloc::collections::btree_map;
-use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
+use core::{default, fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -773,6 +773,12 @@ where
         InnerDigest<C>: Clone,
     {
         self.inner_tree.path(leaf_index)
+    }
+
+    ///
+    #[inline]
+    pub fn reset_starting_leaf_index(&mut self, default: Node) {
+        self.starting_leaf_index = default;
     }
 }
 
