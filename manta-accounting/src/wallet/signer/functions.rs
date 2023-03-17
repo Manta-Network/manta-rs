@@ -949,7 +949,7 @@ where
     let InitialSyncData {
         utxo_data,
         membership_proof_data,
-        nullifier_data,
+        nullifier_count,
     } = request;
     let (accumulator, response) = initial_sync_with::<C>(
         assets,
@@ -958,7 +958,7 @@ where
         &parameters.parameters,
         utxo_data,
         membership_proof_data,
-        nullifier_data,
+        nullifier_count,
     );
     *utxo_accumulator = accumulator;
     utxo_accumulator.commit();
@@ -975,7 +975,7 @@ fn initial_sync_with<C>(
     parameters: &Parameters<C>,
     utxos: Vec<Utxo<C>>,
     membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
-    nullifiers: Vec<Nullifier<C>>,
+    nullifier_count: u128,
 ) -> (C::UtxoAccumulator, SyncResponse<C, C::Checkpoint>)
 where
     C: Configuration,
@@ -988,7 +988,7 @@ where
             .collect(),
         membership_proof_data,
     );
-    checkpoint.update_from_nullifiers(nullifiers.len());
+    checkpoint.update_from_nullifiers(nullifier_count as usize);
     checkpoint.update_from_utxo_accumulator(&accumulator);
     (
         accumulator,

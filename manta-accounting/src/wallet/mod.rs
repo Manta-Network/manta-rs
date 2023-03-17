@@ -271,8 +271,18 @@ where
     where
         L: ledger::Read<InitialSyncData<C>, Checkpoint = S::Checkpoint>,
     {
+        while self.initial_sync_partial().await?.is_continue() {}
+        Ok(())
+    }
+
+    ///
+    #[inline]
+    pub async fn initial_sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>>
+    where
+        L: ledger::Read<InitialSyncData<C>, Checkpoint = S::Checkpoint>,
+    {
         let ReadResponse {
-            should_continue: _,
+            should_continue,
             data,
         } = self
             .ledger
@@ -280,7 +290,7 @@ where
             .await
             .map_err(Error::LedgerConnectionError)?;
         self.signer_initial_sync(data).await?;
-        Ok(())
+        Ok(ControlFlow::should_continue(should_continue))
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state. This method returns
@@ -385,15 +395,12 @@ where
                 balance_update,
             }) => {
                 match balance_update {
-                    BalanceUpdate::Partial { deposit, withdraw } => {
-                        self.assets.deposit_all(deposit);
-                        if !self.assets.withdraw_all(withdraw) {
-                            return Err(Error::Inconsistency(InconsistencyError::WalletBalance));
-                        }
-                    }
                     BalanceUpdate::Full { assets } => {
                         self.assets.clear();
                         self.assets.deposit_all(assets);
+                    }
+                    _ => {
+                        unreachable!("No transactions could have happened on a new account.");
                     }
                 }
                 self.checkpoint = checkpoint;

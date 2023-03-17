@@ -246,8 +246,8 @@ impl Ledger {
             should_continue: false,
             data: InitialSyncData {
                 utxo_data: utxos,
-                nullifier_data: senders,
                 membership_proof_data,
+                nullifier_count: senders.len() as u128,
             },
         }
     }

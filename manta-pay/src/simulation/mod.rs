@@ -27,7 +27,7 @@ use crate::{
     simulation::ledger::{Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
-use core::{fmt::Debug};
+use core::fmt::Debug;
 use manta_accounting::{
     self,
     asset::AssetList,

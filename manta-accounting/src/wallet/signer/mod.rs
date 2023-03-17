@@ -155,11 +155,11 @@ where
     /// UTXO Data
     pub utxo_data: Vec<Utxo<C>>,
 
-    /// Nullifier Data
-    pub nullifier_data: Vec<Nullifier<C>>,
-
     /// Membership Proof Data
     pub membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
+
+    /// Nullifier Count
+    pub nullifier_count: u128,
 }
 
 /// Signer Synchronization Data
