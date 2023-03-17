@@ -513,6 +513,7 @@ where
 /// transitions.
 ///
 /// [`Challenge`]: mpc::ChallengeType::Challenge
+#[allow(clippy::redundant_clone)] // The state clone is actually necessary here.
 #[inline]
 pub fn verify_transform_all<C, I>(
     mut challenge: C::Challenge,

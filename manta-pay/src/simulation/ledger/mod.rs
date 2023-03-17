@@ -225,14 +225,14 @@ impl Ledger {
         for (i, mut index) in (0..MerkleTreeConfiguration::FOREST_WIDTH).enumerate() {
             let shard = &self.shards[&MerkleForestIndex::from_index(i)];
             while let Some(entry) = shard.get_index(index) {
-                utxos.push(entry.0.clone());
+                utxos.push(entry.0);
                 index += 1;
             }
         }
         let senders = self.nullifiers.iter().cloned().collect::<Vec<_>>();
         let utxo_merkle_forest = self.utxo_forest.clone();
         let mut membership_proof_data = Vec::new();
-        for index in (0..MerkleTreeConfiguration::FOREST_WIDTH) {
+        for index in 0..MerkleTreeConfiguration::FOREST_WIDTH {
             membership_proof_data.push(
                 utxo_merkle_forest
                     .forest

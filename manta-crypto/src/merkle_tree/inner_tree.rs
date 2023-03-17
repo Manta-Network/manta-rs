@@ -25,7 +25,7 @@ use crate::merkle_tree::{
     path_length, Configuration, InnerDigest, Node, Parameters, Parity,
 };
 use alloc::collections::btree_map;
-use core::{default, fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
+use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
