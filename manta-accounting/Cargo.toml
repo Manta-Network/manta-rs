@@ -48,7 +48,6 @@ test = [
     "futures",
     "indexmap",
     "manta-crypto/arkworks",
-    "manta-crypto/getrandom",
     "manta-crypto/rand",
     "manta-crypto/test",
     "parking_lot",

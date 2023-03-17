@@ -70,7 +70,7 @@ std = [
 ]
 
 # Testing Frameworks
-test = ["getrandom"]
+test = []
 
 [dependencies]
 ark-bls12-381 = { version = "0.3.0", optional = true, default-features = false, features = ["curve"] }
