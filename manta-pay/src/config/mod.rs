@@ -25,6 +25,7 @@ use manta_crypto::arkworks::{
         self, constraints::EdwardsVar as Bn254_EdwardsVar, EdwardsProjective as Bn254_Edwards,
     },
     groth16,
+    merkle_tree::path::CurrentPath,
 };
 
 #[cfg(feature = "bs58")]
@@ -148,6 +149,9 @@ pub type AssetValue = transfer::AssetValue<Config>;
 
 /// Asset Type
 pub type Asset = transfer::Asset<Config>;
+
+/// Current Path Type
+pub type CurrentPath = CurrentPath<utxo::MerkleTreeConfiguration>;
 
 /// Unspent Transaction Output Type
 pub type Utxo = transfer::Utxo<Config>;
