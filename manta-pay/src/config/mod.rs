@@ -17,15 +17,17 @@
 //! Manta-Pay Configuration
 
 use manta_accounting::transfer;
-use manta_crypto::arkworks::{
-    algebra::{self, ScalarVar},
-    bn254::{self, Bn254},
-    constraint::{FpVar, R1CS},
-    ed_on_bn254::{
-        self, constraints::EdwardsVar as Bn254_EdwardsVar, EdwardsProjective as Bn254_Edwards,
+use manta_crypto::{
+    arkworks::{
+        algebra::{self, ScalarVar},
+        bn254::{self, Bn254},
+        constraint::{FpVar, R1CS},
+        ed_on_bn254::{
+            self, constraints::EdwardsVar as Bn254_EdwardsVar, EdwardsProjective as Bn254_Edwards,
+        },
+        groth16,
     },
-    groth16,
-    merkle_tree::path::CurrentPath,
+    merkle_tree::path,
 };
 
 #[cfg(feature = "bs58")]
@@ -151,7 +153,7 @@ pub type AssetValue = transfer::AssetValue<Config>;
 pub type Asset = transfer::Asset<Config>;
 
 /// Current Path Type
-pub type CurrentPath = CurrentPath<utxo::MerkleTreeConfiguration>;
+pub type CurrentPath = path::CurrentPath<utxo::MerkleTreeConfiguration>;
 
 /// Unspent Transaction Output Type
 pub type Utxo = transfer::Utxo<Config>;
