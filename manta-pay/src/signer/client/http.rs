@@ -17,12 +17,12 @@
 //! Signer HTTP Client Implementation
 
 use crate::{
-    config::{utxo::Address, Config},
+    config::{utxo::Address, Config, Parameters},
     signer::{
         client::network::{Message, Network},
-        AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse, InitialSyncData,
-        SignError, SignRequest, SignResponse, SignWithTransactionDataResult, SyncError,
-        SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
+        AssetMetadata, Checkpoint, GetRequest, IdentityRequest, IdentityResponse,
+        InitialSyncRequest, SignError, SignRequest, SignResponse, SignWithTransactionDataResult,
+        SyncError, SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
     },
 };
 use alloc::boxed::Box;
@@ -105,7 +105,7 @@ impl signer::Connection<Config> for Client {
     #[inline]
     fn initial_sync(
         &mut self,
-        request: InitialSyncData,
+        request: InitialSyncRequest,
     ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
         Box::pin(self.post_request("initial_sync", request))
     }
@@ -145,5 +145,10 @@ impl signer::Connection<Config> for Client {
         request: SignRequest,
     ) -> LocalBoxFutureResult<SignWithTransactionDataResult, Self::Error> {
         Box::pin(self.post_request("sign_with_transaction_data", request))
+    }
+
+    #[inline]
+    fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters, Self::Error> {
+        Box::pin(self.post_request("transfer_parameters", GetRequest::Get))
     }
 }

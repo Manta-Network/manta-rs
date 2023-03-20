@@ -33,7 +33,7 @@ use manta_accounting::{
     asset::AssetList,
     key::AccountTable,
     wallet::{
-        self,
+        self, signer,
         signer::SyncData,
         test::{self, PublicBalanceOracle},
         Error,
@@ -173,6 +173,7 @@ impl Simulation {
             Config,
             Checkpoint = <L as wallet::ledger::Read<SyncData<Config>>>::Checkpoint,
         >,
+        S::Checkpoint: signer::Checkpoint<Config>,
         S::Error: Debug,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,

@@ -152,6 +152,7 @@ pub trait Configuration {
         + auth::ProveAuthorization
         + auth::VerifyAuthorization
         + auth::DeriveSigningKey
+        + Clone
         + for<'a> auth::Sign<BodyWithAccountsRef<'a, Self>>
         + for<'a> auth::VerifySignature<BodyWithAccountsRef<'a, Self>>
         + utxo::AssetType<Asset = Asset<Self>>

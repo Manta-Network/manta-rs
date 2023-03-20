@@ -37,9 +37,9 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, IdentityRequest, IdentityResponse, InitialSyncData, SignError,
-            SignRequest, SignResponse, SignWithTransactionDataResponse, SyncData, SyncError,
-            SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
+            BalanceUpdate, Checkpoint, IdentityRequest, IdentityResponse, InitialSyncData,
+            SignError, SignRequest, SignResponse, SignWithTransactionDataResponse, SyncData,
+            SyncError, SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -49,6 +49,8 @@ use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+
+use self::signer::InitialSyncRequest;
 
 pub mod balance;
 pub mod ledger;
@@ -270,27 +272,35 @@ where
     pub async fn initial_sync(&mut self) -> Result<(), Error<C, L, S>>
     where
         L: ledger::Read<InitialSyncData<C>, Checkpoint = S::Checkpoint>,
+        C: signer::Configuration,
+        S::Checkpoint: signer::Checkpoint<C>,
     {
-        while self.initial_sync_partial().await?.is_continue() {}
+        let mut is_continue = true;
+        let mut checkpoint = self.checkpoint.clone();
+        let mut request = InitialSyncRequest::<C>::default();
+        while is_continue {
+            let ReadResponse {
+                should_continue,
+                data,
+            } = self
+                .ledger
+                .read(&checkpoint)
+                .await
+                .map_err(Error::LedgerConnectionError)?;
+            is_continue = should_continue;
+            request.extend_with_data(
+                &self
+                    .signer
+                    .transfer_parameters()
+                    .await
+                    .map_err(Error::SignerConnectionError)?,
+                data,
+            );
+            checkpoint
+                .update_from_utxo_count(request.utxo_data.iter().map(|utxos| utxos.len()).collect())
+        }
+        self.signer_initial_sync(request).await?;
         Ok(())
-    }
-
-    ///
-    #[inline]
-    pub async fn initial_sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>>
-    where
-        L: ledger::Read<InitialSyncData<C>, Checkpoint = S::Checkpoint>,
-    {
-        let ReadResponse {
-            should_continue,
-            data,
-        } = self
-            .ledger
-            .read(&self.checkpoint)
-            .await
-            .map_err(Error::LedgerConnectionError)?;
-        self.signer_initial_sync(data).await?;
-        Ok(ControlFlow::should_continue(should_continue))
     }
 
     /// Pulls data from the ledger, synchronizing the wallet and balance state. This method returns
@@ -382,7 +392,7 @@ where
     #[inline]
     async fn signer_initial_sync(
         &mut self,
-        request: InitialSyncData<C>,
+        request: InitialSyncRequest<C>,
     ) -> Result<(), Error<C, L, S>> {
         match self
             .signer

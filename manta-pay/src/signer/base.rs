@@ -112,6 +112,11 @@ impl signer::Checkpoint<Config> for Checkpoint {
             .collect();
     }
 
+    #[inline]
+    fn update_from_utxo_count(&mut self, utxo_count: Vec<usize>) {
+        self.receiver_index = manta_util::Array(utxo_count.try_into().expect("Wrong size"));
+    }
+
     /// Prunes the `data` by comparing `origin` and `signer_checkpoint` and checks if updating the
     /// `origin` checkpoint by viewing `data` would exceed the current `signer_checkpoint`. If not,
     /// then we can prune all the data. Otherwise, we take each entry in `data` and remove by shard

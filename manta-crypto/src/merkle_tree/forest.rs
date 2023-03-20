@@ -539,22 +539,21 @@ where
     #[inline]
     pub fn from_leaves_and_paths_unchecked(
         parameters: &Parameters<C>,
-        leaves: Vec<Leaf<C>>,
+        leaves: Vec<Vec<Leaf<C>>>,
         paths: Vec<Path<C>>,
     ) -> Self {
-        TreeArray::new(BoxArray::from_iter(paths.into_iter().enumerate().map(
-            |(tree_index, path)| {
-                Partial::from_leaves_and_path_unchecked(
-                    parameters,
-                    leaves
-                        .iter()
-                        .filter(|leaf| C::tree_index(leaf).into() == tree_index)
-                        .map(|leaf| parameters.digest(leaf))
-                        .collect(),
-                    path,
-                )
-            },
-        )))
+        TreeArray::new(BoxArray::from_iter(
+            leaves
+                .into_iter()
+                .zip(paths.into_iter())
+                .map(|(leaves, path)| {
+                    Partial::from_leaves_and_path_unchecked(
+                        parameters,
+                        leaves.iter().map(|leaf| parameters.digest(leaf)).collect(),
+                        path,
+                    )
+                }),
+        ))
     }
 }
 
@@ -571,22 +570,21 @@ where
     #[inline]
     pub fn from_leaves_and_paths_unchecked(
         parameters: &Parameters<C>,
-        leaves: Vec<Leaf<C>>,
+        leaves: Vec<Vec<Leaf<C>>>,
         paths: Vec<Path<C>>,
     ) -> Self {
-        TreeArray::new(BoxArray::from_iter(paths.into_iter().enumerate().map(
-            |(tree_index, path)| {
-                ForkedTree::from_leaves_and_path_unchecked(
-                    parameters,
-                    leaves
-                        .iter()
-                        .filter(|leaf| C::tree_index(leaf).into() == tree_index)
-                        .map(|leaf| parameters.digest(leaf))
-                        .collect(),
-                    path,
-                )
-            },
-        )))
+        TreeArray::new(BoxArray::from_iter(
+            leaves
+                .into_iter()
+                .zip(paths.into_iter())
+                .map(|(leaves, path)| {
+                    ForkedTree::from_leaves_and_path_unchecked(
+                        parameters,
+                        leaves.iter().map(|leaf| parameters.digest(leaf)).collect(),
+                        path,
+                    )
+                }),
+        ))
     }
 }
 
@@ -598,19 +596,31 @@ where
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
-    const NUMBER_OF_PROOFS: usize = N;
-
     #[inline]
     fn from_items_and_witnesses(
         model: &Self::Model,
-        items: Vec<Self::Item>,
+        items: Vec<Vec<Self::Item>>,
         witnesses: Vec<Self::Witness>,
     ) -> Self {
         assert_eq!(witnesses.len(), N);
+        assert_eq!(items.len(), N);
         Self::from_forest(
             TreeArray::<C, Partial<C>, N>::from_leaves_and_paths_unchecked(model, items, witnesses),
             model.clone(),
         )
+    }
+
+    #[inline]
+    fn sort_items(items: Vec<Self::Item>) -> Vec<Vec<Self::Item>> {
+        let mut result = Vec::<Vec<Self::Item>>::default();
+        result.resize_with(N, Default::default);
+
+        for item in items {
+            let tree_index = C::tree_index(&item).into();
+            result[tree_index].push(item);
+        }
+
+        result
     }
 }
 
@@ -623,12 +633,10 @@ where
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
-    const NUMBER_OF_PROOFS: usize = N;
-
     #[inline]
     fn from_items_and_witnesses(
         model: &Self::Model,
-        items: Vec<Self::Item>,
+        items: Vec<Vec<Self::Item>>,
         witnesses: Vec<Self::Witness>,
     ) -> Self {
         assert_eq!(witnesses.len(), N);
@@ -638,6 +646,19 @@ where
             ),
             model.clone(),
         )
+    }
+
+    #[inline]
+    fn sort_items(items: Vec<Self::Item>) -> Vec<Vec<Self::Item>> {
+        let mut result = Vec::<Vec<Self::Item>>::default();
+        result.resize_with(N, Default::default);
+
+        for item in items {
+            let tree_index = C::tree_index(&item).into();
+            result[tree_index].push(item);
+        }
+
+        result
     }
 }
 

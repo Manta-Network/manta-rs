@@ -990,7 +990,7 @@ impl Config {
         mut event_subscriber: ES,
     ) -> Result<bool, Error<C, L, S>>
     where
-        C: Configuration,
+        C: signer::Configuration,
         C::AssetValue: AddAssign + SampleUniform,
         for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
         L: Ledger<C>
@@ -1001,6 +1001,7 @@ impl Config {
             >,
         Error<C, L, S>: Debug,
         S: signer::Connection<C, Checkpoint = <L as ledger::Read<SyncData<C>>>::Checkpoint>,
+        S::Checkpoint: signer::Checkpoint<C>,
         S::Error: Debug,
         B: BalanceState<C::AssetId, C::AssetValue>,
         R: CryptoRng + RngCore,

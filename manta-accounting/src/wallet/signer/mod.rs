@@ -82,7 +82,7 @@ where
     ///
     fn initial_sync(
         &mut self,
-        request: InitialSyncData<C>,
+        request: InitialSyncRequest<C>,
     ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error>;
 
     /// Signs a transaction and returns the ledger transfer posts if successful.
@@ -115,6 +115,9 @@ where
     ) -> LocalBoxFutureResult<SignWithTransactionDataResult<C>, Self::Error>
     where
         TransferPost<C>: Clone;
+
+    ///
+    fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error>;
 }
 
 /// Signer Initial Synchronization Data
@@ -160,6 +163,106 @@ where
 
     /// Nullifier Count
     pub nullifier_count: u128,
+}
+
+/// Signer Initial Synchronization Request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"
+                UtxoAccumulatorItem<C>: Deserialize<'de>,
+                UtxoAccumulatorWitness<C>: Deserialize<'de>,
+                Nullifier<C>: Deserialize<'de>,
+            ",
+            serialize = r"
+                UtxoAccumulatorItem<C>: Serialize,
+                UtxoAccumulatorWitness<C>: Serialize,
+                Nullifier<C>: Serialize,
+            ",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(
+        bound = "UtxoAccumulatorItem<C>: Clone, UtxoAccumulatorWitness<C>: Clone, Nullifier<C>: Clone"
+    ),
+    Debug(
+        bound = "UtxoAccumulatorItem<C>: Debug, UtxoAccumulatorWitness<C>: Debug, Nullifier<C>: Debug"
+    ),
+    Default(bound = ""),
+    Eq(bound = "UtxoAccumulatorItem<C>: Eq, UtxoAccumulatorWitness<C>: Eq, Nullifier<C>: Eq"),
+    Hash(
+        bound = "UtxoAccumulatorItem<C>: Hash, UtxoAccumulatorWitness<C>: Hash, Nullifier<C>: Hash"
+    ),
+    PartialEq(
+        bound = "UtxoAccumulatorItem<C>: PartialEq, UtxoAccumulatorWitness<C>: PartialEq, Nullifier<C>: PartialEq"
+    )
+)]
+pub struct InitialSyncRequest<C>
+where
+    C: transfer::Configuration + ?Sized,
+{
+    /// UTXO Data
+    pub utxo_data: Vec<Vec<UtxoAccumulatorItem<C>>>,
+
+    /// Membership Proof Data
+    pub membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
+
+    /// Nullifier Count
+    pub nullifier_count: u128,
+}
+
+impl<C> InitialSyncRequest<C>
+where
+    C: transfer::Configuration,
+{
+    ///
+    #[inline]
+    pub fn from_initial_sync_data(parameters: &Parameters<C>, data: InitialSyncData<C>) -> Self
+    where
+        C: Configuration,
+    {
+        Self {
+            utxo_data: C::UtxoAccumulator::sort_items(
+                data.utxo_data
+                    .iter()
+                    .map(|utxo| functions::item_hash::<C>(parameters, utxo))
+                    .collect(),
+            ),
+            membership_proof_data: data.membership_proof_data,
+            nullifier_count: data.nullifier_count,
+        }
+    }
+
+    ///
+    #[inline]
+    pub fn extend_with_data(&mut self, parameters: &Parameters<C>, data: InitialSyncData<C>)
+    where
+        C: Configuration,
+    {
+        let InitialSyncData {
+            utxo_data,
+            membership_proof_data,
+            nullifier_count,
+        } = data;
+        let sorted_utxo_data = C::UtxoAccumulator::sort_items(
+            utxo_data
+                .iter()
+                .map(|utxo| functions::item_hash::<C>(parameters, utxo))
+                .collect(),
+        );
+        for (old_vector, new_vector) in self.utxo_data.iter_mut().zip(sorted_utxo_data.into_iter())
+        {
+            old_vector.extend(new_vector)
+        }
+        self.membership_proof_data = membership_proof_data;
+        self.nullifier_count = nullifier_count;
+    }
 }
 
 /// Signer Synchronization Data
@@ -684,6 +787,9 @@ where
     /// Updates `self` by viewing a new `accumulator`.
     fn update_from_utxo_accumulator(&mut self, accumulator: &Self::UtxoAccumulator);
 
+    ///
+    fn update_from_utxo_count(&mut self, utxo_count: Vec<usize>);
+
     /// Computes a best-effort [`Checkpoint`] from the current `accumulator` state.
     #[inline]
     fn from_utxo_accumulator(accumulator: &Self::UtxoAccumulator) -> Self {
@@ -1137,10 +1243,9 @@ where
     #[inline]
     pub fn initial_sync(
         &mut self,
-        request: InitialSyncData<C>,
+        request: InitialSyncRequest<C>,
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
         functions::intial_sync(
-            &self.parameters,
             &mut self.state.assets,
             &mut self.state.checkpoint,
             &mut self.state.utxo_accumulator,
@@ -1275,6 +1380,12 @@ where
         }
         false
     }
+
+    ///
+    #[inline]
+    pub fn transfer_parameters(&self) -> Parameters<C> {
+        self.parameters.parameters.clone()
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
@@ -1296,7 +1407,7 @@ where
     #[inline]
     fn initial_sync(
         &mut self,
-        request: InitialSyncData<C>,
+        request: InitialSyncRequest<C>,
     ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error> {
         Box::pin(async move { Ok(self.initial_sync(request)) })
     }
@@ -1339,6 +1450,11 @@ where
         TransferPost<C>: Clone,
     {
         Box::pin(async move { Ok(self.sign_with_transaction_data(request.transaction)) })
+    }
+
+    #[inline]
+    fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error> {
+        Box::pin(async move { Ok(Signer::transfer_parameters(self)) })
     }
 }
 

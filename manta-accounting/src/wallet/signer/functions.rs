@@ -35,9 +35,9 @@ use crate::{
         UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorWitness,
     },
     wallet::signer::{
-        AccountTable, BalanceUpdate, Checkpoint, Configuration, InitialSyncData, SignError,
-        SignResponse, SignWithTransactionDataResponse, SignWithTransactionDataResult,
-        SignerParameters, SyncData, SyncError, SyncRequest, SyncResponse,
+        AccountTable, BalanceUpdate, Checkpoint, Configuration, SignError, SignResponse,
+        SignWithTransactionDataResponse, SignWithTransactionDataResult, SignerParameters, SyncData,
+        SyncError, SyncRequest, SyncResponse,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -49,6 +49,8 @@ use manta_util::{
     array_map, cmp::Independence, into_array_unchecked, iter::IteratorExt, persistence::Rollback,
     vec::VecExt,
 };
+
+use super::InitialSyncRequest;
 
 /// Returns the default account for `accounts`.
 #[inline]
@@ -110,7 +112,7 @@ where
 /// Hashes `utxo` using the [`UtxoAccumulatorItemHash`](transfer::Configuration::UtxoAccumulatorItemHash)
 /// in the transfer [`Configuration`](transfer::Configuration).
 #[inline]
-fn item_hash<C>(parameters: &C::Parameters, utxo: &Utxo<C>) -> UtxoAccumulatorItem<C>
+pub fn item_hash<C>(parameters: &C::Parameters, utxo: &Utxo<C>) -> UtxoAccumulatorItem<C>
 where
     C: Configuration,
 {
@@ -937,16 +939,15 @@ where
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
 #[inline]
 pub fn intial_sync<C>(
-    parameters: &SignerParameters<C>,
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
-    request: InitialSyncData<C>,
+    request: InitialSyncRequest<C>,
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
 {
-    let InitialSyncData {
+    let InitialSyncRequest {
         utxo_data,
         membership_proof_data,
         nullifier_count,
@@ -955,7 +956,6 @@ where
         assets,
         checkpoint,
         utxo_accumulator.model(),
-        &parameters.parameters,
         utxo_data,
         membership_proof_data,
         nullifier_count,
@@ -972,8 +972,7 @@ fn initial_sync_with<C>(
     assets: &mut C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator_model: &UtxoAccumulatorModel<C>,
-    parameters: &Parameters<C>,
-    utxos: Vec<Utxo<C>>,
+    utxos: Vec<Vec<UtxoAccumulatorItem<C>>>,
     membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
     nullifier_count: u128,
 ) -> (C::UtxoAccumulator, SyncResponse<C, C::Checkpoint>)
@@ -982,10 +981,7 @@ where
 {
     let accumulator = C::UtxoAccumulator::from_items_and_witnesses(
         utxo_accumulator_model,
-        utxos
-            .iter()
-            .map(|utxo| item_hash::<C>(parameters, utxo))
-            .collect(),
+        utxos,
         membership_proof_data,
     );
     checkpoint.update_from_nullifiers(nullifier_count as usize);
