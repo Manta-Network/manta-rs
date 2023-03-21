@@ -244,6 +244,7 @@ where
     pub fn extend_with_data(&mut self, parameters: &Parameters<C>, data: InitialSyncData<C>)
     where
         C: Configuration,
+        UtxoAccumulatorItem<C>: Debug,
     {
         let InitialSyncData {
             utxo_data,
@@ -256,6 +257,7 @@ where
                 .map(|utxo| functions::item_hash::<C>(parameters, utxo))
                 .collect(),
         );
+        panic!("Sorted utxo data: {:?}", sorted_utxo_data);
         for (old_vector, new_vector) in self.utxo_data.iter_mut().zip(sorted_utxo_data.into_iter())
         {
             old_vector.extend(new_vector)

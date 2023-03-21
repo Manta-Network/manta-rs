@@ -297,7 +297,6 @@ where
                     .map_err(Error::SignerConnectionError)?,
                 data,
             );
-            panic!("Utxo data: {:?}", request.utxo_data);
             checkpoint
                 .update_from_utxo_count(request.utxo_data.iter().map(|utxos| utxos.len()).collect())
         }
