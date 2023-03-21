@@ -257,11 +257,11 @@ where
                 .map(|utxo| functions::item_hash::<C>(parameters, utxo))
                 .collect(),
         );
-        panic!("Sorted utxo data: {:?}", sorted_utxo_data);
         for (old_vector, new_vector) in self.utxo_data.iter_mut().zip(sorted_utxo_data.into_iter())
         {
             old_vector.extend(new_vector)
         }
+        panic!("Utxo data: {:?}", self.utxo_data);
         self.membership_proof_data = membership_proof_data;
         self.nullifier_count = nullifier_count;
     }
