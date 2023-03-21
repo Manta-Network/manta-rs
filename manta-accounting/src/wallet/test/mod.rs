@@ -21,7 +21,7 @@
 
 use crate::{
     asset::AssetList,
-    transfer::{canonical::Transaction, Address, Asset, Configuration, TransferPost},
+    transfer::{canonical::Transaction, Address, Asset, Configuration, TransferPost, UtxoAccumulatorItem},
     wallet::{
         ledger,
         signer::{self, InitialSyncData, SyncData},
@@ -1012,6 +1012,7 @@ impl Config {
         ES: Copy + FnMut(&sim::Event<sim::ActionSim<Simulation<C, L, S, B>>>) -> ESFut,
         ESFut: Future<Output = ()>,
         Address<C>: Clone + Eq + Hash,
+        UtxoAccumulatorItem<C>: Debug,
     {
         let action_distribution = ActionDistribution::try_from(self.action_distribution)
             .expect("Unable to sample from action distribution.");

@@ -31,7 +31,7 @@ use crate::{
     asset::AssetList,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel,
+        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel, UtxoAccumulatorItem,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
@@ -274,6 +274,7 @@ where
         L: ledger::Read<InitialSyncData<C>, Checkpoint = S::Checkpoint>,
         C: signer::Configuration,
         S::Checkpoint: signer::Checkpoint<C>,
+        UtxoAccumulatorItem<C>: Debug,
     {
         let mut is_continue = true;
         let mut checkpoint = self.checkpoint.clone();
@@ -296,6 +297,7 @@ where
                     .map_err(Error::SignerConnectionError)?,
                 data,
             );
+            panic!("Utxo data: {:?}", request.utxo_data);
             checkpoint
                 .update_from_utxo_count(request.utxo_data.iter().map(|utxos| utxos.len()).collect())
         }
