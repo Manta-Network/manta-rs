@@ -596,6 +596,8 @@ where
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
+    const NUMBER_OF_PROOFS: usize = N;
+
     #[inline]
     fn from_items_and_witnesses(
         model: &Self::Model,
@@ -633,6 +635,8 @@ where
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
+    const NUMBER_OF_PROOFS: usize = N;
+
     #[inline]
     fn from_items_and_witnesses(
         model: &Self::Model,

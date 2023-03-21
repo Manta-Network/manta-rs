@@ -31,7 +31,8 @@ use crate::{
     asset::AssetList,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel, UtxoAccumulatorItem,
+        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorItem,
+        UtxoAccumulatorModel,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},

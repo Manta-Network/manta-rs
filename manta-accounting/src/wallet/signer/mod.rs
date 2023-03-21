@@ -194,7 +194,6 @@ where
     Debug(
         bound = "UtxoAccumulatorItem<C>: Debug, UtxoAccumulatorWitness<C>: Debug, Nullifier<C>: Debug"
     ),
-    Default(bound = ""),
     Eq(bound = "UtxoAccumulatorItem<C>: Eq, UtxoAccumulatorWitness<C>: Eq, Nullifier<C>: Eq"),
     Hash(
         bound = "UtxoAccumulatorItem<C>: Hash, UtxoAccumulatorWitness<C>: Hash, Nullifier<C>: Hash"
@@ -261,9 +260,26 @@ where
         {
             old_vector.extend(new_vector)
         }
-        panic!("Utxo data: {:?}", self.utxo_data);
         self.membership_proof_data = membership_proof_data;
         self.nullifier_count = nullifier_count;
+    }
+}
+
+impl<C> Default for InitialSyncRequest<C>
+where
+    C: Configuration,
+{
+    #[inline]
+    fn default() -> Self {
+        let mut utxo_data = Vec::<Vec<_>>::default();
+        let mut membership_proof_data = Vec::new();
+        utxo_data.resize_with(C::UtxoAccumulator::NUMBER_OF_PROOFS, Default::default);
+        membership_proof_data.resize_with(C::UtxoAccumulator::NUMBER_OF_PROOFS, Default::default);
+        Self {
+            utxo_data,
+            membership_proof_data,
+            nullifier_count: Default::default(),
+        }
     }
 }
 
