@@ -35,9 +35,9 @@ use crate::{
         UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorWitness,
     },
     wallet::signer::{
-        AccountTable, BalanceUpdate, Checkpoint, Configuration, SignError, SignResponse,
-        SignWithTransactionDataResponse, SignWithTransactionDataResult, SignerParameters, SyncData,
-        SyncError, SyncRequest, SyncResponse,
+        AccountTable, BalanceUpdate, Checkpoint, Configuration, InitialSyncRequest, SignError,
+        SignResponse, SignWithTransactionDataResponse, SignWithTransactionDataResult,
+        SignerParameters, SyncData, SyncError, SyncRequest, SyncResponse,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -49,8 +49,6 @@ use manta_util::{
     array_map, cmp::Independence, into_array_unchecked, iter::IteratorExt, persistence::Rollback,
     vec::VecExt,
 };
-
-use super::InitialSyncRequest;
 
 /// Returns the default account for `accounts`.
 #[inline]
@@ -965,8 +963,8 @@ where
     Ok(response)
 }
 
-/// Updates the internal ledger state, returning the new asset distribution.
-#[allow(clippy::too_many_arguments)]
+/// Updates the internal ledger state from `utxos`, `membership_proof_data`
+/// and `nullifier_count`.
 #[inline]
 fn initial_sync_with<C>(
     assets: &mut C::AssetMap,

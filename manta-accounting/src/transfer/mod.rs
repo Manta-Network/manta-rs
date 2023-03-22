@@ -148,11 +148,11 @@ pub trait Configuration {
     type UtxoAccumulatorItemHash: ItemHashFunction<Utxo<Self>, Item = UtxoAccumulatorItem<Self>>;
 
     /// Parameters Type
-    type Parameters: auth::DeriveContext
+    type Parameters: Clone
+        + auth::DeriveContext
         + auth::ProveAuthorization
         + auth::VerifyAuthorization
         + auth::DeriveSigningKey
-        + Clone
         + for<'a> auth::Sign<BodyWithAccountsRef<'a, Self>>
         + for<'a> auth::VerifySignature<BodyWithAccountsRef<'a, Self>>
         + utxo::AssetType<Asset = Asset<Self>>

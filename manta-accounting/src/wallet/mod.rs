@@ -39,8 +39,9 @@ use crate::{
         ledger::ReadResponse,
         signer::{
             BalanceUpdate, Checkpoint, IdentityRequest, IdentityResponse, InitialSyncData,
-            SignError, SignRequest, SignResponse, SignWithTransactionDataResponse, SyncData,
-            SyncError, SyncRequest, SyncResponse, TransactionDataRequest, TransactionDataResponse,
+            InitialSyncRequest, SignError, SignRequest, SignResponse,
+            SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
+            TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -50,8 +51,6 @@ use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use self::signer::InitialSyncRequest;
 
 pub mod balance;
 pub mod ledger;
@@ -268,7 +267,24 @@ where
         Ok(())
     }
 
+    /// Pulls data from the ledger, synchronizing the wallet and balance state. This method
+    /// builds a [`InitialSyncRequest`] by continuously calling [`read`](ledger::Read::read)
+    /// until all the ledger data has arrived. Once the request is built, it executes
+    /// synchronizes the signer against it.
     ///
+    /// # Implementation Note
+    ///
+    /// Using this method to synchronize a signer will make it impossibile to spend any
+    /// [`Utxo`](crate::transfer::Utxo)s already on the ledger at the time of synchronization.
+    /// Therefore, this method should only be used for the initial synchronization of a
+    /// new signer.
+    ///
+    /// # Failure Conditions
+    ///
+    /// This method returns an element of type [`Error`] on failure, which can result from any
+    /// number of synchronization issues between the wallet, the ledger, and the signer. See the
+    /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
+    /// how to resolve them.
     #[inline]
     pub async fn initial_sync(&mut self) -> Result<(), Error<C, L, S>>
     where
@@ -390,7 +406,7 @@ where
         }
     }
 
-    ///
+    /// Performs an initial synchronization with the signer against the given `request`.
     #[inline]
     async fn signer_initial_sync(
         &mut self,

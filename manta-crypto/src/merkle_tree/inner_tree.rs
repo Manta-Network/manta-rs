@@ -775,7 +775,7 @@ where
         self.inner_tree.path(leaf_index)
     }
 
-    ///
+    /// Sets the starting leaf index in `self` to `default`.
     #[inline]
     pub fn reset_starting_leaf_index(&mut self, default: Node) {
         self.starting_leaf_index = default;

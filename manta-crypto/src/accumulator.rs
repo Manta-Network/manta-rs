@@ -205,7 +205,7 @@ pub trait OptimizedAccumulator: Accumulator {
 
 /// From Items and Witnesses
 pub trait FromItemsAndWitnesses: Accumulator {
-    ///
+    /// Number of Proofs
     const NUMBER_OF_PROOFS: usize;
 
     /// Builds a new [`Self`] from `items` and `proofs`.

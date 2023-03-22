@@ -79,7 +79,14 @@ where
         request: SyncRequest<C, Self::Checkpoint>,
     ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error>;
 
+    /// Performs the initial synchronization of a new signer with the ledger data.
     ///
+    /// # Implementation Note
+    ///
+    /// Using this method to synchronize a signer will make it impossibile to spend any
+    /// [`Utxo`](crate::transfer::Utxo)s already on the ledger at the time of synchronization.
+    /// Therefore, this method should only be used for the initial synchronization of a
+    /// new signer.
     fn initial_sync(
         &mut self,
         request: InitialSyncRequest<C>,
@@ -116,7 +123,7 @@ where
     where
         TransferPost<C>: Clone;
 
-    ///
+    /// Returns the transfer [`Parameters`] corresponding to `self`.
     fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error>;
 }
 
@@ -220,7 +227,7 @@ impl<C> InitialSyncRequest<C>
 where
     C: transfer::Configuration,
 {
-    ///
+    /// Builds a new [`InitialSyncRequest`] from `parameters` and `data`.
     #[inline]
     pub fn from_initial_sync_data(parameters: &Parameters<C>, data: InitialSyncData<C>) -> Self
     where
@@ -238,7 +245,7 @@ where
         }
     }
 
-    ///
+    /// Extends `self` with `parameters` and `data`.
     #[inline]
     pub fn extend_with_data(&mut self, parameters: &Parameters<C>, data: InitialSyncData<C>)
     where
@@ -805,7 +812,7 @@ where
     /// Updates `self` by viewing a new `accumulator`.
     fn update_from_utxo_accumulator(&mut self, accumulator: &Self::UtxoAccumulator);
 
-    ///
+    /// Updates `self` by viewing `utxo_count`-many [`Utxo`]s.
     fn update_from_utxo_count(&mut self, utxo_count: Vec<usize>);
 
     /// Computes a best-effort [`Checkpoint`] from the current `accumulator` state.
@@ -1257,7 +1264,14 @@ where
         )
     }
 
+    /// Performs the initial synchronization of a new signer with the ledger data.
     ///
+    /// # Implementation Note
+    ///
+    /// Using this method to synchronize a signer will make it impossibile to spend any
+    /// [`Utxo`](crate::transfer::Utxo)s already on the ledger at the time of synchronization.
+    /// Therefore, this method should only be used for the initial synchronization of a
+    /// new signer.
     #[inline]
     pub fn initial_sync(
         &mut self,
@@ -1399,10 +1413,10 @@ where
         false
     }
 
-    ///
+    /// Returns the transfer [`Parameters`] corresponding to `self`.
     #[inline]
-    pub fn transfer_parameters(&self) -> Parameters<C> {
-        self.parameters.parameters.clone()
+    pub fn transfer_parameters(&self) -> &Parameters<C> {
+        &self.parameters.parameters
     }
 }
 
@@ -1472,7 +1486,7 @@ where
 
     #[inline]
     fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error> {
-        Box::pin(async move { Ok(Signer::transfer_parameters(self)) })
+        Box::pin(async move { Ok(Signer::transfer_parameters(self).clone()) })
     }
 }
 
