@@ -22,7 +22,7 @@
 use crate::{
     asset::AssetList,
     transfer::{
-        canonical::Transaction, Address, Asset, Configuration, TransferPost, UtxoAccumulatorItem,
+        canonical::Transaction, Address, Asset, Configuration, TransferPost,
     },
     wallet::{
         ledger,

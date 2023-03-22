@@ -31,7 +31,7 @@ use crate::{
     asset::AssetList,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorItem,
+        Address, Asset, Configuration, IdentifiedAsset, TransferPost,
         UtxoAccumulatorModel,
     },
     wallet::{
