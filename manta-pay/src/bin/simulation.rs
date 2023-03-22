@@ -46,5 +46,3 @@ pub fn main() {
             .exit(),
     }
 }
-
-// cargo run --release --package manta-pay --all-features --bin simulation 3 10 2 1000

@@ -140,14 +140,7 @@ impl Simulation {
         self.setup(&mut ledger);
         let ledger = Arc::new(RwLock::new(ledger));
         self.run_with(
-            |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
-            |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
-            move |i| account_id_from_u64(i as u64),
-        )
-        .await;
-        println!("{:?}", ledger.read().await.utxos());
-        self.run_with(
-            |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
+            move |i| LedgerConnection::new(account_id_from_u64(i as u64), ledger.clone()),
             move |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
             move |i| account_id_from_u64(i as u64),
         )
