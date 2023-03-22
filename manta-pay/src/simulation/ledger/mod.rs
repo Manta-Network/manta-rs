@@ -219,7 +219,7 @@ impl Ledger {
     }
 
     /// Pulls the data from the ledger necessary to perform an [`initial_sync`].
-    /// 
+    ///
     /// [`initial_sync`]: manta_accounting::wallet::signer::Connection::initial_sync
     #[inline]
     pub fn initial_read(&self) -> ReadResponse<InitialSyncData> {

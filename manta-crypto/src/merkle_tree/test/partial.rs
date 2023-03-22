@@ -122,10 +122,13 @@ fn test_from_leaves_and_path_forest() {
     let path_1 = Path::from(forest.forest.get(BinaryIndex::Zero).current_path());
     let path_2 = Path::from(forest.forest.get(BinaryIndex::One).current_path());
     let paths = vec![path_1, path_2];
+    let items = TreeArrayMerkleForest::<_, ForkedTree<_, Partial<Config>>, 2>::sort_items(
+        insertions.clone(),
+    );
     let partial_forest =
         TreeArrayMerkleForest::<_, ForkedTree<_, Partial<Config>>, 2>::from_items_and_witnesses(
             &parameters,
-            insertions.clone(),
+            items,
             paths,
         );
     for leaf in &insertions {
