@@ -144,7 +144,7 @@ impl Simulation {
             move |_| sample_signer(proving_context, parameters, utxo_accumulator_model, rng),
             move |i| account_id_from_u64(i as u64),
         )
-        .await;
+        .await
     }
 
     /// Runs the simulation with the given ledger connections and signer connections.
