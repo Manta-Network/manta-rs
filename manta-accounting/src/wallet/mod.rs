@@ -291,7 +291,6 @@ where
         L: ledger::Read<InitialSyncData<C>, Checkpoint = S::Checkpoint>,
         C: signer::Configuration,
         S::Checkpoint: signer::Checkpoint<C>,
-        UtxoAccumulatorItem<C>: Debug,
     {
         let mut is_continue = true;
         let mut checkpoint = self.checkpoint.clone();

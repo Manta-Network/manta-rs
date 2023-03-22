@@ -250,7 +250,6 @@ where
     pub fn extend_with_data(&mut self, parameters: &Parameters<C>, data: InitialSyncData<C>)
     where
         C: Configuration,
-        UtxoAccumulatorItem<C>: Debug,
     {
         let InitialSyncData {
             utxo_data,
