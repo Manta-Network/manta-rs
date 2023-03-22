@@ -944,12 +944,16 @@ pub fn intial_sync<C>(
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
+    C::AssetMap: Default,
+    C::Checkpoint: Default,
 {
     let InitialSyncRequest {
         utxo_data,
         membership_proof_data,
         nullifier_count,
     } = request;
+    *checkpoint = Default::default();
+    *assets = Default::default();
     let (accumulator, response) = initial_sync_with::<C>(
         assets,
         checkpoint,
@@ -967,7 +971,7 @@ where
 /// and `nullifier_count`.
 #[inline]
 fn initial_sync_with<C>(
-    assets: &mut C::AssetMap,
+    assets: &C::AssetMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     utxos: Vec<Vec<UtxoAccumulatorItem<C>>>,

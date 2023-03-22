@@ -31,8 +31,7 @@ use crate::{
     asset::AssetList,
     transfer::{
         canonical::{Transaction, TransactionKind},
-        Address, Asset, Configuration, IdentifiedAsset, TransferPost,
-        UtxoAccumulatorModel,
+        Address, Asset, Configuration, IdentifiedAsset, TransferPost, UtxoAccumulatorModel,
     },
     wallet::{
         balance::{BTreeMapBalanceState, BalanceState},
@@ -293,7 +292,7 @@ where
         S::Checkpoint: signer::Checkpoint<C>,
     {
         let mut is_continue = true;
-        let mut checkpoint = self.checkpoint.clone();
+        let mut checkpoint = Default::default();
         let mut request = InitialSyncRequest::<C>::default();
         while is_continue {
             let ReadResponse {
@@ -433,16 +432,13 @@ where
                 self.checkpoint = checkpoint;
                 Ok(())
             }
-            Err(SyncError::InconsistentSynchronization { checkpoint }) => {
-                if checkpoint < self.checkpoint {
-                    self.checkpoint = checkpoint;
-                }
-                Err(Error::Inconsistency(
-                    InconsistencyError::SignerSynchronization,
-                ))
+            Err(SyncError::InconsistentSynchronization { checkpoint: _ }) => {
+                unreachable!("Initial synchronization always starts at the default checkpoint.")
             }
-            Err(SyncError::MissingProofAuthorizationKey) => {
-                Err(Error::MissingProofAuthorizationKey)
+            _ => {
+                unreachable!(
+                    "Proof authorization key is not required for the initial synchronization."
+                );
             }
         }
     }

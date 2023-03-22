@@ -21,9 +21,7 @@
 
 use crate::{
     asset::AssetList,
-    transfer::{
-        canonical::Transaction, Address, Asset, Configuration, TransferPost,
-    },
+    transfer::{canonical::Transaction, Address, Asset, Configuration, TransferPost},
     wallet::{
         ledger,
         signer::{self, InitialSyncData, SyncData},
