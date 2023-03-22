@@ -218,7 +218,9 @@ impl Ledger {
         true
     }
 
-    ///
+    /// Pulls the data from the ledger necessary to perform an [`initial_sync`].
+    /// 
+    /// [`initial_sync`]: manta_accounting::wallet::signer::Connection::initial_sync
     #[inline]
     pub fn initial_read(&self) -> ReadResponse<InitialSyncData> {
         let mut utxos = Vec::new();
@@ -252,7 +254,7 @@ impl Ledger {
         }
     }
 
-    ///
+    /// Returns the [`Utxo`]s in `self`.
     #[inline]
     pub fn utxos(&self) -> &HashSet<Utxo> {
         &self.utxos

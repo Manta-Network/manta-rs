@@ -294,6 +294,7 @@ pub enum BinaryIndex {
 }
 
 impl From<BinaryIndex> for usize {
+    #[inline]
     fn from(value: BinaryIndex) -> Self {
         match value {
             BinaryIndex::Zero => 0,
@@ -303,11 +304,11 @@ impl From<BinaryIndex> for usize {
 }
 
 impl forest::FixedIndex<2> for BinaryIndex {
+    #[inline]
     fn from_index(index: usize) -> Self {
-        if index % 2 == 0 {
-            BinaryIndex::Zero
-        } else {
-            BinaryIndex::One
+        match index % 2 {
+            0 => BinaryIndex::Zero,
+            _ => BinaryIndex::One,
         }
     }
 }
@@ -317,11 +318,9 @@ impl<const HEIGHT: usize> forest::Configuration for Test<u64, HEIGHT> {
 
     #[inline]
     fn tree_index(leaf: &Leaf<Self>) -> Self::Index {
-        let parity = leaf % 2;
-        if parity == 0 {
-            BinaryIndex::Zero
-        } else {
-            BinaryIndex::One
+        match leaf % 2 {
+            0 => BinaryIndex::Zero,
+            _ => BinaryIndex::One,
         }
     }
 }
