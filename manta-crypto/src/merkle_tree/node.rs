@@ -159,7 +159,7 @@ impl Default for Parity {
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Node<Idx = usize>(
     /// Level-wise Index to a node in a Binary Tree
     pub Idx,
@@ -260,6 +260,12 @@ impl Node {
     #[must_use]
     pub const fn parent(&self) -> Self {
         Self(self.0 >> 1)
+    }
+
+    /// Returns the `k`-th ancestor [`Node`] of `self`.
+    #[inline]
+    pub const fn ancestor(&self, k: usize) -> Self {
+        Self(self.0 >> k)
     }
 
     /// Converts `self` into its parent, returning the parent [`Node`].
@@ -433,3 +439,74 @@ impl Iterator for NodeParents {
 }
 
 impl FusedIterator for NodeParents {}
+
+/// Dual Parity
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct DualParity(pub (Parity, Parity));
+
+impl DualParity {
+    ///
+    #[inline]
+    pub const fn starting_parity(&self) -> Parity {
+        self.0 .0
+    }
+
+    ///
+    #[inline]
+    pub const fn final_parity(&self) -> Parity {
+        self.0 .1
+    }
+}
+
+/// Node Range
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct NodeRange {
+    /// Starting Node
+    pub node: Node,
+
+    /// Extra Nodes
+    pub extra_nodes: usize,
+}
+
+impl NodeRange {
+    ///
+    #[inline]
+    pub const fn dual_parity(&self) -> DualParity {
+        let starting_node_parity = self.node.parity();
+        let final_node_parity = match starting_node_parity {
+            Parity::Left => Parity::from_index(self.extra_nodes),
+            Parity::Right => Parity::from_index(self.extra_nodes + 1),
+        };
+        DualParity((starting_node_parity, final_node_parity))
+    }
+
+    ///
+    #[inline]
+    pub const fn parents(&self) -> Self {
+        let extra_nodes = match self.dual_parity().0 {
+            (Parity::Left, Parity::Right) => (self.extra_nodes - 1) >> 1,
+            (Parity::Right, Parity::Left) => (self.extra_nodes + 1) >> 1,
+            _ => self.extra_nodes >> 1,
+        };
+        Self {
+            node: self.node.parent(),
+            extra_nodes,
+        }
+    }
+
+    ///
+    #[inline]
+    pub const fn last_node(&self) -> Node {
+        Node(self.node.0 + self.extra_nodes)
+    }
+}

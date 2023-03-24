@@ -51,7 +51,7 @@ fn test_from_leaves_and_path() {
     }
     let forked_tree = ForkedTree::<Config, Full<Config>>::new(tree.tree.clone(), &parameters);
     let path = tree.current_path();
-    let partial_tree = PartialMerkleTree::<Test<u64, HEIGHT>> {
+    let partial_tree = PartialMerkleTree::<Config> {
         parameters,
         tree: Partial::from_leaves_and_path_unchecked(
             &parameters,

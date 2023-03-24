@@ -22,10 +22,16 @@
 
 use crate::merkle_tree::{
     path::{CurrentInnerPath, InnerPath},
-    path_length, Configuration, InnerDigest, Node, Parameters, Parity,
+    path_length, Configuration, DualParity, InnerDigest, Node, NodeRange, Parameters, Parity,
 };
-use alloc::collections::btree_map;
-use core::{fmt::Debug, hash::Hash, iter::FusedIterator, marker::PhantomData, ops::Index};
+use alloc::{collections::btree_map, vec::Vec};
+use core::{
+    fmt::Debug,
+    hash::Hash,
+    iter::FusedIterator,
+    marker::PhantomData,
+    ops::{Index, Range},
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -198,6 +204,177 @@ impl Iterator for InnerNodeIter {
 impl ExactSizeIterator for InnerNodeIter {}
 
 impl FusedIterator for InnerNodeIter {}
+
+///
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct InnerNodeRange {
+    ///
+    depth: usize,
+
+    ///
+    node_range: NodeRange,
+}
+
+impl InnerNodeRange {
+    ///
+    #[inline]
+    const fn new_unchecked(depth: usize, node_range: NodeRange) -> Self {
+        Self { depth, node_range }
+    }
+
+    ///
+    #[inline]
+    pub const fn new(depth: usize, node_range: NodeRange) -> Option<Self> {
+        let last_node = node_range.last_node();
+        if last_node.0 >= (1 << (depth + 1)) {
+            None
+        } else {
+            Some(Self::new_unchecked(depth, node_range))
+        }
+    }
+
+    ///
+    #[inline]
+    pub fn from_leaves<C>(leaf_index: Node, extra_leaves: usize) -> Option<Self>
+    where
+        C: Configuration + ?Sized,
+    {
+        Self::new(
+            path_length::<C, _>(),
+            NodeRange {
+                node: leaf_index,
+                extra_nodes: extra_leaves,
+            },
+        )
+        .map(|inner_node_range| inner_node_range.parents())
+        .flatten()
+    }
+
+    ///
+    #[inline]
+    pub const fn dual_parity(&self) -> DualParity {
+        self.node_range.dual_parity()
+    }
+
+    ///
+    #[inline]
+    pub const fn parents(&self) -> Option<Self> {
+        match self.depth.checked_sub(1) {
+            Some(depth) => Some(Self::new_unchecked(depth, self.node_range.parents())),
+            _ => None,
+        }
+    }
+
+    /// Converts `self` into its parent, if the parent exists, returning the parent [`InnerNode`].
+    #[inline]
+    pub fn into_parents(&mut self) -> Option<Self> {
+        match self.parents() {
+            Some(parents) => {
+                *self = parents;
+                Some(*self)
+            }
+            _ => None,
+        }
+    }
+
+    ///
+    #[inline]
+    pub const fn depth(&self) -> usize {
+        self.depth
+    }
+
+    ///
+    #[inline]
+    pub const fn node_range(&self) -> NodeRange {
+        self.node_range
+    }
+
+    ///
+    #[inline]
+    pub const fn starting_inner_node(&self) -> InnerNode {
+        InnerNode {
+            depth: self.depth,
+            index: self.node_range.node,
+        }
+    }
+
+    ///
+    #[inline]
+    pub const fn last_inner_node(&self) -> InnerNode {
+        InnerNode {
+            depth: self.depth,
+            index: self.node_range.last_node(),
+        }
+    }
+
+    ///
+    #[inline]
+    pub fn map_indices(&self) -> Range<usize> {
+        self.starting_inner_node().map_index()..self.last_inner_node().map_index() + 1
+    }
+}
+
+/// InnerNodeRangeIter
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct InnerNodeRangeIter {
+    ///
+    node_range: Option<InnerNodeRange>,
+}
+
+impl InnerNodeRangeIter {
+    /// Builds a new [`InnerNodeRangeIter`] from `node_range`.
+    #[inline]
+    const fn new(node_range: Option<InnerNodeRange>) -> Self {
+        Self { node_range }
+    }
+
+    /// Builds a new [`InnerNodeIter`] iterator over the parents of `leaf_index`.
+    #[inline]
+    pub fn from_leaves<C>(leaf_index: Node, extra_leaves: usize) -> Self
+    where
+        C: Configuration + ?Sized,
+    {
+        Self::new(InnerNodeRange::from_leaves::<C>(leaf_index, extra_leaves))
+    }
+
+    /// Returns `true` if the iterator has completed.
+    #[inline]
+    pub const fn is_done(&self) -> bool {
+        self.node_range.is_none()
+    }
+}
+
+// TODO: Add all methods which can be optimized.
+impl Iterator for InnerNodeRangeIter {
+    type Item = InnerNodeRange;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let node_range = self.node_range.take()?;
+        self.node_range = node_range.parents();
+        Some(node_range)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.node_range.map_or(0, move |n| n.depth + 1);
+        (len, Some(len))
+    }
+}
+
+impl ExactSizeIterator for InnerNodeRangeIter {}
+
+impl FusedIterator for InnerNodeRangeIter {}
 
 /// [`InnerTree`] Map Backend
 pub trait InnerMap<C>
@@ -527,6 +704,41 @@ where
         parameters.join(lhs, rhs)
     }
 
+    ///
+    #[inline]
+    fn insert_range_and_join(
+        &mut self,
+        parameters: &Parameters<C>,
+        node: InnerNodeRange,
+        mut inner_digests: Vec<InnerDigest<C>>,
+    ) -> Vec<InnerDigest<C>> {
+        let indices = node.map_indices();
+        let mut result = Vec::new();
+        for index in indices.clone() {
+            self.map
+                .set(index, inner_digests.pop().expect("Missing inner digest."));
+        }
+        match node.dual_parity().0 {
+            (Parity::Left, _) => {
+                for index in indices.step_by(2) {
+                    result.push(parameters.join(
+                        self.map_get_or_sentinel(index),
+                        self.map_get_or_sentinel(index + 1),
+                    ));
+                }
+            }
+            (Parity::Right, _) => {
+                for index in indices.step_by(2) {
+                    result.push(parameters.join(
+                        self.map_get_or_sentinel(index - 1),
+                        self.map_get_or_sentinel(index),
+                    ));
+                }
+            }
+        }
+        result
+    }
+
     /// Computes the new root of the tree after inserting `base` which corresponds to the leaf at
     /// `leaf_index`.
     #[inline]
@@ -539,6 +751,35 @@ where
         InnerNodeIter::from_leaf::<C>(leaf_index).fold(base, move |acc, node| {
             self.insert_and_join(parameters, node, acc)
         })
+    }
+
+    ///
+    #[inline]
+    fn compute_root_from_leaves(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_indices: NodeRange,
+        base: Vec<InnerDigest<C>>,
+    ) -> InnerDigest<C> {
+        InnerNodeRangeIter::from_leaves::<C>(leaf_indices.node, leaf_indices.extra_nodes)
+            .fold(base, move |inner_digests, node| {
+                self.insert_range_and_join(parameters, node, inner_digests)
+            })
+            .into_iter()
+            .next()
+            .expect("The final vector consists of the root of the Merkle tree.")
+    }
+
+    ///
+    #[inline]
+    pub fn batch_insert(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_indices: NodeRange,
+        base: Vec<InnerDigest<C>>,
+    ) {
+        let root = self.compute_root_from_leaves(parameters, leaf_indices, base);
+        self.set_root(root)
     }
 
     /// Inserts the `base` inner digest corresponding to the leaf at `leaf_index` into the tree.
@@ -756,6 +997,17 @@ where
     #[inline]
     pub fn insert(&mut self, parameters: &Parameters<C>, leaf_index: Node, base: InnerDigest<C>) {
         self.inner_tree.insert(parameters, leaf_index, base);
+    }
+
+    ///
+    #[inline]
+    pub fn batch_insert(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_indices: NodeRange,
+        base: Vec<InnerDigest<C>>,
+    ) {
+        self.inner_tree.batch_insert(parameters, leaf_indices, base);
     }
 
     /// Computes the inner path of the leaf given by `leaf_index` without checking if
