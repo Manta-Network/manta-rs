@@ -567,7 +567,7 @@ macro_rules! impl_from_items_and_witnesses {
             LeafDigest<C>: Clone + Default + PartialEq,
             InnerDigest<C>: Clone + Default + PartialEq,
         {
-            const NUMBER_OF_PROOFS: usize = N;
+            const NUMBER_OF_SUBACCUMULATORS: usize = N;
 
             #[inline]
             fn from_items_and_witnesses(
@@ -586,12 +586,10 @@ macro_rules! impl_from_items_and_witnesses {
             fn sort_items(items: Vec<Self::Item>) -> Vec<Vec<Self::Item>> {
                 let mut result = Vec::<Vec<Self::Item>>::default();
                 result.resize_with(N, Default::default);
-
                 for item in items {
                     let tree_index = C::tree_index(&item).into();
                     result[tree_index].push(item);
                 }
-
                 result
             }
         }

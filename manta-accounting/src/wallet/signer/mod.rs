@@ -166,6 +166,11 @@ where
     pub utxo_data: Vec<Utxo<C>>,
 
     /// Membership Proof Data
+    ///
+    /// # Note
+    ///
+    /// Each [`UtxoAccumulatorWitness`] here is the membership proof of the last item
+    /// of each subaccumulator in the [`UtxoAccumulator`](Configuration::UtxoAccumulator).
     pub membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
 
     /// Nullifier Count
@@ -217,6 +222,11 @@ where
     pub utxo_data: Vec<Vec<UtxoAccumulatorItem<C>>>,
 
     /// Membership Proof Data
+    ///
+    /// # Note
+    ///
+    /// Each [`UtxoAccumulatorWitness`] here is the membership proof of the last item
+    /// of each subaccumulator in the [`UtxoAccumulator`](Configuration::UtxoAccumulator).
     pub membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
 
     /// Nullifier Count
@@ -279,8 +289,14 @@ where
     fn default() -> Self {
         let mut utxo_data = Vec::<Vec<_>>::default();
         let mut membership_proof_data = Vec::new();
-        utxo_data.resize_with(C::UtxoAccumulator::NUMBER_OF_PROOFS, Default::default);
-        membership_proof_data.resize_with(C::UtxoAccumulator::NUMBER_OF_PROOFS, Default::default);
+        utxo_data.resize_with(
+            C::UtxoAccumulator::NUMBER_OF_SUBACCUMULATORS,
+            Default::default,
+        );
+        membership_proof_data.resize_with(
+            C::UtxoAccumulator::NUMBER_OF_SUBACCUMULATORS,
+            Default::default,
+        );
         Self {
             utxo_data,
             membership_proof_data,

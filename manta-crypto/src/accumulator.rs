@@ -205,8 +205,8 @@ pub trait OptimizedAccumulator: Accumulator {
 
 /// From Items and Witnesses
 pub trait FromItemsAndWitnesses: Accumulator {
-    /// Number of Proofs
-    const NUMBER_OF_PROOFS: usize;
+    /// Number of Subaccumulators
+    const NUMBER_OF_SUBACCUMULATORS: usize;
 
     /// Builds a new [`Self`] from `items` and `proofs`.
     fn from_items_and_witnesses(
@@ -215,7 +215,7 @@ pub trait FromItemsAndWitnesses: Accumulator {
         witnesses: Vec<Self::Witness>,
     ) -> Self;
 
-    /// Sorts `items`.
+    /// Groups `items` by the subaccumulator they belong to.
     // TODO: move this to the model.
     fn sort_items(items: Vec<Self::Item>) -> Vec<Vec<Self::Item>>;
 }

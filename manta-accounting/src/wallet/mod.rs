@@ -40,7 +40,7 @@ use crate::{
             BalanceUpdate, Checkpoint, IdentityRequest, IdentityResponse, InitialSyncData,
             InitialSyncRequest, SignError, SignRequest, SignResponse,
             SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
-            TransactionDataRequest, TransactionDataResponse,
+            SyncResult, TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -300,6 +300,11 @@ where
         let mut is_continue = true;
         let mut checkpoint = Default::default();
         let mut request = InitialSyncRequest::<C>::default();
+        let parameters = self
+            .signer
+            .transfer_parameters()
+            .await
+            .map_err(Error::SignerConnectionError)?;
         while is_continue {
             let ReadResponse {
                 should_continue,
@@ -310,14 +315,7 @@ where
                 .await
                 .map_err(Error::LedgerConnectionError)?;
             is_continue = should_continue;
-            request.extend_with_data(
-                &self
-                    .signer
-                    .transfer_parameters()
-                    .await
-                    .map_err(Error::SignerConnectionError)?,
-                data,
-            );
+            request.extend_with_data(&parameters, data);
             checkpoint
                 .update_from_utxo_count(request.utxo_data.iter().map(|utxos| utxos.len()).collect())
         }
@@ -365,18 +363,13 @@ where
         Ok(ControlFlow::should_continue(should_continue))
     }
 
-    /// Performs a synchronization with the signer against the given `request`.
+    /// Updates `self` from `response`.
     #[inline]
-    async fn signer_sync(
+    fn process_sync_response(
         &mut self,
-        request: SyncRequest<C, S::Checkpoint>,
+        response: SyncResult<C, S::Checkpoint>,
     ) -> Result<(), Error<C, L, S>> {
-        match self
-            .signer
-            .sync(request)
-            .await
-            .map_err(Error::SignerConnectionError)?
-        {
+        match response {
             Ok(SyncResponse {
                 checkpoint,
                 balance_update,
@@ -410,43 +403,32 @@ where
         }
     }
 
+    /// Performs a synchronization with the signer against the given `request`.
+    #[inline]
+    async fn signer_sync(
+        &mut self,
+        request: SyncRequest<C, S::Checkpoint>,
+    ) -> Result<(), Error<C, L, S>> {
+        let response = self
+            .signer
+            .sync(request)
+            .await
+            .map_err(Error::SignerConnectionError)?;
+        self.process_sync_response(response)
+    }
+
     /// Performs an initial synchronization with the signer against the given `request`.
     #[inline]
     async fn signer_initial_sync(
         &mut self,
         request: InitialSyncRequest<C>,
     ) -> Result<(), Error<C, L, S>> {
-        match self
+        let response = self
             .signer
             .initial_sync(request)
             .await
-            .map_err(Error::SignerConnectionError)?
-        {
-            Ok(SyncResponse {
-                checkpoint,
-                balance_update,
-            }) => {
-                match balance_update {
-                    BalanceUpdate::Full { assets } => {
-                        self.assets.clear();
-                        self.assets.deposit_all(assets);
-                    }
-                    _ => {
-                        unreachable!("No transactions could have happened on a new account.");
-                    }
-                }
-                self.checkpoint = checkpoint;
-                Ok(())
-            }
-            Err(SyncError::InconsistentSynchronization { checkpoint: _ }) => {
-                unreachable!("Initial synchronization always starts at the default checkpoint.")
-            }
-            _ => {
-                unreachable!(
-                    "Proof authorization key is not required for the initial synchronization."
-                );
-            }
-        }
+            .map_err(Error::SignerConnectionError)?;
+        self.process_sync_response(response)
     }
 
     /// Checks if `transaction` can be executed on the balance state of `self`, returning the
