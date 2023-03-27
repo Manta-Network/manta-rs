@@ -251,8 +251,7 @@ impl InnerNodeRange {
                 extra_nodes: extra_leaves,
             },
         )
-        .map(|inner_node_range| inner_node_range.parents())
-        .flatten()
+        .and_then(|inner_node_range| inner_node_range.parents())
     }
 
     ///

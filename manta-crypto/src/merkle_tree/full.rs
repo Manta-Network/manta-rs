@@ -30,6 +30,8 @@ use core::{fmt::Debug, hash::Hash};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use super::NodeRange;
+
 /// Full Merkle Tree Type
 pub type FullMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Full<C, M>>;
 
@@ -153,6 +155,24 @@ where
         );
         self.leaf_digests.push(leaf_digest);
     }
+
+    ///
+    #[inline]
+    fn batch_push_leaf_digests(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_indices: NodeRange,
+        leaf_digests: Vec<LeafDigest<C>>,
+    ) where
+        LeafDigest<C>: Default,
+    {
+        let base_inner_digests = leaf_indices.join_leaves(parameters, &leaf_digests, |node| {
+            self.get_leaf_sibling(node)
+        });
+        self.inner_digests
+            .batch_insert(parameters, leaf_indices, base_inner_digests);
+        self.leaf_digests.extend(leaf_digests);
+    }
 }
 
 impl<C, M> Tree<C> for Full<C, M>
@@ -209,6 +229,35 @@ where
         self.push_leaf_digest(parameters, Node(len), leaf_digest()?);
         Some(true)
     }
+
+    #[inline]
+    fn batch_maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        let len = self.len();
+        let leaf_digests = leaf_digests();
+        let number_of_leaf_digests = leaf_digests.len();
+        if leaf_digests.is_empty() {
+            return None;
+        }
+        if len + number_of_leaf_digests > capacity::<C, _>() {
+            return Some(false);
+        }
+        self.batch_push_leaf_digests(
+            parameters,
+            NodeRange {
+                node: Node(len),
+                extra_nodes: number_of_leaf_digests - 1,
+            },
+            leaf_digests,
+        );
+        Some(true)
+    }
 }
 
 impl<C, M> WithProofs<C> for Full<C, M>
@@ -260,5 +309,17 @@ where
         //       which is supposed to keep all of its nodes forever.
         let _ = index;
         false
+    }
+
+    #[inline]
+    fn batch_maybe_push_provable_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        self.batch_maybe_push_digest(parameters, leaf_digests)
     }
 }

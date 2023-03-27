@@ -17,6 +17,7 @@
 //! Merkle Tree Node Abstractions
 
 use crate::merkle_tree::{HashConfiguration, InnerDigest, InnerHash, LeafDigest, Parameters};
+use alloc::vec::Vec;
 use core::{
     iter::FusedIterator,
     ops::{Add, Sub},
@@ -508,5 +509,45 @@ impl NodeRange {
     #[inline]
     pub const fn last_node(&self) -> Node {
         Node(self.node.0 + self.extra_nodes)
+    }
+
+    ///
+    #[inline]
+    pub fn join_leaves<'a, C, F>(
+        &self,
+        parameters: &Parameters<C>,
+        leaves: &Vec<LeafDigest<C>>,
+        mut get_leaves: F,
+    ) -> Vec<InnerDigest<C>>
+    where
+        C: HashConfiguration + ?Sized,
+        LeafDigest<C>: 'a + Default,
+        F: FnMut(Node) -> Option<&'a LeafDigest<C>>,
+    {
+        let dual_parity = self.dual_parity();
+        let mut result = Vec::new();
+        let length = leaves.len();
+        let range = match dual_parity.starting_parity() {
+            Parity::Left => (0..length - 1).step_by(2),
+            _ => {
+                result.push(Node(0).join_leaves(
+                    parameters,
+                    get_leaves(self.node).unwrap_or(&Default::default()),
+                    &leaves[0],
+                ));
+                (1..length - 1).step_by(2)
+            }
+        };
+        for i in range {
+            result.push(Node(i).join_leaves(parameters, &leaves[i], &leaves[i + 1]))
+        }
+        if dual_parity.final_parity().is_left() {
+            result.push(self.last_node().join_leaves(
+                parameters,
+                &leaves[length - 1],
+                get_leaves(self.last_node()).unwrap_or(&Default::default()),
+            ))
+        }
+        result
     }
 }

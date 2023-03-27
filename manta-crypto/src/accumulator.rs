@@ -145,6 +145,21 @@ pub trait Accumulator: Types {
     fn contains(&self, item: &Self::Item) -> bool {
         self.prove(item).is_some()
     }
+
+    ///
+    #[inline]
+    fn batch_insert<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        for item in items.into_iter() {
+            if !self.insert(item) {
+                return false;
+            }
+        }
+        true
+    }
 }
 
 /// Constant Capacity Accumulator
@@ -183,6 +198,21 @@ pub trait OptimizedAccumulator: Accumulator {
     #[inline]
     fn insert_nonprovable(&mut self, item: &Self::Item) -> bool {
         self.insert(item)
+    }
+
+    ///
+    #[inline]
+    fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        for item in items.into_iter() {
+            if !self.insert_nonprovable(item) {
+                return false;
+            }
+        }
+        true
     }
 
     /// Removes the witnesses to the membership of `item` in `self`. The resulting state of the

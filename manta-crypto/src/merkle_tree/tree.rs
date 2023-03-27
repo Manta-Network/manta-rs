@@ -41,6 +41,7 @@ use crate::{
         path::{constraint::PathVar, CurrentPath, Path},
     },
 };
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
@@ -301,6 +302,53 @@ where
         self.push_digest(parameters, || parameters.digest(leaf))
     }
 
+    ///
+    #[inline]
+    fn batch_maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        let leaf_digests = leaf_digests();
+        if leaf_digests.is_empty() {
+            return None;
+        }
+        for leaf_digest in leaf_digests {
+            if !self.maybe_push_digest(parameters, || Some(leaf_digest))? {
+                return Some(false);
+            }
+        }
+        Some(true)
+    }
+
+    ///
+    #[inline]
+    fn batch_push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digests: F) -> bool
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        self.batch_maybe_push_digest(parameters, leaf_digests)
+            .unwrap()
+    }
+
+    ///
+    #[inline]
+    fn batch_push<'a, I>(&mut self, parameters: &Parameters<C>, leaves: I) -> bool
+    where
+        Leaf<C>: 'a,
+        I: IntoIterator<Item = &'a Leaf<C>>,
+    {
+        self.batch_push_digest(parameters, || {
+            leaves
+                .into_iter()
+                .map(|leaf| parameters.digest(leaf))
+                .collect()
+        })
+    }
+
     /// Appends an iterator of leaf digests at the end of the tree, returning the iterator back
     /// if it could not be inserted because the tree has exhausted its capacity.
     ///
@@ -449,6 +497,53 @@ where
     #[inline]
     fn push_provable(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool {
         self.push_provable_digest(parameters, move || parameters.digest(leaf))
+    }
+
+    ///
+    #[inline]
+    fn batch_maybe_push_provable_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        let leaf_digests = leaf_digests();
+        if leaf_digests.is_empty() {
+            return None;
+        }
+        for leaf_digest in leaf_digests {
+            if !self.maybe_push_provable_digest(parameters, || Some(leaf_digest))? {
+                return Some(false);
+            }
+        }
+        Some(true)
+    }
+
+    ///
+    #[inline]
+    fn batch_push_provable_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digests: F) -> bool
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        self.batch_maybe_push_provable_digest(parameters, leaf_digests)
+            .unwrap()
+    }
+
+    ///
+    #[inline]
+    fn batch_push_provable<'a, I>(&mut self, parameters: &Parameters<C>, leaves: I) -> bool
+    where
+        Leaf<C>: 'a,
+        I: IntoIterator<Item = &'a Leaf<C>>,
+    {
+        self.batch_push_provable_digest(parameters, || {
+            leaves
+                .into_iter()
+                .map(|leaf| parameters.digest(leaf))
+                .collect()
+        })
     }
 
     /// Returns the path for the leaf stored at the given `index` if it exists.
@@ -913,6 +1008,16 @@ where
         self.tree.push(&self.parameters, leaf)
     }
 
+    ///
+    #[inline]
+    pub fn batch_push<'a, I>(&mut self, leaves: I) -> bool
+    where
+        Leaf<C>: 'a,
+        I: IntoIterator<Item = &'a Leaf<C>>,
+    {
+        self.tree.batch_push(&self.parameters, leaves)
+    }
+
     /// Appends an iterator of leaves at the end of the tree, returning `false` if the `leaves`
     /// could not be inserted because the tree has exhausted its capacity.
     ///
@@ -993,6 +1098,17 @@ where
         T: WithProofs<C>,
     {
         self.tree.push_provable(&self.parameters, leaf)
+    }
+
+    ///
+    #[inline]
+    pub fn batch_push_provable<'a, I>(&mut self, leaves: I) -> bool
+    where
+        T: WithProofs<C>,
+        Leaf<C>: 'a,
+        I: IntoIterator<Item = &'a Leaf<C>>,
+    {
+        self.tree.batch_push_provable(&self.parameters, leaves)
     }
 
     /// Returns the path for the leaf stored at the given `index` if it exists.
@@ -1099,6 +1215,15 @@ where
     fn contains(&self, item: &Self::Item) -> bool {
         self.contains(&self.parameters.digest(item))
     }
+
+    #[inline]
+    fn batch_insert<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        self.batch_push_provable(items)
+    }
 }
 
 impl<C, T> ConstantCapacityAccumulator for MerkleTree<C, T>
@@ -1150,6 +1275,15 @@ where
             .position(&self.parameters.digest(item))
             .map(move |i| self.tree.remove_path(i))
             .unwrap_or(false)
+    }
+
+    #[inline]
+    fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        self.batch_push(items)
     }
 }
 

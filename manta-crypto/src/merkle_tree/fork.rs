@@ -521,6 +521,20 @@ where
         self.data.push(parameters, leaf)
     }
 
+    ///
+    #[inline]
+    fn batch_maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+        LeafDigest<C>: Default,
+    {
+        self.data.batch_maybe_push_digest(parameters, leaf_digests)
+    }
+
     /// Appends a new `leaf_digest` onto this branch.
     #[inline]
     fn maybe_push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digest: F) -> Option<bool>
@@ -758,6 +772,22 @@ where
         self.check_attachment()?;
         self.branch.maybe_push_digest(parameters, leaf_digest)
     }
+
+    ///
+    #[inline]
+    pub fn batch_maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+        LeafDigest<C>: Default,
+    {
+        self.check_attachment()?;
+        self.branch
+            .batch_maybe_push_digest(parameters, leaf_digests)
+    }
 }
 
 /// Forked Tree
@@ -908,6 +938,21 @@ where
         self.branch.maybe_push_digest(parameters, leaf_digest)
     }
 
+    ///
+    #[inline]
+    fn batch_maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+        LeafDigest<C>: Default,
+    {
+        self.branch
+            .batch_maybe_push_digest(parameters, leaf_digests)
+    }
+
     /// Resets the fork of the base tree back to the trunk.
     #[inline]
     pub fn reset_fork(&mut self, parameters: &Parameters<C>)
@@ -992,6 +1037,18 @@ where
     {
         self.maybe_push_digest(parameters, leaf_digest)
     }
+
+    #[inline]
+    fn batch_maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        self.batch_maybe_push_digest(parameters, leaf_digests)
+    }
 }
 
 impl<C, T, M> WithProofs<C> for ForkedTree<C, T, M>
@@ -1027,5 +1084,17 @@ where
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
         self.path(parameters, index)
+    }
+
+    #[inline]
+    fn batch_maybe_push_provable_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        self.batch_maybe_push_digest(parameters, leaf_digests)
     }
 }
