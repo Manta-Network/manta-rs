@@ -26,8 +26,8 @@
 
 use crate::{
     accumulator::{
-        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
-        OptimizedAccumulator,
+        self, Accumulator, BatchInsertion, ConstantCapacityAccumulator, ExactSizeAccumulator,
+        MembershipProof, OptimizedAccumulator,
     },
     eclair::{
         self,
@@ -1215,15 +1215,6 @@ where
     fn contains(&self, item: &Self::Item) -> bool {
         self.contains(&self.parameters.digest(item))
     }
-
-    #[inline]
-    fn batch_insert<'a, I>(&mut self, items: I) -> bool
-    where
-        Self::Item: 'a,
-        I: IntoIterator<Item = &'a Self::Item>,
-    {
-        self.batch_push_provable(items)
-    }
 }
 
 impl<C, T> ConstantCapacityAccumulator for MerkleTree<C, T>
@@ -1275,6 +1266,23 @@ where
             .position(&self.parameters.digest(item))
             .map(move |i| self.tree.remove_path(i))
             .unwrap_or(false)
+    }
+}
+
+impl<C, T> BatchInsertion for MerkleTree<C, T>
+where
+    C: Configuration + ?Sized,
+    T: Tree<C> + WithProofs<C>,
+    InnerDigest<C>: Clone + PartialEq,
+    Parameters<C>: Clone,
+{
+    #[inline]
+    fn batch_insert<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        self.batch_push_provable(items)
     }
 
     #[inline]

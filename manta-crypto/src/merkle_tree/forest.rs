@@ -24,7 +24,7 @@
 
 use crate::{
     accumulator::{
-        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator,
+        self, Accumulator, BatchInsertion, ConstantCapacityAccumulator, ExactSizeAccumulator,
         FromItemsAndWitnesses, MembershipProof, OptimizedAccumulator,
     },
     merkle_tree::{
@@ -37,7 +37,7 @@ use crate::{
     },
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, hash::Hash, iter::Iterator, marker::PhantomData};
 use manta_util::{persistence::Rollback, BoxArray};
 
 #[cfg(feature = "serde")]
@@ -589,6 +589,48 @@ macro_rules! impl_from_items_and_witnesses {
                 for item in items {
                     let tree_index = C::tree_index(&item).into();
                     result[tree_index].push(item);
+                }
+                result
+            }
+        }
+
+        impl<C, const N: usize> BatchInsertion for $forest
+        where
+            C: Configuration + ?Sized,
+            C::Index: FixedIndex<N>,
+            Parameters<C>: Clone,
+            Leaf<C>: Clone,
+            LeafDigest<C>: Clone + Default + PartialEq,
+            InnerDigest<C>: Clone + Default + PartialEq,
+        {
+            ///
+            #[inline]
+            fn batch_insert<'a, I>(&mut self, items: I) -> bool
+            where
+                Self::Item: 'a,
+                I: IntoIterator<Item = &'a Self::Item>,
+            {
+                let grouped_items = Self::sort_items(items.into_iter().cloned().collect());
+                let mut result = true;
+                for (index, group) in grouped_items.into_iter().enumerate() {
+                    let tree = self.forest.get_mut(C::Index::from_index(index));
+                    result &= tree.batch_push_provable(&self.parameters, &group);
+                }
+                result
+            }
+
+            ///
+            #[inline]
+            fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
+            where
+                Self::Item: 'a,
+                I: IntoIterator<Item = &'a Self::Item>,
+            {
+                let grouped_items = Self::sort_items(items.into_iter().cloned().collect());
+                let mut result = true;
+                for (index, group) in grouped_items.into_iter().enumerate() {
+                    let tree = self.forest.get_mut(C::Index::from_index(index));
+                    result &= tree.batch_push(&self.parameters, &group);
                 }
                 result
             }

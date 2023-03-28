@@ -145,21 +145,6 @@ pub trait Accumulator: Types {
     fn contains(&self, item: &Self::Item) -> bool {
         self.prove(item).is_some()
     }
-
-    ///
-    #[inline]
-    fn batch_insert<'a, I>(&mut self, items: I) -> bool
-    where
-        Self::Item: 'a,
-        I: IntoIterator<Item = &'a Self::Item>,
-    {
-        for item in items.into_iter() {
-            if !self.insert(item) {
-                return false;
-            }
-        }
-        true
-    }
 }
 
 /// Constant Capacity Accumulator
@@ -200,21 +185,6 @@ pub trait OptimizedAccumulator: Accumulator {
         self.insert(item)
     }
 
-    ///
-    #[inline]
-    fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
-    where
-        Self::Item: 'a,
-        I: IntoIterator<Item = &'a Self::Item>,
-    {
-        for item in items.into_iter() {
-            if !self.insert_nonprovable(item) {
-                return false;
-            }
-        }
-        true
-    }
-
     /// Removes the witnesses to the membership of `item` in `self`. The resulting state of the
     /// accumulator after removing a proof should be the same as if the item had been inserted into
     /// the accumulator with [`insert_nonprovable`](Self::insert_nonprovable). This method returns
@@ -230,6 +200,39 @@ pub trait OptimizedAccumulator: Accumulator {
     fn remove_proof(&mut self, item: &Self::Item) -> bool {
         let _ = item;
         false
+    }
+}
+
+/// Batch Insertion
+pub trait BatchInsertion: OptimizedAccumulator {
+    ///
+    #[inline]
+    fn batch_insert<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        for item in items.into_iter() {
+            if !self.insert(item) {
+                return false;
+            }
+        }
+        true
+    }
+
+    ///
+    #[inline]
+    fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        for item in items.into_iter() {
+            if !self.insert_nonprovable(item) {
+                return false;
+            }
+        }
+        true
     }
 }
 
