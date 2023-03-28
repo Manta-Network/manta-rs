@@ -41,7 +41,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{
-        Accumulator, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
+        Accumulator, BatchInsertion, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
         OptimizedAccumulator,
     },
     rand::{CryptoRng, FromEntropy, RngCore},
@@ -867,7 +867,8 @@ pub trait Configuration: transfer::Configuration {
             Item = UtxoAccumulatorItem<Self>,
             Model = UtxoAccumulatorModel<Self>,
             Witness = UtxoAccumulatorWitness<Self>,
-        > + ExactSizeAccumulator
+        > + BatchInsertion
+        + ExactSizeAccumulator
         + FromItemsAndWitnesses
         + OptimizedAccumulator
         + Rollback;
