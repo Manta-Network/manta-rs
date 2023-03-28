@@ -534,7 +534,6 @@ macro_rules! impl_from_items_and_witnesses {
             C::Index: FixedIndex<N>,
             LeafDigest<C>: Clone + Default,
             InnerDigest<C>: Clone + Default + PartialEq,
-            InnerDigest<C>: Debug,
         {
             /// Builds a new [`TreeArray`] from `leaves` and `paths` without checking that
             /// the `paths` are consistent with the leaves and that they are
@@ -567,7 +566,6 @@ macro_rules! impl_from_items_and_witnesses {
             Parameters<C>: Clone,
             LeafDigest<C>: Clone + Default + PartialEq,
             InnerDigest<C>: Clone + Default + PartialEq,
-            InnerDigest<C>: Debug,
         {
             const NUMBER_OF_SUBACCUMULATORS: usize = N;
 
@@ -603,7 +601,7 @@ macro_rules! impl_from_items_and_witnesses {
             Parameters<C>: Clone,
             Leaf<C>: Clone,
             LeafDigest<C>: Clone + Default + PartialEq,
-            InnerDigest<C>: Clone + Default + PartialEq + Debug,
+            InnerDigest<C>: Clone + Default + PartialEq,
         {
             ///
             #[inline]
@@ -773,8 +771,6 @@ where
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
-    InnerDigest<C>: Debug,
-    M: Debug,
 {
     #[inline]
     fn rollback(&mut self) {
