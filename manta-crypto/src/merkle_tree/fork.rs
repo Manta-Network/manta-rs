@@ -531,8 +531,6 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
         LeafDigest<C>: Default,
-        InnerDigest<C>: Debug,
-        M: Debug
     {
         self.data.batch_maybe_push_digest(parameters, leaf_digests)
     }
@@ -785,8 +783,6 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
         LeafDigest<C>: Default,
-        InnerDigest<C>: Debug,
-        M: Debug
     {
         self.check_attachment()?;
         self.branch
@@ -952,8 +948,6 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
         LeafDigest<C>: Default,
-        InnerDigest<C>: Debug,
-        M: Debug
     {
         self.branch
             .batch_maybe_push_digest(parameters, leaf_digests)
@@ -986,7 +980,6 @@ where
     C: Configuration + ?Sized,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
-    InnerDigest<C>: Debug,
 {
     /// Builds a new [`ForkedTree`] from `leaf_digests` and `path` without checking that
     /// `path` is consistent with the leaves and that it is a [`CurrentPath`].
@@ -1010,8 +1003,6 @@ where
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
-    InnerDigest<C>: Debug,
-        M: Debug
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -1067,8 +1058,6 @@ where
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default,
-    InnerDigest<C>: Debug,
-        M: Debug
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {

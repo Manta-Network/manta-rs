@@ -65,7 +65,7 @@ where
     leaf_digests: Vec<LeafDigest<C>>,
 
     /// Inner Digests
-    pub inner_digests: PartialInnerTree<C, M>,
+    inner_digests: PartialInnerTree<C, M>,
 }
 
 impl<C, M> Partial<C, M>
@@ -278,13 +278,10 @@ where
         leaf_digests: Vec<LeafDigest<C>>,
     ) where
         LeafDigest<C>: Default,
-        InnerDigest<C>: Debug,
-        M: Debug
     {
         let base_inner_digests = leaf_indices.join_leaves(parameters, &leaf_digests, |node| {
             self.get_leaf_sibling(node)
         });
-        println!("Inner digests: {:?}", base_inner_digests);
         self.inner_digests
             .batch_insert(parameters, leaf_indices, base_inner_digests);
         self.leaf_digests.extend(leaf_digests);
@@ -300,10 +297,7 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
         LeafDigest<C>: Default,
-        InnerDigest<C>: Debug,
-        M: Debug
     {
-        // TODO: Push without keeping unnecessary proof.
         let len = self.len();
         let leaf_digests = leaf_digests();
         let number_of_leaf_digests = leaf_digests.len();
@@ -365,8 +359,6 @@ where
     M: InnerMap<C> + Default,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
-    InnerDigest<C>: Debug,
-        M: Debug
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -422,8 +414,6 @@ where
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
-    InnerDigest<C>: Debug,
-        M: Debug
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {

@@ -774,7 +774,7 @@ where
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Debug,
-        M: Debug
+    M: Debug,
 {
     #[inline]
     fn rollback(&mut self) {

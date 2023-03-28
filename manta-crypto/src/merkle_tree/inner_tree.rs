@@ -714,8 +714,7 @@ where
         let indices = node.map_indices();
         let mut result = Vec::new();
         for (index, inner_digest) in indices.clone().zip(inner_digests) {
-            self.map
-                .set(index, inner_digest);
+            self.map.set(index, inner_digest);
         }
         match node.dual_parity().0 {
             (Parity::Left, _) => {
