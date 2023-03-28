@@ -17,8 +17,9 @@
 //! Batch Insertion
 
 use crate::{
+    accumulator::{Accumulator, BatchInsertion},
     merkle_tree::{
-        fork, full, partial,
+        forest, fork, full, partial,
         test::Test,
         tree::{Parameters, Tree},
         Leaf,
@@ -28,7 +29,7 @@ use crate::{
 use core::fmt::Debug;
 
 /// Merkle Tree Height
-const HEIGHT: usize = 7;
+const HEIGHT: usize = 11;
 
 /// Merkle Tree Configuration
 type Config = Test<u64, HEIGHT>;
@@ -41,6 +42,9 @@ type Partial = partial::Partial<Config>;
 
 /// Forked Merkle Tree
 type ForkedTree = fork::ForkedTree<Config, partial::Partial<Config>>;
+
+/// Merkle Forest Type
+type Forest = forest::TreeArrayMerkleForest<Config, ForkedTree, 2>;
 
 /// Tests that batch inserting new leaves into a Merkle tree yields the same result
 /// as inserting them one by one.
@@ -86,4 +90,26 @@ fn test_batch_insertion_partial() {
 #[test]
 fn test_batch_insertion_fork() {
     test_batch_insertion(|parameters| ForkedTree::new(Partial::new(parameters), parameters))
+}
+
+/// Tests batch insertion on a Merkle forest.
+#[test]
+fn test_batch_insertion_forest() {
+    let mut rng = OsRng;
+    let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
+    let mut forest = Forest::new(parameters);
+    let mut cloned_forest = forest.clone();
+    let number_of_insertions = rng.gen_range(1..(1 << (HEIGHT - 1)));
+    let mut insertions = Vec::<u64>::with_capacity(number_of_insertions);
+    for _ in 0..number_of_insertions {
+        insertions.push(rng.gen());
+    }
+    for leaf in &insertions {
+        forest.insert(leaf);
+    }
+    cloned_forest.batch_insert(&insertions);
+    assert_eq!(
+        forest, cloned_forest,
+        "Individual insertions and batch insertions should yield the same results."
+    );
 }
