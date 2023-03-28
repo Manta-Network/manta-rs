@@ -24,12 +24,13 @@
 
 use crate::{
     accumulator::{
-        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator, MembershipProof,
-        OptimizedAccumulator,
+        self, Accumulator, ConstantCapacityAccumulator, ExactSizeAccumulator,
+        FromItemsAndWitnesses, MembershipProof, OptimizedAccumulator,
     },
     merkle_tree::{
         fork::ForkedTree,
         inner_tree::InnerMap,
+        partial::Partial,
         path::Path,
         tree::{self, Leaf, Parameters, Root, Tree},
         InnerDigest, LeafDigest, WithProofs,
@@ -524,6 +525,88 @@ where
         }
     }
 }
+
+macro_rules! impl_from_items_and_witnesses {
+    ($forest:ty, $tree_array:ty, $tree_variant:ty) => {
+        impl<C, const N: usize> $tree_array
+        where
+            C: Configuration + ?Sized,
+            C::Index: FixedIndex<N>,
+            LeafDigest<C>: Clone + Default,
+            InnerDigest<C>: Clone + Default + PartialEq,
+        {
+            /// Builds a new [`TreeArray`] from `leaves` and `paths` without checking that
+            /// the `paths` are consistent with the leaves and that they are
+            /// [`CurrentPath`](crate::merkle_tree::path::CurrentPath)s.
+            #[inline]
+            pub fn from_leaves_and_paths_unchecked(
+                parameters: &Parameters<C>,
+                leaves: Vec<Vec<Leaf<C>>>,
+                paths: Vec<Path<C>>,
+            ) -> Self {
+                <$tree_array>::new(BoxArray::from_iter(
+                    leaves
+                        .into_iter()
+                        .zip(paths.into_iter())
+                        .map(|(leaves, path)| {
+                            <$tree_variant>::from_leaves_and_path_unchecked(
+                                parameters,
+                                leaves.iter().map(|leaf| parameters.digest(leaf)).collect(),
+                                path,
+                            )
+                        }),
+                ))
+            }
+        }
+
+        impl<C, const N: usize> FromItemsAndWitnesses for $forest
+        where
+            C: Configuration + ?Sized,
+            C::Index: FixedIndex<N>,
+            Parameters<C>: Clone,
+            LeafDigest<C>: Clone + Default + PartialEq,
+            InnerDigest<C>: Clone + Default + PartialEq,
+        {
+            const NUMBER_OF_SUBACCUMULATORS: usize = N;
+
+            #[inline]
+            fn from_items_and_witnesses(
+                model: &Self::Model,
+                items: Vec<Vec<Self::Item>>,
+                witnesses: Vec<Self::Witness>,
+            ) -> Self {
+                assert_eq!(witnesses.len(), N);
+                Self::from_forest(
+                    <$tree_array>::from_leaves_and_paths_unchecked(model, items, witnesses),
+                    model.clone(),
+                )
+            }
+
+            #[inline]
+            fn sort_items(items: Vec<Self::Item>) -> Vec<Vec<Self::Item>> {
+                let mut result = Vec::<Vec<Self::Item>>::default();
+                result.resize_with(N, Default::default);
+                for item in items {
+                    let tree_index = C::tree_index(&item).into();
+                    result[tree_index].push(item);
+                }
+                result
+            }
+        }
+    };
+}
+
+impl_from_items_and_witnesses!(
+    TreeArrayMerkleForest<C, Partial<C>, N>,
+    TreeArray<C, Partial<C>, N>,
+    Partial<C>
+);
+
+impl_from_items_and_witnesses!(
+    TreeArrayMerkleForest<C, ForkedTree<C, Partial<C>>, N>,
+    TreeArray<C, ForkedTree<C, Partial<C>>, N>,
+    ForkedTree<C, Partial<C>>
+);
 
 impl<C, T, const N: usize> AsRef<[T; N]> for TreeArray<C, T, N>
 where

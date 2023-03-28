@@ -32,17 +32,17 @@ use crate::{
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters, PreSender,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
-        UtxoAccumulatorItem, UtxoAccumulatorModel,
+        UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorWitness,
     },
     wallet::signer::{
-        AccountTable, BalanceUpdate, Checkpoint, Configuration, SignError, SignResponse,
-        SignWithTransactionDataResponse, SignWithTransactionDataResult, SignerParameters, SyncData,
-        SyncError, SyncRequest, SyncResponse,
+        AccountTable, BalanceUpdate, Checkpoint, Configuration, InitialSyncRequest, SignError,
+        SignResponse, SignWithTransactionDataResponse, SignWithTransactionDataResult,
+        SignerParameters, SyncData, SyncError, SyncRequest, SyncResponse,
     },
 };
 use alloc::{vec, vec::Vec};
 use manta_crypto::{
-    accumulator::{Accumulator, ItemHashFunction, OptimizedAccumulator},
+    accumulator::{Accumulator, FromItemsAndWitnesses, ItemHashFunction, OptimizedAccumulator},
     rand::Rand,
 };
 use manta_util::{
@@ -110,7 +110,7 @@ where
 /// Hashes `utxo` using the [`UtxoAccumulatorItemHash`](transfer::Configuration::UtxoAccumulatorItemHash)
 /// in the transfer [`Configuration`](transfer::Configuration).
 #[inline]
-fn item_hash<C>(parameters: &C::Parameters, utxo: &Utxo<C>) -> UtxoAccumulatorItem<C>
+pub fn item_hash<C>(parameters: &C::Parameters, utxo: &Utxo<C>) -> UtxoAccumulatorItem<C>
 where
     C: Configuration,
 {
@@ -932,4 +932,69 @@ where
         })
         .collect(),
     ))
+}
+
+/// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
+#[inline]
+pub fn intial_sync<C>(
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    request: InitialSyncRequest<C>,
+) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+where
+    C: Configuration,
+    C::AssetMap: Default,
+    C::Checkpoint: Default,
+{
+    let InitialSyncRequest {
+        utxo_data,
+        membership_proof_data,
+        nullifier_count,
+    } = request;
+    *checkpoint = Default::default();
+    *assets = Default::default();
+    let (accumulator, response) = initial_sync_with::<C>(
+        assets,
+        checkpoint,
+        utxo_accumulator.model(),
+        utxo_data,
+        membership_proof_data,
+        nullifier_count,
+    );
+    *utxo_accumulator = accumulator;
+    utxo_accumulator.commit();
+    Ok(response)
+}
+
+/// Updates the internal ledger state from `utxos`, `membership_proof_data`
+/// and `nullifier_count`.
+#[inline]
+fn initial_sync_with<C>(
+    assets: &C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    utxo_accumulator_model: &UtxoAccumulatorModel<C>,
+    utxos: Vec<Vec<UtxoAccumulatorItem<C>>>,
+    membership_proof_data: Vec<UtxoAccumulatorWitness<C>>,
+    nullifier_count: u128,
+) -> (C::UtxoAccumulator, SyncResponse<C, C::Checkpoint>)
+where
+    C: Configuration,
+{
+    let accumulator = C::UtxoAccumulator::from_items_and_witnesses(
+        utxo_accumulator_model,
+        utxos,
+        membership_proof_data,
+    );
+    checkpoint.update_from_nullifiers(nullifier_count as usize);
+    checkpoint.update_from_utxo_accumulator(&accumulator);
+    (
+        accumulator,
+        SyncResponse {
+            checkpoint: checkpoint.clone(),
+            balance_update: BalanceUpdate::Full {
+                assets: assets.assets().into(),
+            },
+        },
+    )
 }

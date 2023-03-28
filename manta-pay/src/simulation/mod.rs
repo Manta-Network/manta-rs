@@ -23,7 +23,7 @@ use crate::{
         UtxoAccumulatorModel,
     },
     key::KeySecret,
-    signer::{base::Signer, functions},
+    signer::{base::Signer, functions, InitialSyncData},
     simulation::ledger::{Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
@@ -33,7 +33,8 @@ use manta_accounting::{
     asset::AssetList,
     key::AccountTable,
     wallet::{
-        self,
+        self, signer,
+        signer::SyncData,
         test::{self, PublicBalanceOracle},
         Error,
     },
@@ -155,8 +156,17 @@ impl Simulation {
     #[inline]
     pub async fn run_with<L, S, GL, GS, GP>(&self, ledger: GL, signer: GS, public_account: GP)
     where
-        L: wallet::test::Ledger<Config> + PublicBalanceOracle<Config>,
-        S: wallet::signer::Connection<Config, Checkpoint = L::Checkpoint>,
+        L: wallet::test::Ledger<Config>
+            + PublicBalanceOracle<Config>
+            + wallet::ledger::Read<
+                InitialSyncData,
+                Checkpoint = <L as wallet::ledger::Read<SyncData<Config>>>::Checkpoint,
+            >,
+        S: wallet::signer::Connection<
+            Config,
+            Checkpoint = <L as wallet::ledger::Read<SyncData<Config>>>::Checkpoint,
+        >,
+        S::Checkpoint: signer::Checkpoint<Config>,
         S::Error: Debug,
         GL: FnMut(usize) -> L,
         GS: FnMut(usize) -> S,

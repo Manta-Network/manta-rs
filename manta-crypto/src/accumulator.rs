@@ -17,6 +17,7 @@
 //! Dynamic Cryptographic Accumulators
 
 use crate::eclair::alloc::{mode::Derived, Allocate, Allocator, Constant, Variable};
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
@@ -200,6 +201,23 @@ pub trait OptimizedAccumulator: Accumulator {
         let _ = item;
         false
     }
+}
+
+/// From Items and Witnesses
+pub trait FromItemsAndWitnesses: Accumulator {
+    /// Number of Subaccumulators
+    const NUMBER_OF_SUBACCUMULATORS: usize;
+
+    /// Builds a new [`Self`] from `items` and `proofs`.
+    fn from_items_and_witnesses(
+        model: &Self::Model,
+        items: Vec<Vec<Self::Item>>,
+        witnesses: Vec<Self::Witness>,
+    ) -> Self;
+
+    /// Groups `items` by the subaccumulator they belong to.
+    // TODO: move this to the model.
+    fn sort_items(items: Vec<Self::Item>) -> Vec<Vec<Self::Item>>;
 }
 
 /// Accumulator Membership Proof

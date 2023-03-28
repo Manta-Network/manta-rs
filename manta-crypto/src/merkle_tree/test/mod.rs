@@ -18,7 +18,7 @@
 
 use crate::{
     merkle_tree::{
-        Configuration, HashConfiguration, IdentityLeafHash, InnerDigest, InnerHash,
+        forest, Configuration, HashConfiguration, IdentityLeafHash, InnerDigest, InnerHash,
         InnerHashParameters, Leaf, LeafHashParameters, MerkleTree, Parameters, Path, Tree,
         WithProofs,
     },
@@ -26,6 +26,9 @@ use crate::{
 };
 use alloc::string::String;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+
+#[cfg(test)]
+pub mod partial;
 
 /// Hash Parameter Sampling
 pub trait HashParameterSampling: HashConfiguration {
@@ -277,5 +280,47 @@ where
         R: RngCore + ?Sized,
     {
         let _ = (distribution, rng);
+    }
+}
+
+/// Binary Index
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum BinaryIndex {
+    /// Zero
+    Zero,
+
+    /// One
+    One,
+}
+
+impl From<BinaryIndex> for usize {
+    #[inline]
+    fn from(value: BinaryIndex) -> Self {
+        match value {
+            BinaryIndex::Zero => 0,
+            BinaryIndex::One => 1,
+        }
+    }
+}
+
+impl forest::FixedIndex<2> for BinaryIndex {
+    #[inline]
+    fn from_index(index: usize) -> Self {
+        match index % 2 {
+            0 => BinaryIndex::Zero,
+            _ => BinaryIndex::One,
+        }
+    }
+}
+
+impl<const HEIGHT: usize> forest::Configuration for Test<u64, HEIGHT> {
+    type Index = BinaryIndex;
+
+    #[inline]
+    fn tree_index(leaf: &Leaf<Self>) -> Self::Index {
+        match leaf % 2 {
+            0 => BinaryIndex::Zero,
+            _ => BinaryIndex::One,
+        }
     }
 }

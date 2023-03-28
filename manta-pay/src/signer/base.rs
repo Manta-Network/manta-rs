@@ -79,7 +79,7 @@ pub type UtxoAccumulator = merkle_tree::forest::TreeArrayMerkleForest<
     MerkleTreeConfiguration,
     merkle_tree::fork::ForkedTree<
         MerkleTreeConfiguration,
-        merkle_tree::full::Full<MerkleTreeConfiguration>,
+        merkle_tree::partial::Partial<MerkleTreeConfiguration>,
     >,
     { MerkleTreeConfiguration::FOREST_WIDTH },
 >;
@@ -110,6 +110,16 @@ impl signer::Checkpoint<Config> for Checkpoint {
             .zip(utxo_accumulator.forest.as_ref())
             .map(move |(i, t)| cmp::max(i, t.len()))
             .collect();
+    }
+
+    #[inline]
+    fn update_from_utxo_count(&mut self, utxo_count: Vec<usize>) {
+        self.receiver_index = manta_util::Array(utxo_count.try_into().unwrap_or_else(|_| {
+            panic!(
+                "Utxo count must have {} elements",
+                MerkleTreeConfiguration::FOREST_WIDTH
+            )
+        }))
     }
 
     /// Prunes the `data` by comparing `origin` and `signer_checkpoint` and checks if updating the

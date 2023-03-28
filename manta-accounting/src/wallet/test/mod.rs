@@ -24,7 +24,7 @@ use crate::{
     transfer::{canonical::Transaction, Address, Asset, Configuration, TransferPost},
     wallet::{
         ledger,
-        signer::{self, SyncData},
+        signer::{self, InitialSyncData, SyncData},
         BalanceState, Error, Wallet,
     },
 };
@@ -990,11 +990,18 @@ impl Config {
         mut event_subscriber: ES,
     ) -> Result<bool, Error<C, L, S>>
     where
-        C: Configuration,
+        C: signer::Configuration,
         C::AssetValue: AddAssign + SampleUniform,
         for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
-        L: Ledger<C> + PublicBalanceOracle<C>,
-        S: signer::Connection<C, Checkpoint = L::Checkpoint>,
+        L: Ledger<C>
+            + PublicBalanceOracle<C>
+            + ledger::Read<
+                InitialSyncData<C>,
+                Checkpoint = <L as ledger::Read<SyncData<C>>>::Checkpoint,
+            >,
+        Error<C, L, S>: Debug,
+        S: signer::Connection<C, Checkpoint = <L as ledger::Read<SyncData<C>>>::Checkpoint>,
+        S::Checkpoint: signer::Checkpoint<C>,
         S::Error: Debug,
         B: BalanceState<C::AssetId, C::AssetValue>,
         R: CryptoRng + RngCore,
@@ -1027,6 +1034,11 @@ impl Config {
                 .expect("Wallet should have address")
                 .expect("Missing spending key");
             simulation.addresses.lock().insert(address);
+            actor
+                .wallet
+                .initial_sync()
+                .await
+                .expect("Error during initial sync");
         }
         let mut simulator = sim::Simulator::new(sim::ActionSim(simulation), actors);
         let initial_balances =

@@ -19,12 +19,15 @@
 // TODO: How to model existential deposits and fee payments?
 // TODO: Add in some concurrency (and measure how much we need it).
 
-use crate::config::{
-    utxo::{
-        AssetId, AssetValue, Checkpoint, FullIncomingNote, MerkleTreeConfiguration, Parameters,
+use crate::{
+    config::{
+        utxo::{
+            AssetId, AssetValue, Checkpoint, FullIncomingNote, MerkleTreeConfiguration, Parameters,
+        },
+        AccountId, Config, MultiVerifyingContext, Nullifier, ProofSystem, TransferPost, Utxo,
+        UtxoAccumulatorModel,
     },
-    AccountId, Config, MultiVerifyingContext, Nullifier, ProofSystem, TransferPost, Utxo,
-    UtxoAccumulatorModel,
+    signer::InitialSyncData,
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
@@ -50,7 +53,7 @@ use manta_crypto::{
     constraint::ProofSystem as _,
     merkle_tree::{
         self,
-        forest::{Configuration, FixedIndex},
+        forest::{Configuration, FixedIndex, Forest},
     },
 };
 use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
@@ -213,6 +216,48 @@ impl Ledger {
             }
         }
         true
+    }
+
+    /// Pulls the data from the ledger necessary to perform an [`initial_sync`].
+    ///
+    /// [`initial_sync`]: manta_accounting::wallet::signer::Connection::initial_sync
+    #[inline]
+    pub fn initial_read(&self) -> ReadResponse<InitialSyncData> {
+        let mut utxos = Vec::new();
+        for (i, mut index) in (0..MerkleTreeConfiguration::FOREST_WIDTH).enumerate() {
+            let shard = &self.shards[&MerkleForestIndex::from_index(i)];
+            while let Some(entry) = shard.get_index(index) {
+                utxos.push(entry.0);
+                index += 1;
+            }
+        }
+        let senders = self.nullifiers.iter().cloned().collect::<Vec<_>>();
+        let utxo_merkle_forest = self.utxo_forest.clone();
+        let mut membership_proof_data = Vec::new();
+        for index in 0..MerkleTreeConfiguration::FOREST_WIDTH {
+            membership_proof_data.push(
+                utxo_merkle_forest
+                    .forest
+                    .get(index as u8)
+                    .current_path()
+                    .clone()
+                    .into(),
+            )
+        }
+        ReadResponse {
+            should_continue: false,
+            data: InitialSyncData {
+                utxo_data: utxos,
+                membership_proof_data,
+                nullifier_count: senders.len() as u128,
+            },
+        }
+    }
+
+    /// Returns the [`Utxo`]s in `self`.
+    #[inline]
+    pub fn utxos(&self) -> &HashSet<Utxo> {
+        &self.utxos
     }
 }
 
@@ -634,6 +679,19 @@ impl ledger::Read<SyncData<Config>> for LedgerConnection {
         checkpoint: &'s Self::Checkpoint,
     ) -> LocalBoxFutureResult<'s, ReadResponse<SyncData<Config>>, Self::Error> {
         Box::pin(async move { Ok(self.ledger.read().await.pull(checkpoint)) })
+    }
+}
+
+impl ledger::Read<InitialSyncData> for LedgerConnection {
+    type Checkpoint = Checkpoint;
+
+    #[inline]
+    fn read<'s>(
+        &'s mut self,
+        checkpoint: &'s Self::Checkpoint,
+    ) -> LocalBoxFutureResult<'s, ReadResponse<InitialSyncData>, Self::Error> {
+        let _ = checkpoint;
+        Box::pin(async move { Ok(self.ledger.read().await.initial_read()) })
     }
 }
 

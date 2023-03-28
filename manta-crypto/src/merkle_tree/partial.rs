@@ -21,6 +21,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
+    node::Parity,
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
 };
@@ -82,6 +83,41 @@ where
         Self {
             leaf_digests,
             inner_digests,
+        }
+    }
+
+    /// Builds a new [`Partial`] from `leaf_digests` and `path` without checking that
+    /// `path` is consistent with the leaves and that it is a [`CurrentPath`].
+    #[inline]
+    pub fn from_leaves_and_path_unchecked(
+        parameters: &Parameters<C>,
+        leaf_digests: Vec<LeafDigest<C>>,
+        path: Path<C>,
+    ) -> Self
+    where
+        M: Default,
+        InnerDigest<C>: Default + PartialEq,
+    {
+        let n = leaf_digests.len();
+        if n == 0 {
+            Self::new_unchecked(leaf_digests, Default::default())
+        } else {
+            let base = match Parity::from_index(n - 1) {
+                Parity::Left => parameters.join_leaves(&leaf_digests[n - 1], &path.sibling_digest),
+                Parity::Right => parameters.join_leaves(&path.sibling_digest, &leaf_digests[n - 1]),
+            };
+            let mut partial_tree = Self::new_unchecked(
+                leaf_digests,
+                PartialInnerTree::from_current(
+                    parameters,
+                    base,
+                    CurrentPath::from_path_unchecked(path).inner_path,
+                ),
+            );
+            partial_tree
+                .inner_digests
+                .reset_starting_leaf_index(Default::default());
+            partial_tree
         }
     }
 

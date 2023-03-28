@@ -37,9 +37,10 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, IdentityRequest, IdentityResponse, SignError, SignRequest, SignResponse,
+            BalanceUpdate, Checkpoint, IdentityRequest, IdentityResponse, InitialSyncData,
+            InitialSyncRequest, SignError, SignRequest, SignResponse,
             SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
-            TransactionDataRequest, TransactionDataResponse,
+            SyncResult, TransactionDataRequest, TransactionDataResponse,
         },
     },
 };
@@ -142,6 +143,12 @@ where
     #[inline]
     pub fn new(ledger: L, signer: S) -> Self {
         Self::new_unchecked(ledger, Default::default(), signer, Default::default())
+    }
+
+    /// Returns the [`Connection`](signer::Connection).
+    #[inline]
+    pub fn signer(&self) -> &S {
+        &self.signer
     }
 
     /// Returns a mutable reference to the [`Connection`](signer::Connection).
@@ -265,6 +272,57 @@ where
         Ok(())
     }
 
+    /// Pulls data from the ledger, synchronizing the wallet and balance state. This method
+    /// builds a [`InitialSyncRequest`] by continuously calling [`read`](ledger::Read::read)
+    /// until all the ledger data has arrived. Once the request is built, it executes
+    /// synchronizes the signer against it.
+    ///
+    /// # Implementation Note
+    ///
+    /// Using this method to synchronize a signer will make it impossibile to spend any
+    /// [`Utxo`](crate::transfer::Utxo)s already on the ledger at the time of synchronization.
+    /// Therefore, this method should only be used for the initial synchronization of a
+    /// new signer.
+    ///
+    /// # Failure Conditions
+    ///
+    /// This method returns an element of type [`Error`] on failure, which can result from any
+    /// number of synchronization issues between the wallet, the ledger, and the signer. See the
+    /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
+    /// how to resolve them.
+    #[inline]
+    pub async fn initial_sync(&mut self) -> Result<(), Error<C, L, S>>
+    where
+        L: ledger::Read<InitialSyncData<C>, Checkpoint = S::Checkpoint>,
+        C: signer::Configuration,
+        S::Checkpoint: signer::Checkpoint<C>,
+    {
+        let mut is_continue = true;
+        let mut checkpoint = Default::default();
+        let mut request = InitialSyncRequest::<C>::default();
+        let parameters = self
+            .signer
+            .transfer_parameters()
+            .await
+            .map_err(Error::SignerConnectionError)?;
+        while is_continue {
+            let ReadResponse {
+                should_continue,
+                data,
+            } = self
+                .ledger
+                .read(&checkpoint)
+                .await
+                .map_err(Error::LedgerConnectionError)?;
+            is_continue = should_continue;
+            request.extend_with_data(&parameters, data);
+            checkpoint
+                .update_from_utxo_count(request.utxo_data.iter().map(|utxos| utxos.len()).collect())
+        }
+        self.signer_initial_sync(request).await?;
+        Ok(())
+    }
+
     /// Pulls data from the ledger, synchronizing the wallet and balance state. This method returns
     /// a [`ControlFlow`] for matching against to determine if the wallet requires more
     /// synchronization.
@@ -305,18 +363,13 @@ where
         Ok(ControlFlow::should_continue(should_continue))
     }
 
-    /// Performs a synchronization with the signer against the given `request`.
+    /// Updates `self` from `response`.
     #[inline]
-    async fn signer_sync(
+    fn process_sync_response(
         &mut self,
-        request: SyncRequest<C, S::Checkpoint>,
+        response: SyncResult<C, S::Checkpoint>,
     ) -> Result<(), Error<C, L, S>> {
-        match self
-            .signer
-            .sync(request)
-            .await
-            .map_err(Error::SignerConnectionError)?
-        {
+        match response {
             Ok(SyncResponse {
                 checkpoint,
                 balance_update,
@@ -348,6 +401,34 @@ where
                 Err(Error::MissingProofAuthorizationKey)
             }
         }
+    }
+
+    /// Performs a synchronization with the signer against the given `request`.
+    #[inline]
+    async fn signer_sync(
+        &mut self,
+        request: SyncRequest<C, S::Checkpoint>,
+    ) -> Result<(), Error<C, L, S>> {
+        let response = self
+            .signer
+            .sync(request)
+            .await
+            .map_err(Error::SignerConnectionError)?;
+        self.process_sync_response(response)
+    }
+
+    /// Performs an initial synchronization with the signer against the given `request`.
+    #[inline]
+    async fn signer_initial_sync(
+        &mut self,
+        request: InitialSyncRequest<C>,
+    ) -> Result<(), Error<C, L, S>> {
+        let response = self
+            .signer
+            .initial_sync(request)
+            .await
+            .map_err(Error::SignerConnectionError)?;
+        self.process_sync_response(response)
     }
 
     /// Checks if `transaction` can be executed on the balance state of `self`, returning the
