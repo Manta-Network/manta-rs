@@ -709,13 +709,13 @@ where
         &mut self,
         parameters: &Parameters<C>,
         node: InnerNodeRange,
-        mut inner_digests: Vec<InnerDigest<C>>,
+        inner_digests: Vec<InnerDigest<C>>,
     ) -> Vec<InnerDigest<C>> {
         let indices = node.map_indices();
         let mut result = Vec::new();
-        for index in indices.clone() {
+        for (index, inner_digest) in indices.clone().zip(inner_digests) {
             self.map
-                .set(index, inner_digests.pop().expect("Missing inner digest."));
+                .set(index, inner_digest);
         }
         match node.dual_parity().0 {
             (Parity::Left, _) => {

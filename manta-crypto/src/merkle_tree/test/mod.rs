@@ -28,7 +28,7 @@ use alloc::string::String;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(test)]
-pub mod node;
+pub mod batch_insertion;
 
 #[cfg(test)]
 pub mod partial;

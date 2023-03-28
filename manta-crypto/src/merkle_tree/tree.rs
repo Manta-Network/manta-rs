@@ -1302,6 +1302,8 @@ where
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Debug,
+        M: Debug
 {
     #[inline]
     fn rollback(&mut self) {

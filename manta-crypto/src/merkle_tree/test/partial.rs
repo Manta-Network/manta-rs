@@ -30,17 +30,20 @@ use crate::{
     rand::{OsRng, Rand, Sample},
 };
 
+/// Merkle Tree Height
+const HEIGHT: usize = 7;
+
+/// Merkle Tree Configuration
+type Config = Test<u64, HEIGHT>;
+
 /// Tests the [`Partial`] tree generated from a set of leaves and a [`Path`] behaves
 /// as expected.
 #[test]
 fn test_from_leaves_and_path() {
     let mut rng = OsRng;
-    const HEIGHT: usize = 7;
-    type Config = Test<u64, HEIGHT>;
     let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
     let number_of_insertions = rng.gen_range(5..(1 << (HEIGHT - 1)));
     let inner_element_index = rng.gen_range(0..number_of_insertions - 3);
-    println!("{number_of_insertions}, {inner_element_index}");
     let mut tree = FullMerkleTree::<Config>::new(parameters);
     let mut insertions = Vec::<u64>::with_capacity(number_of_insertions);
     for _ in 0..number_of_insertions {
@@ -106,8 +109,6 @@ fn test_from_leaves_and_path() {
 #[test]
 fn test_from_leaves_and_path_forest() {
     let mut rng = OsRng;
-    const HEIGHT: usize = 7;
-    type Config = Test<u64, HEIGHT>;
     let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
     let mut forest =
         TreeArrayMerkleForest::<Config, ForkedTree<Config, Full<Config>>, 2>::new(parameters);
