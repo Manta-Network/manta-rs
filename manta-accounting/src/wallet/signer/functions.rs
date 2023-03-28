@@ -222,8 +222,10 @@ where
     for (utxo, note) in inserts {
         if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
         {
-            utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
-            nonprovable_inserts.clear();
+            if !nonprovable_inserts.is_empty() {
+                utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
+                nonprovable_inserts.clear();
+            }
             insert_next_item::<C>(
                 authorization_context,
                 utxo_accumulator,
