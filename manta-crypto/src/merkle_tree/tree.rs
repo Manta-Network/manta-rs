@@ -331,7 +331,7 @@ where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
         self.batch_maybe_push_digest(parameters, leaf_digests)
-            .unwrap()
+            .unwrap_or(true)
     }
 
     ///

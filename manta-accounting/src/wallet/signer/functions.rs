@@ -241,7 +241,9 @@ where
             nonprovable_inserts.push(item_hash::<C>(parameters, &utxo));
         }
     }
-    utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
+    if !nonprovable_inserts.is_empty() {
+        utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
+    }
     assets.retain(|identifier, assets| {
         assets.retain(|asset| {
             is_asset_unspent::<C>(
