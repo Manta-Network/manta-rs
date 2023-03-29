@@ -26,6 +26,7 @@ use crate::merkle_tree::{
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
+use manta_util::vec::VecExt;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -237,24 +238,37 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        let len = self.len();
         let leaf_digests = leaf_digests();
-        let number_of_leaf_digests = leaf_digests.len();
         if leaf_digests.is_empty() {
             return None;
         }
-        if len + number_of_leaf_digests > capacity::<C, _>() {
-            return Some(false);
+        let len = self.len();
+        let number_of_leaf_digests = leaf_digests.len();
+        let capacity = capacity::<C, _>();
+        if len + number_of_leaf_digests > capacity {
+            let max_number_of_insertions = capacity - len;
+            if max_number_of_insertions != 0 {
+                self.batch_push_leaf_digests(
+                    parameters,
+                    NodeRange {
+                        node: Node(len),
+                        extra_nodes: max_number_of_insertions - 1,
+                    },
+                    leaf_digests[..max_number_of_insertions].to_vec(),
+                );
+            }
+            Some(false)
+        } else {
+            self.batch_push_leaf_digests(
+                parameters,
+                NodeRange {
+                    node: Node(len),
+                    extra_nodes: number_of_leaf_digests - 1,
+                },
+                leaf_digests,
+            );
+            Some(true)
         }
-        self.batch_push_leaf_digests(
-            parameters,
-            NodeRange {
-                node: Node(len),
-                extra_nodes: number_of_leaf_digests - 1,
-            },
-            leaf_digests,
-        );
-        Some(true)
     }
 }
 
