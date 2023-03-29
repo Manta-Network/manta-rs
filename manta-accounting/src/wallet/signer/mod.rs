@@ -1089,14 +1089,14 @@ where
 
     /// Returns the [`AccountTable`].
     #[inline]
-    pub fn accounts(&self) -> &Option<AccountTable<C>> {
-        &self.accounts
+    pub fn accounts(&self) -> Option<&AccountTable<C>> {
+        self.accounts.as_ref()
     }
 
     /// Returns the [`AuthorizationContext`].
     #[inline]
-    pub fn authorization_context(&self) -> &Option<AuthorizationContext<C>> {
-        &self.authorization_context
+    pub fn authorization_context(&self) -> Option<&AuthorizationContext<C>> {
+        self.authorization_context.as_ref()
     }
 
     /// Returns the default account for `self`.
@@ -1358,6 +1358,12 @@ where
             &self.parameters,
             self.state.accounts.as_ref()?,
         ))
+    }
+
+    /// Returns the [`AuthorizationContext`] corresponding to `self`.
+    #[inline]
+    pub fn authorization_context(&self) -> Option<&AuthorizationContext<C>> {
+        self.state.authorization_context.as_ref()
     }
 
     /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
