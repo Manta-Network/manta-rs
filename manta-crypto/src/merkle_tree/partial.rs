@@ -298,7 +298,7 @@ where
         F: FnOnce() -> Vec<LeafDigest<C>>,
         LeafDigest<C>: Default,
     {
-        let leaf_digests = leaf_digests();
+        let mut leaf_digests = leaf_digests();
         if leaf_digests.is_empty() {
             return None;
         }
@@ -308,13 +308,14 @@ where
         if len + number_of_leaf_digests > capacity {
             let max_number_of_insertions = capacity - len;
             if max_number_of_insertions != 0 {
+                leaf_digests.truncate(max_number_of_insertions);
                 self.batch_push_leaf_digests(
                     parameters,
                     NodeRange {
                         node: Node(len),
                         extra_nodes: max_number_of_insertions - 1,
                     },
-                    leaf_digests[..max_number_of_insertions].to_vec(),
+                    leaf_digests,
                 );
             }
             Some(false)
