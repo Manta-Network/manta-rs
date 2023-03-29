@@ -269,7 +269,7 @@ where
         self.leaf_digests.push(leaf_digest);
     }
 
-    ///
+    /// Appends `leaf_digests` with indices given by `leaf_indices` into the tree.
     #[inline]
     fn batch_push_leaf_digests(
         &mut self,
@@ -287,7 +287,7 @@ where
         self.leaf_digests.extend(leaf_digests);
     }
 
-    ///
+    /// Appends `leaf_digests` to the tree using `parameters`.
     #[inline]
     pub fn batch_maybe_push_digest<F>(
         &mut self,

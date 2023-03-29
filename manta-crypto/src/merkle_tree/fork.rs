@@ -521,7 +521,7 @@ where
         self.data.push(parameters, leaf)
     }
 
-    ///
+    /// Appends `leaf_digests` onto this branch.
     #[inline]
     fn batch_maybe_push_digest<F>(
         &mut self,
@@ -773,7 +773,10 @@ where
         self.branch.maybe_push_digest(parameters, leaf_digest)
     }
 
+    /// Appends `leaf_digests` onto this fork.
     ///
+    /// Returns `None` if this fork has been detached from its trunk. Use [`attach`](Self::attach)
+    /// to re-associate a trunk to this fork.
     #[inline]
     pub fn batch_maybe_push_digest<F>(
         &mut self,
@@ -938,7 +941,7 @@ where
         self.branch.maybe_push_digest(parameters, leaf_digest)
     }
 
-    ///
+    /// Appends `leaf_digests` onto this forked tree.
     #[inline]
     fn batch_maybe_push_digest<F>(
         &mut self,

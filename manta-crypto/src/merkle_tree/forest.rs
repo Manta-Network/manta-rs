@@ -603,32 +603,34 @@ macro_rules! impl_from_items_and_witnesses {
             LeafDigest<C>: Clone + Default + PartialEq,
             InnerDigest<C>: Clone + Default + PartialEq,
         {
-            ///
             #[inline]
             fn batch_insert<'a, I>(&mut self, items: I) -> bool
             where
                 Self::Item: 'a,
                 I: IntoIterator<Item = &'a Self::Item>,
             {
-                let grouped_items = Self::sort_items(items.into_iter().cloned().collect());
                 let mut result = true;
-                for (index, group) in grouped_items.into_iter().enumerate() {
+                for (index, group) in Self::sort_items(items.into_iter().cloned().collect())
+                    .into_iter()
+                    .enumerate()
+                {
                     let tree = self.forest.get_mut(C::Index::from_index(index));
                     result &= tree.batch_push_provable(&self.parameters, &group);
                 }
                 result
             }
 
-            ///
             #[inline]
             fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
             where
                 Self::Item: 'a,
                 I: IntoIterator<Item = &'a Self::Item>,
             {
-                let grouped_items = Self::sort_items(items.into_iter().cloned().collect());
                 let mut result = true;
-                for (index, group) in grouped_items.into_iter().enumerate() {
+                for (index, group) in Self::sort_items(items.into_iter().cloned().collect())
+                    .into_iter()
+                    .enumerate()
+                {
                     let tree = self.forest.get_mut(C::Index::from_index(index));
                     result &= tree.batch_push(&self.parameters, &group);
                 }

@@ -21,16 +21,14 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, InnerTree},
-    Configuration, CurrentPath, InnerDigest, LeafDigest, MerkleTree, Node, Parameters, Path,
-    PathError, Root, Tree, WithProofs,
+    Configuration, CurrentPath, InnerDigest, LeafDigest, MerkleTree, Node, NodeRange, Parameters,
+    Path, PathError, Root, Tree, WithProofs,
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use super::NodeRange;
 
 /// Full Merkle Tree Type
 pub type FullMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Full<C, M>>;
@@ -156,7 +154,7 @@ where
         self.leaf_digests.push(leaf_digest);
     }
 
-    ///
+    /// Appends `leaf_digests` with indices given by `leaf_indices` into the tree.
     #[inline]
     fn batch_push_leaf_digests(
         &mut self,

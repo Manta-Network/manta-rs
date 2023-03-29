@@ -451,13 +451,13 @@ impl FusedIterator for NodeParents {}
 pub struct DualParity(pub (Parity, Parity));
 
 impl DualParity {
-    ///
+    /// Returns the starting [`Parity`] of `self`.
     #[inline]
     pub const fn starting_parity(&self) -> Parity {
         self.0 .0
     }
 
-    ///
+    /// Returns the final [`Parity`] of `self`.
     #[inline]
     pub const fn final_parity(&self) -> Parity {
         self.0 .1
@@ -480,7 +480,7 @@ pub struct NodeRange {
 }
 
 impl NodeRange {
-    ///
+    /// Returns the [`DualParity`] of `self`.
     #[inline]
     pub const fn dual_parity(&self) -> DualParity {
         let starting_node_parity = self.node.parity();
@@ -491,7 +491,8 @@ impl NodeRange {
         DualParity((starting_node_parity, final_node_parity))
     }
 
-    ///
+    /// Returns the [`NodeRange`] consisting of the parents of the
+    /// [`Node`]s in `self`.
     #[inline]
     pub const fn parents(&self) -> Self {
         let extra_nodes = match self.dual_parity().0 {
@@ -505,13 +506,15 @@ impl NodeRange {
         }
     }
 
-    ///
+    /// Returns the last [`Node`] in `self`.
     #[inline]
     pub const fn last_node(&self) -> Node {
         Node(self.node.0 + self.extra_nodes)
     }
 
-    ///
+    /// Computes the inner hashes of `leaves` pairwise and in order. If the first (last) element has a
+    /// right (left) [`Parity`], it will be hashed with the output of `get_leaves` or with the default
+    /// value if `get_leaves` returns `None`.
     #[inline]
     pub fn join_leaves<'a, C, F>(
         &self,

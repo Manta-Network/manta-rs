@@ -205,7 +205,16 @@ pub trait OptimizedAccumulator: Accumulator {
 
 /// Batch Insertion
 pub trait BatchInsertion: OptimizedAccumulator {
+    /// Inserts `items` in `self` provably, see [`insert`] for more details.
+    /// Returns `true` if all the insertions succeed and `false` otherwise.
     ///
+    /// # Implementation Note
+    ///
+    /// By default, this method calls [`insert`] individually for each item in `items`
+    /// till failure. Custom implementations of this method to improve performance
+    /// must return the same result as the default implementation.
+    ///
+    /// [`insert`]: Accumulator::insert
     #[inline]
     fn batch_insert<'a, I>(&mut self, items: I) -> bool
     where
@@ -220,7 +229,16 @@ pub trait BatchInsertion: OptimizedAccumulator {
         true
     }
 
+    /// Inserts `items` in `self` nonprovably, see [`insert_nonprovable`] for more details.
+    /// Returns `true` if all the insertions succeed and `false` otherwise.
     ///
+    /// # Implementation Note
+    ///
+    /// By default, this method calls [`insert_nonprovable`] individually for each item
+    /// in `items` till failure. Custom implementations of this method to improve performance
+    /// must return the same result as the default implementation.
+    ///
+    /// [`insert_nonprovable`]: OptimizedAccumulator::insert_nonprovable
     #[inline]
     fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
     where

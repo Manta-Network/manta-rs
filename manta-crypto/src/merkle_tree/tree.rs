@@ -302,7 +302,16 @@ where
         self.push_digest(parameters, || parameters.digest(leaf))
     }
 
+    /// Inserts `leaf_digests` in `self`, see [`maybe_push_digest`] for more details.
+    /// Returns `true` if all the insertions succeed and `false` otherwise.
     ///
+    /// # Implementation Note
+    ///
+    /// By default, this method calls [`maybe_push_digest`] individually for each leaf digest
+    /// in `leaf_digests` till failure. Custom implementations of this method to improve performance
+    /// must return the same result as the default implementation.
+    ///
+    /// [`maybe_push_digest`]: Tree::maybe_push_digest
     #[inline]
     fn batch_maybe_push_digest<F>(
         &mut self,
@@ -324,7 +333,8 @@ where
         Some(true)
     }
 
-    ///
+    /// Inserts `leaf_digests` in `self`. Returns `true` if all the insertions
+    /// succeed or if there were no `leaf_digests` and `false` otherwise.
     #[inline]
     fn batch_push_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digests: F) -> bool
     where
@@ -334,7 +344,8 @@ where
             .unwrap_or(true)
     }
 
-    ///
+    /// Inserts the digests of `leaves` at the next available leaf node of the tree, returning
+    /// `false` if the leaves could not be inserted because the tree has exhausted its capacity.
     #[inline]
     fn batch_push<'a, I>(&mut self, parameters: &Parameters<C>, leaves: I) -> bool
     where
@@ -499,7 +510,16 @@ where
         self.push_provable_digest(parameters, move || parameters.digest(leaf))
     }
 
+    /// Inserts `leaf_digests` provably in `self`, see [`maybe_push_provable_digest`] for more details.
+    /// Returns `true` if all the insertions succeed and `false` otherwise.
     ///
+    /// # Implementation Note
+    ///
+    /// By default, this method calls [`maybe_push_provable_digest`] individually for each leaf digest
+    /// in `leaf_digests` till failure. Custom implementations of this method to improve performance
+    /// must return the same result as the default implementation.
+    ///
+    /// [`maybe_push_provable_digest`]: WithProofs::maybe_push_provable_digest
     #[inline]
     fn batch_maybe_push_provable_digest<F>(
         &mut self,
@@ -521,17 +541,19 @@ where
         Some(true)
     }
 
-    ///
+    /// Inserts `leaf_digests` provably in `self`. Returns `true` if all the insertions
+    /// succeed or if there were no `leaf_digests` and `false` otherwise.
     #[inline]
     fn batch_push_provable_digest<F>(&mut self, parameters: &Parameters<C>, leaf_digests: F) -> bool
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
         self.batch_maybe_push_provable_digest(parameters, leaf_digests)
-            .unwrap()
+            .unwrap_or(true)
     }
 
-    ///
+    /// Inserts the digests of `leaves` provably at the next available leaf node of the tree, returning
+    /// `false` if the leaves could not be inserted because the tree has exhausted its capacity.
     #[inline]
     fn batch_push_provable<'a, I>(&mut self, parameters: &Parameters<C>, leaves: I) -> bool
     where
@@ -1008,7 +1030,10 @@ where
         self.tree.push(&self.parameters, leaf)
     }
 
+    /// Inserts `leaves` at the next avaiable leaf node of the tree, returning `true` if all
+    /// leaf insertions succeed and `false` otherwise.
     ///
+    /// See [`Tree::batch_push`] for more.
     #[inline]
     pub fn batch_push<'a, I>(&mut self, leaves: I) -> bool
     where
@@ -1100,7 +1125,10 @@ where
         self.tree.push_provable(&self.parameters, leaf)
     }
 
+    /// Inserts `leaves` provably at the next avaiable leaf node of the tree, returning `true` if all
+    /// provable leaf insertions succeed and `false` otherwise.
     ///
+    /// See [`WithProofs::batch_push_provable`] for more.
     #[inline]
     pub fn batch_push_provable<'a, I>(&mut self, leaves: I) -> bool
     where

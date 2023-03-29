@@ -205,7 +205,7 @@ impl ExactSizeIterator for InnerNodeIter {}
 
 impl FusedIterator for InnerNodeIter {}
 
-///
+/// Inner Node Range
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -213,32 +213,33 @@ impl FusedIterator for InnerNodeIter {}
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct InnerNodeRange {
-    ///
+    /// Depth
     depth: usize,
 
-    ///
+    /// Node Range
     node_range: NodeRange,
 }
 
 impl InnerNodeRange {
-    ///
+    /// Builds a new [`InnerNodeRange`] from `depth` and `node_range` without
+    /// checking that the `node_range` fits in a binary Merkle tree at
+    /// the given `depth`.
     #[inline]
     const fn new_unchecked(depth: usize, node_range: NodeRange) -> Self {
         Self { depth, node_range }
     }
 
-    ///
+    /// Builds a new [`InnerNodeRange`] from `depth` and `node_range`.
     #[inline]
     pub const fn new(depth: usize, node_range: NodeRange) -> Option<Self> {
-        let last_node = node_range.last_node();
-        if last_node.0 >= (1 << (depth + 1)) {
+        if node_range.last_node().0 >= (1 << (depth + 1)) {
             None
         } else {
             Some(Self::new_unchecked(depth, node_range))
         }
     }
 
-    ///
+    /// Builds a new [`InnerNodeRange`] from `leaf_index` and `extra_leaves`.
     #[inline]
     pub fn from_leaves<C>(leaf_index: Node, extra_leaves: usize) -> Option<Self>
     where
@@ -254,13 +255,14 @@ impl InnerNodeRange {
         .and_then(|inner_node_range| inner_node_range.parents())
     }
 
-    ///
+    /// Returns the [`DualParity`] of `self`.
     #[inline]
     pub const fn dual_parity(&self) -> DualParity {
         self.node_range.dual_parity()
     }
 
-    ///
+    /// Returns the [`InnerNodeRange`] consisting of the parents
+    /// of the [`InnerNode`]s in `self`.
     #[inline]
     pub const fn parents(&self) -> Option<Self> {
         match self.depth.checked_sub(1) {
@@ -269,7 +271,7 @@ impl InnerNodeRange {
         }
     }
 
-    /// Converts `self` into its parent, if the parent exists, returning the parent [`InnerNode`].
+    /// Converts `self` into its parents, if the parents exist.
     #[inline]
     pub fn into_parents(&mut self) -> Option<Self> {
         match self.parents() {
@@ -281,19 +283,19 @@ impl InnerNodeRange {
         }
     }
 
-    ///
+    /// Returns the depth of `self`.
     #[inline]
-    pub const fn depth(&self) -> usize {
-        self.depth
+    pub const fn depth(&self) -> &usize {
+        &self.depth
     }
 
-    ///
+    /// Returns the [`NodeRange`] of `self`.
     #[inline]
-    pub const fn node_range(&self) -> NodeRange {
-        self.node_range
+    pub const fn node_range(&self) -> &NodeRange {
+        &self.node_range
     }
 
-    ///
+    /// Returns the starting [`InnerNode`] of `self`.
     #[inline]
     pub const fn starting_inner_node(&self) -> InnerNode {
         InnerNode {
@@ -302,7 +304,7 @@ impl InnerNodeRange {
         }
     }
 
-    ///
+    /// Returns the last [`InnerNode`] of `self`.
     #[inline]
     pub const fn last_inner_node(&self) -> InnerNode {
         InnerNode {
@@ -311,14 +313,14 @@ impl InnerNodeRange {
         }
     }
 
-    ///
+    /// Computes an [`InnerMap`] range of indices for the coordinates represented by `self`.
     #[inline]
     pub fn map_indices(&self) -> Range<usize> {
         self.starting_inner_node().map_index()..self.last_inner_node().map_index() + 1
     }
 }
 
-/// InnerNodeRangeIter
+/// Inner Node Range Iterator
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -326,7 +328,7 @@ impl InnerNodeRange {
 )]
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct InnerNodeRangeIter {
-    ///
+    /// Inner Node Range
     node_range: Option<InnerNodeRange>,
 }
 
@@ -337,7 +339,7 @@ impl InnerNodeRangeIter {
         Self { node_range }
     }
 
-    /// Builds a new [`InnerNodeIter`] iterator over the parents of `leaf_index`.
+    /// Builds a new [`InnerNodeRangeIter`] iterator over the parents of `leaf_index`.
     #[inline]
     pub fn from_leaves<C>(leaf_index: Node, extra_leaves: usize) -> Self
     where
@@ -703,7 +705,9 @@ where
         parameters.join(lhs, rhs)
     }
 
-    ///
+    /// Inserts `inner_digests` into the tree at `node`. Computes the inner hashes of `inner_digests`
+    /// pairwise and in order. If the first (last) element has a right (left) parity, it will be hashed
+    /// with its sibling if it is stored in the tree or with the default value otherwise.
     #[inline]
     fn insert_range_and_join(
         &mut self,
@@ -751,7 +755,8 @@ where
         })
     }
 
-    ///
+    /// Computes the new root of the tree after inserting `base` which corresponds to the leaves
+    /// at `leaf_indices`.
     #[inline]
     fn compute_root_from_leaves(
         &mut self,
@@ -768,7 +773,8 @@ where
             .expect("The final vector consists of the root of the Merkle tree.")
     }
 
-    ///
+    /// Inserts the `base` inner digests corresponding to the leaves at `leaf_indices`
+    /// into the tree.
     #[inline]
     pub fn batch_insert(
         &mut self,
@@ -997,7 +1003,8 @@ where
         self.inner_tree.insert(parameters, leaf_index, base);
     }
 
-    ///
+    /// Inserts the `base` inner digests corresponding to the leaves at `leaf_indices`
+    /// into the tree.
     #[inline]
     pub fn batch_insert(
         &mut self,
