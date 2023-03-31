@@ -30,6 +30,7 @@ pub mod forest;
 pub mod fork;
 pub mod full;
 pub mod inner_tree;
+pub mod leaf_map;
 pub mod partial;
 pub mod path;
 pub mod single_path;
