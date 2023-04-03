@@ -34,7 +34,7 @@ fn compatibility() {
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
     let mut rng = OsRng;
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        load_parameters(directory.path()).expect("Failed to load parameters");
+        load_parameters(directory.path(), false).expect("Failed to load parameters");
     let _ = &prove_to_private(
         &proving_context.to_private,
         &parameters,

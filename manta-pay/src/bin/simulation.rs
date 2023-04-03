@@ -26,7 +26,7 @@ pub fn main() {
     let mut rng = OsRng;
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        load_parameters(directory.path()).expect("Unable to load parameters");
+        load_parameters(directory.path(), false).expect("Unable to load parameters");
     match tokio::runtime::Builder::new_multi_thread()
         .worker_threads(6)
         .build()

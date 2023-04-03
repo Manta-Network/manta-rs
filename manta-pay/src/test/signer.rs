@@ -40,7 +40,7 @@ fn identity_proof_test() {
     let mut rng = OsRng;
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
-        load_parameters(directory.path()).expect("Failed to load parameters");
+        load_parameters(directory.path(), false).expect("Failed to load parameters");
     let mut signer = sample_signer(
         &proving_context,
         &parameters,
@@ -127,7 +127,7 @@ fn transaction_data_test() {
     let mut rng = OsRng;
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
     let (proving_context, _, parameters, utxo_accumulator_model) =
-        load_parameters(directory.path()).expect("Failed to load parameters");
+        load_parameters(directory.path(), false).expect("Failed to load parameters");
     let mut signer = sample_signer(
         &proving_context,
         &parameters,
@@ -158,7 +158,7 @@ pub fn derive_address_works() {
     let mut rng = OsRng;
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
     let (_, _, parameters, _) =
-        load_parameters(directory.path()).expect("Failed to load parameters");
+        load_parameters(directory.path(), false).expect("Failed to load parameters");
     let mnemonic = Mnemonic::sample(&mut rng);
     let receiving_key_1 = address_from_mnemonic(mnemonic.clone(), &parameters).receiving_key;
     let receiving_key_2 = *authorization_context_from_mnemonic(mnemonic, &parameters)

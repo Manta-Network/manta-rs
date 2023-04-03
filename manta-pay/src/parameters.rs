@@ -110,6 +110,7 @@ pub fn generate() -> Result<
 #[inline]
 pub fn load_parameters(
     directory: &Path,
+    try_load: bool,
 ) -> Result<
     (
         MultiProvingContext,
@@ -119,8 +120,13 @@ pub fn load_parameters(
     ),
     ProofSystemError,
 > {
+    let context = if try_load {
+        try_load_proving_context(directory)
+    } else {
+        load_proving_context(directory)
+    };
     Ok((
-        load_proving_context(directory),
+        context,
         MultiVerifyingContext {
             to_private: load_to_private_verifying_context(),
             private_transfer: load_private_transfer_verifying_context(),
