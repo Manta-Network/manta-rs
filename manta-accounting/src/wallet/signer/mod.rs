@@ -1075,6 +1075,19 @@ where
         self.accounts = None
     }
 
+    /// Tries to load `authorization_context_option` to `self`.
+    #[inline]
+    pub fn try_load_authorization_context(
+        &mut self,
+        authorization_context_option: Option<AuthorizationContext<C>>,
+    ) -> bool {
+        if let Some(authorization_context) = authorization_context_option {
+            self.load_authorization_context(authorization_context);
+            return true;
+        }
+        false
+    }
+
     /// Loads `authorization_context` to `self`.
     #[inline]
     pub fn load_authorization_context(&mut self, authorization_context: AuthorizationContext<C>) {
@@ -1231,6 +1244,16 @@ where
     #[inline]
     pub fn drop_accounts(&mut self) {
         self.state.drop_accounts()
+    }
+
+    /// Tries to load `authorization_context_option` to `self`.
+    #[inline]
+    pub fn try_load_authorization_context(
+        &mut self,
+        authorization_context_option: Option<AuthorizationContext<C>>,
+    ) -> bool {
+        self.state
+            .try_load_authorization_context(authorization_context_option)
     }
 
     /// Loads `authorization_context` to `self`.
