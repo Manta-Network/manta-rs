@@ -31,6 +31,8 @@ use manta_util::pointer::{self, PointerFamily};
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use super::leaf_map::{LeafMap, LeafVec};
+
 /// Fork-able Merkle Tree
 #[derive(derivative::Derivative)]
 #[derivative(Debug(bound = "P::Strong: Debug"))]
@@ -269,22 +271,24 @@ impl Default for BaseContribution {
     Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-struct Branch<C, M = BTreeMap<C>>
+struct Branch<C, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
 {
     /// Base Tree Contribution
     base_contribution: BaseContribution,
 
     /// Branch Data
-    data: Partial<C, M>,
+    data: Partial<C, M, L>,
 }
 
-impl<C, M> Branch<C, M>
+impl<C, M, L> Branch<C, M, L>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
 {
     /// Builds a new branch off of `base`, extending by `leaf_digests`.
     #[inline]
@@ -380,7 +384,7 @@ where
     #[inline]
     fn extract_leaves(
         base_contribution: BaseContribution,
-        data: Partial<C, M>,
+        data: Partial<C, M, L>,
     ) -> Vec<LeafDigest<C>>
     where
         LeafDigest<C>: Default,
@@ -981,7 +985,7 @@ where
 impl<C> ForkedTree<C, Partial<C>>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: Clone + Default,
+    LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     /// Builds a new [`ForkedTree`] from `leaf_digests` and `path` without checking that

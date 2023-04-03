@@ -36,7 +36,7 @@ use crate::{
         Has, NonNative,
     },
     merkle_tree::{
-        fork::{ForkedTree, Trunk},
+        //fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
         path::{constraint::PathVar, CurrentPath, Path},
     },
@@ -958,6 +958,7 @@ where
         Self { parameters, tree }
     }
 
+    /*
     /// Builds a new [`MerkleTree`] from a `trunk` and `parameters`.
     #[inline]
     pub fn from_trunk<P>(trunk: Trunk<C, T, P>, parameters: Parameters<C>) -> Self
@@ -966,6 +967,7 @@ where
     {
         Self::from_tree(trunk.into_tree(), parameters)
     }
+    */
 
     /// Returns a shared reference to the parameters used by this merkle tree.
     #[inline]
@@ -1150,6 +1152,7 @@ where
         self.tree.path(&self.parameters, index)
     }
 
+    /*
     /// Converts `self` into a fork-able merkle tree.
     ///
     /// Use [`Trunk::into_tree`] to convert back.
@@ -1160,6 +1163,7 @@ where
     {
         Trunk::new(self.tree)
     }
+    */
 
     /// Extracts the parameters of the merkle tree, dropping the internal tree.
     #[inline]
@@ -1323,6 +1327,7 @@ where
     }
 }
 
+/*
 impl<C, T, M> Rollback for MerkleTree<C, ForkedTree<C, T, M>>
 where
     C: Configuration + ?Sized,
@@ -1341,3 +1346,4 @@ where
         self.tree.merge_fork(&self.parameters);
     }
 }
+*/

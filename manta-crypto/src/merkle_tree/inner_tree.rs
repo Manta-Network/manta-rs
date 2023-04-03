@@ -412,6 +412,20 @@ where
         self.set(rhs_index, rhs_digest);
         digest
     }
+
+    /// Removes the inner digest stored at `index`.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing and returns `false`. Implementations of this method may
+    /// fail arbitrarily, and should only successfully remove a node if the implementation is
+    /// efficient enough. Space and time tradeoffs should be studied to determine the usefulness of
+    /// this method.
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        let _ = index;
+        false
+    }
 }
 
 impl<C, M> InnerMap<C> for &mut M

@@ -60,6 +60,14 @@ where
     /// Pushes `leaf_digest` to the right-most position of `self`.
     fn push(&mut self, leaf_digest: LeafDigest<C>);
 
+    /// Extends `self` with `leaf_digests`.
+    #[inline]
+    fn extend(&mut self, leaf_digests: Vec<LeafDigest<C>>) {
+        for leaf_digest in leaf_digests.into_iter() {
+            self.push(leaf_digest)
+        }
+    }
+
     /// Marks the [`LeafDigest`] at `index` for removal.
     fn mark(&mut self, index: usize);
 
@@ -84,6 +92,9 @@ where
     fn leaf_digests(&self) -> Vec<&LeafDigest<C>> {
         (0..self.len()).filter_map(|x| self.get(x)).collect()
     }
+
+    /// Returns a vector with all [`LeafDigest`]s, consuming `self`.
+    fn into_leaf_digests(self) -> Vec<LeafDigest<C>>;
 
     /// Returns a vector with all marked [`LeafDigest`]s in `self`.
     #[inline]
@@ -148,10 +159,21 @@ where
     }
 
     #[inline]
+    fn extend(&mut self, leaf_digests: Vec<LeafDigest<C>>) {
+        self.vec
+            .extend(leaf_digests.into_iter().map(|digest| (false, digest)))
+    }
+
+    #[inline]
     fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
         Self {
             vec: leaf_digests.into_iter().map(|x| (false, x)).collect(),
         }
+    }
+
+    #[inline]
+    fn into_leaf_digests(self) -> Vec<LeafDigest<C>> {
+        self.vec.into_iter().map(|(_, digest)| digest).collect()
     }
 
     #[inline]
@@ -173,7 +195,7 @@ where
     }
 }
 
-/// Leaf Hash
+/// Leaf Hash Map
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 #[derive(derivative::Derivative)]
@@ -250,6 +272,14 @@ where
                 last_index: Some(digest_count - 1),
             }
         }
+    }
+
+    #[inline]
+    fn into_leaf_digests(self) -> Vec<LeafDigest<C>> {
+        self.map
+            .into_iter()
+            .map(|(_, (_, digest))| digest)
+            .collect()
     }
 
     #[inline]
