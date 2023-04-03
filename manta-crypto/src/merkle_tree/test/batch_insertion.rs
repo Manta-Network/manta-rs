@@ -109,7 +109,7 @@ fn test_batch_insertion_fork() {
 #[test]
 fn test_batch_insertion_forest() {
     test_batch_insertion(
-        |parameters| Forest::new(parameters.clone()),
+        |parameters| Forest::new(*parameters),
         |forest, _, leaf| forest.insert(leaf),
         |forest, _, leaves| forest.batch_insert(leaves),
     )
