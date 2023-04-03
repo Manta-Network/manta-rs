@@ -49,25 +49,26 @@ type Forest = forest::TreeArrayMerkleForest<Config, ForkedTree, 2>;
 /// Tests that batch inserting new leaves into a Merkle tree yields the same result
 /// as inserting them one by one.
 #[inline]
-fn test_batch_insertion<T, F>(f: F)
+fn test_batch_insertion<T, F, G, H>(f: F, mut insert: G, mut batch_insert: H)
 where
-    T: Tree<Config> + Clone + Debug + PartialEq,
+    T: Clone + Debug + PartialEq,
     Leaf<Config>: Sample,
     F: FnOnce(&Parameters<Config>) -> T,
+    G: FnMut(&mut T, &Parameters<Config>, &Leaf<Config>) -> bool,
+    H: FnMut(&mut T, &Parameters<Config>, &[Leaf<Config>]) -> bool,
 {
     let mut rng = OsRng;
     let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
     let mut tree = f(&parameters);
     let mut cloned_tree = tree.clone();
     let number_of_insertions = rng.gen_range(1..(1 << (HEIGHT - 1)));
-    let mut insertions = Vec::with_capacity(number_of_insertions);
-    for _ in 0..number_of_insertions {
-        insertions.push(rng.gen());
-    }
+    let insertions = (0..number_of_insertions)
+        .map(|_| rng.gen())
+        .collect::<Vec<_>>();
     for leaf in &insertions {
-        tree.push(&parameters, leaf);
+        insert(&mut tree, &parameters, leaf);
     }
-    cloned_tree.batch_push(&parameters, &insertions);
+    batch_insert(&mut cloned_tree, &parameters, &insertions);
     assert_eq!(
         tree, cloned_tree,
         "Individual insertions and batch insertions should yield the same results."
@@ -77,39 +78,39 @@ where
 /// Runs [`test_batch_insertion`] on a [`Full`] Merkle tree.
 #[test]
 fn test_batch_insertion_full() {
-    test_batch_insertion(|parameters| Full::new(parameters))
+    test_batch_insertion(
+        |parameters| Full::new(parameters),
+        |tree, parameters, leaf| tree.push(parameters, leaf),
+        |tree, parameters, leaves| tree.batch_push(parameters, leaves),
+    )
 }
 
 /// Runs [`test_batch_insertion`] on a [`Partial`] Merkle tree.
 #[test]
 fn test_batch_insertion_partial() {
-    test_batch_insertion(|parameters| Partial::new(parameters))
+    test_batch_insertion(
+        |parameters| Partial::new(parameters),
+        |tree, parameters, leaf| tree.push(parameters, leaf),
+        |tree, parameters, leaves| tree.batch_push(parameters, leaves),
+    )
 }
 
 /// Runs [`test_batch_insertion`] on a [`ForkedTree`].
 #[test]
 fn test_batch_insertion_fork() {
-    test_batch_insertion(|parameters| ForkedTree::new(Partial::new(parameters), parameters))
+    test_batch_insertion(
+        |parameters| ForkedTree::new(Partial::new(parameters), parameters),
+        |tree, parameters, leaf| tree.push(parameters, leaf),
+        |tree, parameters, leaves| tree.batch_push(parameters, leaves),
+    )
 }
 
 /// Tests batch insertion on a Merkle forest.
 #[test]
 fn test_batch_insertion_forest() {
-    let mut rng = OsRng;
-    let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
-    let mut forest = Forest::new(parameters);
-    let mut cloned_forest = forest.clone();
-    let number_of_insertions = rng.gen_range(1..(1 << (HEIGHT - 1)));
-    let mut insertions = Vec::<u64>::with_capacity(number_of_insertions);
-    for _ in 0..number_of_insertions {
-        insertions.push(rng.gen());
-    }
-    for leaf in &insertions {
-        forest.insert(leaf);
-    }
-    cloned_forest.batch_insert(&insertions);
-    assert_eq!(
-        forest, cloned_forest,
-        "Individual insertions and batch insertions should yield the same results."
-    );
+    test_batch_insertion(
+        |parameters| Forest::new(parameters.clone()),
+        |forest, _, leaf| forest.insert(leaf),
+        |forest, _, leaves| forest.batch_insert(leaves),
+    )
 }

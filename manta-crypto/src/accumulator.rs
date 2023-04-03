@@ -221,7 +221,7 @@ pub trait BatchInsertion: OptimizedAccumulator {
         Self::Item: 'a,
         I: IntoIterator<Item = &'a Self::Item>,
     {
-        for item in items.into_iter() {
+        for item in items {
             if !self.insert(item) {
                 return false;
             }
@@ -245,7 +245,7 @@ pub trait BatchInsertion: OptimizedAccumulator {
         Self::Item: 'a,
         I: IntoIterator<Item = &'a Self::Item>,
     {
-        for item in items.into_iter() {
+        for item in items {
             if !self.insert_nonprovable(item) {
                 return false;
             }
