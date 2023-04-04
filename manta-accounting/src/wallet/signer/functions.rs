@@ -129,7 +129,6 @@ fn insert_next_item<C>(
     utxo_accumulator: &mut C::UtxoAccumulator,
     assets: &mut C::AssetMap,
     parameters: &Parameters<C>,
-    utxo: Utxo<C>,
     identified_asset: IdentifiedAsset<C>,
     nullifiers: &mut Vec<Nullifier<C>>,
     deposit: &mut Vec<Asset<C>>,
@@ -138,26 +137,24 @@ fn insert_next_item<C>(
     C: Configuration,
 {
     let IdentifiedAsset::<C> { identifier, asset } = identified_asset;
-    let (_, computed_utxo, nullifier) = parameters.derive_spend(
+    let (_, utxo, nullifier) = parameters.derive_spend(
         authorization_context,
         identifier.clone(),
         asset.clone(),
         rng,
     );
-    if computed_utxo.is_related(&utxo) {
-        if let Some(index) = nullifiers
-            .iter()
-            .position(move |n| n.is_related(&nullifier))
-        {
-            nullifiers.remove(index);
-        } else {
-            utxo_accumulator.insert(&item_hash::<C>(parameters, &utxo));
-            if !asset.is_zero() {
-                deposit.push(asset.clone());
-            }
-            assets.insert(identifier, asset);
-            return;
+    if let Some(index) = nullifiers
+        .iter()
+        .position(move |n| n.is_related(&nullifier))
+    {
+        nullifiers.remove(index);
+    } else {
+        utxo_accumulator.insert(&item_hash::<C>(parameters, &utxo));
+        if !asset.is_zero() {
+            deposit.push(asset.clone());
         }
+        assets.insert(identifier, asset);
+        return;
     }
     utxo_accumulator.insert_nonprovable(&item_hash::<C>(parameters, &utxo));
 }
@@ -231,7 +228,6 @@ where
                 utxo_accumulator,
                 assets,
                 parameters,
-                utxo,
                 transfer::utxo::IdentifiedAsset::new(identifier, asset),
                 &mut nullifiers,
                 &mut deposit,
@@ -267,6 +263,53 @@ where
             // TODO: Whenever we are doing a full update, don't even build the `deposit` and
             //       `withdraw` vectors, since we won't be needing them.
             BalanceUpdate::Partial { deposit, withdraw }
+        } else {
+            BalanceUpdate::Full {
+                assets: assets.assets().into(),
+            }
+        },
+    }
+}
+
+/// Updates the internal ledger state, returning the new asset distribution.
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn sbt_sync_with<C, I>(
+    authorization_context: &mut AuthorizationContext<C>,
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    parameters: &Parameters<C>,
+    inserts: I,
+    utxo_count: Vec<usize>,
+    nullifier_count: usize,
+    is_partial: bool,
+) -> SyncResponse<C, C::Checkpoint>
+where
+    C: Configuration,
+    I: Iterator<Item = (Utxo<C>, Note<C>)>,
+{
+    let mut deposit = Vec::new();
+    let decryption_key = parameters.derive_decryption_key(authorization_context);
+    for (utxo, note) in inserts {
+        if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
+        {
+            if !asset.is_zero() {
+                deposit.push(asset.clone());
+            }
+            assets.insert(identifier, asset);
+        }
+    }
+    checkpoint.update_from_nullifiers(nullifier_count);
+    checkpoint.update_from_utxo_count(utxo_count);
+    SyncResponse {
+        checkpoint: checkpoint.clone(),
+        balance_update: if is_partial {
+            // TODO: Whenever we are doing a full update, don't even build the `deposit` and
+            //       `withdraw` vectors, since we won't be needing them.
+            BalanceUpdate::Partial {
+                deposit,
+                withdraw: Default::default(),
+            }
         } else {
             BalanceUpdate::Full {
                 assets: assets.assets().into(),
@@ -619,17 +662,14 @@ where
     account.address(&parameters.parameters)
 }
 
-/// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
+/// Checks that the origin checkpoint in `request` is less or equal than `checkpoint`.
+/// If it is strictly less, it prunes the data in `request` accordingly.
 #[inline]
-pub fn sync<C>(
+fn prune_sync_request<C>(
     parameters: &SignerParameters<C>,
-    authorization_context: &mut AuthorizationContext<C>,
-    assets: &mut C::AssetMap,
-    checkpoint: &mut C::Checkpoint,
-    utxo_accumulator: &mut C::UtxoAccumulator,
+    checkpoint: &C::Checkpoint,
     mut request: SyncRequest<C, C::Checkpoint>,
-    rng: &mut C::Rng,
-) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+) -> Result<(bool, SyncData<C>), SyncError<C::Checkpoint>>
 where
     C: Configuration,
 {
@@ -647,24 +687,76 @@ where
             parameters.parameters.utxo_accumulator_item_hash(),
             checkpoint,
         );
-        let SyncData {
+        Ok((has_pruned, request.data))
+    }
+}
+
+///
+#[inline]
+pub fn sbt_sync<C>(
+    parameters: &SignerParameters<C>,
+    authorization_context: &mut AuthorizationContext<C>,
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    request: SyncRequest<C, C::Checkpoint>,
+) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+where
+    C: Configuration,
+{
+    let utxo_count = request.utxo_count(&parameters.parameters);
+    let (
+        has_pruned,
+        SyncData {
             utxo_note_data,
             nullifier_data,
-        } = request.data;
-        let response = sync_with::<C, _>(
-            authorization_context,
-            assets,
-            checkpoint,
-            utxo_accumulator,
-            &parameters.parameters,
-            utxo_note_data.into_iter(),
+        },
+    ) = prune_sync_request(parameters, checkpoint, request)?;
+    Ok(sbt_sync_with(
+        authorization_context,
+        assets,
+        checkpoint,
+        &parameters.parameters,
+        utxo_note_data.into_iter(),
+        utxo_count,
+        nullifier_data.len(),
+        !has_pruned,
+    ))
+}
+
+/// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
+#[inline]
+pub fn sync<C>(
+    parameters: &SignerParameters<C>,
+    authorization_context: &mut AuthorizationContext<C>,
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    request: SyncRequest<C, C::Checkpoint>,
+    rng: &mut C::Rng,
+) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+where
+    C: Configuration,
+{
+    let (
+        has_pruned,
+        SyncData {
+            utxo_note_data,
             nullifier_data,
-            !has_pruned,
-            rng,
-        );
-        utxo_accumulator.commit();
-        Ok(response)
-    }
+        },
+    ) = prune_sync_request(parameters, checkpoint, request)?;
+    let response = sync_with::<C, _>(
+        authorization_context,
+        assets,
+        checkpoint,
+        utxo_accumulator,
+        &parameters.parameters,
+        utxo_note_data.into_iter(),
+        nullifier_data,
+        !has_pruned,
+        rng,
+    );
+    utxo_accumulator.commit();
+    Ok(response)
 }
 
 /// Signs a withdraw transaction for `asset` sent to `address`.

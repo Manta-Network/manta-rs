@@ -141,6 +141,14 @@ impl signer::Connection<Config> for Client {
     }
 
     #[inline]
+    fn sbt_sync(
+        &mut self,
+        request: SyncRequest,
+    ) -> LocalBoxFutureResult<Result<SyncResponse, SyncError>, Self::Error> {
+        Box::pin(self.send("sbt_sync", request))
+    }
+
+    #[inline]
     fn initial_sync(
         &mut self,
         request: InitialSyncRequest,

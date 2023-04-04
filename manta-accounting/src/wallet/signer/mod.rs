@@ -79,6 +79,12 @@ where
         request: SyncRequest<C, Self::Checkpoint>,
     ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error>;
 
+    ///
+    fn sbt_sync(
+        &mut self,
+        request: SyncRequest<C, Self::Checkpoint>,
+    ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error>;
+
     /// Performs the initial synchronization of a new signer with the ledger data.
     ///
     /// # Implementation Note
@@ -235,14 +241,11 @@ where
 
 impl<C> InitialSyncRequest<C>
 where
-    C: transfer::Configuration,
+    C: Configuration,
 {
     /// Builds a new [`InitialSyncRequest`] from `parameters` and `data`.
     #[inline]
-    pub fn from_initial_sync_data(parameters: &Parameters<C>, data: InitialSyncData<C>) -> Self
-    where
-        C: Configuration,
-    {
+    pub fn from_initial_sync_data(parameters: &Parameters<C>, data: InitialSyncData<C>) -> Self {
         Self {
             utxo_data: C::UtxoAccumulator::sort_items(
                 data.utxo_data
@@ -255,29 +258,25 @@ where
         }
     }
 
-    /// Extends `self` with `parameters` and `data`.
+    ///
     #[inline]
-    pub fn extend_with_data(&mut self, parameters: &Parameters<C>, data: InitialSyncData<C>)
-    where
-        C: Configuration,
-    {
-        let InitialSyncData {
-            utxo_data,
-            membership_proof_data,
-            nullifier_count,
-        } = data;
-        let sorted_utxo_data = C::UtxoAccumulator::sort_items(
-            utxo_data
-                .iter()
-                .map(|utxo| functions::item_hash::<C>(parameters, utxo))
-                .collect(),
-        );
-        for (old_vector, new_vector) in self.utxo_data.iter_mut().zip(sorted_utxo_data.into_iter())
+    pub fn extend(&mut self, new_request: InitialSyncRequest<C>) {
+        for (old_vector, new_vector) in self
+            .utxo_data
+            .iter_mut()
+            .zip(new_request.utxo_data.into_iter())
         {
             old_vector.extend(new_vector)
         }
-        self.membership_proof_data = membership_proof_data;
-        self.nullifier_count = nullifier_count;
+        self.membership_proof_data = new_request.membership_proof_data;
+        self.nullifier_count = new_request.nullifier_count;
+    }
+
+    /// Extends `self` with `parameters` and `data`.
+    #[inline]
+    pub fn extend_with_data(&mut self, parameters: &Parameters<C>, data: InitialSyncData<C>) {
+        let new_request = Self::from_initial_sync_data(parameters, data);
+        self.extend(new_request);
     }
 }
 
@@ -421,6 +420,24 @@ where
     {
         self.data
             .prune(parameters, &self.origin_checkpoint, checkpoint)
+    }
+
+    ///
+    #[inline]
+    pub fn utxo_count(&self, parameters: &Parameters<C>) -> Vec<usize>
+    where
+        C: Configuration,
+    {
+        C::UtxoAccumulator::sort_items(
+            self.data
+                .utxo_note_data
+                .iter()
+                .map(|(utxo, _)| functions::item_hash::<C>(parameters, utxo))
+                .collect(),
+        )
+        .into_iter()
+        .map(|utxos| utxos.len())
+        .collect()
     }
 }
 
@@ -1463,6 +1480,24 @@ where
     pub fn transfer_parameters(&self) -> &Parameters<C> {
         &self.parameters.parameters
     }
+
+    ///
+    #[inline]
+    pub fn sbt_sync(
+        &mut self,
+        request: SyncRequest<C, C::Checkpoint>,
+    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
+        functions::sbt_sync(
+            &self.parameters,
+            self.state
+                .authorization_context
+                .as_mut()
+                .ok_or(SyncError::MissingProofAuthorizationKey)?,
+            &mut self.state.assets,
+            &mut self.state.checkpoint,
+            request,
+        )
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
@@ -1479,6 +1514,14 @@ where
         request: SyncRequest<C, C::Checkpoint>,
     ) -> LocalBoxFutureResult<SyncResult<C, C::Checkpoint>, Self::Error> {
         Box::pin(async move { Ok(self.sync(request)) })
+    }
+
+    #[inline]
+    fn sbt_sync(
+        &mut self,
+        request: SyncRequest<C, Self::Checkpoint>,
+    ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error> {
+        Box::pin(async move { Ok(self.sbt_sync(request)) })
     }
 
     #[inline]

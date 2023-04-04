@@ -114,12 +114,18 @@ impl signer::Checkpoint<Config> for Checkpoint {
 
     #[inline]
     fn update_from_utxo_count(&mut self, utxo_count: Vec<usize>) {
-        self.receiver_index = manta_util::Array(utxo_count.try_into().unwrap_or_else(|_| {
-            panic!(
-                "Utxo count must have {} elements",
-                MerkleTreeConfiguration::FOREST_WIDTH
-            )
-        }))
+        assert_eq!(
+            utxo_count.len(),
+            MerkleTreeConfiguration::FOREST_WIDTH,
+            "Utxo count must have {} elements",
+            MerkleTreeConfiguration::FOREST_WIDTH
+        );
+        self.receiver_index = self
+            .receiver_index
+            .into_iter()
+            .zip(utxo_count.into_iter())
+            .map(|(a, b)| a + b)
+            .collect();
     }
 
     /// Prunes the `data` by comparing `origin` and `signer_checkpoint` and checks if updating the
