@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#328](https://github.com/Manta-Network/manta-rs/pull/328) Expose reset wallet method.
 
 ### Changed
+- [\#332](https://github.com/Manta-Network/manta-rs/pull/332) Downgrade BIP32 to v0.3.0.
 - [\#327](https://github.com/Manta-Network/manta-rs/pull/327) Update BIP32 to v0.4.0.
 
 ### Deprecated
