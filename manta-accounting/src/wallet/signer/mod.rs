@@ -824,6 +824,9 @@ where
 
     /// Missing Spending Key
     MissingSpendingKey,
+
+    /// Missing Proof Authorization Key
+    MissingProofAuthorizationKey,
 }
 
 /// Signing Result
@@ -1373,10 +1376,8 @@ where
     pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
         functions::sign(
             &self.parameters,
-            self.state
-                .accounts
-                .as_ref()
-                .ok_or(SignError::MissingSpendingKey)?,
+            self.state.accounts.as_ref(),
+            self.state.authorization_context.as_mut(),
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,
@@ -1405,7 +1406,7 @@ where
     pub fn address(&mut self) -> Option<Address<C>> {
         Some(functions::address(
             &self.parameters,
-            self.state.accounts.as_ref()?,
+            self.state.authorization_context.as_mut()?,
         ))
     }
 
@@ -1419,15 +1420,19 @@ where
     /// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `self` doesn't own the
     /// underlying assets in `post`.
     #[inline]
-    pub fn transaction_data(&self, post: TransferPost<C>) -> Option<TransactionData<C>> {
-        functions::transaction_data(&self.parameters, self.state.accounts.as_ref()?, post)
+    pub fn transaction_data(&mut self, post: TransferPost<C>) -> Option<TransactionData<C>> {
+        functions::transaction_data(
+            &self.parameters,
+            self.state.authorization_context.as_mut()?,
+            post,
+        )
     }
 
     /// Returns a vector with the [`TransactionData`] of each well-formed [`TransferPost`] owned by
     /// `self`.
     #[inline]
     pub fn batched_transaction_data(
-        &self,
+        &mut self,
         posts: Vec<TransferPost<C>>,
     ) -> TransactionDataResponse<C> {
         TransactionDataResponse(
@@ -1449,10 +1454,11 @@ where
     {
         functions::sign_with_transaction_data(
             &self.parameters,
+            self.state.accounts.as_ref(),
             self.state
-                .accounts
-                .as_ref()
-                .ok_or(SignError::MissingSpendingKey)?,
+                .authorization_context
+                .as_mut()
+                .ok_or(SignError::MissingProofAuthorizationKey)?,
             &self.state.assets,
             &mut self.state.utxo_accumulator,
             transaction,

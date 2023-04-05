@@ -20,7 +20,7 @@ use crate::{
     config::{
         AccountId, Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters,
         IdentifiedAsset, IdentityProof, MultiProvingContext, Parameters, Transaction,
-        TransactionData, TransferPost, UtxoAccumulatorModel,
+        UtxoAccumulatorModel,
     },
     key::{KeySecret, Mnemonic},
     signer::{
@@ -177,23 +177,6 @@ pub fn sign(
         transaction,
         rng,
     )
-}
-
-/// Returns the [`Address`] corresponding to `accounts`.
-#[inline]
-pub fn address(parameters: &SignerParameters, accounts: &AccountTable) -> Address {
-    functions::address(parameters, accounts)
-}
-
-/// Returns the associated [`TransactionData`] of `post`. Returns `None` if `post` has an invalid shape,
-/// or if `accounts` doesn't own the underlying assets in `post`.
-#[inline]
-pub fn transaction_data(
-    parameters: &SignerParameters,
-    accounts: &AccountTable,
-    post: TransferPost,
-) -> Option<TransactionData> {
-    functions::transaction_data(parameters, accounts, post)
 }
 
 /// Generates an [`IdentityProof`] for `identified_asset` by signing a
