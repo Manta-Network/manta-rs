@@ -79,7 +79,19 @@ where
         request: SyncRequest<C, Self::Checkpoint>,
     ) -> LocalBoxFutureResult<SyncResult<C, Self::Checkpoint>, Self::Error>;
 
+    /// Pushes updates from the ledger to the wallet, synchronizing it with the ledger state and
+    /// returning an updated asset distribution.
     ///
+    /// # Implementation Note
+    ///
+    /// Implementations of this method must return the same updated asset distribution and the same
+    /// balance update as [`sync`](Connection::sync). However, they do not have to update the [`Utxo`]
+    /// accumulator, thus making the new assets effectively non-spendable. Therefore, this method should
+    /// only be used when the pallet does not allow [`PrivateTransfer`]s or [`ToPublic`] transactions,
+    /// for example in the case of a pallet for Soul-Bound Tokens (SBTs).
+    ///
+    /// [`PrivateTransfer`]: transfer::canonical::PrivateTransfer
+    /// [`ToPublic`]: transfer::canonical::ToPublic
     fn sbt_sync(
         &mut self,
         request: SyncRequest<C, Self::Checkpoint>,
@@ -258,18 +270,15 @@ where
         }
     }
 
-    ///
+    /// Extends `self` with `request`.
     #[inline]
-    pub fn extend(&mut self, new_request: InitialSyncRequest<C>) {
-        for (old_vector, new_vector) in self
-            .utxo_data
-            .iter_mut()
-            .zip(new_request.utxo_data.into_iter())
+    pub fn extend(&mut self, request: InitialSyncRequest<C>) {
+        for (old_vector, new_vector) in self.utxo_data.iter_mut().zip(request.utxo_data.into_iter())
         {
             old_vector.extend(new_vector)
         }
-        self.membership_proof_data = new_request.membership_proof_data;
-        self.nullifier_count = new_request.nullifier_count;
+        self.membership_proof_data = request.membership_proof_data;
+        self.nullifier_count = request.nullifier_count;
     }
 
     /// Extends `self` with `parameters` and `data`.
@@ -422,7 +431,7 @@ where
             .prune(parameters, &self.origin_checkpoint, checkpoint)
     }
 
-    ///
+    /// Returns the [`Utxo`] count of `self`.
     #[inline]
     pub fn utxo_count(&self, parameters: &Parameters<C>) -> Vec<usize>
     where
@@ -1481,7 +1490,13 @@ where
         &self.parameters.parameters
     }
 
+    /// Updates the internal ledger state, returning the new asset distribution.
     ///
+    /// # Note
+    ///
+    /// This method updates the checkpoint and assetmap, but it does not update
+    /// the [`UtxoAccumulator`](Configuration::UtxoAccumulator). Therefore, it should
+    /// only be used for non-spendable assets such as SBTs.
     #[inline]
     pub fn sbt_sync(
         &mut self,

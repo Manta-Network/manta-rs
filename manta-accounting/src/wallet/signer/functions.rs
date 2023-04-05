@@ -691,7 +691,7 @@ where
     }
 }
 
-///
+/// Updates `assets` and `checkpoint`, returning the new asset distribution.
 #[inline]
 pub fn sbt_sync<C>(
     parameters: &SignerParameters<C>,

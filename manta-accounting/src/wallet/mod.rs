@@ -272,7 +272,27 @@ where
         Ok(())
     }
 
+    /// Pulls data from the ledger, synchronizing the wallet and balance state. This method loops
+    /// continuously calling [`sbt_sync_partial`](Self::sbt_sync_partial) until all the ledger data has
+    /// arrived at and has been synchronized with the wallet.
     ///
+    /// # Failure Conditions
+    ///
+    /// This method returns an element of type [`Error`] on failure, which can result from any
+    /// number of synchronization issues between the wallet, the ledger, and the signer. See the
+    /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
+    /// how to resolve them.
+    ///
+    /// # Note
+    ///
+    /// In general, this method does not update the [`Utxo`] accumulator, thus making the new assets
+    /// effectively non-spendable. Therefore, this method should only be used when the pallet does not
+    /// allow [`PrivateTransfer`]s or [`ToPublic`] transactions, for example in the case of
+    /// Soul-Bound Tokens (SBTs).
+    ///
+    /// [`Utxo`]: Configuration::Utxo
+    /// [`PrivateTransfer`]: crate::transfer::canonical::PrivateTransfer
+    /// [`ToPublic`]: crate::transfer::canonical::ToPublic
     #[inline]
     pub async fn sbt_sync(&mut self) -> Result<(), Error<C, L, S>>
     where
@@ -348,7 +368,7 @@ where
         self.sync_with().await
     }
 
-    ///
+    /// Reads data from the ledger.
     #[inline]
     async fn read_from_ledger<D>(&mut self) -> Result<ReadResponse<D>, Error<C, L, S>>
     where
@@ -360,7 +380,27 @@ where
             .map_err(Error::LedgerConnectionError)
     }
 
+    /// Pulls data from the ledger, synchronizing the wallet and balance state. This method returns
+    /// a [`ControlFlow`] for matching against to determine if the wallet requires more
+    /// synchronization.
     ///
+    /// # Failure Conditions
+    ///
+    /// This method returns an element of type [`Error`] on failure, which can result from any
+    /// number of synchronization issues between the wallet, the ledger, and the signer. See the
+    /// [`InconsistencyError`] type for more information on the kinds of errors that can occur and
+    /// how to resolve them.
+    ///
+    /// # Note
+    ///
+    /// In general, this method does not update the [`Utxo`] accumulator, thus making the new assets
+    /// effectively non-spendable. Therefore, this method should only be used when the pallet does not
+    /// allow [`PrivateTransfer`]s or [`ToPublic`] transactions, for example in the case of
+    /// Soul-Bound Tokens (SBTs).
+    ///
+    /// [`Utxo`]: Configuration::Utxo
+    /// [`PrivateTransfer`]: crate::transfer::canonical::PrivateTransfer
+    /// [`ToPublic`]: crate::transfer::canonical::ToPublic
     #[inline]
     pub async fn sbt_sync_partial(&mut self) -> Result<ControlFlow, Error<C, L, S>>
     where
@@ -464,7 +504,7 @@ where
         self.process_sync_response(response)
     }
 
-    ///
+    /// Performs an sbt synchronization with the signer against the given `request`.
     #[inline]
     async fn signer_sbt_sync(
         &mut self,
