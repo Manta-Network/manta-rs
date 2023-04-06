@@ -603,11 +603,6 @@ macro_rules! impl_from_items_and_witnesses {
             LeafDigest<C>: Clone + Default + PartialEq,
             InnerDigest<C>: Clone + Default + PartialEq,
         {
-            /// # Note
-            ///
-            /// This implementation does not yield the same result as individually inserting
-            /// each item in `items` with [`insert`](Accumulator::insert) till failure.
-            /// However, this property holds at the tree level.
             #[inline]
             fn batch_insert<'a, I>(&mut self, items: I) -> bool
             where
@@ -625,11 +620,6 @@ macro_rules! impl_from_items_and_witnesses {
                 result
             }
 
-            /// # Note
-            ///
-            /// This implementation does not yield the same result as individually inserting
-            /// each item in `items` with [`insert_nonprovable`](OptimizedAccumulator::insert_nonprovable)
-            /// till failure. However, this property holds at the tree level.
             #[inline]
             fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
             where

@@ -442,6 +442,11 @@ impl Iterator for NodeParents {
 impl FusedIterator for NodeParents {}
 
 /// Dual Parity
+///
+/// # Note
+///
+/// Given a [`NodeRange`], this struct describes the parity of its left-most
+/// and right-most [`Node`]s.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -454,13 +459,13 @@ impl DualParity {
     /// Returns the starting [`Parity`] of `self`.
     #[inline]
     pub const fn starting_parity(&self) -> Parity {
-        self.0 .0
+        (self.0).0
     }
 
     /// Returns the final [`Parity`] of `self`.
     #[inline]
     pub const fn final_parity(&self) -> Parity {
-        self.0 .1
+        (self.0).1
     }
 }
 
@@ -470,7 +475,7 @@ impl DualParity {
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct NodeRange {
     /// Starting Node
     pub node: Node,

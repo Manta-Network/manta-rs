@@ -212,7 +212,7 @@ pub trait BatchInsertion: OptimizedAccumulator {
     ///
     /// By default, this method calls [`insert`] individually for each item in `items`
     /// till failure. Custom implementations of this method to improve performance
-    /// must return the same result as the default implementation.
+    /// may insert a subset of `items` in case of failure.
     ///
     /// [`insert`]: Accumulator::insert
     #[inline]
@@ -221,7 +221,7 @@ pub trait BatchInsertion: OptimizedAccumulator {
         Self::Item: 'a,
         I: IntoIterator<Item = &'a Self::Item>,
     {
-        for item in items.into_iter() {
+        for item in items {
             if !self.insert(item) {
                 return false;
             }
@@ -236,7 +236,7 @@ pub trait BatchInsertion: OptimizedAccumulator {
     ///
     /// By default, this method calls [`insert_nonprovable`] individually for each item
     /// in `items` till failure. Custom implementations of this method to improve performance
-    /// must return the same result as the default implementation.
+    /// may insert a subset of `items` in case of failure.
     ///
     /// [`insert_nonprovable`]: OptimizedAccumulator::insert_nonprovable
     #[inline]
@@ -245,7 +245,7 @@ pub trait BatchInsertion: OptimizedAccumulator {
         Self::Item: 'a,
         I: IntoIterator<Item = &'a Self::Item>,
     {
-        for item in items.into_iter() {
+        for item in items {
             if !self.insert_nonprovable(item) {
                 return false;
             }
