@@ -21,7 +21,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    node::Parity,
+    node::{NodeRange, Parity},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
 };
@@ -269,6 +269,69 @@ where
         self.leaf_digests.push(leaf_digest);
     }
 
+    /// Appends `leaf_digests` with indices given by `leaf_indices` into the tree.
+    #[inline]
+    fn batch_push_leaf_digests(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_indices: NodeRange,
+        leaf_digests: Vec<LeafDigest<C>>,
+    ) where
+        LeafDigest<C>: Default,
+    {
+        let base_inner_digests = leaf_indices.join_leaves(parameters, &leaf_digests, |node| {
+            self.get_leaf_sibling(node)
+        });
+        self.inner_digests
+            .batch_insert(parameters, leaf_indices, base_inner_digests);
+        self.leaf_digests.extend(leaf_digests);
+    }
+
+    /// Appends `leaf_digests` to the tree using `parameters`.
+    #[inline]
+    pub fn batch_maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+        LeafDigest<C>: Default,
+    {
+        let mut leaf_digests = leaf_digests();
+        if leaf_digests.is_empty() {
+            return None;
+        }
+        let len = self.len();
+        let number_of_leaf_digests = leaf_digests.len();
+        let capacity = capacity::<C, _>();
+        if len + number_of_leaf_digests > capacity {
+            let max_number_of_insertions = capacity - len;
+            if max_number_of_insertions != 0 {
+                leaf_digests.truncate(max_number_of_insertions);
+                self.batch_push_leaf_digests(
+                    parameters,
+                    NodeRange {
+                        node: Node(len),
+                        extra_nodes: max_number_of_insertions - 1,
+                    },
+                    leaf_digests,
+                );
+            }
+            Some(false)
+        } else {
+            self.batch_push_leaf_digests(
+                parameters,
+                NodeRange {
+                    node: Node(len),
+                    extra_nodes: number_of_leaf_digests - 1,
+                },
+                leaf_digests,
+            );
+            Some(true)
+        }
+    }
+
     /// Appends a `leaf` to the tree using `parameters`.
     #[inline]
     pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
@@ -345,6 +408,18 @@ where
     {
         self.maybe_push_digest(parameters, leaf_digest)
     }
+
+    #[inline]
+    fn batch_maybe_push_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        self.batch_maybe_push_digest(parameters, leaf_digests)
+    }
 }
 
 impl<C, M> WithProofs<C> for Partial<C, M>
@@ -394,5 +469,17 @@ where
         // TODO: Implement this optimization.
         let _ = index;
         false
+    }
+
+    #[inline]
+    fn batch_maybe_push_provable_digest<F>(
+        &mut self,
+        parameters: &Parameters<C>,
+        leaf_digests: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce() -> Vec<LeafDigest<C>>,
+    {
+        self.batch_maybe_push_digest(parameters, leaf_digests)
     }
 }

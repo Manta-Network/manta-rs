@@ -203,6 +203,57 @@ pub trait OptimizedAccumulator: Accumulator {
     }
 }
 
+/// Batch Insertion
+pub trait BatchInsertion: OptimizedAccumulator {
+    /// Inserts `items` in `self` provably, see [`insert`] for more details.
+    /// Returns `true` if all the insertions succeed and `false` otherwise.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method calls [`insert`] individually for each item in `items`
+    /// till failure. Custom implementations of this method to improve performance
+    /// may insert a subset of `items` in case of failure.
+    ///
+    /// [`insert`]: Accumulator::insert
+    #[inline]
+    fn batch_insert<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        for item in items {
+            if !self.insert(item) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Inserts `items` in `self` nonprovably, see [`insert_nonprovable`] for more details.
+    /// Returns `true` if all the insertions succeed and `false` otherwise.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method calls [`insert_nonprovable`] individually for each item
+    /// in `items` till failure. Custom implementations of this method to improve performance
+    /// may insert a subset of `items` in case of failure.
+    ///
+    /// [`insert_nonprovable`]: OptimizedAccumulator::insert_nonprovable
+    #[inline]
+    fn batch_insert_nonprovable<'a, I>(&mut self, items: I) -> bool
+    where
+        Self::Item: 'a,
+        I: IntoIterator<Item = &'a Self::Item>,
+    {
+        for item in items {
+            if !self.insert_nonprovable(item) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 /// From Items and Witnesses
 pub trait FromItemsAndWitnesses: Accumulator {
     /// Number of Subaccumulators

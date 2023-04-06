@@ -17,6 +17,7 @@
 //! Merkle Tree Node Abstractions
 
 use crate::merkle_tree::{HashConfiguration, InnerDigest, InnerHash, LeafDigest, Parameters};
+use alloc::vec::Vec;
 use core::{
     iter::FusedIterator,
     ops::{Add, Sub},
@@ -262,6 +263,12 @@ impl Node {
         Self(self.0 >> 1)
     }
 
+    /// Returns the `k`-th ancestor [`Node`] of `self`.
+    #[inline]
+    pub const fn ancestor(&self, k: usize) -> Self {
+        Self(self.0 >> k)
+    }
+
     /// Converts `self` into its parent, returning the parent [`Node`].
     #[inline]
     #[must_use]
@@ -433,3 +440,122 @@ impl Iterator for NodeParents {
 }
 
 impl FusedIterator for NodeParents {}
+
+/// Dual Parity
+///
+/// # Note
+///
+/// Given a [`NodeRange`], this struct describes the parity of its left-most
+/// and right-most [`Node`]s.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct DualParity(pub (Parity, Parity));
+
+impl DualParity {
+    /// Returns the starting [`Parity`] of `self`.
+    #[inline]
+    pub const fn starting_parity(&self) -> Parity {
+        (self.0).0
+    }
+
+    /// Returns the final [`Parity`] of `self`.
+    #[inline]
+    pub const fn final_parity(&self) -> Parity {
+        (self.0).1
+    }
+}
+
+/// Node Range
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+pub struct NodeRange {
+    /// Starting Node
+    pub node: Node,
+
+    /// Extra Nodes
+    pub extra_nodes: usize,
+}
+
+impl NodeRange {
+    /// Returns the [`DualParity`] of `self`.
+    #[inline]
+    pub const fn dual_parity(&self) -> DualParity {
+        let starting_node_parity = self.node.parity();
+        let final_node_parity = match starting_node_parity {
+            Parity::Left => Parity::from_index(self.extra_nodes),
+            Parity::Right => Parity::from_index(self.extra_nodes + 1),
+        };
+        DualParity((starting_node_parity, final_node_parity))
+    }
+
+    /// Returns the [`NodeRange`] consisting of the parents of the
+    /// [`Node`]s in `self`.
+    #[inline]
+    pub const fn parents(&self) -> Self {
+        let extra_nodes = match self.dual_parity().0 {
+            (Parity::Left, Parity::Right) => (self.extra_nodes - 1) >> 1,
+            (Parity::Right, Parity::Left) => (self.extra_nodes + 1) >> 1,
+            _ => self.extra_nodes >> 1,
+        };
+        Self {
+            node: self.node.parent(),
+            extra_nodes,
+        }
+    }
+
+    /// Returns the last [`Node`] in `self`.
+    #[inline]
+    pub const fn last_node(&self) -> Node {
+        Node(self.node.0 + self.extra_nodes)
+    }
+
+    /// Computes the inner hashes of `leaves` pairwise and in order. If the first (last) element has a
+    /// right (left) [`Parity`], it will be hashed with the output of `get_leaves` or with the default
+    /// value if `get_leaves` returns `None`.
+    #[inline]
+    pub fn join_leaves<'a, C, F>(
+        &self,
+        parameters: &Parameters<C>,
+        leaves: &Vec<LeafDigest<C>>,
+        mut get_leaves: F,
+    ) -> Vec<InnerDigest<C>>
+    where
+        C: HashConfiguration + ?Sized,
+        LeafDigest<C>: 'a + Default,
+        F: FnMut(Node) -> Option<&'a LeafDigest<C>>,
+    {
+        let dual_parity = self.dual_parity();
+        let mut result = Vec::new();
+        let length = leaves.len();
+        let range = match dual_parity.starting_parity() {
+            Parity::Left => (0..length - 1).step_by(2),
+            _ => {
+                result.push(Node(0).join_leaves(
+                    parameters,
+                    get_leaves(self.node).unwrap_or(&Default::default()),
+                    &leaves[0],
+                ));
+                (1..length - 1).step_by(2)
+            }
+        };
+        for i in range {
+            result.push(Node(i).join_leaves(parameters, &leaves[i], &leaves[i + 1]))
+        }
+        if dual_parity.final_parity().is_left() {
+            result.push(self.last_node().join_leaves(
+                parameters,
+                &leaves[length - 1],
+                get_leaves(self.last_node()).unwrap_or(&Default::default()),
+            ))
+        }
+        result
+    }
+}

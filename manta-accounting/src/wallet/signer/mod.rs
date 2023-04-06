@@ -41,7 +41,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{
-        Accumulator, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
+        Accumulator, BatchInsertion, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
         OptimizedAccumulator,
     },
     rand::{CryptoRng, FromEntropy, RngCore},
@@ -867,7 +867,8 @@ pub trait Configuration: transfer::Configuration {
             Item = UtxoAccumulatorItem<Self>,
             Model = UtxoAccumulatorModel<Self>,
             Witness = UtxoAccumulatorWitness<Self>,
-        > + ExactSizeAccumulator
+        > + BatchInsertion
+        + ExactSizeAccumulator
         + FromItemsAndWitnesses
         + OptimizedAccumulator
         + Rollback;
@@ -1074,6 +1075,19 @@ where
         self.accounts = None
     }
 
+    /// Tries to load `authorization_context_option` to `self`.
+    #[inline]
+    pub fn try_load_authorization_context(
+        &mut self,
+        authorization_context_option: Option<AuthorizationContext<C>>,
+    ) -> bool {
+        if let Some(authorization_context) = authorization_context_option {
+            self.load_authorization_context(authorization_context);
+            return true;
+        }
+        false
+    }
+
     /// Loads `authorization_context` to `self`.
     #[inline]
     pub fn load_authorization_context(&mut self, authorization_context: AuthorizationContext<C>) {
@@ -1088,14 +1102,14 @@ where
 
     /// Returns the [`AccountTable`].
     #[inline]
-    pub fn accounts(&self) -> &Option<AccountTable<C>> {
-        &self.accounts
+    pub fn accounts(&self) -> Option<&AccountTable<C>> {
+        self.accounts.as_ref()
     }
 
     /// Returns the [`AuthorizationContext`].
     #[inline]
-    pub fn authorization_context(&self) -> &Option<AuthorizationContext<C>> {
-        &self.authorization_context
+    pub fn authorization_context(&self) -> Option<&AuthorizationContext<C>> {
+        self.authorization_context.as_ref()
     }
 
     /// Returns the default account for `self`.
@@ -1232,6 +1246,16 @@ where
         self.state.drop_accounts()
     }
 
+    /// Tries to load `authorization_context_option` to `self`.
+    #[inline]
+    pub fn try_load_authorization_context(
+        &mut self,
+        authorization_context_option: Option<AuthorizationContext<C>>,
+    ) -> bool {
+        self.state
+            .try_load_authorization_context(authorization_context_option)
+    }
+
     /// Loads `authorization_context` to `self`.
     #[inline]
     pub fn load_authorization_context(&mut self, authorization_context: AuthorizationContext<C>) {
@@ -1357,6 +1381,12 @@ where
             &self.parameters,
             self.state.accounts.as_ref()?,
         ))
+    }
+
+    /// Returns the [`AuthorizationContext`] corresponding to `self`.
+    #[inline]
+    pub fn authorization_context(&self) -> Option<&AuthorizationContext<C>> {
+        self.state.authorization_context.as_ref()
     }
 
     /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the

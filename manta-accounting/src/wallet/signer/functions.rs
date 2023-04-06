@@ -42,7 +42,9 @@ use crate::{
 };
 use alloc::{vec, vec::Vec};
 use manta_crypto::{
-    accumulator::{Accumulator, FromItemsAndWitnesses, ItemHashFunction, OptimizedAccumulator},
+    accumulator::{
+        Accumulator, BatchInsertion, FromItemsAndWitnesses, ItemHashFunction, OptimizedAccumulator,
+    },
     rand::Rand,
 };
 use manta_util::{
@@ -216,9 +218,14 @@ where
     let mut deposit = Vec::new();
     let mut withdraw = Vec::new();
     let decryption_key = parameters.derive_decryption_key(authorization_context);
+    let mut nonprovable_inserts = Vec::new();
     for (utxo, note) in inserts {
         if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
         {
+            if !nonprovable_inserts.is_empty() {
+                utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
+                nonprovable_inserts.clear();
+            }
             insert_next_item::<C>(
                 authorization_context,
                 utxo_accumulator,
@@ -231,8 +238,11 @@ where
                 rng,
             );
         } else {
-            utxo_accumulator.insert_nonprovable(&item_hash::<C>(parameters, &utxo));
+            nonprovable_inserts.push(item_hash::<C>(parameters, &utxo));
         }
+    }
+    if !nonprovable_inserts.is_empty() {
+        utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
     }
     assets.retain(|identifier, assets| {
         assets.retain(|asset| {

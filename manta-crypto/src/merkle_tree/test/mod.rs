@@ -28,6 +28,9 @@ use alloc::string::String;
 use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 
 #[cfg(test)]
+pub mod batch_insertion;
+
+#[cfg(test)]
 pub mod partial;
 
 /// Hash Parameter Sampling
