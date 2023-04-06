@@ -1002,7 +1002,7 @@ where
 }
 
 /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
-/// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `authorization_context` 
+/// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `authorization_context`
 /// can't decrypt the underlying assets in `post`.
 #[inline]
 pub fn transaction_data<C>(
