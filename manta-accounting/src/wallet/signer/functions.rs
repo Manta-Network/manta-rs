@@ -112,7 +112,7 @@ where
     accounts.get_default().address(parameters)
 }
 
-///
+/// Returns the address for `authorization_context`.
 #[inline]
 fn address_from_authorization_context<C>(
     authorization_context: &mut AuthorizationContext<C>,
@@ -384,7 +384,7 @@ where
     receiver::<C>(parameters, default_address, asset, Default::default(), rng)
 }
 
-///
+/// Builds the [`Receiver`] associated with `authorization_context` and `asset`.
 #[inline]
 fn receiver_from_authorization_context<C>(
     authorization_context: &mut AuthorizationContext<C>,
@@ -1002,8 +1002,8 @@ where
 }
 
 /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
-/// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `accounts` doesn't own the
-/// underlying assets in `post`.
+/// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `authorization_context` 
+/// can't decrypt the underlying assets in `post`.
 #[inline]
 pub fn transaction_data<C>(
     parameters: &SignerParameters<C>,
