@@ -18,15 +18,13 @@
 
 use crate::{
     config::{
-        AccountId, Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters,
-        IdentifiedAsset, IdentityProof, MultiProvingContext, Parameters, Transaction,
-        UtxoAccumulatorModel,
+        Address, AuthorizationContext, Config, EmbeddedScalar, FullParameters, MultiProvingContext,
+        Parameters, UtxoAccumulatorModel,
     },
     key::{KeySecret, Mnemonic},
     signer::{
-        base::{Signer, SignerParameters, UtxoAccumulator},
-        AccountTable, AssetMap, Checkpoint, SignResult, SignerRng, StorageState,
-        StorageStateOption, SyncRequest, SyncResult,
+        base::{Signer, UtxoAccumulator},
+        AccountTable, StorageState, StorageStateOption,
     },
 };
 use manta_accounting::{key::DeriveAddress, wallet::signer::functions};
@@ -134,68 +132,4 @@ pub fn address_from_mnemonic(mnemonic: Mnemonic, parameters: &Parameters) -> Add
     accounts_from_mnemonic(mnemonic)
         .get_default()
         .address(parameters)
-}
-
-/// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
-#[allow(clippy::result_large_err)]
-#[inline]
-pub fn sync(
-    parameters: &SignerParameters,
-    authorization_context: &mut AuthorizationContext,
-    assets: &mut AssetMap,
-    checkpoint: &mut Checkpoint,
-    utxo_accumulator: &mut UtxoAccumulator,
-    request: SyncRequest,
-    rng: &mut SignerRng,
-) -> SyncResult {
-    functions::sync(
-        parameters,
-        authorization_context,
-        assets,
-        checkpoint,
-        utxo_accumulator,
-        request,
-        rng,
-    )
-}
-
-/// Signs the `transaction`, generating transfer posts.
-#[inline]
-pub fn sign(
-    parameters: &SignerParameters,
-    accounts: &AccountTable,
-    assets: &AssetMap,
-    utxo_accumulator: &mut UtxoAccumulator,
-    transaction: Transaction,
-    rng: &mut SignerRng,
-) -> SignResult {
-    functions::sign(
-        parameters,
-        accounts,
-        assets,
-        utxo_accumulator,
-        transaction,
-        rng,
-    )
-}
-
-/// Generates an [`IdentityProof`] for `identified_asset` by signing a
-/// virtual [`ToPublic`](manta_accounting::transfer::canonical::ToPublic) transaction.
-#[inline]
-pub fn identity_proof(
-    parameters: &SignerParameters,
-    accounts: &AccountTable,
-    utxo_accumulator_model: &UtxoAccumulatorModel,
-    identified_asset: IdentifiedAsset,
-    public_account: AccountId,
-    rng: &mut SignerRng,
-) -> Option<IdentityProof> {
-    functions::identity_proof(
-        parameters,
-        accounts,
-        utxo_accumulator_model,
-        identified_asset,
-        public_account,
-        rng,
-    )
 }
