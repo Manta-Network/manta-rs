@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Security
 
-## [0.5.13] - 2023-04-07
+## [0.5.14] - 2023-04-07
 ### Added
 - [\#335](https://github.com/Manta-Network/manta-rs/pull/335) SBT synchronization method for the signer. 
 - [\#330](https://github.com/Manta-Network/manta-rs/pull/330) Merkle tree batch insertions.
