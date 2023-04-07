@@ -1051,6 +1051,12 @@ where
     pub fn reset_starting_leaf_index(&mut self, default: Node) {
         self.starting_leaf_index = default;
     }
+
+    ///
+    #[inline]
+    pub fn remove(&mut self, index: usize) -> bool {
+        self.inner_tree.map.remove(index)
+    }
 }
 
 impl<C, M> PartialInnerTree<C, M, Sentinel<C>>

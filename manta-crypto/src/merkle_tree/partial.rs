@@ -494,7 +494,7 @@ where
             }
             self.leaf_map.remove(Node(index).sibling().0);
             let height = C::HEIGHT;
-            let mut inner_node = match InnerNode::from_leaf::<C>(Node::parent(&Node(index))) {
+            let mut inner_node = match InnerNode::from_leaf::<C>(Node(index)) {
                 Some(q) => q,
                 None => {
                     return true;

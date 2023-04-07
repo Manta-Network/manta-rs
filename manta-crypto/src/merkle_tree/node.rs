@@ -19,8 +19,8 @@
 use crate::merkle_tree::{HashConfiguration, InnerDigest, InnerHash, LeafDigest, Parameters};
 use alloc::vec::Vec;
 use core::{
-    iter::FusedIterator,
-    ops::{Add, Sub},
+    iter::{FusedIterator, Map},
+    ops::{Add, Range, Sub},
 };
 
 #[cfg(feature = "serde")]
@@ -154,6 +154,9 @@ impl Default for Parity {
     }
 }
 
+/// Descendants iterator type
+pub type DescendantsIterator<Idx = usize> = Map<Range<Idx>, fn(Idx) -> Node<Idx>>;
+
 /// Node Index
 #[cfg_attr(
     feature = "serde",
@@ -267,6 +270,12 @@ impl Node {
     #[inline]
     pub const fn ancestor(&self, k: usize) -> Self {
         Self(self.0 >> k)
+    }
+
+    /// Returns an iterator over the [`Node`] k-th descendants of this node.
+    #[inline]
+    pub fn descendants(&self, k: usize) -> DescendantsIterator {
+        ((self.0 << k)..((self.0 + 1) << k)).map(Self)
     }
 
     /// Converts `self` into its parent, returning the parent [`Node`].
