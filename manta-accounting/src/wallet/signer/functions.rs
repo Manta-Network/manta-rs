@@ -28,7 +28,10 @@ use crate::{
         },
         receiver::ReceiverPost,
         requires_authorization,
-        utxo::{auth::DeriveContext, DeriveDecryptionKey, DeriveSpend, Spend, UtxoReconstruct},
+        utxo::{
+            auth::DeriveContext, DeriveAddress as _, DeriveDecryptionKey, DeriveSpend, Spend,
+            UtxoReconstruct,
+        },
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters, PreSender,
         ProvingContext, Receiver, Sender, Shape, SpendingKey, Transfer, TransferPost, Utxo,
@@ -109,6 +112,18 @@ where
     accounts.get_default().address(parameters)
 }
 
+/// Returns the address for `authorization_context`.
+#[inline]
+fn address_from_authorization_context<C>(
+    authorization_context: &mut AuthorizationContext<C>,
+    parameters: &C::Parameters,
+) -> Address<C>
+where
+    C: Configuration,
+{
+    parameters.derive_address(&parameters.derive_decryption_key(authorization_context))
+}
+
 /// Hashes `utxo` using the [`UtxoAccumulatorItemHash`](transfer::Configuration::UtxoAccumulatorItemHash)
 /// in the transfer [`Configuration`](transfer::Configuration).
 #[inline]
@@ -129,7 +144,6 @@ fn insert_next_item<C>(
     utxo_accumulator: &mut C::UtxoAccumulator,
     assets: &mut C::AssetMap,
     parameters: &Parameters<C>,
-    utxo: Utxo<C>,
     identified_asset: IdentifiedAsset<C>,
     nullifiers: &mut Vec<Nullifier<C>>,
     deposit: &mut Vec<Asset<C>>,
@@ -138,26 +152,24 @@ fn insert_next_item<C>(
     C: Configuration,
 {
     let IdentifiedAsset::<C> { identifier, asset } = identified_asset;
-    let (_, computed_utxo, nullifier) = parameters.derive_spend(
+    let (_, utxo, nullifier) = parameters.derive_spend(
         authorization_context,
         identifier.clone(),
         asset.clone(),
         rng,
     );
-    if computed_utxo.is_related(&utxo) {
-        if let Some(index) = nullifiers
-            .iter()
-            .position(move |n| n.is_related(&nullifier))
-        {
-            nullifiers.remove(index);
-        } else {
-            utxo_accumulator.insert(&item_hash::<C>(parameters, &utxo));
-            if !asset.is_zero() {
-                deposit.push(asset.clone());
-            }
-            assets.insert(identifier, asset);
-            return;
+    if let Some(index) = nullifiers
+        .iter()
+        .position(move |n| n.is_related(&nullifier))
+    {
+        nullifiers.remove(index);
+    } else {
+        utxo_accumulator.insert(&item_hash::<C>(parameters, &utxo));
+        if !asset.is_zero() {
+            deposit.push(asset.clone());
         }
+        assets.insert(identifier, asset);
+        return;
     }
     utxo_accumulator.insert_nonprovable(&item_hash::<C>(parameters, &utxo));
 }
@@ -231,7 +243,6 @@ where
                 utxo_accumulator,
                 assets,
                 parameters,
-                utxo,
                 transfer::utxo::IdentifiedAsset::new(identifier, asset),
                 &mut nullifiers,
                 &mut deposit,
@@ -267,6 +278,53 @@ where
             // TODO: Whenever we are doing a full update, don't even build the `deposit` and
             //       `withdraw` vectors, since we won't be needing them.
             BalanceUpdate::Partial { deposit, withdraw }
+        } else {
+            BalanceUpdate::Full {
+                assets: assets.assets().into(),
+            }
+        },
+    }
+}
+
+/// Updates the internal ledger state, returning the new asset distribution.
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn sbt_sync_with<C, I>(
+    authorization_context: &mut AuthorizationContext<C>,
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    parameters: &Parameters<C>,
+    inserts: I,
+    utxo_count: Vec<usize>,
+    nullifier_count: usize,
+    is_partial: bool,
+) -> SyncResponse<C, C::Checkpoint>
+where
+    C: Configuration,
+    I: Iterator<Item = (Utxo<C>, Note<C>)>,
+{
+    let mut deposit = Vec::new();
+    let decryption_key = parameters.derive_decryption_key(authorization_context);
+    for (utxo, note) in inserts {
+        if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
+        {
+            if !asset.is_zero() {
+                deposit.push(asset.clone());
+            }
+            assets.insert(identifier, asset);
+        }
+    }
+    checkpoint.update_from_nullifiers(nullifier_count);
+    checkpoint.update_from_utxo_count(utxo_count);
+    SyncResponse {
+        checkpoint: checkpoint.clone(),
+        balance_update: if is_partial {
+            // TODO: Whenever we are doing a full update, don't even build the `deposit` and
+            //       `withdraw` vectors, since we won't be needing them.
+            BalanceUpdate::Partial {
+                deposit,
+                withdraw: Default::default(),
+            }
         } else {
             BalanceUpdate::Full {
                 assets: assets.assets().into(),
@@ -324,6 +382,21 @@ where
 {
     let default_address = default_address::<C>(accounts, parameters);
     receiver::<C>(parameters, default_address, asset, Default::default(), rng)
+}
+
+/// Builds the [`Receiver`] associated with `authorization_context` and `asset`.
+#[inline]
+fn receiver_from_authorization_context<C>(
+    authorization_context: &mut AuthorizationContext<C>,
+    parameters: &Parameters<C>,
+    asset: Asset<C>,
+    rng: &mut C::Rng,
+) -> Receiver<C>
+where
+    C: Configuration,
+{
+    let address = address_from_authorization_context::<C>(authorization_context, parameters);
+    receiver::<C>(parameters, address, asset, Default::default(), rng)
 }
 
 /// Selects the pre-senders which collectively own at least `asset`, returning any change.
@@ -393,7 +466,7 @@ fn build_post<
     const RECEIVERS: usize,
     const SINKS: usize,
 >(
-    accounts: &AccountTable<C>,
+    accounts: Option<&AccountTable<C>>,
     utxo_accumulator_model: &UtxoAccumulatorModel<C>,
     parameters: &Parameters<C>,
     proving_context: &ProvingContext<C>,
@@ -404,11 +477,18 @@ fn build_post<
 where
     C: Configuration,
 {
-    let spending_key = default_spending_key::<C>(accounts, parameters);
+    let spending_key = if requires_authorization(SENDERS) {
+        Some(default_spending_key::<C>(
+            accounts.ok_or(SignError::MissingSpendingKey)?,
+            parameters,
+        ))
+    } else {
+        None
+    };
     build_post_inner(
         FullParametersRef::<C>::new(parameters, utxo_accumulator_model),
         proving_context,
-        requires_authorization(SENDERS).then_some(&spending_key),
+        spending_key.as_ref(),
         transfer,
         sink_accounts,
         rng,
@@ -581,7 +661,7 @@ where
             let authorization =
                 authorization_for_default_spending_key::<C>(accounts, parameters, rng);
             posts.push(build_post(
-                accounts,
+                Some(accounts),
                 utxo_accumulator.model(),
                 parameters,
                 &proving_context.private_transfer,
@@ -609,27 +689,26 @@ where
     Ok(into_array_unchecked(final_presenders))
 }
 
-/// Returns the [`Address`] corresponding to `accounts`.
+/// Returns the [`Address`] corresponding to `authorization_context`.
 #[inline]
-pub fn address<C>(parameters: &SignerParameters<C>, accounts: &AccountTable<C>) -> Address<C>
+pub fn address<C>(
+    parameters: &SignerParameters<C>,
+    authorization_context: &mut AuthorizationContext<C>,
+) -> Address<C>
 where
     C: Configuration,
 {
-    let account = default_account::<C>(accounts);
-    account.address(&parameters.parameters)
+    address_from_authorization_context::<C>(authorization_context, &parameters.parameters)
 }
 
-/// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
+/// Checks that the origin checkpoint in `request` is less or equal than `checkpoint`.
+/// If it is strictly less, it prunes the data in `request` accordingly.
 #[inline]
-pub fn sync<C>(
+fn prune_sync_request<C>(
     parameters: &SignerParameters<C>,
-    authorization_context: &mut AuthorizationContext<C>,
-    assets: &mut C::AssetMap,
-    checkpoint: &mut C::Checkpoint,
-    utxo_accumulator: &mut C::UtxoAccumulator,
+    checkpoint: &C::Checkpoint,
     mut request: SyncRequest<C, C::Checkpoint>,
-    rng: &mut C::Rng,
-) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+) -> Result<(bool, SyncData<C>), SyncError<C::Checkpoint>>
 where
     C: Configuration,
 {
@@ -647,24 +726,76 @@ where
             parameters.parameters.utxo_accumulator_item_hash(),
             checkpoint,
         );
-        let SyncData {
+        Ok((has_pruned, request.data))
+    }
+}
+
+/// Updates `assets` and `checkpoint`, returning the new asset distribution.
+#[inline]
+pub fn sbt_sync<C>(
+    parameters: &SignerParameters<C>,
+    authorization_context: &mut AuthorizationContext<C>,
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    request: SyncRequest<C, C::Checkpoint>,
+) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+where
+    C: Configuration,
+{
+    let utxo_count = request.utxo_count(&parameters.parameters);
+    let (
+        has_pruned,
+        SyncData {
             utxo_note_data,
             nullifier_data,
-        } = request.data;
-        let response = sync_with::<C, _>(
-            authorization_context,
-            assets,
-            checkpoint,
-            utxo_accumulator,
-            &parameters.parameters,
-            utxo_note_data.into_iter(),
+        },
+    ) = prune_sync_request(parameters, checkpoint, request)?;
+    Ok(sbt_sync_with(
+        authorization_context,
+        assets,
+        checkpoint,
+        &parameters.parameters,
+        utxo_note_data.into_iter(),
+        utxo_count,
+        nullifier_data.len(),
+        !has_pruned,
+    ))
+}
+
+/// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
+#[inline]
+pub fn sync<C>(
+    parameters: &SignerParameters<C>,
+    authorization_context: &mut AuthorizationContext<C>,
+    assets: &mut C::AssetMap,
+    checkpoint: &mut C::Checkpoint,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    request: SyncRequest<C, C::Checkpoint>,
+    rng: &mut C::Rng,
+) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+where
+    C: Configuration,
+{
+    let (
+        has_pruned,
+        SyncData {
+            utxo_note_data,
             nullifier_data,
-            !has_pruned,
-            rng,
-        );
-        utxo_accumulator.commit();
-        Ok(response)
-    }
+        },
+    ) = prune_sync_request(parameters, checkpoint, request)?;
+    let response = sync_with::<C, _>(
+        authorization_context,
+        assets,
+        checkpoint,
+        utxo_accumulator,
+        &parameters.parameters,
+        utxo_note_data.into_iter(),
+        nullifier_data,
+        !has_pruned,
+        rng,
+    );
+    utxo_accumulator.commit();
+    Ok(response)
 }
 
 /// Signs a withdraw transaction for `asset` sent to `address`.
@@ -714,7 +845,7 @@ where
                 rng,
             );
             build_post(
-                accounts,
+                Some(accounts),
                 utxo_accumulator.model(),
                 &parameters.parameters,
                 &parameters.proving_context.private_transfer,
@@ -724,7 +855,7 @@ where
             )?
         }
         _ => build_post(
-            accounts,
+            Some(accounts),
             utxo_accumulator.model(),
             &parameters.parameters,
             &parameters.proving_context.to_public,
@@ -741,7 +872,8 @@ where
 #[inline]
 fn sign_internal<C>(
     parameters: &SignerParameters<C>,
-    accounts: &AccountTable<C>,
+    accounts: Option<&AccountTable<C>>,
+    authorization_context: Option<&mut AuthorizationContext<C>>,
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
     transaction: Transaction<C>,
@@ -752,10 +884,14 @@ where
 {
     match transaction {
         Transaction::ToPrivate(asset) => {
-            let receiver =
-                default_receiver::<C>(accounts, &parameters.parameters, asset.clone(), rng);
+            let receiver = receiver_from_authorization_context::<C>(
+                authorization_context.ok_or(SignError::MissingProofAuthorizationKey)?,
+                &parameters.parameters,
+                asset.clone(),
+                rng,
+            );
             Ok(SignResponse::new(vec![build_post(
-                accounts,
+                None,
                 utxo_accumulator.model(),
                 &parameters.parameters,
                 &parameters.proving_context.to_private,
@@ -766,7 +902,7 @@ where
         }
         Transaction::PrivateTransfer(asset, address) => sign_withdraw(
             parameters,
-            accounts,
+            accounts.ok_or(SignError::MissingSpendingKey)?,
             assets,
             utxo_accumulator,
             asset,
@@ -776,7 +912,7 @@ where
         ),
         Transaction::ToPublic(asset, public_account) => sign_withdraw(
             parameters,
-            accounts,
+            accounts.ok_or(SignError::MissingSpendingKey)?,
             assets,
             utxo_accumulator,
             asset,
@@ -791,7 +927,8 @@ where
 #[inline]
 pub fn sign<C>(
     parameters: &SignerParameters<C>,
-    accounts: &AccountTable<C>,
+    accounts: Option<&AccountTable<C>>,
+    authorization_context: Option<&mut AuthorizationContext<C>>,
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
     transaction: Transaction<C>,
@@ -803,6 +940,7 @@ where
     let result = sign_internal(
         parameters,
         accounts,
+        authorization_context,
         assets,
         utxo_accumulator,
         transaction,
@@ -851,7 +989,7 @@ where
     let authorization =
         authorization_for_default_spending_key::<C>(accounts, &parameters.parameters, rng);
     let transfer_post = build_post(
-        accounts,
+        Some(accounts),
         utxo_accumulator_model,
         &parameters.parameters,
         &parameters.proving_context.to_public,
@@ -864,12 +1002,12 @@ where
 }
 
 /// Returns the associated [`TransactionData`] of `post`, namely the [`Asset`] and the
-/// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `accounts` doesn't own the
-/// underlying assets in `post`.
+/// [`Identifier`]. Returns `None` if `post` has an invalid shape, or if `authorization_context`
+/// can't decrypt the underlying assets in `post`.
 #[inline]
 pub fn transaction_data<C>(
     parameters: &SignerParameters<C>,
-    accounts: &AccountTable<C>,
+    authorization_context: &mut AuthorizationContext<C>,
     post: TransferPost<C>,
 ) -> Option<TransactionData<C>>
 where
@@ -877,8 +1015,7 @@ where
 {
     let shape = TransferShape::from_post(&post)?;
     let parameters = &parameters.parameters;
-    let mut authorization_context = default_authorization_context::<C>(accounts, parameters);
-    let decryption_key = parameters.derive_decryption_key(&mut authorization_context);
+    let decryption_key = parameters.derive_decryption_key(authorization_context);
     match shape {
         TransferShape::ToPrivate => {
             let ReceiverPost { utxo, note } = post.body.receiver_posts.take_first();
@@ -915,7 +1052,8 @@ where
 #[inline]
 pub fn sign_with_transaction_data<C>(
     parameters: &SignerParameters<C>,
-    accounts: &AccountTable<C>,
+    accounts: Option<&AccountTable<C>>,
+    authorization_context: &mut AuthorizationContext<C>,
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
     transaction: Transaction<C>,
@@ -929,6 +1067,7 @@ where
         sign(
             parameters,
             accounts,
+            Some(authorization_context),
             assets,
             utxo_accumulator,
             transaction,
@@ -937,7 +1076,7 @@ where
         .posts
         .into_iter()
         .map(|post| {
-            (post.clone(), transaction_data(parameters, accounts, post)
+            (post.clone(), transaction_data(parameters, authorization_context, post)
     .expect("Retrieving transaction data from your own TransferPosts is not allowed to fail"))
         })
         .collect(),
