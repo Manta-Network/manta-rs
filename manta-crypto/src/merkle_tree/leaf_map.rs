@@ -78,10 +78,15 @@ where
     /// Checks whether the [`LeafDigest`] at `index` is either already deleted or marked for removal.
     #[inline]
     fn is_marked_or_removed(&self, index: usize) -> bool {
-        if index > self.current_index() {
+        if let Some(current_index) = self.current_index() {
+            if index > current_index {
+                false
+            } else {
+                self.is_marked(index).unwrap_or(true)
+            }
+        } else {
             false
         }
-        else {self.is_marked(index).unwrap_or(true)}
     }
 
     /// Tries to remove the [`LeafDigest`] stored at `index`. Fails when trying to remove the current leaf.
