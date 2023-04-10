@@ -484,7 +484,7 @@ where
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
         let current_index = match self.leaf_map.current_index() {
-            Some(index) => index,
+            Some(current_index) if index <= current_index => current_index,
             _ => return false,
         };
         self.leaf_map.mark(index);
@@ -493,14 +493,13 @@ where
                 self.leaf_map.remove(index);
             }
             self.leaf_map.remove(Node(index).sibling().0);
-            let height = C::HEIGHT;
             let mut inner_node = match InnerNode::from_leaf::<C>(Node(index)) {
                 Some(q) => q,
                 None => {
                     return true;
                 }
             };
-            for level in 1..height - 1 {
+            for level in 1..C::HEIGHT - 1 {
                 self.inner_digests.remove(inner_node.sibling().map_index());
                 if Node::from(inner_node)
                     .sibling()
