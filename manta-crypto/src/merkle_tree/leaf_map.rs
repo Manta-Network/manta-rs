@@ -304,6 +304,9 @@ where
 
     #[inline]
     fn remove(&mut self, index: usize) -> bool {
-        !matches!(self.map.remove(&index), None)
+        match self.last_index {
+            Some(current_index) if index == current_index => false,
+            _ => !matches!(self.map.remove(&index), None),
+        }
     }
 }

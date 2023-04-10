@@ -483,18 +483,17 @@ where
 
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
-        let current_index = match self.leaf_map.current_index() {
-            Some(current_index) if index <= current_index => current_index,
+        match self.leaf_map.current_index() {
+            Some(current_index) if index <= current_index => (),
             _ => return false,
         };
         self.leaf_map.mark(index);
-        if self.leaf_map.is_marked_or_removed(Node(index).sibling().0) {
-            if index != current_index {
-                self.leaf_map.remove(index);
-            }
-            self.leaf_map.remove(Node(index).sibling().0);
+        let sibling_index = Node(index).sibling().0;
+        if self.leaf_map.is_marked_or_removed(sibling_index) {
+            self.leaf_map.remove(index);
+            self.leaf_map.remove(sibling_index);
             let mut inner_node = match InnerNode::from_leaf::<C>(Node(index)) {
-                Some(q) => q,
+                Some(node) => node,
                 None => {
                     return true;
                 }
