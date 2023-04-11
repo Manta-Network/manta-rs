@@ -22,13 +22,14 @@
 
 use crate::merkle_tree::{
     path::{CurrentInnerPath, InnerPath},
-    path_length, Configuration, DualParity, InnerDigest, Node, NodeRange, Parameters, Parity,
+    path_length, Configuration, DescendantsIterator, DualParity, InnerDigest, Node, NodeIterator,
+    NodeRange, Parameters, Parity,
 };
 use alloc::{collections::btree_map, vec::Vec};
 use core::{
     fmt::Debug,
     hash::Hash,
-    iter::FusedIterator,
+    iter::{FusedIterator, Map},
     marker::PhantomData,
     ops::{Index, Range},
 };
@@ -133,6 +134,13 @@ impl InnerNode {
     #[inline]
     pub const fn map_index(&self) -> usize {
         self.depth_starting_index() + self.index.0
+    }
+
+    /// Returns the [`DescendantsIterator`] over the leaves descending from `self`.
+    #[inline]
+    pub fn leaf_nodes(&self, height: usize) -> DescendantsIterator {
+        let Self { depth, index } = self;
+        index.descendants(height - 2 - depth)
     }
 }
 
@@ -255,6 +263,35 @@ impl InnerNodeRange {
         .and_then(|inner_node_range| inner_node_range.parents())
     }
 
+    ///
+    #[inline]
+    pub fn from_iter<T>(mut iter: T) -> Option<Self>
+    where
+        T: ExactSizeIterator<Item = InnerNode>,
+    {
+        let InnerNode { depth, index } = iter.next()?;
+        let extra_nodes = iter.len();
+        Some(Self {
+            depth,
+            node_range: NodeRange {
+                node: index,
+                extra_nodes,
+            },
+        })
+    }
+
+    ///
+    #[inline]
+    pub fn add_left_node(&mut self) {
+        self.node_range.add_left_node()
+    }
+
+    ///
+    #[inline]
+    pub fn add_right_node(&mut self) {
+        self.node_range.add_right_node()
+    }
+
     /// Returns the [`DualParity`] of `self`.
     #[inline]
     pub const fn dual_parity(&self) -> DualParity {
@@ -317,6 +354,43 @@ impl InnerNodeRange {
     #[inline]
     pub fn map_indices(&self) -> Range<usize> {
         self.starting_inner_node().map_index()..self.last_inner_node().map_index() + 1
+    }
+
+    ///
+    #[inline]
+    pub fn iter(&self) -> InnerNodeIterator {
+        self.clone().into_iter()
+    }
+
+    ///
+    #[inline]
+    pub fn inner_iter(&self) -> InnerNodeIterator {
+        let cloned_self = self.clone();
+        cloned_self
+            .node_range
+            .inner_iter()
+            .map(Box::new(move |node| InnerNode {
+                depth: cloned_self.depth,
+                index: node,
+            }))
+    }
+}
+
+///
+pub type InnerNodeIterator = Map<NodeIterator, Box<dyn FnMut(Node) -> InnerNode>>;
+
+impl IntoIterator for InnerNodeRange {
+    type Item = InnerNode;
+    type IntoIter = InnerNodeIterator;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.node_range
+            .into_iter()
+            .map(Box::new(move |node| InnerNode {
+                depth: self.depth,
+                index: node,
+            }))
     }
 }
 

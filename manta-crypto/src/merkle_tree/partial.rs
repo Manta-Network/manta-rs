@@ -20,14 +20,17 @@
 
 use crate::merkle_tree::{
     capacity,
-    inner_tree::{BTreeMap, InnerMap, InnerNode, PartialInnerTree},
+    inner_tree::{
+        BTreeMap, InnerMap, InnerNode, InnerNodeIter, InnerNodeRange, InnerNodeRangeIter,
+        PartialInnerTree,
+    },
     leaf_map::{LeafMap, LeafVec},
     node::{NodeRange, Parity},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash};
+use core::{fmt::Debug, hash::Hash, ops::Range};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -380,6 +383,101 @@ where
         self.push_leaf_digest(parameters, Node(len), leaf_digest()?);
         Some(true)
     }
+
+    ///
+    #[inline]
+    pub fn remove_path(&mut self, index: usize) -> bool {
+        match self.leaf_map.current_index() {
+            Some(current_index) if index <= current_index => (),
+            _ => return false,
+        };
+        self.leaf_map.mark(index);
+        let sibling_index = Node(index).sibling().0;
+        if self.leaf_map.is_marked_or_removed(sibling_index) {
+            self.leaf_map.remove(index);
+            self.leaf_map.remove(sibling_index);
+            for inner_node in InnerNodeIter::from_leaf::<C>(Node(index)) {
+                let sibling_node = inner_node.sibling();
+                self.inner_digests.remove(sibling_node.map_index());
+                if sibling_node
+                    .leaf_nodes(C::HEIGHT)
+                    .any(|x| !self.leaf_map.is_marked_or_removed(x.0))
+                {
+                    break;
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    ///
+    #[inline]
+    pub fn batch_remove_path_unchecked(&mut self, indices: Range<usize>) -> bool {
+        let mut node_range = match NodeRange::from_range(indices) {
+            Some(node_range) => node_range,
+            _ => return false,
+        };
+        for node in node_range.iter() {
+            self.leaf_map.mark(node.0)
+        }
+        let dual_parity = node_range.dual_parity();
+        if dual_parity.starting_parity().is_right() {
+            let sibling_index = node_range.node.sibling().0;
+            if self.leaf_map.is_marked_or_removed(sibling_index) {
+                self.leaf_map.remove(node_range.node.0);
+                self.leaf_map.remove(sibling_index);
+                node_range.add_left_node();
+            }
+        }
+        if dual_parity.final_parity().is_left() {
+            let sibling_index = node_range.last_node().sibling().0;
+            if self.leaf_map.is_marked_or_removed(sibling_index) {
+                self.leaf_map.remove(node_range.last_node().0);
+                self.leaf_map.remove(sibling_index);
+                node_range.add_right_node();
+            }
+        }
+        for node in node_range.inner_iter() {
+            self.leaf_map.remove(node.0);
+        }
+        let NodeRange { node, extra_nodes } =
+            NodeRange::from_iter(node_range.inner_iter()).expect("I should return false here");
+        let mut inner_node_range_option = InnerNodeRange::from_leaves::<C>(node, extra_nodes);
+        while let Some(mut inner_node_range) = inner_node_range_option {
+            for inner_node in inner_node_range.iter() {
+                self.inner_digests.remove(inner_node.sibling().map_index());
+            }
+            let dual_parity = inner_node_range.dual_parity();
+            if dual_parity.starting_parity().is_right() {
+                if inner_node_range
+                    .starting_inner_node()
+                    .sibling()
+                    .leaf_nodes(C::HEIGHT)
+                    .all(|x| self.leaf_map.is_marked_or_removed(x.0))
+                {
+                    self.inner_digests
+                        .remove(inner_node_range.starting_inner_node().map_index());
+                    inner_node_range.add_left_node();
+                }
+                if inner_node_range
+                    .last_inner_node()
+                    .sibling()
+                    .leaf_nodes(C::HEIGHT)
+                    .all(|x| self.leaf_map.is_marked_or_removed(x.0))
+                {
+                    self.inner_digests
+                        .remove(inner_node_range.last_inner_node().map_index());
+                    inner_node_range.add_right_node()
+                }
+                inner_node_range = InnerNodeRange::from_iter(inner_node_range.inner_iter())
+                    .expect("If empty, break");
+                inner_node_range_option = inner_node_range.parents();
+            }
+        }
+        true
+    }
 }
 
 impl<C, M, L> Tree<C> for Partial<C, M, L>
@@ -483,41 +581,7 @@ where
 
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
-        match self.leaf_map.current_index() {
-            Some(current_index) if index <= current_index => (),
-            _ => return false,
-        };
-        self.leaf_map.mark(index);
-        let sibling_index = Node(index).sibling().0;
-        if self.leaf_map.is_marked_or_removed(sibling_index) {
-            self.leaf_map.remove(index);
-            self.leaf_map.remove(sibling_index);
-            let mut inner_node = match InnerNode::from_leaf::<C>(Node(index)) {
-                Some(node) => node,
-                None => {
-                    return true;
-                }
-            };
-            for level in 1..C::HEIGHT - 1 {
-                self.inner_digests.remove(inner_node.sibling().map_index());
-                if Node::from(inner_node)
-                    .sibling()
-                    .descendants(level)
-                    .all(|x| self.leaf_map.is_marked_or_removed(x.0))
-                {
-                    if let Some(parent) = inner_node.parent() {
-                        inner_node = parent;
-                    } else {
-                        return true;
-                    }
-                } else {
-                    return true;
-                }
-            }
-            true
-        } else {
-            false
-        }
+        self.remove_path(index)
     }
 
     #[inline]

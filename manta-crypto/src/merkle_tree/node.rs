@@ -478,6 +478,9 @@ impl DualParity {
     }
 }
 
+/// Node Iterator
+pub type NodeIterator = Map<Range<usize>, fn(usize) -> Node>;
+
 /// Node Range
 #[cfg_attr(
     feature = "serde",
@@ -494,6 +497,62 @@ pub struct NodeRange {
 }
 
 impl NodeRange {
+    ///
+    #[inline]
+    pub fn from_range(range: Range<usize>) -> Option<Self> {
+        Some(Self {
+            node: Node(range.start),
+            extra_nodes: range.end.checked_sub(range.start + 1)?,
+        })
+    }
+
+    ///
+    #[inline]
+    pub fn from_iter<T>(mut iter: T) -> Option<Self>
+    where
+        T: ExactSizeIterator<Item = Node>,
+    {
+        let node = iter.next()?;
+        let extra_nodes = iter.len();
+        Some(Self { node, extra_nodes })
+    }
+
+    ///
+    #[inline]
+    pub fn remove_leftmost(&self) -> Option<Self> {
+        Some(Self {
+            node: self.node + 1,
+            extra_nodes: self.extra_nodes.checked_sub(1)?,
+        })
+    }
+
+    ///
+    #[inline]
+    pub fn remove_rightmost(&self) -> Option<Self> {
+        Some(Self {
+            node: self.node,
+            extra_nodes: self.extra_nodes.checked_sub(1)?,
+        })
+    }
+
+    ///
+    #[inline]
+    pub fn add_left_node(&mut self) {
+        self.node = Node(
+            self.node
+                .0
+                .checked_sub(1)
+                .expect("It is not possible to add a node on the left of 0."),
+        );
+        self.extra_nodes = self.extra_nodes + 1;
+    }
+
+    ///
+    #[inline]
+    pub fn add_right_node(&mut self) {
+        self.extra_nodes = self.extra_nodes + 1;
+    }
+
     /// Returns the [`DualParity`] of `self`.
     #[inline]
     pub const fn dual_parity(&self) -> DualParity {
@@ -566,5 +625,34 @@ impl NodeRange {
             ))
         }
         result
+    }
+
+    ///
+    #[inline]
+    pub fn iter(&self) -> NodeIterator {
+        self.clone().into_iter()
+    }
+
+    ///
+    #[inline]
+    pub fn inner_iter(&self) -> NodeIterator {
+        match self.dual_parity().0 {
+            (Parity::Left, Parity::Right) => self.iter(),
+            (Parity::Left, Parity::Left) => (self.node.0..self.last_node().0).into_iter().map(Node),
+            (Parity::Right, Parity::Right) => (self.node.0 + 1..self.last_node().0 + 1)
+                .into_iter()
+                .map(Node),
+            _ => (self.node.0 + 1..self.last_node().0).into_iter().map(Node),
+        }
+    }
+}
+
+impl IntoIterator for NodeRange {
+    type Item = Node;
+    type IntoIter = NodeIterator;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        (self.node.0..self.last_node().0 + 1).into_iter().map(Node)
     }
 }
