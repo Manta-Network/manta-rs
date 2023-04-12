@@ -35,9 +35,9 @@ pub mod partial;
 pub mod path;
 pub mod single_path;
 
-// #[cfg(feature = "test")]
-// #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-// pub mod test;
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod test;
 
 pub use node::*;
 pub use path::prelude::*;

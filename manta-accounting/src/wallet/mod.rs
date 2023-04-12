@@ -412,7 +412,7 @@ where
         let ReadResponse {
             should_continue,
             data,
-        } = self.read_from_ledger(&self.checkpoint).await?;
+        } = self.read_from_ledger(&self.checkpoint.clone()).await?;
         self.signer_sbt_sync(SyncRequest {
             origin_checkpoint: self.checkpoint.clone(),
             data,
@@ -430,7 +430,7 @@ where
         let ReadResponse {
             should_continue,
             data,
-        } = self.read_from_ledger(&self.checkpoint).await?;
+        } = self.read_from_ledger(&self.checkpoint.clone()).await?;
         self.signer_sync(SyncRequest {
             origin_checkpoint: self.checkpoint.clone(),
             data,
