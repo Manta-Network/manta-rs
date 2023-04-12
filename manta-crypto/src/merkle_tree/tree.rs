@@ -42,7 +42,7 @@ use crate::{
     },
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Range};
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
     persistence::Rollback,
@@ -581,6 +581,16 @@ where
     fn remove_path(&mut self, index: usize) -> bool {
         let _ = index;
         false
+    }
+
+    ///
+    #[inline]
+    fn batch_remove_path(&mut self, indices: Range<usize>) -> bool {
+        let mut result = false;
+        for index in indices {
+            result |= self.remove_path(index);
+        }
+        result
     }
 }
 

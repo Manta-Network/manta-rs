@@ -508,7 +508,7 @@ impl NodeRange {
 
     ///
     #[inline]
-    pub fn from_iter<T>(mut iter: T) -> Option<Self>
+    pub fn from_node_iter<T>(mut iter: T) -> Option<Self>
     where
         T: ExactSizeIterator<Item = Node>,
     {
@@ -544,13 +544,13 @@ impl NodeRange {
                 .checked_sub(1)
                 .expect("It is not possible to add a node on the left of 0."),
         );
-        self.extra_nodes = self.extra_nodes + 1;
+        self.extra_nodes += 1;
     }
 
     ///
     #[inline]
     pub fn add_right_node(&mut self) {
-        self.extra_nodes = self.extra_nodes + 1;
+        self.extra_nodes += 1;
     }
 
     /// Returns the [`DualParity`] of `self`.
@@ -630,7 +630,7 @@ impl NodeRange {
     ///
     #[inline]
     pub fn iter(&self) -> NodeIterator {
-        self.clone().into_iter()
+        (*self).into_iter()
     }
 
     ///
@@ -638,11 +638,9 @@ impl NodeRange {
     pub fn inner_iter(&self) -> NodeIterator {
         match self.dual_parity().0 {
             (Parity::Left, Parity::Right) => self.iter(),
-            (Parity::Left, Parity::Left) => (self.node.0..self.last_node().0).into_iter().map(Node),
-            (Parity::Right, Parity::Right) => (self.node.0 + 1..self.last_node().0 + 1)
-                .into_iter()
-                .map(Node),
-            _ => (self.node.0 + 1..self.last_node().0).into_iter().map(Node),
+            (Parity::Left, Parity::Left) => (self.node.0..self.last_node().0).map(Node),
+            (Parity::Right, Parity::Right) => (self.node.0 + 1..self.last_node().0 + 1).map(Node),
+            _ => (self.node.0 + 1..self.last_node().0).map(Node),
         }
     }
 }
@@ -653,6 +651,6 @@ impl IntoIterator for NodeRange {
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        (self.node.0..self.last_node().0 + 1).into_iter().map(Node)
+        (self.node.0..self.last_node().0 + 1).map(Node)
     }
 }

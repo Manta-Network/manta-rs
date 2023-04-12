@@ -265,7 +265,7 @@ impl InnerNodeRange {
 
     ///
     #[inline]
-    pub fn from_iter<T>(mut iter: T) -> Option<Self>
+    pub fn from_inner_node_iter<T>(mut iter: T) -> Option<Self>
     where
         T: ExactSizeIterator<Item = InnerNode>,
     {
@@ -359,13 +359,13 @@ impl InnerNodeRange {
     ///
     #[inline]
     pub fn iter(&self) -> InnerNodeIterator {
-        self.clone().into_iter()
+        (*self).into_iter()
     }
 
     ///
     #[inline]
     pub fn inner_iter(&self) -> InnerNodeIterator {
-        let cloned_self = self.clone();
+        let cloned_self = *self;
         cloned_self
             .node_range
             .inner_iter()
