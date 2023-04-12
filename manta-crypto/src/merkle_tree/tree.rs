@@ -36,8 +36,9 @@ use crate::{
         Has, NonNative,
     },
     merkle_tree::{
-        //fork::{ForkedTree, Trunk},
+        fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
+        leaf_map::LeafMap,
         path::{constraint::PathVar, CurrentPath, Path},
     },
 };
@@ -581,16 +582,6 @@ where
     fn remove_path(&mut self, index: usize) -> bool {
         let _ = index;
         false
-    }
-
-    ///
-    #[inline]
-    fn batch_remove_path(&mut self, indices: Range<usize>) -> bool {
-        let mut result = false;
-        for index in indices {
-            result |= self.remove_path(index);
-        }
-        result
     }
 }
 
@@ -1162,7 +1153,6 @@ where
         self.tree.path(&self.parameters, index)
     }
 
-    /*
     /// Converts `self` into a fork-able merkle tree.
     ///
     /// Use [`Trunk::into_tree`] to convert back.
@@ -1173,7 +1163,6 @@ where
     {
         Trunk::new(self.tree)
     }
-    */
 
     /// Extracts the parameters of the merkle tree, dropping the internal tree.
     #[inline]
@@ -1337,12 +1326,12 @@ where
     }
 }
 
-/*
-impl<C, T, M> Rollback for MerkleTree<C, ForkedTree<C, T, M>>
+impl<C, T, M, L> Rollback for MerkleTree<C, ForkedTree<C, T, M, L>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C> + Default,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
@@ -1356,4 +1345,3 @@ where
         self.tree.merge_fork(&self.parameters);
     }
 }
-*/

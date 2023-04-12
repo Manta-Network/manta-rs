@@ -27,7 +27,7 @@ mod node;
 mod tree;
 
 //pub mod forest;
-//pub mod fork;
+pub mod fork;
 pub mod full;
 pub mod inner_tree;
 pub mod leaf_map;
