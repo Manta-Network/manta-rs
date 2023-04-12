@@ -516,6 +516,11 @@ where
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
         (**self).set(index, inner_digest);
     }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        (**self).remove(index)
+    }
 }
 
 /// B-Tree Map [`InnerTree`] Backend
@@ -533,6 +538,11 @@ where
     #[inline]
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
         self.insert(index, inner_digest);
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        self.remove(&index).is_some()
     }
 }
 
@@ -556,6 +566,11 @@ where
     #[inline]
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
         self.insert(index, inner_digest);
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        self.remove(&index).is_some()
     }
 }
 

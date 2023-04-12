@@ -311,7 +311,7 @@ where
         &mut self,
         parameters: &Parameters<C>,
         leaf_digests: F,
-    ) -> Option<bool>
+    ) -> Option<(bool, usize)>
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
         LeafDigest<C>: Default,
@@ -336,7 +336,7 @@ where
                     leaf_digests,
                 );
             }
-            Some(false)
+            Some((false, 0))
         } else {
             self.batch_push_leaf_digests(
                 parameters,
@@ -346,7 +346,7 @@ where
                 },
                 leaf_digests,
             );
-            Some(true)
+            Some((true, number_of_leaf_digests))
         }
     }
 
@@ -554,7 +554,10 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        self.maybe_push_digest(parameters, leaf_digest)
+        let len = self.len();
+        let result = self.maybe_push_digest(parameters, leaf_digest);
+        self.remove_path(len);
+        result
     }
 
     #[inline]
@@ -566,7 +569,11 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        self.batch_maybe_push_digest(parameters, leaf_digests)
+        let len = self.len();
+        let (result, number_of_insertions) =
+            self.batch_maybe_push_digest(parameters, leaf_digests)?;
+        self.batch_remove_path(len..len + number_of_insertions);
+        Some(result)
     }
 }
 
@@ -627,6 +634,6 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        self.batch_maybe_push_digest(parameters, leaf_digests)
+        Some(self.batch_maybe_push_digest(parameters, leaf_digests)?.0)
     }
 }
