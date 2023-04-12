@@ -142,6 +142,15 @@ impl InnerNode {
         let Self { depth, index } = self;
         index.descendants(height - 2 - depth)
     }
+
+    ///
+    #[inline]
+    pub fn is_current<C>(&self, current_node: Node) -> bool
+    where
+        C: Configuration + ?Sized,
+    {
+        InnerNodeIter::from_leaf::<C>(current_node).any(|inner_node| inner_node.sibling() == *self)
+    }
 }
 
 impl From<InnerNode> for Node {

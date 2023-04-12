@@ -333,7 +333,7 @@ where
                     leaf_digests,
                 );
             }
-            Some((false, 0))
+            Some((false, number_of_leaf_digests))
         } else {
             self.batch_push_leaf_digests(
                 parameters,
@@ -390,7 +390,9 @@ where
         };
         self.leaf_map.mark(index);
         let sibling_index = Node(index).sibling().0;
-        if self.leaf_map.is_marked_or_removed(sibling_index) {
+        if self.leaf_map.is_marked_or_removed(sibling_index)
+            && self.leaf_map.is_marked_or_removed(index)
+        {
             self.leaf_map.remove(index);
             self.leaf_map.remove(sibling_index);
             for inner_node in InnerNodeIter::from_leaf::<C>(Node(index)) {
@@ -417,17 +419,23 @@ where
         }
         let dual_parity = node_range.dual_parity();
         if dual_parity.starting_parity().is_right() {
+            let index = node_range.node.0;
             let sibling_index = node_range.node.sibling().0;
-            if self.leaf_map.is_marked_or_removed(sibling_index) {
-                self.leaf_map.remove(node_range.node.0);
+            if self.leaf_map.is_marked_or_removed(sibling_index)
+                && self.leaf_map.is_marked_or_removed(index)
+            {
+                self.leaf_map.remove(index);
                 self.leaf_map.remove(sibling_index);
                 node_range.add_left_node();
             }
         }
         if dual_parity.final_parity().is_left() {
+            let index = node_range.last_node().0;
             let sibling_index = node_range.last_node().sibling().0;
-            if self.leaf_map.is_marked_or_removed(sibling_index) {
-                self.leaf_map.remove(node_range.last_node().0);
+            if self.leaf_map.is_marked_or_removed(sibling_index)
+                && self.leaf_map.is_marked_or_removed(index)
+            {
+                self.leaf_map.remove(index);
                 self.leaf_map.remove(sibling_index);
                 node_range.add_right_node();
             }
@@ -444,31 +452,38 @@ where
         &mut self,
         mut inner_node_range: InnerNodeRange,
     ) -> Option<InnerNodeRange> {
-        for inner_node in inner_node_range.iter() {
-            self.inner_digests.remove(inner_node.sibling().map_index());
+        let current_node = Node(self.leaf_map.current_index().expect(""));
+        for inner_node in inner_node_range
+            .iter()
+            .map(|inner_node| inner_node.sibling())
+            .filter(|inner_node| !inner_node.is_current::<C>(current_node))
+        {
+            self.inner_digests.remove(inner_node.map_index());
         }
         let dual_parity = inner_node_range.dual_parity();
-        if dual_parity.starting_parity().is_right()
-            && inner_node_range
-                .starting_inner_node()
+        if dual_parity.starting_parity().is_right() {
+            let starting_inner_node = inner_node_range.starting_inner_node();
+            if starting_inner_node
                 .sibling()
                 .leaf_nodes(C::HEIGHT)
                 .all(|x| self.leaf_map.is_marked_or_removed(x.0))
-        {
-            self.inner_digests
-                .remove(inner_node_range.starting_inner_node().map_index());
-            inner_node_range.add_left_node();
+                && !starting_inner_node.is_current::<C>(current_node)
+            {
+                self.inner_digests.remove(starting_inner_node.map_index());
+                inner_node_range.add_left_node();
+            }
         }
-        if dual_parity.final_parity().is_left()
-            && inner_node_range
-                .last_inner_node()
+        if dual_parity.final_parity().is_left() {
+            let last_inner_node = inner_node_range.last_inner_node();
+            if last_inner_node
                 .sibling()
                 .leaf_nodes(C::HEIGHT)
                 .all(|x| self.leaf_map.is_marked_or_removed(x.0))
-        {
-            self.inner_digests
-                .remove(inner_node_range.last_inner_node().map_index());
-            inner_node_range.add_right_node()
+                && !last_inner_node.is_current::<C>(current_node)
+            {
+                self.inner_digests.remove(last_inner_node.map_index());
+                inner_node_range.add_right_node();
+            }
         }
         InnerNodeRange::from_inner_node_iter(inner_node_range.inner_iter())
     }
@@ -503,11 +518,21 @@ where
     #[inline]
     pub fn batch_remove_path(&mut self, mut indices: Range<usize>) -> bool {
         if let Some(current_index) = self.leaf_map.current_index() {
-            indices.end = min(current_index, indices.end);
+            indices.end = min(current_index + 1, indices.end);
             self.batch_remove_path_unchecked(indices)
         } else {
             false
         }
+    }
+
+    ///
+    #[inline]
+    pub fn auxiliary_batch_remove_path(&mut self, indices: Range<usize>) -> bool {
+        let mut result = false;
+        for index in indices {
+            result |= self.remove_path(index);
+        }
+        result
     }
 }
 
