@@ -1021,7 +1021,7 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
-    L: LeafMap<C>,
+    L: LeafMap<C> + Default,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
@@ -1056,7 +1056,7 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        self.maybe_push_digest(parameters, leaf_digest)
+        Tree::maybe_push_digest(&mut self.branch.data, parameters, leaf_digest)
     }
 
     #[inline]
@@ -1068,7 +1068,7 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        self.batch_maybe_push_digest(parameters, leaf_digests)
+        Tree::batch_maybe_push_digest(&mut self.branch.data, parameters, leaf_digests)
     }
 }
 
@@ -1118,5 +1118,10 @@ where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
         self.batch_maybe_push_digest(parameters, leaf_digests)
+    }
+
+    #[inline]
+    fn remove_path(&mut self, index: usize) -> bool {
+        self.branch.data.remove_path(index)
     }
 }

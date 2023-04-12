@@ -25,7 +25,7 @@ use crate::merkle_tree::{
     path_length, Configuration, DescendantsIterator, DualParity, InnerDigest, Node, NodeIterator,
     NodeRange, Parameters, Parity,
 };
-use alloc::{collections::btree_map, vec::Vec, boxed::Box};
+use alloc::{boxed::Box, collections::btree_map, vec::Vec};
 use core::{
     fmt::Debug,
     hash::Hash,
