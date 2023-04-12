@@ -20,10 +20,7 @@
 
 use crate::merkle_tree::{
     capacity,
-    inner_tree::{
-        BTreeMap, InnerMap, InnerNode, InnerNodeIter, InnerNodeRange, InnerNodeRangeIter,
-        PartialInnerTree,
-    },
+    inner_tree::{BTreeMap, InnerMap, InnerNodeIter, InnerNodeRange, PartialInnerTree},
     leaf_map::{LeafMap, LeafVec},
     node::{NodeRange, Parity},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,

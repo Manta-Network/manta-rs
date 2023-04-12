@@ -43,7 +43,7 @@ use crate::{
     },
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, marker::PhantomData, ops::Range};
+use core::{fmt::Debug, hash::Hash, marker::PhantomData};
 use manta_util::{
     codec::{Decode, DecodeError, Encode, Read, Write},
     persistence::Rollback,
