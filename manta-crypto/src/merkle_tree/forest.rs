@@ -150,7 +150,12 @@ where
         self.get_mut(C::tree_index(leaf))
     }
 
+    /// Removes the paths corresponding to the nonprovable leaves in `self`.
     ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing. Custom implementations should be consistent
+    /// with the [`prune`](Tree::prune) implementation of the [`Tree`] type.
     #[inline]
     fn prune(&mut self) {}
 }

@@ -333,7 +333,7 @@ where
                     leaf_digests,
                 );
             }
-            Some((false, number_of_leaf_digests))
+            Some((false, max_number_of_insertions))
         } else {
             self.batch_push_leaf_digests(
                 parameters,
@@ -381,7 +381,7 @@ where
         Some(true)
     }
 
-    ///
+    /// Removes the paths corresponding to the nonprovable leaves in `self`.
     #[inline]
     pub fn prune(&mut self) {
         if let Some(current_index) = self.leaf_map.current_index() {
@@ -394,7 +394,8 @@ where
         }
     }
 
-    ///
+    /// Removes the [`Path`] above the leaf at `index`. Returns `false` if the leaf
+    /// or its sibling are not marked for removal, or if either of them is the current leaf.
     #[inline]
     fn remove_path_at_index(&mut self, index: usize) -> bool {
         let sibling_index = Node(index).sibling().0;
@@ -419,7 +420,8 @@ where
         }
     }
 
-    ///
+    /// Marks the leaf at `index` for removal and then tries to remove the [`Path`]
+    /// above it.
     #[inline]
     pub fn remove_path(&mut self, index: usize) -> bool {
         match self.leaf_map.current_index() {

@@ -142,15 +142,6 @@ impl InnerNode {
         let Self { depth, index } = self;
         index.descendants(height - 2 - depth)
     }
-
-    ///
-    #[inline]
-    pub fn is_current<C>(&self, current_node: Node) -> bool
-    where
-        C: Configuration + ?Sized,
-    {
-        InnerNodeIter::from_leaf::<C>(current_node).any(|inner_node| inner_node.sibling() == *self)
-    }
 }
 
 impl From<InnerNode> for Node {
@@ -272,35 +263,6 @@ impl InnerNodeRange {
         .and_then(|inner_node_range| inner_node_range.parents())
     }
 
-    ///
-    #[inline]
-    pub fn from_inner_node_iter<T>(mut iter: T) -> Option<Self>
-    where
-        T: ExactSizeIterator<Item = InnerNode>,
-    {
-        let InnerNode { depth, index } = iter.next()?;
-        let extra_nodes = iter.len();
-        Some(Self {
-            depth,
-            node_range: NodeRange {
-                node: index,
-                extra_nodes,
-            },
-        })
-    }
-
-    ///
-    #[inline]
-    pub fn add_left_node(&mut self) {
-        self.node_range.add_left_node()
-    }
-
-    ///
-    #[inline]
-    pub fn add_right_node(&mut self) {
-        self.node_range.add_right_node()
-    }
-
     /// Returns the [`DualParity`] of `self`.
     #[inline]
     pub const fn dual_parity(&self) -> DualParity {
@@ -364,28 +326,9 @@ impl InnerNodeRange {
     pub fn map_indices(&self) -> Range<usize> {
         self.starting_inner_node().map_index()..self.last_inner_node().map_index() + 1
     }
-
-    ///
-    #[inline]
-    pub fn iter(&self) -> InnerNodeIterator {
-        (*self).into_iter()
-    }
-
-    ///
-    #[inline]
-    pub fn inner_iter(&self) -> InnerNodeIterator {
-        let cloned_self = *self;
-        cloned_self
-            .node_range
-            .inner_iter()
-            .map(Box::new(move |node| InnerNode {
-                depth: cloned_self.depth,
-                index: node,
-            }))
-    }
 }
 
-///
+/// Inner Node Iterator
 pub type InnerNodeIterator = Map<NodeIterator, Box<dyn FnMut(Node) -> InnerNode>>;
 
 impl IntoIterator for InnerNodeRange {
@@ -1150,7 +1093,7 @@ where
         self.starting_leaf_index = default;
     }
 
-    ///
+    /// Removes the [`InnerDigest`] stored at `index`.
     #[inline]
     pub fn remove(&mut self, index: usize) -> bool {
         self.inner_tree.map.remove(index)

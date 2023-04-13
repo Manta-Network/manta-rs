@@ -19,6 +19,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
+    leaf_map::{LeafMap, LeafVec},
     partial::Partial,
     path::{CurrentInnerPath, InnerPath},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Path,
@@ -30,8 +31,6 @@ use manta_util::pointer::{self, PointerFamily};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use super::leaf_map::{LeafMap, LeafVec};
 
 /// Fork-able Merkle Tree
 #[derive(derivative::Derivative)]

@@ -23,7 +23,7 @@ use crate::{
 };
 
 /// Merkle Tree Height
-const HEIGHT: usize = 5;
+const HEIGHT: usize = 10;
 
 /// Proportion of provable insertions.
 ///

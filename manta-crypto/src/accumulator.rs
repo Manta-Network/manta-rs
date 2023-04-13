@@ -202,7 +202,16 @@ pub trait OptimizedAccumulator: Accumulator {
         false
     }
 
+    /// Removes the witnesses corresponding to the nonprovable items in `self`.
     ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing. This method is fundamentally different than
+    /// [`remove_proof`] because [`remove_proof`] first deems an item nonprovable and then it removes
+    /// the corresponding witness, whereas this method doesn't change the provability of the items,
+    /// it only removes the witnesses of the already nonprovable ones.
+    ///
+    /// [`remove_proof`]: Self::remove_proof
     #[inline]
     fn prune(&mut self) {}
 }

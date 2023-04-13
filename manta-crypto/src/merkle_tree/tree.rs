@@ -428,7 +428,18 @@ where
         self.extend(parameters, leaves)
     }
 
+    /// Removes the paths corresponding to the nonprovable leaves in `self`.
     ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing. This method is fundamentally different than
+    /// [`remove_path`] because [`remove_path`] first deems a leaf nonprovable and then it removes
+    /// the corresponding path, whereas this method doesn't change the provability of the leaves,
+    /// it only removes the paths of the already nonprovable ones.
+    /// 
+    /// Custom implementations must never remove the [`CurrentPath`].
+    ///
+    /// [`remove_path`]: WithProofs::remove_path
     #[inline]
     fn prune(&mut self) {}
 }
@@ -963,7 +974,6 @@ where
         Self { parameters, tree }
     }
 
-    /*
     /// Builds a new [`MerkleTree`] from a `trunk` and `parameters`.
     #[inline]
     pub fn from_trunk<P>(trunk: Trunk<C, T, P>, parameters: Parameters<C>) -> Self
@@ -972,7 +982,6 @@ where
     {
         Self::from_tree(trunk.into_tree(), parameters)
     }
-    */
 
     /// Returns a shared reference to the parameters used by this merkle tree.
     #[inline]

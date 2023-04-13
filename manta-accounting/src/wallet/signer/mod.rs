@@ -1520,7 +1520,8 @@ where
         )
     }
 
-    ///
+    /// Prunes the [`UtxoAccumulator`](Configuration::UtxoAccumulator), deleting any data which
+    /// cannot be used to [`sign`](Self::sign) or [`sync`](Self::sync).
     #[inline]
     pub fn prune(&mut self) {
         self.state.utxo_accumulator.prune()
