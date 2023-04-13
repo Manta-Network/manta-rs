@@ -163,7 +163,7 @@ pub type DescendantsIterator<Idx = usize> = Map<Range<Idx>, fn(Idx) -> Node<Idx>
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Node<Idx = usize>(
     /// Level-wise Index to a node in a Binary Tree
     pub Idx,

@@ -198,10 +198,7 @@ where
 
     /// Returns the position of `leaf_digest` in the tree.
     #[inline]
-    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
-    where
-        LeafDigest<C>: PartialEq,
-    {
+    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
         self.leaf_map
             .position(leaf_digest)
             .map(move |i| i + self.starting_leaf_index())
@@ -508,7 +505,7 @@ where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
     L: LeafMap<C>,
-    LeafDigest<C>: Clone + Default + PartialEq,
+    LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
