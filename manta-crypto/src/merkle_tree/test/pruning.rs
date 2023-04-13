@@ -26,9 +26,9 @@ use crate::{
 const HEIGHT: usize = 5;
 
 /// Proportion of provable insertions.
-/// 
+///
 /// # Note
-/// 
+///
 /// 1/`PROVABLE_PROPORTION` of the insertions in the test will be provable.
 const PROVABLE_PROPORTION: u32 = 10;
 
@@ -73,7 +73,7 @@ fn test_batch_pruning() {
             Provability::NonProvable => {
                 tree.insert_nonprovable(insertion);
             }
-            Provability::Provable => {
+            _ => {
                 tree.insert(insertion);
             }
         }
