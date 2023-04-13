@@ -30,6 +30,7 @@ use crate::{
     merkle_tree::{
         fork::ForkedTree,
         inner_tree::InnerMap,
+        leaf_map::LeafMap,
         partial::Partial,
         path::Path,
         tree::{self, Leaf, Parameters, Root, Tree},
@@ -42,8 +43,6 @@ use manta_util::{persistence::Rollback, BoxArray};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use super::leaf_map::LeafMap;
 
 /// Merkle Forest Configuration
 pub trait Configuration: tree::Configuration {
@@ -150,6 +149,10 @@ where
     fn get_tree_mut(&mut self, leaf: &Leaf<C>) -> &mut Self::Tree {
         self.get_mut(C::tree_index(leaf))
     }
+
+    ///
+    #[inline]
+    fn prune(&mut self) {}
 }
 
 /// Constant Width Forest
@@ -408,6 +411,11 @@ where
         tree.position(&self.parameters.digest(item))
             .map(move |i| tree.remove_path(i))
             .unwrap_or(false)
+    }
+
+    #[inline]
+    fn prune(&mut self) {
+        self.forest.prune()
     }
 }
 
@@ -731,6 +739,13 @@ where
     #[inline]
     fn get_mut(&mut self, index: C::Index) -> &mut Self::Tree {
         &mut self.array[index.into()]
+    }
+
+    #[inline]
+    fn prune(&mut self) {
+        for tree in self.array.iter_mut() {
+            tree.prune();
+        }
     }
 }
 

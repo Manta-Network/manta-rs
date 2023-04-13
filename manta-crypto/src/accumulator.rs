@@ -201,6 +201,10 @@ pub trait OptimizedAccumulator: Accumulator {
         let _ = item;
         false
     }
+
+    ///
+    #[inline]
+    fn prune(&mut self) {}
 }
 
 /// Batch Insertion

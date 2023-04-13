@@ -427,6 +427,10 @@ where
     {
         self.extend(parameters, leaves)
     }
+
+    ///
+    #[inline]
+    fn prune(&mut self) {}
 }
 
 /// Path Error
@@ -1297,6 +1301,11 @@ where
             .position(&self.parameters.digest(item))
             .map(move |i| self.tree.remove_path(i))
             .unwrap_or(false)
+    }
+
+    #[inline]
+    fn prune(&mut self) {
+        self.tree.prune()
     }
 }
 

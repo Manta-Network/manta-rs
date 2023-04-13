@@ -1070,6 +1070,11 @@ where
     {
         Tree::batch_maybe_push_digest(&mut self.branch.data, parameters, leaf_digests)
     }
+
+    #[inline]
+    fn prune(&mut self) {
+        self.branch.data.prune()
+    }
 }
 
 impl<C, T, M, L> WithProofs<C> for ForkedTree<C, T, M, L>

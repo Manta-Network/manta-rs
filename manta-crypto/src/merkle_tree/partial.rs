@@ -383,12 +383,20 @@ where
 
     ///
     #[inline]
-    pub fn remove_path(&mut self, index: usize) -> bool {
-        match self.leaf_map.current_index() {
-            Some(current_index) if index <= current_index => (),
-            _ => return false,
-        };
-        self.leaf_map.mark(index);
+    pub fn prune(&mut self) {
+        if let Some(current_index) = self.leaf_map.current_index() {
+            let marked_indices = (0..current_index)
+                .filter(|index| self.leaf_map.is_marked(*index).unwrap_or(false))
+                .collect::<Vec<_>>();
+            for index in marked_indices {
+                self.remove_path_at_index(index);
+            }
+        }
+    }
+
+    ///
+    #[inline]
+    fn remove_path_at_index(&mut self, index: usize) -> bool {
         let sibling_index = Node(index).sibling().0;
         if self.leaf_map.is_marked_or_removed(sibling_index)
             && self.leaf_map.is_marked_or_removed(index)
@@ -409,6 +417,17 @@ where
         } else {
             false
         }
+    }
+
+    ///
+    #[inline]
+    pub fn remove_path(&mut self, index: usize) -> bool {
+        match self.leaf_map.current_index() {
+            Some(current_index) if index <= current_index => (),
+            _ => return false,
+        };
+        self.leaf_map.mark(index);
+        self.remove_path_at_index(index)
     }
 
     ///
@@ -524,16 +543,6 @@ where
             false
         }
     }
-
-    ///
-    #[inline]
-    pub fn auxiliary_batch_remove_path(&mut self, indices: Range<usize>) -> bool {
-        let mut result = false;
-        for index in indices {
-            result |= self.remove_path(index);
-        }
-        result
-    }
 }
 
 impl<C, M, L> Tree<C> for Partial<C, M, L>
@@ -578,7 +587,7 @@ where
     {
         let len = self.len();
         let result = self.maybe_push_digest(parameters, leaf_digest);
-        self.remove_path(len);
+        self.leaf_map.mark(len);
         result
     }
 
@@ -594,7 +603,9 @@ where
         let len = self.len();
         let (result, number_of_insertions) =
             self.batch_maybe_push_digest(parameters, leaf_digests)?;
-        self.batch_remove_path(len..len + number_of_insertions);
+        for index in len..len + number_of_insertions {
+            self.leaf_map.mark(index)
+        }
         Some(result)
     }
 }

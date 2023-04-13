@@ -1519,6 +1519,12 @@ where
             request,
         )
     }
+
+    ///
+    #[inline]
+    pub fn prune(&mut self) {
+        self.state.utxo_accumulator.prune()
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
