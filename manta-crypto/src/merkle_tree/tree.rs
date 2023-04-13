@@ -436,7 +436,7 @@ where
     /// [`remove_path`] because [`remove_path`] first deems a leaf nonprovable and then it removes
     /// the corresponding path, whereas this method doesn't change the provability of the leaves,
     /// it only removes the paths of the already nonprovable ones.
-    /// 
+    ///
     /// Custom implementations must never remove the [`CurrentPath`].
     ///
     /// [`remove_path`]: WithProofs::remove_path
