@@ -608,6 +608,11 @@ where
         }
         Some(result)
     }
+
+    #[inline]
+    fn prune(&mut self) {
+        self.prune()
+    }
 }
 
 impl<C, M, L> WithProofs<C> for Partial<C, M, L>
