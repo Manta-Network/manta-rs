@@ -20,6 +20,9 @@ use crate::merkle_tree::{Configuration, LeafDigest};
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 #[cfg(feature = "std")]
 use std::collections::hash_map::HashMap;
 
@@ -116,6 +119,18 @@ where
 }
 
 /// Leaf Vector
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "LeafDigest<C>: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
@@ -207,6 +222,18 @@ where
 /// Leaf Hash Map
 #[cfg(feature = "std")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "LeafDigest<C>: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
