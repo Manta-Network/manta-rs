@@ -1263,10 +1263,11 @@ where
         &self.state
     }
 
-    /// Loads `accounts` to `self`.
+    /// Loads `accounts` to `self` and updates the authorization context.
     #[inline]
     pub fn load_accounts(&mut self, accounts: AccountTable<C>) {
-        self.state.load_accounts(accounts)
+        self.state.load_accounts(accounts);
+        self.update_authorization_context();
     }
 
     /// Drops `self.state.accounts`
@@ -1293,7 +1294,7 @@ where
 
     /// Updates `self.state.authorization_context` from `self.state.accounts`, if possible.
     #[inline]
-    pub fn update_authorization_context(&mut self) -> bool {
+    fn update_authorization_context(&mut self) -> bool {
         match self.state.accounts() {
             Some(accounts) => {
                 self.load_authorization_context(functions::default_authorization_context::<C>(
@@ -1306,10 +1307,11 @@ where
         }
     }
 
-    /// Drops `self.state.authorization_context`
+    /// Drops `self.state.authorization_context` and `self.state.accounts`.
     #[inline]
     pub fn drop_authorization_context(&mut self) {
-        self.state.drop_authorization_context()
+        self.state.drop_authorization_context();
+        self.drop_accounts()
     }
 
     /// Updates the internal ledger state, returning the new asset distribution.
