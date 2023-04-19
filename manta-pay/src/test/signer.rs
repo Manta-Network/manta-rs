@@ -24,9 +24,12 @@ use crate::{
         base::identity_verification,
         functions::{address_from_mnemonic, authorization_context_from_mnemonic},
     },
-    simulation::sample_signer,
+    simulation::{ledger::LedgerConnection, sample_signer},
 };
-use manta_accounting::transfer::{canonical::Transaction, IdentifiedAsset, Identifier};
+use manta_accounting::{
+    transfer::{canonical::Transaction, IdentifiedAsset, Identifier},
+    wallet::test::PublicBalanceOracle,
+};
 use manta_crypto::{
     algebra::HasGenerator,
     arkworks::constraint::fp::Fp,
@@ -172,3 +175,79 @@ pub fn derive_address_works() {
         "Both receiving keys should be the same"
     );
 }
+
+/// Checks the generation and verification of [`IdentityProof`](manta_accounting::transfer::IdentityProof)s.
+#[tokio::test]
+async fn find_the_bug() {
+    use crate::{
+        config::{AssetId, AssetValue},
+        signer::base::Signer,
+        simulation::ledger::Ledger,
+    };
+    use alloc::sync::Arc;
+    use manta_accounting::{
+        asset::AssetList,
+        wallet::{Wallet},
+    };
+    use tokio::sync::RwLock;
+    let mut rng = OsRng;
+    let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
+    let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
+        load_parameters(directory.path()).expect("Failed to load parameters");
+    let signer = sample_signer(
+        &proving_context,
+        &parameters,
+        &utxo_accumulator_model,
+        &mut rng,
+    );
+    let account_id = rng.gen();
+    let asset_id = 1.into();
+    let address = rng.gen();
+    let ledger = Arc::new(RwLock::new(Ledger::new(
+        utxo_accumulator_model,
+        verifying_context,
+        parameters,
+    )));
+    let initial_balance = 10000;
+    let to_send = 100;
+    let back_to_public = 5000;
+    ledger
+        .write()
+        .await
+        .set_public_balance(account_id, asset_id, initial_balance);
+    let ledger_connection = LedgerConnection::new(account_id, ledger);
+    let mut wallet =
+        Wallet::<Config, LedgerConnection, Signer, AssetList<AssetId, AssetValue>>::new(
+            ledger_connection,
+            signer,
+        );
+    let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id, initial_balance));
+    wallet
+        .post(to_private, Default::default())
+        .await
+        .expect("Error posting ToPrivate");
+    wallet.sync().await.expect("Sync error");
+    let private_transfer = Transaction::<Config>::PrivateTransfer(Asset::new(asset_id, to_send), address);
+    wallet
+        .post(private_transfer, Default::default())
+        .await
+        .expect("Error posting PrivateTransfer");
+    wallet.sync().await.expect("Sync error");
+    let to_public = Transaction::<Config>::ToPublic(Asset::new(asset_id, back_to_public), account_id);
+    wallet
+        .post(to_public, Default::default())
+        .await
+        .expect("Error posting ToPublic");
+    wallet.sync().await.expect("Sync error");
+    let public_balance = match wallet.ledger().public_balances().await {
+        Some(asset_list) => asset_list.value(&asset_id),
+        None => 0,
+    };
+    let private_balance = wallet.balance(&asset_id);
+    println!("Public Balance: {:?}", public_balance);
+    println!("Private Balance: {:?}", private_balance);
+    wallet.restart().await.expect("Error restarting");
+    println!("Private Balance after restarting: {:?}", wallet.balance(&asset_id));
+}
+
+// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture

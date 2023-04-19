@@ -212,7 +212,10 @@ impl Ledger {
             };
             match post.validate(&self.parameters, &*self, sources, sinks) {
                 Ok(posting_key) => posting_key.post(&mut *self, &()).unwrap(),
-                _ => return false,
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                    return false;
+                }
             }
         }
         true
