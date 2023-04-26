@@ -381,6 +381,9 @@ where
     /// Removes the paths corresponding to the nonprovable leaves in `self`.
     #[inline]
     pub fn prune(&mut self) {
+        // We need to collect before looping because we are taking a mutable
+        // reference of `self` in the loop and an immutable one in the `filter`
+        // method.
         if let Some(current_index) = self.leaf_map.current_index() {
             let marked_indices = (0..current_index)
                 .filter(|index| self.leaf_map.is_marked(*index).unwrap_or(false))
