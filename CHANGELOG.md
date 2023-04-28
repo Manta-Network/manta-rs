@@ -5,10 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#331](https://github.com/Manta-Network/manta-rs/pull/331) Merkle tree pruning.
 
 ### Changed
-- [\#342](https://github.com/Manta-Network/manta-rs/pull/342) Bump BIP32 version to 0.4.0.
 
 ### Deprecated
 
@@ -17,6 +15,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 ### Security
+
+## [0.5.15] - 2023-04-28
+### Added
+- [\#331](https://github.com/Manta-Network/manta-rs/pull/331) Merkle tree pruning.
+
+### Changed
+- [\#342](https://github.com/Manta-Network/manta-rs/pull/342) Bump BIP32 version to 0.4.0.
 
 ## [0.5.14] - 2023-04-07
 ### Added
