@@ -20,7 +20,8 @@
 
 use crate::merkle_tree::{
     capacity,
-    inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
+    inner_tree::{BTreeMap, InnerMap, InnerNodeIter, PartialInnerTree},
+    leaf_map::{LeafMap, LeafVec},
     node::{NodeRange, Parity},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
@@ -40,8 +41,8 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>",
-            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize, M: Serialize"
+            deserialize = "L: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>, M: Deserialize<'de>",
+            serialize = "L: Serialize, InnerDigest<C>: Serialize, M: Serialize"
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -49,41 +50,50 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default, M: Default"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
-    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
+    Clone(bound = "L: Clone, InnerDigest<C>: Clone, M: Clone"),
+    Debug(bound = "L: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Default(bound = "L: Default, InnerDigest<C>: Default, M: Default"),
+    Eq(bound = "L: Eq, InnerDigest<C>: Eq, M: Eq"),
+    Hash(bound = "L: Hash, InnerDigest<C>: Hash, M: Hash"),
+    PartialEq(bound = "L: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct Partial<C, M = BTreeMap<C>>
+pub struct Partial<C, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    L: LeafMap<C>,
 {
-    /// Leaf Digests
-    leaf_digests: Vec<LeafDigest<C>>,
+    /// Leaf Map
+    leaf_map: L,
 
     /// Inner Digests
     inner_digests: PartialInnerTree<C, M>,
 }
 
-impl<C, M> Partial<C, M>
+impl<C, M, L> Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    L: LeafMap<C>,
 {
+    /// Builds a new [`Partial`] without checking that `leaf_map` and `inner_digests` form a
+    /// consistent merkle tree.
+    #[inline]
+    pub fn new_unchecked(leaf_map: L, inner_digests: PartialInnerTree<C, M>) -> Self {
+        Self {
+            leaf_map,
+            inner_digests,
+        }
+    }
+
     /// Builds a new [`Partial`] without checking that `leaf_digests` and `inner_digests` form a
     /// consistent merkle tree.
     #[inline]
-    pub fn new_unchecked(
+    pub fn new_unchecked_from_leaves(
         leaf_digests: Vec<LeafDigest<C>>,
         inner_digests: PartialInnerTree<C, M>,
     ) -> Self {
-        Self {
-            leaf_digests,
-            inner_digests,
-        }
+        Self::new_unchecked(LeafMap::from_vec(leaf_digests), inner_digests)
     }
 
     /// Builds a new [`Partial`] from `leaf_digests` and `path` without checking that
@@ -100,14 +110,14 @@ where
     {
         let n = leaf_digests.len();
         if n == 0 {
-            Self::new_unchecked(leaf_digests, Default::default())
+            Self::new_unchecked(LeafMap::from_vec(leaf_digests), Default::default())
         } else {
             let base = match Parity::from_index(n - 1) {
                 Parity::Left => parameters.join_leaves(&leaf_digests[n - 1], &path.sibling_digest),
                 Parity::Right => parameters.join_leaves(&path.sibling_digest, &leaf_digests[n - 1]),
             };
             let mut partial_tree = Self::new_unchecked(
-                leaf_digests,
+                LeafMap::from_vec(leaf_digests),
                 PartialInnerTree::from_current(
                     parameters,
                     base,
@@ -129,8 +139,14 @@ where
     /// this slice will not be the same as indexing into a slice from a full tree. For all other
     /// indexing, use the full indexing scheme.
     #[inline]
-    pub fn leaf_digests(&self) -> &[LeafDigest<C>] {
-        &self.leaf_digests
+    pub fn leaf_digests(&self) -> Vec<&LeafDigest<C>> {
+        self.leaf_map.leaf_digests()
+    }
+
+    /// Returns the marked leaves of the Merkle tree.
+    #[inline]
+    pub fn marked_leaves(&self) -> Vec<&LeafDigest<C>> {
+        self.leaf_map.marked_leaf_digests()
     }
 
     /// Returns the leaf digests stored in the tree, dropping the rest of the tree data.
@@ -141,7 +157,7 @@ where
     /// vector.
     #[inline]
     pub fn into_leaves(self) -> Vec<LeafDigest<C>> {
-        self.leaf_digests
+        self.leaf_map.into_leaf_digests()
     }
 
     /// Returns the starting leaf [`Node`] for this tree.
@@ -159,7 +175,7 @@ where
     /// Returns the number of leaves in this tree.
     #[inline]
     pub fn len(&self) -> usize {
-        self.starting_leaf_index() + self.leaf_digests.len()
+        self.starting_leaf_index() + self.leaf_map.len()
     }
 
     /// Returns `true` if this tree is empty.
@@ -177,25 +193,21 @@ where
     /// Returns the leaf digest at the given `index` in the tree.
     #[inline]
     pub fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
-        self.leaf_digests.get(index - self.starting_leaf_index())
+        self.leaf_map.get(index - self.starting_leaf_index())
     }
 
     /// Returns the position of `leaf_digest` in the tree.
     #[inline]
-    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize>
-    where
-        LeafDigest<C>: PartialEq,
-    {
-        self.leaf_digests
-            .iter()
-            .position(move |d| d == leaf_digest)
+    pub fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        self.leaf_map
+            .position(leaf_digest)
             .map(move |i| i + self.starting_leaf_index())
     }
 
     /// Returns the sibling leaf node to `index`.
     #[inline]
     pub fn get_leaf_sibling(&self, index: Node) -> Option<&LeafDigest<C>> {
-        self.leaf_digests
+        self.leaf_map
             .get((index - self.starting_leaf_index()).sibling().0)
     }
 
@@ -211,7 +223,7 @@ where
     /// Returns the current (right-most) leaf of the tree.
     #[inline]
     pub fn current_leaf(&self) -> Option<&LeafDigest<C>> {
-        self.leaf_digests.last()
+        self.leaf_map.current_leaf()
     }
 
     /// Returns the current (right-most) path of the tree.
@@ -266,7 +278,7 @@ where
                     .unwrap_or(&Default::default()),
             ),
         );
-        self.leaf_digests.push(leaf_digest);
+        self.leaf_map.push(leaf_digest);
     }
 
     /// Appends `leaf_digests` with indices given by `leaf_indices` into the tree.
@@ -284,7 +296,7 @@ where
         });
         self.inner_digests
             .batch_insert(parameters, leaf_indices, base_inner_digests);
-        self.leaf_digests.extend(leaf_digests);
+        self.leaf_map.extend(leaf_digests);
     }
 
     /// Appends `leaf_digests` to the tree using `parameters`.
@@ -293,7 +305,7 @@ where
         &mut self,
         parameters: &Parameters<C>,
         leaf_digests: F,
-    ) -> Option<bool>
+    ) -> Option<(bool, usize)>
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
         LeafDigest<C>: Default,
@@ -318,7 +330,7 @@ where
                     leaf_digests,
                 );
             }
-            Some(false)
+            Some((false, max_number_of_insertions))
         } else {
             self.batch_push_leaf_digests(
                 parameters,
@@ -328,7 +340,7 @@ where
                 },
                 leaf_digests,
             );
-            Some(true)
+            Some((true, number_of_leaf_digests))
         }
     }
 
@@ -365,12 +377,67 @@ where
         self.push_leaf_digest(parameters, Node(len), leaf_digest()?);
         Some(true)
     }
+
+    /// Removes the paths corresponding to the nonprovable leaves in `self`.
+    #[inline]
+    pub fn prune(&mut self) {
+        // We need to collect before looping because we are taking a mutable
+        // reference of `self` in the loop and an immutable one in the `filter`
+        // method.
+        if let Some(current_index) = self.leaf_map.current_index() {
+            let marked_indices = (0..current_index)
+                .filter(|index| self.leaf_map.is_marked(*index).unwrap_or(false))
+                .collect::<Vec<_>>();
+            for index in marked_indices {
+                self.remove_path_at_index(index);
+            }
+        }
+    }
+
+    /// Removes the [`Path`] above the leaf at `index`. Returns `false` if the leaf
+    /// or its sibling are not marked for removal, or if either of them is the current leaf.
+    #[inline]
+    fn remove_path_at_index(&mut self, index: usize) -> bool {
+        let sibling_index = Node(index).sibling().0;
+        if self.leaf_map.is_marked_or_removed(sibling_index)
+            && self.leaf_map.is_marked_or_removed(index)
+        {
+            self.leaf_map.remove(index);
+            self.leaf_map.remove(sibling_index);
+            for inner_node in InnerNodeIter::from_leaf::<C>(Node(index)) {
+                let sibling_node = inner_node.sibling();
+                self.inner_digests.remove(sibling_node.map_index());
+                if sibling_node
+                    .leaf_nodes(C::HEIGHT)
+                    .any(|x| !self.leaf_map.is_marked_or_removed(x.0))
+                {
+                    break;
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Marks the leaf at `index` for removal and then tries to remove the [`Path`]
+    /// above it.
+    #[inline]
+    pub fn remove_path(&mut self, index: usize) -> bool {
+        match self.leaf_map.current_index() {
+            Some(current_index) if index <= current_index => (),
+            _ => return false,
+        };
+        self.leaf_map.mark(index);
+        self.remove_path_at_index(index)
+    }
 }
 
-impl<C, M> Tree<C> for Partial<C, M>
+impl<C, M, L> Tree<C> for Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
+    L: LeafMap<C> + Default,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
@@ -406,7 +473,10 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        self.maybe_push_digest(parameters, leaf_digest)
+        let len = self.len();
+        let result = self.maybe_push_digest(parameters, leaf_digest);
+        self.leaf_map.mark(len);
+        result
     }
 
     #[inline]
@@ -418,15 +488,27 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        self.batch_maybe_push_digest(parameters, leaf_digests)
+        let len = self.len();
+        let (result, number_of_insertions) =
+            self.batch_maybe_push_digest(parameters, leaf_digests)?;
+        for index in len..len + number_of_insertions {
+            self.leaf_map.mark(index)
+        }
+        Some(result)
+    }
+
+    #[inline]
+    fn prune(&mut self) {
+        self.prune()
     }
 }
 
-impl<C, M> WithProofs<C> for Partial<C, M>
+impl<C, M, L> WithProofs<C> for Partial<C, M, L>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
-    LeafDigest<C>: Clone + Default + PartialEq,
+    L: LeafMap<C>,
+    LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
@@ -466,9 +548,7 @@ where
 
     #[inline]
     fn remove_path(&mut self, index: usize) -> bool {
-        // TODO: Implement this optimization.
-        let _ = index;
-        false
+        self.remove_path(index)
     }
 
     #[inline]
@@ -480,6 +560,6 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        self.batch_maybe_push_digest(parameters, leaf_digests)
+        Some(self.batch_maybe_push_digest(parameters, leaf_digests)?.0)
     }
 }

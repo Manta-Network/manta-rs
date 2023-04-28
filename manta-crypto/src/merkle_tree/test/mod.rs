@@ -33,6 +33,9 @@ pub mod batch_insertion;
 #[cfg(test)]
 pub mod partial;
 
+#[cfg(test)]
+pub mod pruning;
+
 /// Hash Parameter Sampling
 pub trait HashParameterSampling: HashConfiguration {
     /// Leaf Hash Parameter Distribution

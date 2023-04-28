@@ -72,7 +72,6 @@ where
         utxo_accumulator_model,
     );
     signer.load_accounts(AccountTable::new(KeySecret::sample(rng)));
-    signer.update_authorization_context();
     signer
 }
 

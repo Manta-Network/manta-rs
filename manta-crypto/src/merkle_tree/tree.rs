@@ -38,6 +38,7 @@ use crate::{
     merkle_tree::{
         fork::{ForkedTree, Trunk},
         inner_tree::InnerMap,
+        leaf_map::LeafMap,
         path::{constraint::PathVar, CurrentPath, Path},
     },
 };
@@ -426,6 +427,21 @@ where
     {
         self.extend(parameters, leaves)
     }
+
+    /// Removes the paths corresponding to the nonprovable leaves in `self`.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing. This method is fundamentally different than
+    /// [`remove_path`] because [`remove_path`] first deems a leaf nonprovable and then it removes
+    /// the corresponding path, whereas this method doesn't change the provability of the leaves,
+    /// it only removes the paths of the already nonprovable ones.
+    ///
+    /// Custom implementations must never remove the [`CurrentPath`].
+    ///
+    /// [`remove_path`]: WithProofs::remove_path
+    #[inline]
+    fn prune(&mut self) {}
 }
 
 /// Path Error
@@ -1295,6 +1311,11 @@ where
             .map(move |i| self.tree.remove_path(i))
             .unwrap_or(false)
     }
+
+    #[inline]
+    fn prune(&mut self) {
+        self.tree.prune()
+    }
 }
 
 impl<C, T> BatchInsertion for MerkleTree<C, T>
@@ -1323,11 +1344,12 @@ where
     }
 }
 
-impl<C, T, M> Rollback for MerkleTree<C, ForkedTree<C, T, M>>
+impl<C, T, M, L> Rollback for MerkleTree<C, ForkedTree<C, T, M, L>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C> + Default,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {

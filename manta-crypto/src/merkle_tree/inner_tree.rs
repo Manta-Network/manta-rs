@@ -22,13 +22,14 @@
 
 use crate::merkle_tree::{
     path::{CurrentInnerPath, InnerPath},
-    path_length, Configuration, DualParity, InnerDigest, Node, NodeRange, Parameters, Parity,
+    path_length, Configuration, DescendantsIterator, DualParity, InnerDigest, Node, NodeIterator,
+    NodeRange, Parameters, Parity,
 };
-use alloc::{collections::btree_map, vec::Vec};
+use alloc::{boxed::Box, collections::btree_map, vec::Vec};
 use core::{
     fmt::Debug,
     hash::Hash,
-    iter::FusedIterator,
+    iter::{FusedIterator, Map},
     marker::PhantomData,
     ops::{Index, Range},
 };
@@ -133,6 +134,13 @@ impl InnerNode {
     #[inline]
     pub const fn map_index(&self) -> usize {
         self.depth_starting_index() + self.index.0
+    }
+
+    /// Returns the [`DescendantsIterator`] over the leaves descending from `self`.
+    #[inline]
+    pub fn leaf_nodes(&self, height: usize) -> DescendantsIterator {
+        let Self { depth, index } = self;
+        index.descendants(height - 2 - depth)
     }
 }
 
@@ -320,6 +328,24 @@ impl InnerNodeRange {
     }
 }
 
+/// Inner Node Iterator
+pub type InnerNodeIterator = Map<NodeIterator, Box<dyn FnMut(Node) -> InnerNode>>;
+
+impl IntoIterator for InnerNodeRange {
+    type Item = InnerNode;
+    type IntoIter = InnerNodeIterator;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.node_range
+            .into_iter()
+            .map(Box::new(move |node| InnerNode {
+                depth: self.depth,
+                index: node,
+            }))
+    }
+}
+
 /// Inner Node Range Iterator
 #[cfg_attr(
     feature = "serde",
@@ -412,6 +438,20 @@ where
         self.set(rhs_index, rhs_digest);
         digest
     }
+
+    /// Removes the inner digest stored at `index`.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing and returns `false`. Implementations of this method may
+    /// fail arbitrarily, and should only successfully remove a node if the implementation is
+    /// efficient enough. Space and time tradeoffs should be studied to determine the usefulness of
+    /// this method.
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        let _ = index;
+        false
+    }
 }
 
 impl<C, M> InnerMap<C> for &mut M
@@ -427,6 +467,11 @@ where
     #[inline]
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
         (**self).set(index, inner_digest);
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        (**self).remove(index)
     }
 }
 
@@ -445,6 +490,11 @@ where
     #[inline]
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
         self.insert(index, inner_digest);
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        self.remove(&index).is_some()
     }
 }
 
@@ -468,6 +518,11 @@ where
     #[inline]
     fn set(&mut self, index: usize, inner_digest: InnerDigest<C>) {
         self.insert(index, inner_digest);
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        self.remove(&index).is_some()
     }
 }
 
@@ -1036,6 +1091,12 @@ where
     #[inline]
     pub fn reset_starting_leaf_index(&mut self, default: Node) {
         self.starting_leaf_index = default;
+    }
+
+    /// Removes the [`InnerDigest`] stored at `index`.
+    #[inline]
+    pub fn remove(&mut self, index: usize) -> bool {
+        self.inner_tree.map.remove(index)
     }
 }
 

@@ -339,7 +339,7 @@ where
             let ReadResponse {
                 should_continue,
                 data,
-            } = self.read_from_ledger().await?;
+            } = self.read_from_ledger(&checkpoint).await?;
             let more = InitialSyncRequest::from_initial_sync_data(&parameters, data);
             is_continue = should_continue;
             checkpoint
@@ -370,12 +370,15 @@ where
 
     /// Reads data from the ledger.
     #[inline]
-    async fn read_from_ledger<D>(&mut self) -> Result<ReadResponse<D>, Error<C, L, S>>
+    async fn read_from_ledger<D>(
+        &mut self,
+        checkpoint: &S::Checkpoint,
+    ) -> Result<ReadResponse<D>, Error<C, L, S>>
     where
         L: ledger::Read<D, Checkpoint = S::Checkpoint>,
     {
         self.ledger
-            .read(&self.checkpoint)
+            .read(checkpoint)
             .await
             .map_err(Error::LedgerConnectionError)
     }
@@ -409,7 +412,7 @@ where
         let ReadResponse {
             should_continue,
             data,
-        } = self.read_from_ledger().await?;
+        } = self.read_from_ledger(&self.checkpoint.clone()).await?;
         self.signer_sbt_sync(SyncRequest {
             origin_checkpoint: self.checkpoint.clone(),
             data,
@@ -427,7 +430,7 @@ where
         let ReadResponse {
             should_continue,
             data,
-        } = self.read_from_ledger().await?;
+        } = self.read_from_ledger(&self.checkpoint.clone()).await?;
         self.signer_sync(SyncRequest {
             origin_checkpoint: self.checkpoint.clone(),
             data,

@@ -45,10 +45,9 @@ fn test_from_leaves_and_path() {
     let number_of_insertions = rng.gen_range(5..(1 << (HEIGHT - 1)));
     let inner_element_index = rng.gen_range(0..number_of_insertions - 3);
     let mut tree = FullMerkleTree::<Config>::new(parameters);
-    let mut insertions = Vec::<u64>::with_capacity(number_of_insertions);
-    for _ in 0..number_of_insertions {
-        insertions.push(rng.gen());
-    }
+    let insertions = (0..number_of_insertions)
+        .map(|_| rng.gen())
+        .collect::<Vec<_>>();
     for leaf in &insertions {
         tree.insert(leaf);
     }
@@ -113,10 +112,9 @@ fn test_from_leaves_and_path_forest() {
     let mut forest =
         TreeArrayMerkleForest::<Config, ForkedTree<Config, Full<Config>>, 2>::new(parameters);
     let number_of_insertions = rng.gen_range(5..(1 << (HEIGHT - 1)));
-    let mut insertions = Vec::<u64>::with_capacity(number_of_insertions);
-    for _ in 0..number_of_insertions {
-        insertions.push(rng.gen());
-    }
+    let insertions = (0..number_of_insertions)
+        .map(|_| rng.gen())
+        .collect::<Vec<_>>();
     for leaf in &insertions {
         forest.insert(leaf);
     }

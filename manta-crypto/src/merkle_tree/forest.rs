@@ -30,6 +30,7 @@ use crate::{
     merkle_tree::{
         fork::ForkedTree,
         inner_tree::InnerMap,
+        leaf_map::LeafMap,
         partial::Partial,
         path::Path,
         tree::{self, Leaf, Parameters, Root, Tree},
@@ -148,6 +149,15 @@ where
     fn get_tree_mut(&mut self, leaf: &Leaf<C>) -> &mut Self::Tree {
         self.get_mut(C::tree_index(leaf))
     }
+
+    /// Removes the paths corresponding to the nonprovable leaves in `self`.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method does nothing. Custom implementations should be consistent
+    /// with the [`prune`](Tree::prune) implementation of the [`Tree`] type.
+    #[inline]
+    fn prune(&mut self) {}
 }
 
 /// Constant Width Forest
@@ -407,6 +417,11 @@ where
             .map(move |i| tree.remove_path(i))
             .unwrap_or(false)
     }
+
+    #[inline]
+    fn prune(&mut self) {
+        self.forest.prune()
+    }
 }
 
 /// [`SingleTree`] Merkle Forest Index
@@ -532,7 +547,7 @@ macro_rules! impl_from_items_and_witnesses {
         where
             C: Configuration + ?Sized,
             C::Index: FixedIndex<N>,
-            LeafDigest<C>: Clone + Default,
+            LeafDigest<C>: Clone + Default + PartialEq,
             InnerDigest<C>: Clone + Default + PartialEq,
         {
             /// Builds a new [`TreeArray`] from `leaves` and `paths` without checking that
@@ -730,6 +745,13 @@ where
     fn get_mut(&mut self, index: C::Index) -> &mut Self::Tree {
         &mut self.array[index.into()]
     }
+
+    #[inline]
+    fn prune(&mut self) {
+        for tree in self.array.iter_mut() {
+            tree.prune();
+        }
+    }
 }
 
 impl<C, T, const N: usize> ConstantWidthForest<C> for TreeArray<C, T, N>
@@ -765,12 +787,14 @@ where
     }
 }
 
-impl<C, T, M, const N: usize> Rollback for MerkleForest<C, TreeArray<C, ForkedTree<C, T, M>, N>>
+impl<C, T, M, L, const N: usize> Rollback
+    for MerkleForest<C, TreeArray<C, ForkedTree<C, T, M, L>, N>>
 where
     C: Configuration + ?Sized,
     C::Index: FixedIndex<N>,
     T: Tree<C>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C> + Default,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {

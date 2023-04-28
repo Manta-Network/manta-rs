@@ -22,7 +22,7 @@ use crate::{
         forest, fork, full, partial,
         test::Test,
         tree::{Parameters, Tree},
-        Leaf,
+        Leaf, WithProofs,
     },
     rand::{OsRng, Rand, Sample},
 };
@@ -80,8 +80,8 @@ where
 fn test_batch_insertion_full() {
     test_batch_insertion(
         |parameters| Full::new(parameters),
-        |tree, parameters, leaf| tree.push(parameters, leaf),
-        |tree, parameters, leaves| tree.batch_push(parameters, leaves),
+        |tree, parameters, leaf| tree.push_provable(parameters, leaf),
+        |tree, parameters, leaves| tree.batch_push_provable(parameters, leaves),
     )
 }
 
@@ -90,8 +90,8 @@ fn test_batch_insertion_full() {
 fn test_batch_insertion_partial() {
     test_batch_insertion(
         |parameters| Partial::new(parameters),
-        |tree, parameters, leaf| tree.push(parameters, leaf),
-        |tree, parameters, leaves| tree.batch_push(parameters, leaves),
+        |tree, parameters, leaf| tree.push_provable(parameters, leaf),
+        |tree, parameters, leaves| tree.batch_push_provable(parameters, leaves),
     )
 }
 
@@ -100,8 +100,8 @@ fn test_batch_insertion_partial() {
 fn test_batch_insertion_fork() {
     test_batch_insertion(
         |parameters| ForkedTree::new(Partial::new(parameters), parameters),
-        |tree, parameters, leaf| tree.push(parameters, leaf),
-        |tree, parameters, leaves| tree.batch_push(parameters, leaves),
+        |tree, parameters, leaf| tree.push_provable(parameters, leaf),
+        |tree, parameters, leaves| tree.batch_push_provable(parameters, leaves),
     )
 }
 

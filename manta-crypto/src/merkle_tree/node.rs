@@ -19,8 +19,8 @@
 use crate::merkle_tree::{HashConfiguration, InnerDigest, InnerHash, LeafDigest, Parameters};
 use alloc::vec::Vec;
 use core::{
-    iter::FusedIterator,
-    ops::{Add, Sub},
+    iter::{FusedIterator, Map},
+    ops::{Add, Range, Sub},
 };
 
 #[cfg(feature = "serde")]
@@ -154,6 +154,9 @@ impl Default for Parity {
     }
 }
 
+/// Descendants iterator type
+pub type DescendantsIterator<Idx = usize> = Map<Range<Idx>, fn(Idx) -> Node<Idx>>;
+
 /// Node Index
 #[cfg_attr(
     feature = "serde",
@@ -267,6 +270,12 @@ impl Node {
     #[inline]
     pub const fn ancestor(&self, k: usize) -> Self {
         Self(self.0 >> k)
+    }
+
+    /// Returns an iterator over the [`Node`] k-th descendants of this node.
+    #[inline]
+    pub fn descendants(&self, k: usize) -> DescendantsIterator {
+        ((self.0 << k)..((self.0 + 1) << k)).map(Self)
     }
 
     /// Converts `self` into its parent, returning the parent [`Node`].
@@ -469,6 +478,9 @@ impl DualParity {
     }
 }
 
+/// Node Iterator
+pub type NodeIterator = Map<Range<usize>, fn(usize) -> Node>;
+
 /// Node Range
 #[cfg_attr(
     feature = "serde",
@@ -485,6 +497,15 @@ pub struct NodeRange {
 }
 
 impl NodeRange {
+    /// Builds a new [`NodeRange`] from `range`.
+    #[inline]
+    pub fn from_range(range: Range<usize>) -> Option<Self> {
+        Some(Self {
+            node: Node(range.start),
+            extra_nodes: range.end.checked_sub(range.start + 1)?,
+        })
+    }
+
     /// Returns the [`DualParity`] of `self`.
     #[inline]
     pub const fn dual_parity(&self) -> DualParity {
@@ -557,5 +578,15 @@ impl NodeRange {
             ))
         }
         result
+    }
+}
+
+impl IntoIterator for NodeRange {
+    type Item = Node;
+    type IntoIter = NodeIterator;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        (self.node.0..self.last_node().0 + 1).map(Node)
     }
 }

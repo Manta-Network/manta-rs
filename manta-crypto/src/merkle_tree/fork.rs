@@ -19,6 +19,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
+    leaf_map::{LeafMap, LeafVec},
     partial::Partial,
     path::{CurrentInnerPath, InnerPath},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Path,
@@ -81,9 +82,10 @@ where
 
     /// Creates a new fork of this trunk.
     #[inline]
-    pub fn fork<M>(&self, parameters: &Parameters<C>) -> Fork<C, T, P, M>
+    pub fn fork<M, L>(&self, parameters: &Parameters<C>) -> Fork<C, T, P, M, L>
     where
         M: Default + InnerMap<C>,
+        L: LeafMap<C>,
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
@@ -93,9 +95,10 @@ where
     /// Tries to attach `fork` to `self` as its new trunk, returning `false` if `fork` has
     /// too many leaves to fit in `self`.
     #[inline]
-    pub fn attach<M>(&self, parameters: &Parameters<C>, fork: &mut Fork<C, T, P, M>) -> bool
+    pub fn attach<M, L>(&self, parameters: &Parameters<C>, fork: &mut Fork<C, T, P, M, L>) -> bool
     where
         M: Default + InnerMap<C>,
+        L: LeafMap<C> + Default,
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
@@ -115,13 +118,14 @@ where
     /// the leaves which were added in this merge will exist before the first leaf in the fork in
     /// the final tree.
     #[inline]
-    pub fn merge<M>(
+    pub fn merge<M, L>(
         &mut self,
         parameters: &Parameters<C>,
-        fork: Fork<C, T, P, M>,
-    ) -> Result<(), Fork<C, T, P, M>>
+        fork: Fork<C, T, P, M, L>,
+    ) -> Result<(), Fork<C, T, P, M, L>>
     where
         M: Default + InnerMap<C>,
+        L: LeafMap<C>,
         LeafDigest<C>: Default,
     {
         match fork.get_attached_base(self) {
@@ -136,13 +140,14 @@ where
     /// Performs a merge of the `branch` onto `fork_base`, setting `self` equal to the resulting
     /// merged tree.
     #[inline]
-    fn merge_branch<M>(
+    fn merge_branch<M, L>(
         &mut self,
         parameters: &Parameters<C>,
         fork_base: P::Strong,
-        branch: Branch<C, M>,
+        branch: Branch<C, M, L>,
     ) where
         M: InnerMap<C> + Default,
+        L: LeafMap<C>,
         LeafDigest<C>: Default,
     {
         self.base = Some(fork_base);
@@ -246,14 +251,14 @@ impl Default for BaseContribution {
     serde(
         bound(
             deserialize = r"
-                LeafDigest<C>: Deserialize<'de>,
                 InnerDigest<C>: Deserialize<'de>,
                 M: Deserialize<'de>,
+                L: Deserialize<'de>,
             ",
             serialize = r"
-                LeafDigest<C>: Serialize,
                 InnerDigest<C>: Serialize,
                 M: Serialize,
+                L: Serialize,
             ",
         ),
         crate = "manta_util::serde",
@@ -262,29 +267,31 @@ impl Default for BaseContribution {
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
-    Debug(bound = "LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default"),
-    Eq(bound = "LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
-    Hash(bound = "LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
-    PartialEq(bound = "LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
+    Clone(bound = "InnerDigest<C>: Clone, M: Clone, L: Clone"),
+    Debug(bound = "InnerDigest<C>: Debug, M: Debug, L: Debug"),
+    Default(bound = "InnerDigest<C>: Default, L: Default"),
+    Eq(bound = "InnerDigest<C>: Eq, M: Eq, L: Eq"),
+    Hash(bound = "InnerDigest<C>: Hash, M: Hash, L: Hash"),
+    PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq, L: PartialEq")
 )]
-struct Branch<C, M = BTreeMap<C>>
+struct Branch<C, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
 {
     /// Base Tree Contribution
     base_contribution: BaseContribution,
 
     /// Branch Data
-    data: Partial<C, M>,
+    data: Partial<C, M, L>,
 }
 
-impl<C, M> Branch<C, M>
+impl<C, M, L> Branch<C, M, L>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
 {
     /// Builds a new branch off of `base`, extending by `leaf_digests`.
     #[inline]
@@ -319,7 +326,7 @@ where
     {
         let (base_contribution, base_inner_digest, base_leaf_digests, inner_path) =
             Self::generate_branch_setup(parameters, base);
-        let mut partial = Partial::new_unchecked(
+        let mut partial = Partial::new_unchecked_from_leaves(
             base_leaf_digests,
             PartialInnerTree::from_current(parameters, base_inner_digest, inner_path),
         );
@@ -380,7 +387,7 @@ where
     #[inline]
     fn extract_leaves(
         base_contribution: BaseContribution,
-        data: Partial<C, M>,
+        data: Partial<C, M, L>,
     ) -> Vec<LeafDigest<C>>
     where
         LeafDigest<C>: Default,
@@ -395,6 +402,7 @@ where
     fn try_rebase<T>(&mut self, parameters: &Parameters<C>, base: &T) -> bool
     where
         T: Tree<C>,
+        L: Default,
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
@@ -532,7 +540,11 @@ where
         F: FnOnce() -> Vec<LeafDigest<C>>,
         LeafDigest<C>: Default,
     {
-        self.data.batch_maybe_push_digest(parameters, leaf_digests)
+        Some(
+            self.data
+                .batch_maybe_push_digest(parameters, leaf_digests)?
+                .0,
+        )
     }
 
     /// Appends a new `leaf_digest` onto this branch.
@@ -572,33 +584,35 @@ where
 /// Merkle Tree Fork
 #[derive(derivative::Derivative)]
 #[derivative(
-    Debug(bound = "P::Weak: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Default(bound = "LeafDigest<C>: Default, InnerDigest<C>: Default")
+    Debug(bound = "P::Weak: Debug, L: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Default(bound = "L: Default, InnerDigest<C>: Default")
 )]
-pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>>
+pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
 {
     /// Base Merkle Tree
     base: P::Weak,
 
     /// Branch Data
-    branch: Branch<C, M>,
+    branch: Branch<C, M, L>,
 }
 
-impl<C, T, P, M> Fork<C, T, P, M>
+impl<C, T, P, M, L> Fork<C, T, P, M, L>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
 {
     /// Builds a new [`Fork`] off of `trunk` with the given `base_contribution` and `branch`.
     #[inline]
-    fn build(trunk: &Trunk<C, T, P>, branch: Branch<C, M>) -> Self {
+    fn build(trunk: &Trunk<C, T, P>, branch: Branch<C, M, L>) -> Self {
         Self {
             base: trunk.downgrade(),
             branch,
@@ -637,6 +651,7 @@ where
     #[inline]
     pub fn attach(&mut self, parameters: &Parameters<C>, trunk: &Trunk<C, T, P>) -> bool
     where
+        L: Default,
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
@@ -801,13 +816,13 @@ where
         bound(
             deserialize = r"
                 T: Deserialize<'de>,
-                LeafDigest<C>: Deserialize<'de>,
+                L: Deserialize<'de>,
                 InnerDigest<C>: Deserialize<'de>,
                 M: Deserialize<'de>,
             ",
             serialize = r"
                 T: Serialize,
-                LeafDigest<C>: Serialize,
+                L: Serialize,
                 InnerDigest<C>: Serialize,
                 M: Serialize,
             ",
@@ -818,32 +833,32 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "T: Clone, LeafDigest<C>: Clone, InnerDigest<C>: Clone, M: Clone"),
-    Debug(bound = "T: Debug, LeafDigest<C>: Debug, InnerDigest<C>: Debug, M: Debug"),
-    Eq(bound = "T: Eq, LeafDigest<C>: Eq, InnerDigest<C>: Eq, M: Eq"),
-    Hash(bound = "T: Hash, LeafDigest<C>: Hash, InnerDigest<C>: Hash, M: Hash"),
-    PartialEq(
-        bound = "T: PartialEq, LeafDigest<C>: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq"
-    )
+    Clone(bound = "T: Clone, L: Clone, InnerDigest<C>: Clone, M: Clone"),
+    Debug(bound = "T: Debug, L: Debug, InnerDigest<C>: Debug, M: Debug"),
+    Eq(bound = "T: Eq, L: Eq, InnerDigest<C>: Eq, M: Eq"),
+    Hash(bound = "T: Hash, L: Hash, InnerDigest<C>: Hash, M: Hash"),
+    PartialEq(bound = "T: PartialEq, L: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct ForkedTree<C, T, M = BTreeMap<C>>
+pub struct ForkedTree<C, T, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
 {
     /// Base Tree
     base: T,
 
     /// Branch Data
-    branch: Branch<C, M>,
+    branch: Branch<C, M, L>,
 }
 
-impl<C, T, M> ForkedTree<C, T, M>
+impl<C, T, M, L> ForkedTree<C, T, M, L>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
 {
     /// Builds a new [`ForkedTree`] for `tree`.
     #[inline]
@@ -970,6 +985,7 @@ where
     #[inline]
     pub fn merge_fork(&mut self, parameters: &Parameters<C>)
     where
+        L: Default,
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
@@ -981,7 +997,7 @@ where
 impl<C> ForkedTree<C, Partial<C>>
 where
     C: Configuration + ?Sized,
-    LeafDigest<C>: Clone + Default,
+    LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     /// Builds a new [`ForkedTree`] from `leaf_digests` and `path` without checking that
@@ -999,11 +1015,12 @@ where
     }
 }
 
-impl<C, T, M> Tree<C> for ForkedTree<C, T, M>
+impl<C, T, M, L> Tree<C> for ForkedTree<C, T, M, L>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C> + Default,
     LeafDigest<C>: Clone + Default,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
@@ -1038,7 +1055,7 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        self.maybe_push_digest(parameters, leaf_digest)
+        Tree::maybe_push_digest(&mut self.branch.data, parameters, leaf_digest)
     }
 
     #[inline]
@@ -1050,15 +1067,21 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        self.batch_maybe_push_digest(parameters, leaf_digests)
+        Tree::batch_maybe_push_digest(&mut self.branch.data, parameters, leaf_digests)
+    }
+
+    #[inline]
+    fn prune(&mut self) {
+        self.branch.data.prune()
     }
 }
 
-impl<C, T, M> WithProofs<C> for ForkedTree<C, T, M>
+impl<C, T, M, L> WithProofs<C> for ForkedTree<C, T, M, L>
 where
     C: Configuration + ?Sized,
     T: Tree<C> + WithProofs<C>,
     M: Default + InnerMap<C>,
+    L: LeafMap<C>,
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default,
 {
@@ -1099,5 +1122,10 @@ where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
         self.batch_maybe_push_digest(parameters, leaf_digests)
+    }
+
+    #[inline]
+    fn remove_path(&mut self, index: usize) -> bool {
+        self.branch.data.remove_path(index)
     }
 }
