@@ -21,7 +21,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, InnerNodeIter, PartialInnerTree},
-    leaf_map::{LeafMap, LeafVec},
+    leaf_map::{LeafMap, TrivialLeafVec},
     node::{NodeRange, Parity},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
@@ -57,7 +57,7 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
     Hash(bound = "L: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "L: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct Partial<C, M = BTreeMap<C>, L = LeafVec<C>>
+pub struct Partial<C, M = BTreeMap<C>, L = TrivialLeafVec<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,

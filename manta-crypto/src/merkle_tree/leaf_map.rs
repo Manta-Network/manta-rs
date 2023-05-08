@@ -17,7 +17,7 @@
 //! Leaf Map
 
 use crate::merkle_tree::{Configuration, LeafDigest};
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
@@ -115,6 +115,101 @@ where
             .filter(|&index| self.is_marked(index).unwrap_or(false))
             .map(|x| self.get(x).unwrap())
             .collect()
+    }
+}
+
+/// Trivial Leaf Vector
+///
+/// This struct implements [`LeafMap`] in the most trivial way possible, i.e.,
+/// it does not mark nor remove any leaves.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "LeafDigest<C>: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "LeafDigest<C>: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug"),
+    Default(bound = "LeafDigest<C>: Default"),
+    Eq(bound = "LeafDigest<C>: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq")
+)]
+pub struct TrivialLeafVec<C>(Vec<LeafDigest<C>>)
+where
+    C: Configuration + ?Sized;
+
+impl<C> LeafMap<C> for TrivialLeafVec<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: PartialEq,
+{
+    #[inline]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    fn get(&self, index: usize) -> Option<&LeafDigest<C>> {
+        self.0.get(index)
+    }
+
+    #[inline]
+    fn current_index(&self) -> Option<usize> {
+        if self.is_empty() {
+            None
+        } else {
+            Some(self.len() - 1)
+        }
+    }
+
+    #[inline]
+    fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        self.0.iter().position(|l| l == leaf_digest)
+    }
+
+    #[inline]
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
+        self.0.push(leaf_digest);
+    }
+
+    #[inline]
+    fn extend(&mut self, leaf_digests: Vec<LeafDigest<C>>) {
+        self.0.extend(leaf_digests)
+    }
+
+    #[inline]
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+        Self(leaf_digests)
+    }
+
+    #[inline]
+    fn into_leaf_digests(self) -> Vec<LeafDigest<C>> {
+        self.0
+    }
+
+    #[inline]
+    fn mark(&mut self, index: usize) {
+        let _ = index;
+    }
+
+    #[inline]
+    fn is_marked(&self, index: usize) -> Option<bool> {
+        self.get(index).map(|_| false)
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        let _ = index;
+        false
     }
 }
 
@@ -216,6 +311,122 @@ where
     fn remove(&mut self, index: usize) -> bool {
         let _ = index;
         false
+    }
+}
+
+/// Leaf BTree Map
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "LeafDigest<C>: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "LeafDigest<C>: Clone"),
+    Debug(bound = "LeafDigest<C>: Debug"),
+    Default(bound = "LeafDigest<C>: Default"),
+    Eq(bound = "LeafDigest<C>: Eq"),
+    PartialEq(bound = "LeafDigest<C>: PartialEq")
+)]
+pub struct LeafBTreeMap<C>
+where
+    C: Configuration + ?Sized,
+{
+    /// Hash map of marked leaf digests
+    map: BTreeMap<usize, (bool, LeafDigest<C>)>,
+
+    /// Last index
+    last_index: Option<usize>,
+}
+
+impl<C> LeafMap<C> for LeafBTreeMap<C>
+where
+    C: Configuration + ?Sized,
+    LeafDigest<C>: PartialEq,
+{
+    #[inline]
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    #[inline]
+    fn get(&self, index: usize) -> Option<&LeafDigest<C>> {
+        Some(&self.map.get(&index)?.1)
+    }
+
+    #[inline]
+    fn current_index(&self) -> Option<usize> {
+        self.last_index
+    }
+
+    #[inline]
+    fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
+        self.map.iter().position(|(_, (_, l))| l == leaf_digest)
+    }
+
+    #[inline]
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
+        self.last_index = Some(self.last_index.map(|index| index + 1).unwrap_or(0));
+        self.map.insert(
+            self.last_index
+                .expect("This cannot fail because of the computation above."),
+            (false, leaf_digest),
+        );
+    }
+
+    #[inline]
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+        let digest_count = leaf_digests.len();
+        if digest_count == 0 {
+            Self {
+                map: Default::default(),
+                last_index: None,
+            }
+        } else {
+            Self {
+                map: leaf_digests
+                    .into_iter()
+                    .map(|x| (false, x))
+                    .enumerate()
+                    .collect::<BTreeMap<usize, (bool, LeafDigest<C>)>>(),
+                last_index: Some(digest_count - 1),
+            }
+        }
+    }
+
+    #[inline]
+    fn into_leaf_digests(self) -> Vec<LeafDigest<C>> {
+        self.map
+            .into_iter()
+            .map(|(_, (_, digest))| digest)
+            .collect()
+    }
+
+    #[inline]
+    fn mark(&mut self, index: usize) {
+        if let Some((b, _)) = self.map.get_mut(&index) {
+            *b = true
+        };
+    }
+
+    #[inline]
+    fn is_marked(&self, index: usize) -> Option<bool> {
+        Some(self.map.get(&index)?.0)
+    }
+
+    #[inline]
+    fn remove(&mut self, index: usize) -> bool {
+        match self.last_index {
+            Some(current_index) if index == current_index => false,
+            _ => !matches!(self.map.remove(&index), None),
+        }
     }
 }
 
