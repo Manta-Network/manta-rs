@@ -25,7 +25,7 @@ use crate::{
         GroupCurve, GroupVar,
     },
     crypto::{
-        encryption::aes,
+        encryption::aes::{self, FixedNonceAesGcm},
         poseidon::{self, encryption::BlockArray, hash::Hasher, ParameterFieldType},
     },
 };
@@ -857,8 +857,7 @@ impl<COM> encryption::Encrypt for IncomingAESEncryptionScheme<COM> {
         plaintext: &Self::Plaintext,
         compiler: &mut (),
     ) -> Self::Ciphertext {
-        let aes = AES::default();
-        aes.encrypt(encryption_key, randomness, header, plaintext, compiler)
+        FixedNonceAesGcm.encrypt(encryption_key, randomness, header, plaintext, compiler)
     }
 }
 
@@ -870,8 +869,7 @@ impl<COM> encryption::Decrypt for IncomingAESEncryptionScheme<COM> {
         ciphertext: &Self::Ciphertext,
         compiler: &mut (),
     ) -> Self::DecryptedPlaintext {
-        let aes = AES::default();
-        aes.decrypt(decryption_key, header, ciphertext, compiler)
+        FixedNonceAesGcm.decrypt(decryption_key, header, ciphertext, compiler)
     }
 }
 
@@ -1610,8 +1608,7 @@ impl<COM> encryption::Encrypt for OutgoingAESEncryptionScheme<COM> {
         plaintext: &Self::Plaintext,
         compiler: &mut (),
     ) -> Self::Ciphertext {
-        let aes = OutAes::default();
-        aes.encrypt(encryption_key, randomness, header, plaintext, compiler)
+        FixedNonceAesGcm.encrypt(encryption_key, randomness, header, plaintext, compiler)
     }
 }
 
@@ -1623,8 +1620,7 @@ impl<COM> encryption::Decrypt for OutgoingAESEncryptionScheme<COM> {
         ciphertext: &Self::Ciphertext,
         compiler: &mut (),
     ) -> Self::DecryptedPlaintext {
-        let aes = OutAes::default();
-        aes.decrypt(decryption_key, header, ciphertext, compiler)
+        FixedNonceAesGcm.decrypt(decryption_key, header, ciphertext, compiler)
     }
 }
 
