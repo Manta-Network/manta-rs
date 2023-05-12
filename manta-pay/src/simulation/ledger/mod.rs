@@ -36,11 +36,11 @@ use manta_accounting::{
     asset::{Asset, AssetList},
     transfer::{
         canonical::TransferShape,
-        receiver::{ReceiverLedger, ReceiverPostError},
-        sender::{SenderLedger, SenderPostError},
+        receiver::{ReceiverLedger, ReceiverPostError, UnsafeReceiverLedger},
+        sender::{SenderLedger, SenderPostError, UnsafeSenderLedger},
         InvalidAuthorizationSignature, InvalidSinkAccount, InvalidSourceAccount, SinkPostingKey,
         SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostError,
-        TransferPostingKeyRef, UtxoAccumulatorOutput,
+        TransferPostingKeyRef, UnsafeLedger, UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, ReadResponse},
@@ -56,12 +56,18 @@ use manta_crypto::{
         forest::{Configuration, FixedIndex, Forest},
     },
 };
-use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
+use manta_util::{
+    codec::Encode,
+    future::{LocalBoxFuture, LocalBoxFutureResult},
+};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use {
+    manta_crypto::arkworks::serialize::{canonical_deserialize, canonical_serialize},
+    manta_util::serde::{Deserialize, Serialize},
+};
 
 #[cfg(feature = "http")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
@@ -110,6 +116,11 @@ impl<L, R> AsRef<R> for WrapPair<L, R> {
 }
 
 /// Ledger
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Debug)]
 pub struct Ledger {
     /// Nullifier
@@ -128,6 +139,13 @@ pub struct Ledger {
     accounts: HashMap<AccountId, HashMap<AssetId, AssetValue>>,
 
     /// Verifying Contexts
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "canonical_serialize::<MultiVerifyingContext, _>",
+            deserialize_with = "canonical_deserialize::<'de, _, MultiVerifyingContext>"
+        )
+    )]
     verifying_context: MultiVerifyingContext,
 
     /// UTXO Configuration Parameters
@@ -218,6 +236,23 @@ impl Ledger {
         true
     }
 
+    ///
+    #[inline]
+    pub fn unsafe_push(&mut self, account: AccountId, posts: Vec<TransferPost>) -> bool {
+        for post in posts {
+            let (sources, sinks) = match TransferShape::from_post(&post) {
+                Some(TransferShape::ToPrivate) => (vec![account], vec![]),
+                Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
+                Some(TransferShape::ToPublic) => (vec![], vec![account]),
+                _ => return false,
+            };
+            let _ = self
+                .dont_validate(post, sources, sinks)
+                .post(&mut *self, &()); // we don't care if it doesn't unwrap
+        }
+        true
+    }
+
     /// Pulls the data from the ledger necessary to perform an [`initial_sync`].
     ///
     /// [`initial_sync`]: manta_accounting::wallet::signer::Connection::initial_sync
@@ -258,6 +293,23 @@ impl Ledger {
     #[inline]
     pub fn utxos(&self) -> &HashSet<Utxo> {
         &self.utxos
+    }
+
+    ///
+    #[cfg(feature = "serde")]
+    #[inline]
+    pub fn bincode_to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).expect("Serialization error")
+    }
+
+    ///
+    #[cfg(all(feature = "serde", feature = "std"))]
+    #[inline]
+    pub fn serialize_into<W>(&self, writer: W)
+    where
+        W: std::io::Write,
+    {
+        bincode::serialize_into(writer, self).expect("Serialization error")
     }
 }
 
@@ -642,6 +694,69 @@ impl TransferLedger<Config> for Ledger {
                 .or_default() += deposit;
         }
         Ok(())
+    }
+}
+
+impl UnsafeSenderLedger<Parameters> for Ledger {
+    #[inline]
+    fn dont_check_utxo_accumulator_output(
+        &self,
+        output: UtxoAccumulatorOutput<Config>,
+    ) -> Self::ValidUtxoAccumulatorOutput {
+        Wrap(output)
+    }
+
+    #[inline]
+    fn dont_check_nullifier(&self, nullifier: Nullifier) -> Self::ValidNullifier {
+        Wrap(nullifier)
+    }
+}
+
+impl UnsafeReceiverLedger<Parameters> for Ledger {
+    #[inline]
+    fn dont_check_registration(&self, utxo: Utxo) -> Self::ValidUtxo {
+        Wrap(utxo)
+    }
+}
+
+impl UnsafeLedger<Config> for Ledger {
+    #[inline]
+    fn dont_check_source_accounts<I>(
+        &self,
+        asset_id: &AssetId,
+        sources: I,
+    ) -> Vec<Self::ValidSourceAccount>
+    where
+        I: Iterator<Item = (AccountId, AssetValue)>,
+    {
+        let _ = asset_id;
+        sources
+            .map(|(account_id, withdraw)| WrapPair(account_id, withdraw))
+            .collect()
+    }
+
+    #[inline]
+    fn dont_check_sink_accounts<I>(
+        &self,
+        asset_id: &AssetId,
+        sinks: I,
+    ) -> Vec<Self::ValidSinkAccount>
+    where
+        I: Iterator<Item = (AccountId, AssetValue)>,
+    {
+        let _ = asset_id;
+        sinks
+            .map(|(account_id, withdraw)| WrapPair(account_id, withdraw))
+            .collect()
+    }
+
+    #[inline]
+    fn dont_check_proof(
+        &self,
+        posting_key: TransferPostingKeyRef<Config, Self>,
+    ) -> (Self::ValidProof, Self::Event) {
+        let _ = posting_key;
+        (Wrap(()), ())
     }
 }
 

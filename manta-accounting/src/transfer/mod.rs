@@ -33,8 +33,8 @@ use crate::{
     asset,
     transfer::{
         canonical::TransferShape,
-        receiver::{ReceiverLedger, ReceiverPostError},
-        sender::{SenderLedger, SenderPostError},
+        receiver::{ReceiverLedger, ReceiverPostError, UnsafeReceiverLedger},
+        sender::{SenderLedger, SenderPostError, UnsafeSenderLedger},
         utxo::{auth, Mint, NullifierIndependence, Spend, UtxoIndependence, UtxoReconstruct},
     },
 };
@@ -72,6 +72,10 @@ pub mod utxo;
 #[cfg(feature = "test")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
+
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod unverified_transfers;
 
 #[doc(inline)]
 pub use canonical::Shape;
@@ -1149,6 +1153,120 @@ where
         sinks: Vec<SinkPostingKey<C, Self>>,
         proof: Self::ValidProof,
     ) -> Result<(), <Self as TransferLedger<C>>::Error>;
+}
+
+/// Unsafe Ledger
+pub trait UnsafeLedger<C>:
+    TransferLedger<C>
+    + UnsafeReceiverLedger<
+        Parameters<C>,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+    > + UnsafeSenderLedger<
+        Parameters<C>,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+    > + Sized
+where
+    C: Configuration + ?Sized,
+{
+    ///
+    fn dont_check_source_accounts<I>(
+        &self,
+        asset_id: &C::AssetId,
+        sources: I,
+    ) -> Vec<Self::ValidSourceAccount>
+    where
+        I: Iterator<Item = (C::AccountId, C::AssetValue)>;
+
+    ///
+    fn dont_check_sink_accounts<I>(
+        &self,
+        asset_id: &C::AssetId,
+        sinks: I,
+    ) -> Vec<Self::ValidSinkAccount>
+    where
+        I: Iterator<Item = (C::AccountId, C::AssetValue)>;
+
+    ///
+    fn dont_check_public_participants(
+        &self,
+        asset_id: &Option<C::AssetId>,
+        source_accounts: Vec<C::AccountId>,
+        source_values: Vec<C::AssetValue>,
+        sink_accounts: Vec<C::AccountId>,
+        sink_values: Vec<C::AssetValue>,
+    ) -> (Vec<Self::ValidSourceAccount>, Vec<Self::ValidSinkAccount>) {
+        let sources = source_values.len();
+        let sinks = sink_values.len();
+        let sources = if sources > 0 {
+            self.dont_check_source_accounts(
+                asset_id.as_ref().unwrap(),
+                source_accounts.into_iter().zip(source_values),
+            )
+        } else {
+            Vec::new()
+        };
+        let sinks = if sinks > 0 {
+            self.dont_check_sink_accounts(
+                asset_id.as_ref().unwrap(),
+                sink_accounts.into_iter().zip(sink_values),
+            )
+        } else {
+            Vec::new()
+        };
+        (sources, sinks)
+    }
+
+    ///
+    fn dont_check_proof(
+        &self,
+        posting_key: TransferPostingKeyRef<C, Self>,
+    ) -> (Self::ValidProof, Self::Event);
+
+    ///
+    fn dont_validate(
+        &self,
+        post: TransferPost<C>,
+        source_accounts: Vec<C::AccountId>,
+        sink_accounts: Vec<C::AccountId>,
+    ) -> TransferPostingKey<C, Self> {
+        let (source_posting_keys, sink_posting_keys) = self.dont_check_public_participants(
+            &post.body.asset_id,
+            source_accounts,
+            post.body.sources,
+            sink_accounts,
+            post.body.sinks,
+        );
+        let sender_posting_keys = post
+            .body
+            .sender_posts
+            .into_iter()
+            .map(move |s| self.dont_validate_sender_post(s))
+            .collect::<Vec<_>>();
+        let receiver_posting_keys = post
+            .body
+            .receiver_posts
+            .into_iter()
+            .map(move |r| self.dont_validate_receiver_post(r))
+            .collect::<Vec<_>>();
+        let (proof, event) = self.dont_check_proof(TransferPostingKeyRef {
+            authorization_key: &post.authorization_signature.map(|s| s.authorization_key),
+            asset_id: &post.body.asset_id,
+            sources: &source_posting_keys,
+            senders: &sender_posting_keys,
+            receivers: &receiver_posting_keys,
+            sinks: &sink_posting_keys,
+            proof: post.body.proof,
+        });
+        TransferPostingKey {
+            asset_id: post.body.asset_id,
+            source_posting_keys,
+            sender_posting_keys,
+            receiver_posting_keys,
+            sink_posting_keys,
+            proof,
+            event,
+        }
+    }
 }
 
 /// Transfer Source Posting Key Type

@@ -222,7 +222,9 @@ where
     let second_ledger_connection = LedgerConnection::new(second_account, ledger.clone());
     let mut wallet = TestWallet::new(second_ledger_connection, second_signer);
     for unit in 0..NUMBER_OF_UTXOS {
-        if unit % 20 == 0{println!("{unit:?}");}
+        if unit % 20 == 0 {
+            println!("{unit:?}");
+        }
         let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id.into(), 1));
         wallet
             .post(to_private, Default::default())

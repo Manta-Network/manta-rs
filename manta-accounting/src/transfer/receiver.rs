@@ -272,6 +272,26 @@ where
     }
 }
 
+///
+pub trait UnsafeReceiverLedger<M>: ReceiverLedger<M>
+where
+    M: Mint,
+{
+    ///
+    fn dont_check_registration(&self, utxo: M::Utxo) -> Self::ValidUtxo;
+
+    ///
+    fn dont_validate_receiver_post(
+        &self,
+        receiver_post: ReceiverPost<M>,
+    ) -> ReceiverPostingKey<M, Self> {
+        ReceiverPostingKey {
+            utxo: self.dont_check_registration(receiver_post.utxo),
+            note: receiver_post.note,
+        }
+    }
+}
+
 /// Receiver Post Error
 #[cfg_attr(
     feature = "serde",

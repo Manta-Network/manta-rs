@@ -71,7 +71,7 @@ pub struct Error;
     )
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Debug, Default, Eq, PartialEq)]
+#[derivative(Clone, Debug, Default(bound = ""), Eq, PartialEq)]
 pub struct Proof<E>(
     /// Groth16 Proof
     #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_proof::<E, _>"))]

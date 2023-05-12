@@ -406,3 +406,196 @@ pub mod to_public {
             .expect("")
     }
 }
+
+///
+pub mod unsafe_to_private {
+    use super::*;
+
+    /// Generates a proof for a [`ToPrivate`] transaction with custom `asset` as input.
+    #[inline]
+    pub fn unsafe_no_prove_full<R>(
+        proving_context: &ProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        asset_id: AssetId,
+        value: AssetValue,
+        rng: &mut R,
+    ) -> TransferPost
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        ToPrivate::from_address(
+            parameters,
+            rng.gen(),
+            Asset::new(asset_id, value),
+            Default::default(),
+            rng,
+        )
+        .into_unsafe_post(
+            FullParametersRef::new(parameters, utxo_accumulator_model),
+            proving_context,
+            None,
+            Vec::new(),
+            rng,
+        )
+        .into()
+    }
+}
+
+///
+pub mod unsafe_private_transfer {
+    use super::*;
+
+    /// Generates a proof for a [`PrivateTransfer`] transaction including pre-requisite
+    /// [`ToPrivate`] transactions.
+    #[inline]
+    pub fn unsafe_no_prove_full<R>(
+        proving_context: &MultiProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        asset_id: AssetId,
+        values: [AssetValue; 2],
+        rng: &mut R,
+    ) -> ([TransferPost; 2], TransferPost)
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let asset_0 = Asset::new(asset_id, values[0]);
+        let asset_1 = Asset::new(asset_id, values[1]);
+        let spending_key = rng.gen();
+        let address = parameters.address_from_spending_key(&spending_key);
+        let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
+
+        let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(
+            parameters,
+            &mut authorization.context,
+            address,
+            asset_0,
+            Default::default(),
+            rng,
+        );
+        let to_private_0 = to_private_0
+            .into_unsafe_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                &proving_context.to_private,
+                None,
+                Vec::new(),
+                rng,
+            )
+            .into();
+        let sender_0 = pre_sender_0.assign_default_proof_unchecked();
+        let receiver_0 = Receiver::sample(parameters, address, asset_1, Default::default(), rng);
+        let (to_private_1, pre_sender_1) = ToPrivate::internal_pair(
+            parameters,
+            &mut authorization.context,
+            address,
+            asset_1,
+            Default::default(),
+            rng,
+        );
+        let to_private_1 = to_private_1
+            .into_unsafe_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                &proving_context.to_private,
+                None,
+                Vec::new(),
+                rng,
+            )
+            .into();
+        let sender_1 = pre_sender_1.assign_default_proof_unchecked();
+        let receiver_1 = Receiver::sample(parameters, address, asset_0, Default::default(), rng);
+        let private_transfer = PrivateTransfer::build(
+            authorization,
+            [sender_0, sender_1],
+            [receiver_1, receiver_0],
+        )
+        .into_unsafe_post(
+            FullParametersRef::new(parameters, utxo_accumulator_model),
+            &proving_context.private_transfer,
+            Some(&spending_key),
+            Vec::new(),
+            rng,
+        )
+        .into();
+
+        ([to_private_0, to_private_1], private_transfer)
+    }
+}
+
+///
+pub mod unsafe_to_public {
+    use super::*;
+
+    /// Generates a proof for a [`ToPublic`] transaction including pre-requisite [`ToPrivate`]
+    /// transactions.
+    #[inline]
+    pub fn unsafe_no_prove_full<R>(
+        proving_context: &MultiProvingContext,
+        parameters: &Parameters,
+        utxo_accumulator_model: &UtxoAccumulatorModel,
+        asset_id: AssetId,
+        values: [AssetValue; 2],
+        public_account: AccountId,
+        rng: &mut R,
+    ) -> ([TransferPost; 2], TransferPost)
+    where
+        R: CryptoRng + RngCore + ?Sized,
+    {
+        let asset_0 = Asset::new(asset_id, values[0]);
+        let asset_1 = Asset::new(asset_id, values[1]);
+        let spending_key = rng.gen();
+        let address = parameters.address_from_spending_key(&spending_key);
+        let mut authorization = Authorization::from_spending_key(parameters, &spending_key, rng);
+
+        let (to_private_0, pre_sender_0) = ToPrivate::internal_pair(
+            parameters,
+            &mut authorization.context,
+            address,
+            asset_0,
+            Default::default(),
+            rng,
+        );
+        let to_private_0 = to_private_0
+            .into_unsafe_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                &proving_context.to_private,
+                None,
+                Vec::new(),
+                rng,
+            )
+            .into();
+        let sender_0 = pre_sender_0.assign_default_proof_unchecked();
+
+        let (to_private_1, pre_sender_1) = ToPrivate::internal_pair(
+            parameters,
+            &mut authorization.context,
+            address,
+            asset_1,
+            Default::default(),
+            rng,
+        );
+        let to_private_1 = to_private_1
+            .into_unsafe_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                &proving_context.to_private,
+                None,
+                Vec::new(),
+                rng,
+            )
+            .into();
+        let sender_1 = pre_sender_1.assign_default_proof_unchecked();
+        let receiver_1 = Receiver::sample(parameters, address, asset_0, Default::default(), rng);
+
+        let to_public = ToPublic::build(authorization, [sender_0, sender_1], [receiver_1], asset_1)
+            .into_unsafe_post(
+                FullParametersRef::new(parameters, utxo_accumulator_model),
+                &proving_context.to_public,
+                Some(&spending_key),
+                Vec::from([public_account]),
+                rng,
+            )
+            .into();
+
+        ([to_private_0, to_private_1], to_public)
+    }
+}

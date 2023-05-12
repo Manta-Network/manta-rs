@@ -557,6 +557,30 @@ where
     }
 }
 
+///
+pub trait UnsafeSenderLedger<S>: SenderLedger<S>
+where
+    S: Spend,
+{
+    ///
+    fn dont_check_utxo_accumulator_output(
+        &self,
+        output: UtxoAccumulatorOutput<S>,
+    ) -> Self::ValidUtxoAccumulatorOutput;
+
+    ///
+    fn dont_check_nullifier(&self, nullifier: S::Nullifier) -> Self::ValidNullifier;
+
+    ///
+    fn dont_validate_sender_post(&self, sender_post: SenderPost<S>) -> SenderPostingKey<S, Self> {
+        SenderPostingKey::<S, Self> {
+            utxo_accumulator_output: self
+                .dont_check_utxo_accumulator_output(sender_post.utxo_accumulator_output),
+            nullifier: self.dont_check_nullifier(sender_post.nullifier),
+        }
+    }
+}
+
 /// Sender Post Error
 #[cfg_attr(
     feature = "serde",
@@ -733,10 +757,10 @@ where
     L: SenderLedger<S> + ?Sized,
 {
     /// UTXO Accumulator Output Posting Key
-    utxo_accumulator_output: L::ValidUtxoAccumulatorOutput,
+    pub utxo_accumulator_output: L::ValidUtxoAccumulatorOutput,
 
     /// Nullifier Posting Key
-    nullifier: L::ValidNullifier,
+    pub nullifier: L::ValidNullifier,
 }
 
 impl<S, L> SenderPostingKey<S, L>
