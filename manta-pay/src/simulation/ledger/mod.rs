@@ -56,10 +56,7 @@ use manta_crypto::{
         forest::{Configuration, FixedIndex, Forest},
     },
 };
-use manta_util::{
-    codec::Encode,
-    future::{LocalBoxFuture, LocalBoxFutureResult},
-};
+use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 

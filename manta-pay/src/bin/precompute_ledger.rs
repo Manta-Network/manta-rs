@@ -20,7 +20,6 @@ extern crate alloc;
 
 use alloc::sync::Arc;
 use manta_crypto::{
-    arkworks::serialize::ArkWriter,
     merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
     rand::{ChaCha20Rng, CryptoRng, Rand, RngCore, SeedableRng},
 };
@@ -37,10 +36,6 @@ use manta_pay::{
         unsafe_to_public::unsafe_no_prove_full as unsafe_to_public,
     },
 };
-use manta_util::{
-    codec::{Encode, IoWriter, Write},
-    serde::Serialize,
-};
 use std::{
     env,
     fs::{self, OpenOptions},
@@ -54,7 +49,7 @@ pub type UtxoAccumulator =
     TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
 
 /// Number of coins
-const NUMBER_OF_COINS: usize = 2;
+const NUMBER_OF_COINS: usize = 10000;
 
 /// Builds sample transactions for testing.
 #[inline]
@@ -68,15 +63,17 @@ fn main() -> io::Result<()> {
         "Specify a directory to place the generated files: {target_dir:?}.",
     );
     fs::create_dir_all(&target_dir)?;
-
-    let mut target_file = OpenOptions::new()
+    let number_of_coins = env::args()
+        .nth(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(NUMBER_OF_COINS);
+    println!("{:?}", number_of_coins);
+    let target_file = OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(target_dir.join("precomputed_ledger"))?;
-
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
     println!("[INFO] Temporary Directory: {directory:?}");
-
     let mut rng = ChaCha20Rng::from_seed([0; 32]);
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         load_parameters(directory.path()).expect("Unable to load parameters.");
@@ -88,7 +85,7 @@ fn main() -> io::Result<()> {
     )));
     let runtime = Runtime::new().expect("Unable to start tokio runtime");
     runtime.block_on(fill_ledger_and_write(
-        NUMBER_OF_COINS,
+        number_of_coins,
         &ledger,
         &proving_context,
         &parameters,
@@ -100,7 +97,8 @@ fn main() -> io::Result<()> {
     directory.close()
 }
 
-// cargo run --release --package manta-pay --bin precompute_ledger --all-features
+// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- <directory> <NUMBER_OF_COINS>
+// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- manta-pay/src/test/data 100
 
 async fn fill_ledger_and_write<R>(
     number_of_coins: usize,
@@ -150,9 +148,9 @@ async fn fill_ledger_and_write<R>(
             _ => {
                 let account = rng.gen();
                 let (to_public_input, to_public) = unsafe_to_public(
-                    &proving_context,
-                    &parameters,
-                    &utxo_accumulator_model,
+                    proving_context,
+                    parameters,
+                    utxo_accumulator_model,
                     asset_id,
                     [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
                     account,
