@@ -61,7 +61,7 @@ const NUMBER_OF_COINS: usize = 10000;
 /// Default Mode
 const DEFAULT_MODE: Mode = Mode::Unsafe;
 
-/// Builds sample transactions for testing.
+/// Builds sample transactions on a ledger for testing purposes.
 #[inline]
 fn main() -> io::Result<()> {
     let target_dir = env::args()

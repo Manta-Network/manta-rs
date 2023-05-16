@@ -342,4 +342,4 @@ async fn find_the_bug() {
     }
 }
 
-// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture > test_results 2>&1
+// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture

@@ -255,7 +255,8 @@ impl Ledger {
             };
             let _ = self
                 .dont_validate(post, sources, sinks)
-                .post(&mut *self, &()); // we don't care if it doesn't unwrap
+                .post(&mut *self, &()); // it won't unwrap in general because `dont_validate`
+                                        // doesn't check the public participants.
         }
         true
     }
