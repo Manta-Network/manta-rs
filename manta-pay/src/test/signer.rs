@@ -230,7 +230,7 @@ where
 /// 4) Reclaims some tokens and syncs.
 /// 5) Restarts the wallet.
 /// 6) Checks that the public and private balances are correct.
-#[ignore] // We don't run this test on the CI because it requires a precomputed ledger, which we don't have.
+#[ignore] // We don't run this test on the CI because it takes a long time to run.
 #[tokio::test]
 async fn find_the_bug() {
     let mut rng = ChaCha20Rng::from_seed(Default::default());
