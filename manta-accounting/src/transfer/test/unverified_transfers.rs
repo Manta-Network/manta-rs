@@ -20,7 +20,20 @@
 //! This module is for testing purposes only. [`UnsafeTransferPost`] and [`UnsafeTransferPostBody`] do not
 //! require proof nor proof validation and as such can only be used with trusted inputs.
 
-use super::*;
+use crate::transfer::{
+    Asset, AuthorizationSignature, Configuration, FullParametersRef, Proof, ProofInput,
+    ProvingContext, Receiver, ReceiverPost, Sender, SenderPost, SpendingKey, Transfer,
+    TransferPost, TransferPostBody,
+};
+use core::{fmt::Debug, hash::Hash};
+use manta_crypto::{
+    constraint::{HasInput, Input},
+    rand::{CryptoRng, RngCore},
+};
+use manta_util::codec::{Encode, Write};
+
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
 
 /// Unsafe Transfer Post Body
 #[cfg_attr(

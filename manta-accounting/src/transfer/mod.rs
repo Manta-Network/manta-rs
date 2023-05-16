@@ -73,10 +73,6 @@ pub mod utxo;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
 pub mod test;
 
-#[cfg(feature = "test")]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
-pub mod unverified_transfers;
-
 #[doc(inline)]
 pub use canonical::Shape;
 

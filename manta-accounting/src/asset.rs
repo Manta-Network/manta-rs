@@ -458,21 +458,15 @@ impl<I, V> AssetList<I, V> {
     #[inline]
     pub fn deposit(&mut self, asset: Asset<I, V>)
     where
-        I: Ord + Debug,
-        V: AddAssign + Default + PartialEq + Debug,
+        I: Ord,
+        V: AddAssign + Default + PartialEq,
     {
         if asset.value == Default::default() {
             return;
         }
         match self.find(&asset.id) {
-            Ok(index) => {
-                let _ = dbg!(&self.map[index]);
-                self.map[index] += dbg!(asset.value)
-            }
-            Err(index) => {
-                println!("Inserting");
-                self.map.insert(index, dbg!(asset))
-            }
+            Ok(index) => self.map[index] += asset.value,
+            Err(index) => self.map.insert(index, asset),
         }
     }
 
@@ -496,20 +490,18 @@ impl<I, V> AssetList<I, V> {
     pub fn withdraw(&mut self, asset: &Asset<I, V>) -> bool
     where
         I: Ord,
-        V: Debug + Default + PartialEq,
+        V: Default + PartialEq,
         for<'v> &'v V: CheckedSub<Output = V>,
     {
         if asset.value == Default::default() {
             return true;
         }
         if let Ok(index) = self.find(&asset.id) {
-            if let Some(value) = dbg!(&self.map[index].value).checked_sub(dbg!(&asset.value)) {
+            if let Some(value) = self.map[index].value.checked_sub(&asset.value) {
                 self.set_or_remove(index, value);
                 return true;
             }
-            println!("We found the asset id but there was overflow");
         }
-        println!("We didn't find the asset id");
         false
     }
 
@@ -593,8 +585,8 @@ impl<I, V> From<AssetList<I, V>> for Vec<Asset<I, V>> {
 
 impl<I, V> From<Vec<Asset<I, V>>> for AssetList<I, V>
 where
-    I: Ord + Debug,
-    V: AddAssign + Default + PartialEq + Debug,
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
 {
     #[inline]
     fn from(vector: Vec<Asset<I, V>>) -> Self {
@@ -604,8 +596,8 @@ where
 
 impl<I, V> FromIterator<(I, V)> for AssetList<I, V>
 where
-    I: Ord + Debug,
-    V: AddAssign + Default + PartialEq + Debug,
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
 {
     #[inline]
     fn from_iter<A>(iter: A) -> Self
@@ -620,8 +612,8 @@ where
 
 impl<I, V> FromIterator<Asset<I, V>> for AssetList<I, V>
 where
-    I: Ord + Debug,
-    V: AddAssign + Default + PartialEq + Debug,
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
 {
     #[inline]
     fn from_iter<A>(iter: A) -> Self
@@ -636,8 +628,8 @@ where
 
 impl<I, V> FromIterator<AssetList<I, V>> for AssetList<I, V>
 where
-    I: Ord + Debug,
-    V: AddAssign + Default + PartialEq + Debug,
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
 {
     #[inline]
     fn from_iter<A>(iter: A) -> Self
@@ -650,8 +642,8 @@ where
 
 impl<I, V> FromIterator<Vec<Asset<I, V>>> for AssetList<I, V>
 where
-    I: Ord + Debug,
-    V: AddAssign + Default + PartialEq + Debug,
+    I: Ord,
+    V: AddAssign + Default + PartialEq,
 {
     #[inline]
     fn from_iter<A>(iter: A) -> Self
@@ -882,8 +874,8 @@ pub type BTreeAssetMap<K, I, V> = BTreeMap<K, Vec<Asset<I, V>>>;
 impl<K, I, V> AssetMap<I, V> for BTreeAssetMap<K, I, V>
 where
     K: Clone + Ord,
-    I: Clone + Ord + Debug,
-    V: AddAssign + Clone + Debug + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    I: Clone + Ord,
+    V: AddAssign + Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
     for<'v> &'v V: Sub<Output = V>,
 {
     impl_asset_map_for_maps_body! { K, I, V, BTreeMapEntry }
@@ -899,8 +891,8 @@ pub type HashAssetMap<K, I, V, S = RandomState> = HashMap<K, Vec<Asset<I, V>>, S
 impl<K, I, V, S> AssetMap<I, V> for HashAssetMap<K, I, V, S>
 where
     K: Clone + Hash + Eq,
-    I: Clone + Ord + Debug,
-    V: AddAssign + Clone + Debug + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
+    I: Clone + Ord,
+    V: AddAssign + Clone + Default + Ord + Sub<Output = V> + for<'v> AddAssign<&'v V>,
     for<'v> &'v V: Sub<Output = V>,
     S: BuildHasher + Default,
 {
