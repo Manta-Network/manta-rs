@@ -115,8 +115,6 @@ where
     L: ledger::Connection,
     S: signer::Connection<C>,
     B: BalanceState<C::AssetId, C::AssetValue>,
-    C::AssetValue: Debug,
-    C::AssetId: Debug,
 {
     /// Builds a new [`Wallet`] without checking if `ledger`, `checkpoint`, `signer`, and `assets`
     /// are properly synchronized.
@@ -454,8 +452,8 @@ where
             }) => {
                 match balance_update {
                     BalanceUpdate::Partial { deposit, withdraw } => {
-                        self.assets.deposit_all(dbg!(deposit));
-                        if !self.assets.withdraw_all(dbg!(withdraw)) {
+                        self.assets.deposit_all(deposit);
+                        if !self.assets.withdraw_all(withdraw) {
                             return Err(Error::Inconsistency(InconsistencyError::WalletBalance));
                         }
                     }

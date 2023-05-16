@@ -44,6 +44,7 @@ use crate::{
     },
 };
 use alloc::{vec, vec::Vec};
+use core::ops::{Add, Sub};
 use manta_crypto::{
     accumulator::{
         Accumulator, BatchInsertion, FromItemsAndWitnesses, ItemHashFunction, OptimizedAccumulator,
@@ -224,10 +225,9 @@ fn sync_with<C, I>(
 ) -> SyncResponse<C, C::Checkpoint>
 where
     C: Configuration,
-    C::AssetMap: core::fmt::Debug,
     I: Iterator<Item = (Utxo<C>, Note<C>)>,
-    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
-    C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue>,
+    C::AssetValue: Sub<Output = C::AssetValue>,
 {
     let nullifier_count = nullifiers.len();
     let mut deposit = Vec::new();
@@ -273,7 +273,6 @@ where
         });
         !assets.is_empty()
     });
-    dbg!(&assets);
     checkpoint.update_from_nullifiers(nullifier_count);
     checkpoint.update_from_utxo_accumulator(utxo_accumulator);
     normalize_assets::<C>(&mut deposit, &mut withdraw);
@@ -282,7 +281,7 @@ where
         balance_update: if is_partial {
             // TODO: Whenever we are doing a full update, don't even build the `deposit` and
             //       `withdraw` vectors, since we won't be needing them.
-            BalanceUpdate::Partial { deposit, withdraw } // normalize before sending them
+            BalanceUpdate::Partial { deposit, withdraw }
         } else {
             BalanceUpdate::Full {
                 assets: assets.assets().into(),
@@ -291,11 +290,11 @@ where
     }
 }
 
-///
+/// Sums all the values with the same [`Asset`] id in `assets`.
 fn sum_values<C>(assets: &mut Vec<Asset<C>>)
 where
     C: Configuration,
-    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue>,
 {
     let mut result = Vec::new();
 
@@ -313,12 +312,19 @@ where
         .collect();
 }
 
-///
+/// First it runs [`sum_values`] in both `deposit` and `withdraw`. Then, for each [`Asset`] id
+/// which happens in both `deposit` and `withdraw`:
+/// 1) computes the difference `diff = asset_value(deposit) - asset_value(withdraw)`
+/// 2) If `diff > 0`, it replaces the corresponding entry in `deposit` with `diff` and deletes
+/// the entry in `withdraw`.
+/// 3) If `diff < 0`, it replaces the corresponding entry in `withdraw` with `-diff` and deletes
+/// the entry in `deposit`.
+/// 4) If `diff = 0`, it deletes the entry in `deposit` and `withdraw`.
 fn normalize_assets<C>(deposit: &mut Vec<Asset<C>>, withdraw: &mut Vec<Asset<C>>)
 where
     C: Configuration,
-    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
-    C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue>,
+    C::AssetValue: Sub<Output = C::AssetValue>,
 {
     sum_values::<C>(deposit);
     sum_values::<C>(withdraw);
@@ -839,9 +845,8 @@ pub fn sync<C>(
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
-    C::AssetMap: core::fmt::Debug,
-    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
-    C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue>,
+    C::AssetValue: Sub<Output = C::AssetValue>,
 {
     let (
         has_pruned,

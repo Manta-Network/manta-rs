@@ -33,13 +33,13 @@ use std::{
 };
 use tokio::{runtime::Runtime, sync::RwLock};
 
-///
+/// Mode
 #[derive(Debug)]
 enum Mode {
-    ///
+    /// Safe mode
     Safe,
 
-    ///
+    /// Unsafe mode
     Unsafe,
 }
 
@@ -55,10 +55,10 @@ impl FromStr for Mode {
     }
 }
 
-/// Number of coins
+/// Default number of coins
 const NUMBER_OF_COINS: usize = 10000;
 
-///
+/// Default Mode
 const DEFAULT_MODE: Mode = Mode::Unsafe;
 
 /// Builds sample transactions for testing.

@@ -407,11 +407,16 @@ pub mod to_public {
     }
 }
 
+/// Unsafe [`ToPrivate`].
 ///
+/// # Crypto Safety
+///
+/// The [`TransferPost`]s generated here come with a default, invalid proof. Use
+/// this module only for testing purposes and with trusted inputs.
 pub mod unsafe_to_private {
     use super::*;
 
-    /// Generates a proof for a [`ToPrivate`] transaction with custom `asset` as input.
+    /// Generates a [`TransferPost`] for a [`ToPrivate`] transaction with custom `asset` as input.
     #[inline]
     pub fn unsafe_no_prove_full<R>(
         proving_context: &ProvingContext,
@@ -442,11 +447,16 @@ pub mod unsafe_to_private {
     }
 }
 
+/// Unsafe [`PrivateTransfer`].
 ///
+/// # Crypto Safety
+///
+/// The [`TransferPost`]s generated here come with a default, invalid proof and are not signed.
+/// Use this module only for testing purposes and with trusted inputs.
 pub mod unsafe_private_transfer {
     use super::*;
 
-    /// Generates a proof for a [`PrivateTransfer`] transaction including pre-requisite
+    /// Generates a [`TransferPost`] for a [`PrivateTransfer`] transaction including pre-requisite
     /// [`ToPrivate`] transactions.
     #[inline]
     pub fn unsafe_no_prove_full<R>(
@@ -522,11 +532,16 @@ pub mod unsafe_private_transfer {
     }
 }
 
+/// Unsafe [`ToPublic`].
 ///
+/// # Crypto Safety
+///
+/// The [`TransferPost`]s generated here come with a default, invalid proof and are not signed.
+/// Use this module only for testing purposes and with trusted inputs.
 pub mod unsafe_to_public {
     use super::*;
 
-    /// Generates a proof for a [`ToPublic`] transaction including pre-requisite [`ToPrivate`]
+    /// Generates a [`TransferPost`] for a [`ToPublic`] transaction including pre-requisite [`ToPrivate`]
     /// transactions.
     #[inline]
     pub fn unsafe_no_prove_full<R>(

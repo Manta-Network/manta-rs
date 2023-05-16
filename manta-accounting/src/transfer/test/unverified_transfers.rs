@@ -26,6 +26,7 @@ use crate::transfer::{
     TransferLedger, TransferLedgerSuperPostingKey, TransferPost, TransferPostBody,
     TransferPostingKey, TransferPostingKeyRef,
 };
+use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
     constraint::{HasInput, Input},

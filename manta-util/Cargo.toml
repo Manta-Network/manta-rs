@@ -39,7 +39,6 @@ std = ["alloc", "crossbeam-channel?/std", "serde?/std"]
 
 [dependencies]
 crossbeam-channel = { version = "0.5.6", optional = true, default-features = false }
-indexmap = { version = "1.9.2", optional = true, default-features = false, features = ["serde"] }
 rayon = { version = "1.6.1", optional = true, default-features = false }
 reqwest = { version = "0.11.14", optional = true, default-features = false, features = ["default-tls", "json"] }
 serde = { version = "1.0.152", optional = true, default-features = false, features = ["derive"] }

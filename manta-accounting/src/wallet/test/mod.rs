@@ -432,8 +432,6 @@ where
 impl<C, L, S, B> Actor<C, L, S, B>
 where
     C: Configuration,
-    C::AssetId: Debug,
-    C::AssetValue: Debug,
     L: Ledger<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     B: BalanceState<C::AssetId, C::AssetValue>,
@@ -820,8 +818,7 @@ where
 impl<C, L, S, B> sim::ActionSimulation for Simulation<C, L, S, B>
 where
     C: Configuration,
-    C::AssetId: Debug,
-    C::AssetValue: SampleUniform + Debug,
+    C::AssetValue: SampleUniform,
     L: Ledger<C> + PublicBalanceOracle<C>,
     S: signer::Connection<C, Checkpoint = L::Checkpoint>,
     B: BalanceState<C::AssetId, C::AssetValue>,
@@ -939,8 +936,8 @@ pub async fn measure_balances<'w, C, L, S, B, I>(
 ) -> Result<AssetList<C::AssetId, C::AssetValue>, Error<C, L, S>>
 where
     C: 'w + Configuration,
-    C::AssetId: Ord + Debug,
-    C::AssetValue: Debug + AddAssign,
+    C::AssetId: Ord,
+    C::AssetValue: AddAssign,
     for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
     L: 'w + Ledger<C> + PublicBalanceOracle<C>,
     S: 'w + signer::Connection<C, Checkpoint = L::Checkpoint>,
@@ -994,8 +991,7 @@ impl Config {
     ) -> Result<bool, Error<C, L, S>>
     where
         C: signer::Configuration,
-        C::AssetId: Debug,
-        C::AssetValue: AddAssign + SampleUniform + Debug,
+        C::AssetValue: AddAssign + SampleUniform,
         for<'v> &'v C::AssetValue: CheckedSub<Output = C::AssetValue>,
         L: Ledger<C>
             + PublicBalanceOracle<C>

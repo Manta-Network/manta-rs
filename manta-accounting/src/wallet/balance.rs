@@ -79,8 +79,8 @@ pub trait BalanceState<I, V>:
 
 impl<I, V> BalanceState<I, V> for AssetList<I, V>
 where
-    I: Ord + core::fmt::Debug,
-    V: AddAssign + Clone + Default + PartialEq + core::fmt::Debug,
+    I: Ord,
+    V: AddAssign + Clone + Default + PartialEq,
     for<'v> &'v V: CheckedSub<Output = V>,
 {
     #[inline]
@@ -183,8 +183,8 @@ pub type BTreeMapBalanceState<I, V> = BTreeMap<I, V>;
 
 impl<I, V> BalanceState<I, V> for BTreeMapBalanceState<I, V>
 where
-    I: Ord + core::fmt::Debug,
-    V: AddAssign + Clone + Default + PartialEq + core::fmt::Debug,
+    I: Ord,
+    V: AddAssign + Clone + Default + PartialEq,
     for<'v> &'v V: CheckedSub<Output = V>,
 {
     impl_balance_state_map_body! { I, V, BTreeMapEntry }
@@ -199,8 +199,8 @@ pub type HashMapBalanceState<I, V, S = RandomState> = HashMap<I, V, S>;
 #[cfg_attr(doc_cfg, doc(cfg(feature = "std")))]
 impl<I, V, S> BalanceState<I, V> for HashMapBalanceState<I, V, S>
 where
-    I: Eq + Hash + Ord + core::fmt::Debug,
-    V: AddAssign + Clone + Default + PartialEq + core::fmt::Debug,
+    I: Eq + Hash + Ord,
+    V: AddAssign + Clone + Default + PartialEq,
     for<'v> &'v V: CheckedSub<Output = V>,
     S: BuildHasher + Default,
 {

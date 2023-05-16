@@ -268,8 +268,6 @@ where
 
 /// Schnorr Signatures
 pub mod schnorr {
-    use manta_util::codec::Encode;
-
     use super::*;
     use crate::{
         algebra::{
@@ -352,22 +350,6 @@ pub mod schnorr {
         ///
         /// This point is the generator of the Schnorr group multiplied by the secret nonce.
         pub nonce_point: G,
-    }
-
-    impl<S, G> Encode for Signature<S, G>
-    where
-        S: Encode,
-        G: Encode,
-    {
-        #[inline]
-        fn encode<W>(&self, mut writer: W) -> Result<(), W::Error>
-        where
-            W: manta_util::codec::Write,
-        {
-            self.scalar.encode(&mut writer)?;
-            self.nonce_point.encode(&mut writer)?;
-            Ok(())
-        }
     }
 
     /// Schnorr Signature Scheme

@@ -17,11 +17,11 @@
 //! Signer Testing Suite
 
 use crate::{
-    config::{Asset, AssetId, AssetValue, Config},
+    config::{Asset, Config},
     key::Mnemonic,
     parameters::load_parameters,
     signer::{
-        base::{identity_verification, Signer},
+        base::identity_verification,
         functions::{address_from_mnemonic, authorization_context_from_mnemonic},
     },
     simulation::{
@@ -31,7 +31,6 @@ use crate::{
 };
 use alloc::sync::Arc;
 use manta_accounting::{
-    asset::AssetList,
     transfer::{canonical::Transaction, IdentifiedAsset, Identifier},
     wallet::{test::PublicBalanceOracle, Wallet},
 };
@@ -44,8 +43,8 @@ use manta_util::vec::VecExt;
 use std::{env, fs::OpenOptions, io::Error};
 use tokio::sync::RwLock;
 
-///
-type TestWallet = Wallet<Config, LedgerConnection, Signer, AssetList<AssetId, AssetValue>>;
+/// Test Wallet type
+type TestWallet = Wallet<Config, LedgerConnection>;
 
 /// Checks the generation and verification of [`IdentityProof`](manta_accounting::transfer::IdentityProof)s.
 #[test]
@@ -186,7 +185,7 @@ pub fn derive_address_works() {
     );
 }
 
-/// Load ledger
+/// Loads the precomputed ledger in the `data` folder.
 pub fn load_ledger() -> Result<SharedLedger, Error> {
     let data_dir = env::current_dir()
         .expect("Failed to get current directory")
@@ -199,7 +198,7 @@ pub fn load_ledger() -> Result<SharedLedger, Error> {
     Ok(Arc::new(RwLock::new(ledger)))
 }
 
-/// Create new wallet
+/// Creates new wallet from `account_id`, `initial_balance`, `asset_id` and `ledger`.
 async fn create_new_wallet<R>(
     account_id: [u8; 32],
     initial_balance: u128,
@@ -223,7 +222,14 @@ where
     TestWallet::new(ledger_connection, signer)
 }
 
-/// Checks the generation and verification of [`IdentityProof`](manta_accounting::transfer::IdentityProof)s.
+/// This tests that wallets preserve the invariants. After loading the [`SharedLedger`],
+/// it executes `NUMBER_OF_RUNS` times the following steps:
+/// 1) Creates a new wallet, resets it and syncs it.
+/// 2) Privatizes some tokens and syncs.
+/// 3) Sends some private tokens to another zkAddress and syncs.
+/// 4) Reclaims some tokens and syncs.
+/// 5) Restarts the wallet.
+/// 6) Checks that the public and private balances are correct.
 #[tokio::test]
 async fn find_the_bug() {
     let mut rng = ChaCha20Rng::from_seed(Default::default());
@@ -233,11 +239,10 @@ async fn find_the_bug() {
     const NUMBER_OF_RUNS: usize = 100;
     for run in 0..NUMBER_OF_RUNS {
         println!("Run number {run:?}");
-        // 1: create new wallet, reset it and sync. (zkBalance = 0)
+        // 1) create new wallet, reset it and sync. (zkBalance = 0)
         let account_id = rng.gen(); // fixed account id
         println!("Account ID: {account_id:?}");
-        //let initial_balance = rng.gen_range(Default::default()..u16::MAX as u128);
-        let initial_balance = rng.gen();
+        let initial_balance = rng.gen_range(Default::default()..u32::MAX as u128);
         println!("Initial balance: {initial_balance:?}");
         let mut wallet = create_new_wallet(
             account_id,
@@ -255,7 +260,7 @@ async fn find_the_bug() {
                 \nInitial balance: {initial_balance:?}."
             )
         });
-        // 2: privatize 30 tokens and sync (zkBalance = to_mint)
+        // 2) privatize `to_mint` tokens and sync (zkBalance = to_mint)
         let to_mint = rng.gen_range(Default::default()..initial_balance);
         println!("To mint: {to_mint:?}");
         let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id.into(), to_mint));
@@ -270,7 +275,7 @@ async fn find_the_bug() {
                 \nTo Mint: {to_mint:?}"
             )
         });
-        // 3: send 5 tokens to another zkAddress and sync (zkBalance = to_mint - to_send)
+        // 3) send `to_send` tokens to another zkAddress and sync (zkBalance = to_mint - to_send)
         let to_send = rng.gen_range(Default::default()..to_mint);
         println!("To send: {to_send:?}");
         let private_transfer =
@@ -287,7 +292,7 @@ async fn find_the_bug() {
                 \nTo Send: {to_send:?}."
             )
         });
-        // 4: reclaim 15 tokens and sync (zkBalance = to_mint - to_send - reclaim)
+        // 4) reclaim `reclaim` tokens and sync (zkBalance = to_mint - to_send - reclaim)
         let reclaim = rng.gen_range(Default::default()..to_mint - to_send);
         println!("Reclaim: {reclaim:?}");
         let to_public =

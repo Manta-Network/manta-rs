@@ -242,7 +242,8 @@ impl Ledger {
         true
     }
 
-    ///
+    /// Pushes the data from `posts` to the ledger without running the validation checks.
+    /// See the documentation of [`dont_validate`](UnsafeLedger::dont_validate) for more info.
     #[inline]
     pub fn unsafe_push(&mut self, account: AccountId, posts: Vec<TransferPost>) -> bool {
         for post in posts {
@@ -301,14 +302,7 @@ impl Ledger {
         &self.utxos
     }
 
-    ///
-    #[cfg(feature = "serde")]
-    #[inline]
-    pub fn bincode_to_bytes(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("Serialization error")
-    }
-
-    ///
+    /// Serializaes `self` into `writer`.
     #[cfg(all(feature = "serde", feature = "std"))]
     #[inline]
     pub fn serialize_into<W>(&self, writer: W)
@@ -851,13 +845,13 @@ pub async fn safe_fill_ledger<R>(
 }
 
 /// Fills `ledger` with randomly sampled `number_of_coins` of transactions.
-/// 
+///
 /// # Note
-/// 
+///
 /// This function does not perform any checks on the generated transactions, as
 /// opposed to [`safe_fill_ledger`] which performs all necessary checks. See the documentation
-/// of the [`unverified_transfers`] module for more information. 
-/// 
+/// of the [`unverified_transfers`] module for more information.
+///
 /// [`unverified_transfers`]: manta_accounting::transfer::test::unverified_transfers
 pub async fn unsafe_fill_ledger<R>(
     number_of_coins: usize,

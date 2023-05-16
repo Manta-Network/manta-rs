@@ -38,7 +38,12 @@ use crate::{
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::{convert::Infallible, fmt::Debug, hash::Hash};
+use core::{
+    convert::Infallible,
+    fmt::Debug,
+    hash::Hash,
+    ops::{Add, Sub},
+};
 use manta_crypto::{
     accumulator::{
         Accumulator, BatchInsertion, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
@@ -1209,7 +1214,6 @@ where
 impl<C> Signer<C>
 where
     C: Configuration,
-    C::AssetMap: core::fmt::Debug,
 {
     /// Builds a new [`Signer`] from `parameters` and `state`.
     #[inline]
@@ -1322,8 +1326,8 @@ where
         request: SyncRequest<C, C::Checkpoint>,
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
     where
-        C::AssetValue: core::ops::Add<Output = C::AssetValue>,
-        C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
+        C::AssetValue: Add<Output = C::AssetValue>,
+        C::AssetValue: Sub<Output = C::AssetValue>,
     {
         functions::sync(
             &self.parameters,
@@ -1538,9 +1542,8 @@ where
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
-    C::AssetMap: core::fmt::Debug,
-    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
-    C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue>,
+    C::AssetValue: Sub<Output = C::AssetValue>,
 {
     type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;
@@ -1720,7 +1723,6 @@ where
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
-        C::AssetMap: core::fmt::Debug,
     {
         let mut signer = Signer::new(
             parameters,
