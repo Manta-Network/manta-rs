@@ -1209,6 +1209,7 @@ where
 impl<C> Signer<C>
 where
     C: Configuration,
+    C::AssetMap: core::fmt::Debug,
 {
     /// Builds a new [`Signer`] from `parameters` and `state`.
     #[inline]
@@ -1319,7 +1320,11 @@ where
     pub fn sync(
         &mut self,
         request: SyncRequest<C, C::Checkpoint>,
-    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
+    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+    where
+        C::AssetValue: core::ops::Add<Output = C::AssetValue>,
+        C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
+    {
         functions::sync(
             &self.parameters,
             self.state
@@ -1533,6 +1538,9 @@ where
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
+    C::AssetMap: core::fmt::Debug,
+    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
+    C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
 {
     type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;
@@ -1712,6 +1720,7 @@ where
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
+        C::AssetMap: core::fmt::Debug,
     {
         let mut signer = Signer::new(
             parameters,

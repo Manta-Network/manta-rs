@@ -19,37 +19,47 @@
 extern crate alloc;
 
 use alloc::sync::Arc;
-use manta_crypto::{
-    merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
-    rand::{ChaCha20Rng, CryptoRng, Rand, RngCore, SeedableRng},
-};
+use manta_crypto::rand::{ChaCha20Rng, SeedableRng};
 use manta_pay::{
-    config::{
-        utxo::MerkleTreeConfiguration, AssetId, MultiProvingContext, Parameters,
-        UtxoAccumulatorModel,
-    },
     parameters::load_parameters,
-    simulation::ledger::Ledger,
-    test::payment::{
-        unsafe_private_transfer::unsafe_no_prove_full as unsafe_private_transfer,
-        unsafe_to_private::unsafe_no_prove_full as unsafe_to_private,
-        unsafe_to_public::unsafe_no_prove_full as unsafe_to_public,
-    },
+    simulation::ledger::{safe_fill_ledger, unsafe_fill_ledger, Ledger},
 };
 use std::{
     env,
     fs::{self, OpenOptions},
     io::{self},
     path::PathBuf,
+    str::FromStr,
 };
 use tokio::{runtime::Runtime, sync::RwLock};
 
-/// UTXO Accumulator for Building Test Circuits
-pub type UtxoAccumulator =
-    TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
+///
+#[derive(Debug)]
+enum Mode {
+    ///
+    Safe,
+
+    ///
+    Unsafe,
+}
+
+impl FromStr for Mode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "UNSAFE" => Ok(Mode::Unsafe),
+            "SAFE" => Ok(Mode::Safe),
+            _ => Err(()),
+        }
+    }
+}
 
 /// Number of coins
 const NUMBER_OF_COINS: usize = 10000;
+
+///
+const DEFAULT_MODE: Mode = Mode::Unsafe;
 
 /// Builds sample transactions for testing.
 #[inline]
@@ -67,7 +77,10 @@ fn main() -> io::Result<()> {
         .nth(2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(NUMBER_OF_COINS);
-    println!("{:?}", number_of_coins);
+    let mode = env::args()
+        .nth(3)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_MODE);
     let target_file = OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -84,84 +97,29 @@ fn main() -> io::Result<()> {
         parameters.clone(),
     )));
     let runtime = Runtime::new().expect("Unable to start tokio runtime");
-    runtime.block_on(fill_ledger_and_write(
-        number_of_coins,
-        &ledger,
-        &proving_context,
-        &parameters,
-        &utxo_accumulator_model,
-        asset_id,
-        &mut rng,
-    ));
+    match mode {
+        Mode::Safe => runtime.block_on(safe_fill_ledger(
+            number_of_coins,
+            &ledger,
+            &proving_context,
+            &parameters,
+            &utxo_accumulator_model,
+            asset_id,
+            &mut rng,
+        )),
+        Mode::Unsafe => runtime.block_on(unsafe_fill_ledger(
+            number_of_coins,
+            &ledger,
+            &proving_context,
+            &parameters,
+            &utxo_accumulator_model,
+            asset_id,
+            &mut rng,
+        )),
+    };
     runtime.block_on(async { ledger.read().await.serialize_into(target_file) });
     directory.close()
 }
 
-// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- <directory> <NUMBER_OF_COINS>
-// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- manta-pay/src/test/data 100
-
-async fn fill_ledger_and_write<R>(
-    number_of_coins: usize,
-    ledger: &Arc<RwLock<Ledger>>,
-    proving_context: &MultiProvingContext,
-    parameters: &Parameters,
-    utxo_accumulator_model: &UtxoAccumulatorModel,
-    asset_id: AssetId,
-    rng: &mut R,
-) where
-    R: RngCore + CryptoRng + ?Sized,
-{
-    for _ in 0..number_of_coins {
-        match rng.gen_range(0..3) {
-            0 => {
-                let to_private = unsafe_to_private(
-                    &proving_context.to_private,
-                    parameters,
-                    utxo_accumulator_model,
-                    asset_id,
-                    rng.gen(),
-                    rng,
-                );
-                ledger
-                    .write()
-                    .await
-                    .unsafe_push(rng.gen(), vec![to_private]);
-            }
-            1 => {
-                let (private_transfer_input, private_transfer) = unsafe_private_transfer(
-                    proving_context,
-                    parameters,
-                    utxo_accumulator_model,
-                    asset_id,
-                    [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
-                    rng,
-                );
-                ledger
-                    .write()
-                    .await
-                    .unsafe_push(rng.gen(), private_transfer_input.into());
-                ledger
-                    .write()
-                    .await
-                    .unsafe_push(rng.gen(), vec![private_transfer]);
-            }
-            _ => {
-                let account = rng.gen();
-                let (to_public_input, to_public) = unsafe_to_public(
-                    proving_context,
-                    parameters,
-                    utxo_accumulator_model,
-                    asset_id,
-                    [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
-                    account,
-                    rng,
-                );
-                ledger
-                    .write()
-                    .await
-                    .unsafe_push(rng.gen(), to_public_input.into());
-                ledger.write().await.unsafe_push(account, vec![to_public]);
-            }
-        };
-    }
-}
+// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- <directory> <NUMBER_OF_COINS> <MODE>
+// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- manta-pay/src/test/data 100 unsafe

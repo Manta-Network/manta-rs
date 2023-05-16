@@ -24,10 +24,17 @@ use crate::{
         utxo::{
             AssetId, AssetValue, Checkpoint, FullIncomingNote, MerkleTreeConfiguration, Parameters,
         },
-        AccountId, Config, MultiVerifyingContext, Nullifier, ProofSystem, TransferPost, Utxo,
-        UtxoAccumulatorModel,
+        AccountId, Config, MultiProvingContext, MultiVerifyingContext, Nullifier, ProofSystem,
+        TransferPost, Utxo, UtxoAccumulatorModel,
     },
     signer::InitialSyncData,
+    test::payment::{
+        private_transfer::prove_full as private_transfer, to_private::prove_full as to_private,
+        to_public::prove_full as to_public,
+        unsafe_private_transfer::unsafe_no_prove_full as unsafe_private_transfer,
+        unsafe_to_private::unsafe_no_prove_full as unsafe_to_private,
+        unsafe_to_public::unsafe_no_prove_full as unsafe_to_public, UtxoAccumulator,
+    },
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
@@ -55,6 +62,7 @@ use manta_crypto::{
         self,
         forest::{Configuration, FixedIndex, Forest},
     },
+    rand::{CryptoRng, Rand, RngCore},
 };
 use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
 use std::collections::{HashMap, HashSet};
@@ -759,6 +767,154 @@ impl UnsafeLedger<Config> for Ledger {
 
 /// Shared Ledger
 pub type SharedLedger = Arc<RwLock<Ledger>>;
+
+///
+pub async fn safe_fill_ledger<R>(
+    number_of_coins: usize,
+    ledger: &SharedLedger,
+    proving_context: &MultiProvingContext,
+    parameters: &Parameters,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+    asset_id: AssetId,
+    rng: &mut R,
+) where
+    R: RngCore + CryptoRng + ?Sized,
+{
+    let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
+    for i in 0..number_of_coins {
+        if i % 5 == 0 {
+            println!("{i:?}");
+        }
+        match rng.gen_range(0..3) {
+            0 => {
+                let account = rng.gen();
+                let asset_value = rng.gen();
+                let to_private = to_private(
+                    &proving_context.to_private,
+                    parameters,
+                    &mut utxo_accumulator,
+                    asset_id,
+                    asset_value,
+                    rng,
+                );
+                ledger
+                    .write()
+                    .await
+                    .set_public_balance(account, asset_id, asset_value);
+                ledger.write().await.push(rng.gen(), vec![to_private]);
+            }
+            1 => {
+                let account = rng.gen();
+                let asset_values = [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2];
+                let (private_transfer_input, private_transfer) = private_transfer(
+                    proving_context,
+                    parameters,
+                    &mut utxo_accumulator,
+                    asset_id,
+                    asset_values,
+                    rng,
+                );
+                ledger.write().await.set_public_balance(
+                    account,
+                    asset_id,
+                    asset_values[0] + asset_values[1],
+                );
+                ledger
+                    .write()
+                    .await
+                    .push(account, private_transfer_input.into());
+                ledger.write().await.push(account, vec![private_transfer]);
+            }
+            _ => {
+                let account = rng.gen();
+                let asset_values = [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2];
+                let (to_public_input, to_public) = to_public(
+                    proving_context,
+                    parameters,
+                    &mut utxo_accumulator,
+                    asset_id,
+                    asset_values,
+                    account,
+                    rng,
+                );
+                ledger.write().await.set_public_balance(
+                    account,
+                    asset_id,
+                    asset_values[0] + asset_values[1],
+                );
+                ledger.write().await.push(account, to_public_input.into());
+                ledger.write().await.push(account, vec![to_public]);
+            }
+        };
+    }
+}
+
+///
+pub async fn unsafe_fill_ledger<R>(
+    number_of_coins: usize,
+    ledger: &SharedLedger,
+    proving_context: &MultiProvingContext,
+    parameters: &Parameters,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+    asset_id: AssetId,
+    rng: &mut R,
+) where
+    R: RngCore + CryptoRng + ?Sized,
+{
+    for _ in 0..number_of_coins {
+        match rng.gen_range(0..3) {
+            0 => {
+                let to_private = unsafe_to_private(
+                    &proving_context.to_private,
+                    parameters,
+                    utxo_accumulator_model,
+                    asset_id,
+                    rng.gen(),
+                    rng,
+                );
+                ledger
+                    .write()
+                    .await
+                    .unsafe_push(rng.gen(), vec![to_private]);
+            }
+            1 => {
+                let (private_transfer_input, private_transfer) = unsafe_private_transfer(
+                    proving_context,
+                    parameters,
+                    utxo_accumulator_model,
+                    asset_id,
+                    [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
+                    rng,
+                );
+                ledger
+                    .write()
+                    .await
+                    .unsafe_push(rng.gen(), private_transfer_input.into());
+                ledger
+                    .write()
+                    .await
+                    .unsafe_push(rng.gen(), vec![private_transfer]);
+            }
+            _ => {
+                let account = rng.gen();
+                let (to_public_input, to_public) = unsafe_to_public(
+                    proving_context,
+                    parameters,
+                    utxo_accumulator_model,
+                    asset_id,
+                    [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
+                    account,
+                    rng,
+                );
+                ledger
+                    .write()
+                    .await
+                    .unsafe_push(rng.gen(), to_public_input.into());
+                ledger.write().await.unsafe_push(account, vec![to_public]);
+            }
+        };
+    }
+}
 
 /// Ledger Connection
 #[derive(Clone, Debug)]

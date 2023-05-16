@@ -224,7 +224,10 @@ fn sync_with<C, I>(
 ) -> SyncResponse<C, C::Checkpoint>
 where
     C: Configuration,
+    C::AssetMap: core::fmt::Debug,
     I: Iterator<Item = (Utxo<C>, Note<C>)>,
+    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
+    C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
 {
     let nullifier_count = nullifiers.len();
     let mut deposit = Vec::new();
@@ -270,19 +273,80 @@ where
         });
         !assets.is_empty()
     });
+    dbg!(&assets);
     checkpoint.update_from_nullifiers(nullifier_count);
     checkpoint.update_from_utxo_accumulator(utxo_accumulator);
+    normalize_assets::<C>(&mut deposit, &mut withdraw);
     SyncResponse {
         checkpoint: checkpoint.clone(),
         balance_update: if is_partial {
             // TODO: Whenever we are doing a full update, don't even build the `deposit` and
             //       `withdraw` vectors, since we won't be needing them.
-            BalanceUpdate::Partial { deposit, withdraw }
+            BalanceUpdate::Partial { deposit, withdraw } // normalize before sending them
         } else {
             BalanceUpdate::Full {
                 assets: assets.assets().into(),
             }
         },
+    }
+}
+
+///
+fn sum_values<C>(assets: &mut Vec<Asset<C>>)
+where
+    C: Configuration,
+    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
+{
+    let mut result = Vec::new();
+
+    for asset in assets.iter() {
+        if let Some(entry) = result.iter_mut().find(|(id, _)| *id == asset.id) {
+            entry.1 += asset.value.clone();
+        } else {
+            result.push((asset.id.clone(), asset.value.clone()));
+        }
+    }
+
+    *assets = result
+        .into_iter()
+        .map(|(id, value)| Asset::<C>::new(id, value))
+        .collect();
+}
+
+///
+fn normalize_assets<C>(deposit: &mut Vec<Asset<C>>, withdraw: &mut Vec<Asset<C>>)
+where
+    C: Configuration,
+    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
+    C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
+{
+    sum_values::<C>(deposit);
+    sum_values::<C>(withdraw);
+    let mut i = 0;
+    while i < deposit.len() {
+        let deposit_asset = deposit[i].clone();
+        if let Some(withdraw_index) = withdraw
+            .iter()
+            .position(|asset| asset.id == deposit_asset.id)
+        {
+            let withdraw_asset = &mut withdraw[withdraw_index];
+            if deposit_asset.value > withdraw_asset.value {
+                let diff = deposit_asset.value.clone() - withdraw_asset.value.clone();
+                deposit[i].value = diff;
+                withdraw.remove(withdraw_index);
+                i += 1;
+            } else if deposit_asset.value < withdraw_asset.value {
+                let diff = withdraw_asset.value.clone() - deposit_asset.value.clone();
+                withdraw[withdraw_index].value = diff;
+                deposit.remove(i);
+            } else {
+                deposit.remove(i);
+                withdraw.remove(withdraw_index);
+                i += 1;
+            }
+        } else {
+            i += 1;
+        }
     }
 }
 
@@ -775,6 +839,9 @@ pub fn sync<C>(
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
+    C::AssetMap: core::fmt::Debug,
+    C::AssetValue: core::ops::Add<Output = C::AssetValue>,
+    C::AssetValue: core::ops::Sub<Output = C::AssetValue>,
 {
     let (
         has_pruned,

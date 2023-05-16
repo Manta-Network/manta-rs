@@ -38,7 +38,7 @@ use manta_accounting::{
 use manta_crypto::{
     algebra::HasGenerator,
     arkworks::constraint::fp::Fp,
-    rand::{fuzz::Fuzz, CryptoRng, OsRng, Rand, RngCore},
+    rand::{fuzz::Fuzz, ChaCha20Rng, CryptoRng, OsRng, Rand, RngCore, SeedableRng},
 };
 use manta_util::vec::VecExt;
 use std::{env, fs::OpenOptions, io::Error};
@@ -226,7 +226,7 @@ where
 /// Checks the generation and verification of [`IdentityProof`](manta_accounting::transfer::IdentityProof)s.
 #[tokio::test]
 async fn find_the_bug() {
-    let mut rng = OsRng;
+    let mut rng = ChaCha20Rng::from_seed(Default::default());
     let asset_id = 8;
     println!("Loading ledger");
     let ledger = load_ledger().expect("Error loading ledger");
@@ -234,8 +234,11 @@ async fn find_the_bug() {
     for run in 0..NUMBER_OF_RUNS {
         println!("Run number {run:?}");
         // 1: create new wallet, reset it and sync. (zkBalance = 0)
-        let account_id = rng.gen();
+        let account_id = rng.gen(); // fixed account id
+        println!("Account ID: {account_id:?}");
+        //let initial_balance = rng.gen_range(Default::default()..u16::MAX as u128);
         let initial_balance = rng.gen();
+        println!("Initial balance: {initial_balance:?}");
         let mut wallet = create_new_wallet(
             account_id,
             initial_balance,
@@ -246,69 +249,72 @@ async fn find_the_bug() {
         .await;
         wallet.reset_state();
         wallet.load_initial_state().await.expect("Sync error");
-        wallet.sync().await.unwrap_or_else(|_| {
+        wallet.sync().await.unwrap_or_else(|err| {
             panic!(
-                "Sync error.
+                "Sync error: {err:?}
                 \nInitial balance: {initial_balance:?}."
             )
         });
         // 2: privatize 30 tokens and sync (zkBalance = to_mint)
         let to_mint = rng.gen_range(Default::default()..initial_balance);
+        println!("To mint: {to_mint:?}");
         let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id.into(), to_mint));
         wallet
             .post(to_private, Default::default())
             .await
             .expect("Error posting ToPrivate");
-        wallet.sync().await.unwrap_or_else(|_| {
+        wallet.sync().await.unwrap_or_else(|err| {
             panic!(
-                "Sync error.
+                "Sync error: {err:?}
                 \nInitial balance: {initial_balance:?}.
-                \nTo Mint: {to_mint:?}."
+                \nTo Mint: {to_mint:?}"
             )
         });
         // 3: send 5 tokens to another zkAddress and sync (zkBalance = to_mint - to_send)
         let to_send = rng.gen_range(Default::default()..to_mint);
+        println!("To send: {to_send:?}");
         let private_transfer =
             Transaction::<Config>::PrivateTransfer(Asset::new(asset_id.into(), to_send), rng.gen());
         wallet
             .post(private_transfer, Default::default())
             .await
             .expect("Error posting PrivateTransfer");
-        wallet.sync().await.unwrap_or_else(|_| {
+        wallet.sync().await.unwrap_or_else(|err| {
             panic!(
-                "Sync error.
+                "Sync error: {err:?}
                 \nInitial balance: {initial_balance:?}.
                 \nTo Mint: {to_mint:?}.
-                \nTo Send: {to_send:?}"
+                \nTo Send: {to_send:?}."
             )
         });
         // 4: reclaim 15 tokens and sync (zkBalance = to_mint - to_send - reclaim)
         let reclaim = rng.gen_range(Default::default()..to_mint - to_send);
+        println!("Reclaim: {reclaim:?}");
         let to_public =
             Transaction::<Config>::ToPublic(Asset::new(asset_id.into(), reclaim), account_id);
         wallet
             .post(to_public, Default::default())
             .await
             .expect("Error posting ToPublic");
-        wallet.sync().await.unwrap_or_else(|_| {
+        wallet.sync().await.unwrap_or_else(|err| {
             panic!(
-                "Sync error.
+                "Sync error: {err:?}
                 \nInitial balance: {initial_balance:?}.
                 \nTo Mint: {to_mint:?}.
                 \nTo Send: {to_send:?}.
-                \nReclaim: {reclaim:?}"
+                \nReclaim: {reclaim:?}."
             )
         });
         // 5: Restart wallet
         wallet.reset_state();
         wallet.load_initial_state().await.expect("Sync error");
-        wallet.sync().await.unwrap_or_else(|_| {
+        wallet.sync().await.unwrap_or_else(|err| {
             panic!(
-                "Sync error.
+                "Sync error: {err:?}
                 \nInitial balance: {initial_balance:?}.
                 \nTo Mint: {to_mint:?}.
                 \nTo Send: {to_send:?}.
-                \nReclaim: {reclaim:?}"
+                \nReclaim: {reclaim:?}."
             )
         });
         // 6: check balances
@@ -330,4 +336,4 @@ async fn find_the_bug() {
     }
 }
 
-// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture
+// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture > test_results 2>&1
