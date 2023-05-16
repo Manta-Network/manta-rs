@@ -272,26 +272,6 @@ where
     }
 }
 
-///
-pub trait UnsafeReceiverLedger<M>: ReceiverLedger<M>
-where
-    M: Mint,
-{
-    ///
-    fn dont_check_registration(&self, utxo: M::Utxo) -> Self::ValidUtxo;
-
-    ///
-    fn dont_validate_receiver_post(
-        &self,
-        receiver_post: ReceiverPost<M>,
-    ) -> ReceiverPostingKey<M, Self> {
-        ReceiverPostingKey {
-            utxo: self.dont_check_registration(receiver_post.utxo),
-            note: receiver_post.note,
-        }
-    }
-}
-
 /// Receiver Post Error
 #[cfg_attr(
     feature = "serde",
@@ -484,5 +464,43 @@ where
     fn extend(&self, input: &mut P::Input) {
         P::extend(input, self.utxo.as_ref());
         P::extend(input, &self.note);
+    }
+}
+
+/// Unsafe Receiver Ledger
+///
+/// # Safety
+///
+/// This unsafe version of the receiver ledger does not perform the
+/// [`is_not_registered`](ReceiverLedger::is_not_registered) check before registering a Utxo.
+/// Therefore, it must only be used for testing purposes and with trusted inputs.
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod unsafe_receiver_ledger {
+    use crate::transfer::{
+        receiver::{ReceiverLedger, ReceiverPost, ReceiverPostingKey},
+        utxo::Mint,
+    };
+
+    /// Unsafe Receiver Ledger
+    pub trait UnsafeReceiverLedger<M>: ReceiverLedger<M>
+    where
+        M: Mint,
+    {
+        /// Converts `utxo` into a [`ValidUtxo`](ReceiverLedger::ValidUtxo) without checking
+        /// it isn't already registered in `self`.
+        fn dont_check_registration(&self, utxo: M::Utxo) -> Self::ValidUtxo;
+
+        /// Converts `receiver_post` into a [`ReceiverPostingKey`] without performing
+        /// the [`is_not_registered`](ReceiverLedger::is_not_registered) check.
+        fn dont_validate_receiver_post(
+            &self,
+            receiver_post: ReceiverPost<M>,
+        ) -> ReceiverPostingKey<M, Self> {
+            ReceiverPostingKey {
+                utxo: self.dont_check_registration(receiver_post.utxo),
+                note: receiver_post.note,
+            }
+        }
     }
 }

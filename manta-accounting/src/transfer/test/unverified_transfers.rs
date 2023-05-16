@@ -18,12 +18,13 @@
 //! # SAFETY
 //!
 //! This module is for testing purposes only. [`UnsafeTransferPost`] and [`UnsafeTransferPostBody`] do not
-//! require proof nor proof validation and as such can only be used with trusted inputs.
+//! contain a proof nor a signature. Because of that, they can only be used with trusted inputs.
 
 use crate::transfer::{
-    Asset, AuthorizationSignature, Configuration, FullParametersRef, Proof, ProofInput,
+    Asset, AuthorizationSignature, Configuration, FullParametersRef, Parameters, Proof, ProofInput,
     ProvingContext, Receiver, ReceiverPost, Sender, SenderPost, SpendingKey, Transfer,
-    TransferPost, TransferPostBody,
+    TransferLedger, TransferLedgerSuperPostingKey, TransferPost, TransferPostBody,
+    TransferPostingKey, TransferPostingKeyRef,
 };
 use core::{fmt::Debug, hash::Hash};
 use manta_crypto::{
@@ -34,6 +35,11 @@ use manta_util::codec::{Encode, Write};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
+
+pub use crate::transfer::{
+    receiver::unsafe_receiver_ledger::UnsafeReceiverLedger,
+    sender::unsafe_sender_ledger::UnsafeSenderLedger,
+};
 
 /// Unsafe Transfer Post Body
 #[cfg_attr(
@@ -115,7 +121,7 @@ impl<C> UnsafeTransferPostBody<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Builds a new [`TransferPostBody`].
+    /// Builds a new [`UnsafeTransferPostBody`].
     #[inline]
     fn build<
         const SOURCES: usize,
@@ -283,7 +289,7 @@ pub struct UnsafeTransferPost<C>
 where
     C: Configuration + ?Sized,
 {
-    /// Transfer Post Body
+    /// Unsafe Transfer Post Body
     pub body: UnsafeTransferPostBody<C>,
 
     /// Sink accounts
@@ -294,12 +300,9 @@ impl<C> UnsafeTransferPost<C>
 where
     C: Configuration + ?Sized,
 {
-    ///
+    /// Creates a new [`UnsafeTransferPost`] from `body` and `sink_accounts`.
     #[inline]
-    fn new_unchecked_with_sinks(
-        body: UnsafeTransferPostBody<C>,
-        sink_accounts: Vec<C::AccountId>,
-    ) -> Self {
+    fn new(body: UnsafeTransferPostBody<C>, sink_accounts: Vec<C::AccountId>) -> Self {
         Self {
             body,
             sink_accounts,
@@ -399,7 +402,7 @@ where
         R: CryptoRng + RngCore + ?Sized,
     {
         let _ = spending_key;
-        UnsafeTransferPost::new_unchecked_with_sinks(
+        UnsafeTransferPost::new(
             self.into_unsafe_post_body(parameters, proving_context, rng),
             sink_accounts,
         )
@@ -424,5 +427,148 @@ where
             self.receivers,
             self.sinks,
         )
+    }
+}
+
+/// Unsafe Ledger
+///
+/// # Safety
+///
+/// This unsafe version of the transfer ledger does not perform the
+/// any checks before registering a transaction.
+/// Therefore, it must only be used for testing purposes and with trusted inputs.
+pub trait UnsafeLedger<C>:
+    TransferLedger<C>
+    + UnsafeReceiverLedger<
+        Parameters<C>,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+    > + UnsafeSenderLedger<
+        Parameters<C>,
+        SuperPostingKey = (Self::ValidProof, TransferLedgerSuperPostingKey<C, Self>),
+    > + Sized
+where
+    C: Configuration + ?Sized,
+{
+    /// Transforms the accounts in `sources` into [`ValidSourceAccount`]s without checking
+    /// they have enough funds.
+    ///
+    /// [`ValidSourceAccount`]: TransferLedger::ValidSourceAccount
+    fn dont_check_source_accounts<I>(
+        &self,
+        asset_id: &C::AssetId,
+        sources: I,
+    ) -> Vec<Self::ValidSourceAccount>
+    where
+        I: Iterator<Item = (C::AccountId, C::AssetValue)>;
+
+    /// Transforms the accounts in `sinks` into [`ValidSinkAccount`]s without checking
+    /// they exist.
+    ///
+    /// [`ValidSinkAccount`]: TransferLedger::ValidSinkAccount
+    fn dont_check_sink_accounts<I>(
+        &self,
+        asset_id: &C::AssetId,
+        sinks: I,
+    ) -> Vec<Self::ValidSinkAccount>
+    where
+        I: Iterator<Item = (C::AccountId, C::AssetValue)>;
+
+    /// Runs [`dont_check_source_accounts`] and [`dont_check_sink_accounts`] on the sources
+    /// and sinks, respectively.
+    ///
+    /// [`dont_check_source_accounts`]: UnsafeLedger::dont_check_source_accounts
+    /// [`dont_check_sink_accounts`]: UnsafeLedger::dont_check_sink_accounts
+    fn dont_check_public_participants(
+        &self,
+        asset_id: &Option<C::AssetId>,
+        source_accounts: Vec<C::AccountId>,
+        source_values: Vec<C::AssetValue>,
+        sink_accounts: Vec<C::AccountId>,
+        sink_values: Vec<C::AssetValue>,
+    ) -> (Vec<Self::ValidSourceAccount>, Vec<Self::ValidSinkAccount>) {
+        let sources = source_values.len();
+        let sinks = sink_values.len();
+        let sources = if sources > 0 {
+            self.dont_check_source_accounts(
+                asset_id.as_ref().unwrap(),
+                source_accounts.into_iter().zip(source_values),
+            )
+        } else {
+            Vec::new()
+        };
+        let sinks = if sinks > 0 {
+            self.dont_check_sink_accounts(
+                asset_id.as_ref().unwrap(),
+                sink_accounts.into_iter().zip(sink_values),
+            )
+        } else {
+            Vec::new()
+        };
+        (sources, sinks)
+    }
+
+    /// Converts the [`Proof`] in `posting_key` into a [`ValidProof`](TransferLedger::ValidProof)
+    /// without validating it.
+    fn dont_check_proof(
+        &self,
+        posting_key: TransferPostingKeyRef<C, Self>,
+    ) -> (Self::ValidProof, Self::Event);
+
+    /// Converts `post`, `source_accounts` and `sink_accounts` into a [`TransferPostingKey`]
+    /// without running any checks, namely it doesn't:
+    /// 1) verify the [`AuthorizationSignature`] in `post`
+    /// 2) verify the [`Proof`] in `post`
+    /// 3) check the [`Nullifier`] in `post` hasn't been posted to `self`
+    /// 4) check the [`UtxoAccumulatorOutput`] in `post` coincides with one
+    /// of the [`UtxoAccumulatorOutput`]s in `self`.
+    /// 5) check the [`Utxo`] in `post` hasn't been already registered to `self`.
+    /// 6) check the public participants, that is, `source_accounts` and `sink_accounts`.
+    ///
+    /// [`Nullifier`]: crate::transfer::Nullifier
+    /// [`UtxoAccumulatorOutput`]: crate::transfer::UtxoAccumulatorOutput
+    /// [`Utxo`]: crate::transfer::Utxo
+    fn dont_validate(
+        &self,
+        post: TransferPost<C>,
+        source_accounts: Vec<C::AccountId>,
+        sink_accounts: Vec<C::AccountId>,
+    ) -> TransferPostingKey<C, Self> {
+        let (source_posting_keys, sink_posting_keys) = self.dont_check_public_participants(
+            &post.body.asset_id,
+            source_accounts,
+            post.body.sources,
+            sink_accounts,
+            post.body.sinks,
+        );
+        let sender_posting_keys = post
+            .body
+            .sender_posts
+            .into_iter()
+            .map(move |s| self.dont_validate_sender_post(s))
+            .collect::<Vec<_>>();
+        let receiver_posting_keys = post
+            .body
+            .receiver_posts
+            .into_iter()
+            .map(move |r| self.dont_validate_receiver_post(r))
+            .collect::<Vec<_>>();
+        let (proof, event) = self.dont_check_proof(TransferPostingKeyRef {
+            authorization_key: &post.authorization_signature.map(|s| s.authorization_key),
+            asset_id: &post.body.asset_id,
+            sources: &source_posting_keys,
+            senders: &sender_posting_keys,
+            receivers: &receiver_posting_keys,
+            sinks: &sink_posting_keys,
+            proof: post.body.proof,
+        });
+        TransferPostingKey {
+            asset_id: post.body.asset_id,
+            source_posting_keys,
+            sender_posting_keys,
+            receiver_posting_keys,
+            sink_posting_keys,
+            proof,
+            event,
+        }
     }
 }

@@ -43,11 +43,12 @@ use manta_accounting::{
     asset::{Asset, AssetList},
     transfer::{
         canonical::TransferShape,
-        receiver::{ReceiverLedger, ReceiverPostError, UnsafeReceiverLedger},
-        sender::{SenderLedger, SenderPostError, UnsafeSenderLedger},
+        receiver::{ReceiverLedger, ReceiverPostError},
+        sender::{SenderLedger, SenderPostError},
+        test::unverified_transfers::{UnsafeLedger, UnsafeReceiverLedger, UnsafeSenderLedger},
         InvalidAuthorizationSignature, InvalidSinkAccount, InvalidSourceAccount, SinkPostingKey,
         SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostError,
-        TransferPostingKeyRef, UnsafeLedger, UtxoAccumulatorOutput,
+        TransferPostingKeyRef, UtxoAccumulatorOutput,
     },
     wallet::{
         ledger::{self, ReadResponse},
@@ -768,7 +769,7 @@ impl UnsafeLedger<Config> for Ledger {
 /// Shared Ledger
 pub type SharedLedger = Arc<RwLock<Ledger>>;
 
-///
+/// Fills `ledger` with randomly sampled `number_of_coins` of transactions.
 pub async fn safe_fill_ledger<R>(
     number_of_coins: usize,
     ledger: &SharedLedger,
@@ -849,7 +850,15 @@ pub async fn safe_fill_ledger<R>(
     }
 }
 
-///
+/// Fills `ledger` with randomly sampled `number_of_coins` of transactions.
+/// 
+/// # Note
+/// 
+/// This function does not perform any checks on the generated transactions, as
+/// opposed to [`safe_fill_ledger`] which performs all necessary checks. See the documentation
+/// of the [`unverified_transfers`] module for more information. 
+/// 
+/// [`unverified_transfers`]: manta_accounting::transfer::test::unverified_transfers
 pub async fn unsafe_fill_ledger<R>(
     number_of_coins: usize,
     ledger: &SharedLedger,

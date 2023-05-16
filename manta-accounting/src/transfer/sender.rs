@@ -557,30 +557,6 @@ where
     }
 }
 
-///
-pub trait UnsafeSenderLedger<S>: SenderLedger<S>
-where
-    S: Spend,
-{
-    ///
-    fn dont_check_utxo_accumulator_output(
-        &self,
-        output: UtxoAccumulatorOutput<S>,
-    ) -> Self::ValidUtxoAccumulatorOutput;
-
-    ///
-    fn dont_check_nullifier(&self, nullifier: S::Nullifier) -> Self::ValidNullifier;
-
-    ///
-    fn dont_validate_sender_post(&self, sender_post: SenderPost<S>) -> SenderPostingKey<S, Self> {
-        SenderPostingKey::<S, Self> {
-            utxo_accumulator_output: self
-                .dont_check_utxo_accumulator_output(sender_post.utxo_accumulator_output),
-            nullifier: self.dont_check_nullifier(sender_post.nullifier),
-        }
-    }
-}
-
 /// Sender Post Error
 #[cfg_attr(
     feature = "serde",
@@ -757,10 +733,10 @@ where
     L: SenderLedger<S> + ?Sized,
 {
     /// UTXO Accumulator Output Posting Key
-    pub utxo_accumulator_output: L::ValidUtxoAccumulatorOutput,
+    utxo_accumulator_output: L::ValidUtxoAccumulatorOutput,
 
     /// Nullifier Posting Key
-    pub nullifier: L::ValidNullifier,
+    nullifier: L::ValidNullifier,
 }
 
 impl<S, L> SenderPostingKey<S, L>
@@ -802,5 +778,59 @@ where
     fn extend(&self, input: &mut P::Input) {
         P::extend(input, self.utxo_accumulator_output.as_ref());
         P::extend(input, self.nullifier.as_ref());
+    }
+}
+
+/// Unsafe Sender Ledger
+///
+/// # Safety
+///
+/// This unsafe version of the sender ledger does not perform the
+/// [`has_matching_utxo_accumulator_output`] nor the [`is_unspent`] checks before spending an asset.
+/// Therefore, it must only be used for testing purposes and with trusted inputs.
+///
+/// [`has_matching_utxo_accumulator_output`]: SenderLedger::has_matching_utxo_accumulator_output
+/// [`is_unspent`]: SenderLedger::is_unspent
+#[cfg(feature = "test")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "test")))]
+pub mod unsafe_sender_ledger {
+    use crate::transfer::{
+        sender::{SenderLedger, SenderPost, SenderPostingKey},
+        utxo::{Spend, UtxoAccumulatorOutput},
+    };
+
+    /// Unsafe Sender Ledger
+    pub trait UnsafeSenderLedger<S>: SenderLedger<S>
+    where
+        S: Spend,
+    {
+        /// Transforms `output` into a [`ValidUtxoAccumulatorOutput`] without checking
+        /// it coincides with one of the [`UtxoAccumulatorOutput`]s in `self`.
+        ///
+        /// [`ValidUtxoAccumulatorOutput`]: SenderLedger::ValidUtxoAccumulatorOutput
+        fn dont_check_utxo_accumulator_output(
+            &self,
+            output: UtxoAccumulatorOutput<S>,
+        ) -> Self::ValidUtxoAccumulatorOutput;
+
+        /// Transforms `nullifier` into a [`ValidNullifier`](SenderLedger::ValidNullifier)
+        /// without checking that `nullifier` isn't registered in `self` already.
+        fn dont_check_nullifier(&self, nullifier: S::Nullifier) -> Self::ValidNullifier;
+
+        /// Transforms `sender_post` into a [`SenderPostingKey`] without running the
+        /// [`has_matching_utxo_accumulator_output`] nor the [`is_unspent`] checks before.
+        ///
+        /// [`has_matching_utxo_accumulator_output`]: SenderLedger::has_matching_utxo_accumulator_output
+        /// [`is_unspent`]: SenderLedger::is_unspent
+        fn dont_validate_sender_post(
+            &self,
+            sender_post: SenderPost<S>,
+        ) -> SenderPostingKey<S, Self> {
+            SenderPostingKey::<S, Self> {
+                utxo_accumulator_output: self
+                    .dont_check_utxo_accumulator_output(sender_post.utxo_accumulator_output),
+                nullifier: self.dont_check_nullifier(sender_post.nullifier),
+            }
+        }
     }
 }
