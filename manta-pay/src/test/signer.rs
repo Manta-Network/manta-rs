@@ -239,12 +239,11 @@ async fn find_the_bug() {
     let ledger = load_ledger().expect("Error loading ledger");
     const NUMBER_OF_RUNS: usize = 100;
     for run in 0..NUMBER_OF_RUNS {
-        println!("Run number {run:?}");
+        println!("Run number {:?}", run + 1);
         // 1) create new wallet, reset it and sync. (zkBalance = 0)
         let account_id = rng.gen(); // fixed account id
-        println!("Account ID: {account_id:?}");
         let initial_balance = rng.gen_range(Default::default()..u32::MAX as u128);
-        println!("Initial balance: {initial_balance:?}");
+        println!("Initial public balance: {initial_balance:?}");
         let mut wallet = create_new_wallet(
             account_id,
             initial_balance,
@@ -255,74 +254,40 @@ async fn find_the_bug() {
         .await;
         wallet.reset_state();
         wallet.load_initial_state().await.expect("Sync error");
-        wallet.sync().await.unwrap_or_else(|err| {
-            panic!(
-                "Sync error: {err:?}
-                \nInitial balance: {initial_balance:?}."
-            )
-        });
+        wallet.sync().await.expect("Sync error");
         // 2) privatize `to_mint` tokens and sync (zkBalance = to_mint)
         let to_mint = rng.gen_range(Default::default()..initial_balance);
-        println!("To mint: {to_mint:?}");
+        println!("To Private: {to_mint:?}");
         let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id.into(), to_mint));
         wallet
             .post(to_private, Default::default())
             .await
             .expect("Error posting ToPrivate");
-        wallet.sync().await.unwrap_or_else(|err| {
-            panic!(
-                "Sync error: {err:?}
-                \nInitial balance: {initial_balance:?}.
-                \nTo Mint: {to_mint:?}"
-            )
-        });
+        wallet.sync().await.expect("Sync error");
         // 3) send `to_send` tokens to another zkAddress and sync (zkBalance = to_mint - to_send)
         let to_send = rng.gen_range(Default::default()..to_mint);
-        println!("To send: {to_send:?}");
+        println!("Private Transfer: {to_send:?}");
         let private_transfer =
             Transaction::<Config>::PrivateTransfer(Asset::new(asset_id.into(), to_send), rng.gen());
         wallet
             .post(private_transfer, Default::default())
             .await
             .expect("Error posting PrivateTransfer");
-        wallet.sync().await.unwrap_or_else(|err| {
-            panic!(
-                "Sync error: {err:?}
-                \nInitial balance: {initial_balance:?}.
-                \nTo Mint: {to_mint:?}.
-                \nTo Send: {to_send:?}."
-            )
-        });
+        wallet.sync().await.expect("Sync error");
         // 4) reclaim `reclaim` tokens and sync (zkBalance = to_mint - to_send - reclaim)
         let reclaim = rng.gen_range(Default::default()..to_mint - to_send);
-        println!("Reclaim: {reclaim:?}");
+        println!("To Public: {reclaim:?}");
         let to_public =
             Transaction::<Config>::ToPublic(Asset::new(asset_id.into(), reclaim), account_id);
         wallet
             .post(to_public, Default::default())
             .await
             .expect("Error posting ToPublic");
-        wallet.sync().await.unwrap_or_else(|err| {
-            panic!(
-                "Sync error: {err:?}
-                \nInitial balance: {initial_balance:?}.
-                \nTo Mint: {to_mint:?}.
-                \nTo Send: {to_send:?}.
-                \nReclaim: {reclaim:?}."
-            )
-        });
+        wallet.sync().await.expect("Sync error");
         // 5: Restart wallet
         wallet.reset_state();
         wallet.load_initial_state().await.expect("Sync error");
-        wallet.sync().await.unwrap_or_else(|err| {
-            panic!(
-                "Sync error: {err:?}
-                \nInitial balance: {initial_balance:?}.
-                \nTo Mint: {to_mint:?}.
-                \nTo Send: {to_send:?}.
-                \nReclaim: {reclaim:?}."
-            )
-        });
+        wallet.sync().await.expect("Sync error");
         // 6: check balances
         let public_balance = match wallet.ledger().public_balances().await {
             Some(asset_list) => asset_list.value(&asset_id.into()),
@@ -342,4 +307,4 @@ async fn find_the_bug() {
     }
 }
 
-// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture
+// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture --ignored

@@ -86,7 +86,6 @@ fn main() -> io::Result<()> {
         .write(true)
         .open(target_dir.join("precomputed_ledger"))?;
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
-    println!("[INFO] Temporary Directory: {directory:?}");
     let mut rng = ChaCha20Rng::from_seed([0; 32]);
     let (proving_context, verifying_context, parameters, utxo_accumulator_model) =
         load_parameters(directory.path()).expect("Unable to load parameters.");
