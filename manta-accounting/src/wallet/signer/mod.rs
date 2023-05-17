@@ -1326,8 +1326,7 @@ where
         request: SyncRequest<C, C::Checkpoint>,
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
     where
-        C::AssetValue: Add<Output = C::AssetValue>,
-        C::AssetValue: Sub<Output = C::AssetValue>,
+        C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
     {
         functions::sync(
             &self.parameters,
@@ -1542,8 +1541,7 @@ where
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
-    C::AssetValue: Add<Output = C::AssetValue>,
-    C::AssetValue: Sub<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
 {
     type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;

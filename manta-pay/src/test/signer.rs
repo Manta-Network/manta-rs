@@ -37,7 +37,7 @@ use manta_accounting::{
 use manta_crypto::{
     algebra::HasGenerator,
     arkworks::constraint::fp::Fp,
-    rand::{fuzz::Fuzz, ChaCha20Rng, CryptoRng, OsRng, Rand, RngCore, SeedableRng},
+    rand::{fuzz::Fuzz, CryptoRng, OsRng, Rand, RngCore},
 };
 use manta_util::vec::VecExt;
 use std::{env, fs::OpenOptions, io::Error};
@@ -233,7 +233,7 @@ where
 #[ignore] // We don't run this test on the CI because it takes a long time to run.
 #[tokio::test]
 async fn find_the_bug() {
-    let mut rng = ChaCha20Rng::from_seed(Default::default());
+    let mut rng = OsRng;
     let asset_id = 8;
     println!("Loading ledger");
     let ledger = load_ledger().expect("Error loading ledger");

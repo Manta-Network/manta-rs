@@ -226,8 +226,7 @@ fn sync_with<C, I>(
 where
     C: Configuration,
     I: Iterator<Item = (Utxo<C>, Note<C>)>,
-    C::AssetValue: Add<Output = C::AssetValue>,
-    C::AssetValue: Sub<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
 {
     let nullifier_count = nullifiers.len();
     let mut deposit = Vec::new();
@@ -323,8 +322,7 @@ where
 fn normalize_assets<C>(deposit: &mut Vec<Asset<C>>, withdraw: &mut Vec<Asset<C>>)
 where
     C: Configuration,
-    C::AssetValue: Add<Output = C::AssetValue>,
-    C::AssetValue: Sub<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
 {
     sum_values::<C>(deposit);
     sum_values::<C>(withdraw);
@@ -845,8 +843,7 @@ pub fn sync<C>(
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
-    C::AssetValue: Add<Output = C::AssetValue>,
-    C::AssetValue: Sub<Output = C::AssetValue>,
+    C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
 {
     let (
         has_pruned,
