@@ -261,6 +261,7 @@ where
     if !nonprovable_inserts.is_empty() {
         utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
     }
+    web_sys::console::log_1(&"About to call assets.retain".into());
     assets.retain(|identifier, assets| {
         assets.retain(|asset| {
             is_asset_unspent::<C>(
