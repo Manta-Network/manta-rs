@@ -44,7 +44,6 @@ use crate::{
     },
 };
 use alloc::{vec, vec::Vec};
-use core::ops::{Add, Sub};
 use manta_crypto::{
     accumulator::{
         Accumulator, BatchInsertion, FromItemsAndWitnesses, ItemHashFunction, OptimizedAccumulator,
@@ -52,7 +51,12 @@ use manta_crypto::{
     rand::Rand,
 };
 use manta_util::{
-    array_map, cmp::Independence, into_array_unchecked, iter::IteratorExt, persistence::Rollback,
+    array_map,
+    cmp::Independence,
+    into_array_unchecked,
+    iter::IteratorExt,
+    num::{CheckedAdd, CheckedSub},
+    persistence::Rollback,
     vec::VecExt,
 };
 
@@ -222,11 +226,11 @@ fn sync_with<C, I>(
     mut nullifiers: Vec<Nullifier<C>>,
     is_partial: bool,
     rng: &mut C::Rng,
-) -> SyncResponse<C, C::Checkpoint>
+) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
     I: Iterator<Item = (Utxo<C>, Note<C>)>,
-    C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
+    C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
 {
     let nullifier_count = nullifiers.len();
     let mut deposit = Vec::new();
@@ -274,8 +278,8 @@ where
     });
     checkpoint.update_from_nullifiers(nullifier_count);
     checkpoint.update_from_utxo_accumulator(utxo_accumulator);
-    normalize_assets::<C>(&mut deposit, &mut withdraw);
-    SyncResponse {
+    normalize_assets::<C>(&mut deposit, &mut withdraw)?;
+    Ok(SyncResponse {
         checkpoint: checkpoint.clone(),
         balance_update: if is_partial {
             // TODO: Whenever we are doing a full update, don't even build the `deposit` and
@@ -286,20 +290,24 @@ where
                 assets: assets.assets().into(),
             }
         },
-    }
+    })
 }
 
 /// Sums all the values with the same [`Asset`] id in `assets`.
-fn sum_values<C>(assets: &mut Vec<Asset<C>>)
+fn sum_values<C>(assets: &mut Vec<Asset<C>>) -> Result<(), SyncError<C::Checkpoint>>
 where
     C: Configuration,
-    C::AssetValue: Add<Output = C::AssetValue>,
+    C::AssetValue: CheckedAdd<Output = C::AssetValue>,
 {
-    let mut result = Vec::new();
+    let mut result = Vec::<(_, C::AssetValue)>::new();
 
     for asset in assets.iter() {
         if let Some(entry) = result.iter_mut().find(|(id, _)| *id == asset.id) {
-            entry.1 += asset.value.clone();
+            entry.1 = entry
+                .1
+                .clone()
+                .checked_add(asset.value.clone())
+                .ok_or(SyncError::InconsistentBalance)?;
         } else {
             result.push((asset.id.clone(), asset.value.clone()));
         }
@@ -309,6 +317,7 @@ where
         .into_iter()
         .map(|(id, value)| Asset::<C>::new(id, value))
         .collect();
+    Ok(())
 }
 
 /// First it runs [`sum_values`] in both `deposit` and `withdraw`. Then, for each [`Asset`] id
@@ -319,13 +328,16 @@ where
 /// 3) If `diff < 0`, it replaces the corresponding entry in `withdraw` with `-diff` and deletes
 /// the entry in `deposit`.
 /// 4) If `diff = 0`, it deletes the entry in `deposit` and `withdraw`.
-fn normalize_assets<C>(deposit: &mut Vec<Asset<C>>, withdraw: &mut Vec<Asset<C>>)
+fn normalize_assets<C>(
+    deposit: &mut Vec<Asset<C>>,
+    withdraw: &mut Vec<Asset<C>>,
+) -> Result<(), SyncError<C::Checkpoint>>
 where
     C: Configuration,
-    C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
+    C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
 {
-    sum_values::<C>(deposit);
-    sum_values::<C>(withdraw);
+    sum_values::<C>(deposit)?;
+    sum_values::<C>(withdraw)?;
     let mut i = 0;
     while i < deposit.len() {
         let deposit_asset = deposit[i].clone();
@@ -335,12 +347,20 @@ where
         {
             let withdraw_asset = &mut withdraw[withdraw_index];
             if deposit_asset.value > withdraw_asset.value {
-                let diff = deposit_asset.value.clone() - withdraw_asset.value.clone();
+                let diff = deposit_asset
+                    .value
+                    .clone()
+                    .checked_sub(withdraw_asset.value.clone())
+                    .ok_or(SyncError::InconsistentBalance)?;
                 deposit[i].value = diff;
                 withdraw.remove(withdraw_index);
                 i += 1;
             } else if deposit_asset.value < withdraw_asset.value {
-                let diff = withdraw_asset.value.clone() - deposit_asset.value.clone();
+                let diff = withdraw_asset
+                    .value
+                    .clone()
+                    .checked_sub(deposit_asset.value.clone())
+                    .ok_or(SyncError::InconsistentBalance)?;
                 withdraw[withdraw_index].value = diff;
                 deposit.remove(i);
             } else {
@@ -352,6 +372,7 @@ where
             i += 1;
         }
     }
+    Ok(())
 }
 
 /// Updates the internal ledger state, returning the new asset distribution.
@@ -843,7 +864,7 @@ pub fn sync<C>(
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
 where
     C: Configuration,
-    C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
+    C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
 {
     let (
         has_pruned,
@@ -864,7 +885,7 @@ where
         rng,
     );
     utxo_accumulator.commit();
-    Ok(response)
+    response
 }
 
 /// Signs a withdraw transaction for `asset` sent to `address`.

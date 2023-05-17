@@ -38,12 +38,7 @@ use crate::{
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::{
-    convert::Infallible,
-    fmt::Debug,
-    hash::Hash,
-    ops::{Add, Sub},
-};
+use core::{convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{
         Accumulator, BatchInsertion, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
@@ -51,7 +46,11 @@ use manta_crypto::{
     },
     rand::{CryptoRng, FromEntropy, RngCore},
 };
-use manta_util::{future::LocalBoxFutureResult, persistence::Rollback};
+use manta_util::{
+    future::LocalBoxFutureResult,
+    num::{CheckedAdd, CheckedSub},
+    persistence::Rollback,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -645,6 +644,9 @@ where
 
     /// Missing Proof Authorization Key
     MissingProofAuthorizationKey,
+
+    /// Inconsistent Balance
+    InconsistentBalance,
 }
 
 /// Synchronization Result
@@ -1326,7 +1328,7 @@ where
         request: SyncRequest<C, C::Checkpoint>,
     ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
     where
-        C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
+        C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
     {
         functions::sync(
             &self.parameters,
@@ -1541,7 +1543,7 @@ where
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
-    C::AssetValue: Add<Output = C::AssetValue> + Sub<Output = C::AssetValue>,
+    C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
 {
     type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;
