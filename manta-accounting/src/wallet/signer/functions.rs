@@ -275,6 +275,7 @@ where
                 rng,
             )
         });
+        web_sys::console::log_2(&"After retaining ".into(), assets.len());
         !assets.is_empty()
     });
     checkpoint.update_from_nullifiers(nullifier_count);
