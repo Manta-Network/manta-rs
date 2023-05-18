@@ -912,6 +912,9 @@ pub trait Configuration: transfer::Configuration {
     /// Asset Map Type
     type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
 
+    /// Nullifier Map Type
+    type NullifierMap;
+
     /// Asset Metadata Type
     type AssetMetadata;
 

@@ -89,6 +89,7 @@ impl wallet::signer::Configuration for Config {
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = BTreeAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
+    type NullifierMap = ();
     type AssetMetadata = AssetMetadata;
     type Rng = ChaCha20Rng;
 }
