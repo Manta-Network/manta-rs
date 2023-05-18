@@ -15,7 +15,7 @@
 // along with manta-rs.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Signer Functions
-
+use crate::alloc::string::ToString;
 use crate::{
     asset::AssetMap,
     key::{Account, DeriveAddress},
@@ -275,7 +275,8 @@ where
                 rng,
             )
         });
-        web_sys::console::log_2(&"After retaining ".into(), assets.len().into());
+        let assets_len_str = assets.len().to_string();
+        web_sys::console::log_2(&"After retaining ".into(), &assets_len_str.into());
         !assets.is_empty()
     });
     checkpoint.update_from_nullifiers(nullifier_count);
