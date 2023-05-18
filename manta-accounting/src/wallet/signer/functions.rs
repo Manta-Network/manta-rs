@@ -163,6 +163,7 @@ fn insert_next_item<C>(
         asset.clone(),
         rng,
     );
+    // todo what if there are duplicates here
     if let Some(index) = nullifiers
         .iter()
         .position(move |n| n.is_related(&nullifier))
@@ -242,6 +243,7 @@ where
     let decryption_key = parameters.derive_decryption_key(authorization_context);
     let mut nonprovable_inserts = Vec::new();
     let mut inserts_count = 0;
+    let mut insert_next_item_count = 0;
     for (utxo, note) in inserts {
         inserts_count = inserts_count + 1;
         if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
@@ -250,6 +252,7 @@ where
                 utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
                 nonprovable_inserts.clear();
             }
+            insert_next_item_count = insert_next_item_count + 1;
             insert_next_item::<C>(
                 authorization_context,
                 utxo_accumulator,
@@ -265,6 +268,10 @@ where
         }
     }
     web_sys::console::log_2(&"inserts_count: ".into(), &inserts_count.to_string().into());
+    web_sys::console::log_2(
+        &"insert_next_item_count: ".into(),
+        &insert_next_item_count.to_string().into(),
+    );
     if !nonprovable_inserts.is_empty() {
         utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
     }
