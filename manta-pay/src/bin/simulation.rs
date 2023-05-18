@@ -21,6 +21,12 @@ use manta_crypto::rand::OsRng;
 use manta_pay::{parameters::load_parameters, simulation::Simulation};
 
 /// Runs the Manta Pay simulation.
+///
+/// # Instructions
+///
+/// To run this binary file, use the following command
+/// - cargo run --release --package manta-pay --all-features --bin simulation `number_of_actors`
+/// `number_of_steps` `number_of_asset_ids` `initial_balance`
 pub fn main() {
     let simulation = Simulation::parse();
     let mut rng = OsRng;
