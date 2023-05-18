@@ -19,7 +19,7 @@
 use crate::{
     config::{
         utxo::{self, MerkleTreeConfiguration},
-        AccountId, Address, Config, IdentifiedAsset, IdentityProof, Parameters,
+        AccountId, Address, Config, IdentifiedAsset, IdentityProof, Nullifier, Parameters,
         UtxoAccumulatorModel, VerifyingContext,
     },
     key::{CoinType, KeySecret, Testnet},
@@ -89,7 +89,7 @@ impl wallet::signer::Configuration for Config {
     type Checkpoint = Checkpoint;
     type UtxoAccumulator = UtxoAccumulator;
     type AssetMap = BTreeAssetMap<Identifier<Self>, Self::AssetId, Self::AssetValue>;
-    type NullifierMap = ();
+    type NullifierMap = Vec<Nullifier>;
     type AssetMetadata = AssetMetadata;
     type Rng = ChaCha20Rng;
 }

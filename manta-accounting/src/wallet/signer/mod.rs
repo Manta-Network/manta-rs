@@ -1362,6 +1362,7 @@ where
                 .as_mut()
                 .ok_or(SyncError::MissingProofAuthorizationKey)?,
             &mut self.state.assets,
+            &mut self.state.nullifiers,
             &mut self.state.checkpoint,
             &mut self.state.utxo_accumulator,
             request,
