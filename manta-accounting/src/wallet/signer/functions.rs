@@ -268,7 +268,7 @@ where
     web_sys::console::log_1(&"About to call assets.retain".into());
     assets.retain(|identifier, assets| {
         assets.retain(|asset| {
-            is_asset_unspent::<C>(
+            let is_asset_unspent = is_asset_unspent::<C>(
                 authorization_context,
                 utxo_accumulator,
                 parameters,
@@ -277,7 +277,12 @@ where
                 &mut nullifiers,
                 &mut withdraw,
                 rng,
-            )
+            );
+            web_sys::console::log_2(
+                &"is_asset_unspent: ".into(),
+                &is_asset_unspent.to_string().into(),
+            );
+            is_asset_unspent
         });
         let assets_len_str = assets.len().to_string();
         web_sys::console::log_2(&"After retaining: ".into(), &assets_len_str.into());
