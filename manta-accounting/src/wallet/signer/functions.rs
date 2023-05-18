@@ -233,7 +233,10 @@ where
     C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
 {
     let nullifier_count = nullifiers.len();
-    web_sys::console::log_1(&nullifier_count.to_string().into());
+    web_sys::console::log_2(
+        &"nullifier_count_str: ".into(),
+        &nullifier_count.to_string().into(),
+    );
     let mut deposit = Vec::new();
     let mut withdraw = Vec::new();
     let decryption_key = parameters.derive_decryption_key(authorization_context);
