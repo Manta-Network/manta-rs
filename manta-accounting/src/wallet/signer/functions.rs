@@ -276,9 +276,15 @@ where
             )
         });
         let assets_len_str = assets.len().to_string();
-        web_sys::console::log_2(&"After retaining ".into(), &assets_len_str.into());
+        web_sys::console::log_2(&"After retaining: ".into(), &assets_len_str.into());
+        web_sys::console::log_2(&"identifier: ".into(), &identifier.to_string().into());
         !assets.is_empty()
     });
+    let assets_len_str = assets.len().to_string();
+    web_sys::console::log_2(
+        &"outer Assets after retaining: ".into(),
+        &assets_len_str.into(),
+    );
     checkpoint.update_from_nullifiers(nullifier_count);
     checkpoint.update_from_utxo_accumulator(utxo_accumulator);
     normalize_assets::<C>(&mut deposit, &mut withdraw)?;
