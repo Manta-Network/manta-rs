@@ -24,10 +24,17 @@ use crate::{
         utxo::{
             AssetId, AssetValue, Checkpoint, FullIncomingNote, MerkleTreeConfiguration, Parameters,
         },
-        AccountId, Config, MultiVerifyingContext, Nullifier, ProofSystem, TransferPost, Utxo,
-        UtxoAccumulatorModel,
+        AccountId, Config, MultiProvingContext, MultiVerifyingContext, Nullifier, ProofSystem,
+        TransferPost, Utxo, UtxoAccumulatorModel,
     },
     signer::InitialSyncData,
+    test::payment::{
+        private_transfer::prove_full as private_transfer, to_private::prove_full as to_private,
+        to_public::prove_full as to_public,
+        unsafe_private_transfer::unsafe_no_prove_full as unsafe_private_transfer,
+        unsafe_to_private::unsafe_no_prove_full as unsafe_to_private,
+        unsafe_to_public::unsafe_no_prove_full as unsafe_to_public, UtxoAccumulator,
+    },
 };
 use alloc::{sync::Arc, vec::Vec};
 use core::convert::Infallible;
@@ -38,6 +45,7 @@ use manta_accounting::{
         canonical::TransferShape,
         receiver::{ReceiverLedger, ReceiverPostError},
         sender::{SenderLedger, SenderPostError},
+        test::unverified_transfers::{UnsafeLedger, UnsafeReceiverLedger, UnsafeSenderLedger},
         InvalidAuthorizationSignature, InvalidSinkAccount, InvalidSourceAccount, SinkPostingKey,
         SourcePostingKey, TransferLedger, TransferLedgerSuperPostingKey, TransferPostError,
         TransferPostingKeyRef, UtxoAccumulatorOutput,
@@ -55,13 +63,17 @@ use manta_crypto::{
         self,
         forest::{Configuration, FixedIndex, Forest},
     },
+    rand::{CryptoRng, Rand, RngCore},
 };
 use manta_util::future::{LocalBoxFuture, LocalBoxFutureResult};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::RwLock;
 
 #[cfg(feature = "serde")]
-use manta_util::serde::{Deserialize, Serialize};
+use {
+    manta_crypto::arkworks::serialize::{canonical_deserialize, canonical_serialize},
+    manta_util::serde::{Deserialize, Serialize},
+};
 
 #[cfg(feature = "http")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "http")))]
@@ -110,6 +122,11 @@ impl<L, R> AsRef<R> for WrapPair<L, R> {
 }
 
 /// Ledger
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(crate = "manta_util::serde", deny_unknown_fields)
+)]
 #[derive(Debug)]
 pub struct Ledger {
     /// Nullifier
@@ -128,6 +145,13 @@ pub struct Ledger {
     accounts: HashMap<AccountId, HashMap<AssetId, AssetValue>>,
 
     /// Verifying Contexts
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "canonical_serialize::<MultiVerifyingContext, _>",
+            deserialize_with = "canonical_deserialize::<'de, _, MultiVerifyingContext>"
+        )
+    )]
     verifying_context: MultiVerifyingContext,
 
     /// UTXO Configuration Parameters
@@ -218,6 +242,25 @@ impl Ledger {
         true
     }
 
+    /// Pushes the data from `posts` to the ledger without running the validation checks.
+    /// See the documentation of [`dont_validate`](UnsafeLedger::dont_validate) for more info.
+    #[inline]
+    pub fn unsafe_push(&mut self, account: AccountId, posts: Vec<TransferPost>) -> bool {
+        for post in posts {
+            let (sources, sinks) = match TransferShape::from_post(&post) {
+                Some(TransferShape::ToPrivate) => (vec![account], vec![]),
+                Some(TransferShape::PrivateTransfer) => (vec![], vec![]),
+                Some(TransferShape::ToPublic) => (vec![], vec![account]),
+                _ => return false,
+            };
+            let _ = self
+                .dont_validate(post, sources, sinks)
+                .post(&mut *self, &()); // it won't unwrap in general because `dont_validate`
+                                        // doesn't check the public participants.
+        }
+        true
+    }
+
     /// Pulls the data from the ledger necessary to perform an [`initial_sync`].
     ///
     /// [`initial_sync`]: manta_accounting::wallet::signer::Connection::initial_sync
@@ -258,6 +301,16 @@ impl Ledger {
     #[inline]
     pub fn utxos(&self) -> &HashSet<Utxo> {
         &self.utxos
+    }
+
+    /// Serializaes `self` into `writer`.
+    #[cfg(all(feature = "serde", feature = "std"))]
+    #[inline]
+    pub fn serialize_into<W>(&self, writer: W)
+    where
+        W: std::io::Write,
+    {
+        bincode::serialize_into(writer, self).expect("Serialization error")
     }
 }
 
@@ -645,8 +698,227 @@ impl TransferLedger<Config> for Ledger {
     }
 }
 
+impl UnsafeSenderLedger<Parameters> for Ledger {
+    #[inline]
+    fn dont_check_utxo_accumulator_output(
+        &self,
+        output: UtxoAccumulatorOutput<Config>,
+    ) -> Self::ValidUtxoAccumulatorOutput {
+        Wrap(output)
+    }
+
+    #[inline]
+    fn dont_check_nullifier(&self, nullifier: Nullifier) -> Self::ValidNullifier {
+        Wrap(nullifier)
+    }
+}
+
+impl UnsafeReceiverLedger<Parameters> for Ledger {
+    #[inline]
+    fn dont_check_registration(&self, utxo: Utxo) -> Self::ValidUtxo {
+        Wrap(utxo)
+    }
+}
+
+impl UnsafeLedger<Config> for Ledger {
+    #[inline]
+    fn dont_check_source_accounts<I>(
+        &self,
+        asset_id: &AssetId,
+        sources: I,
+    ) -> Vec<Self::ValidSourceAccount>
+    where
+        I: Iterator<Item = (AccountId, AssetValue)>,
+    {
+        let _ = asset_id;
+        sources
+            .map(|(account_id, withdraw)| WrapPair(account_id, withdraw))
+            .collect()
+    }
+
+    #[inline]
+    fn dont_check_sink_accounts<I>(
+        &self,
+        asset_id: &AssetId,
+        sinks: I,
+    ) -> Vec<Self::ValidSinkAccount>
+    where
+        I: Iterator<Item = (AccountId, AssetValue)>,
+    {
+        let _ = asset_id;
+        sinks
+            .map(|(account_id, withdraw)| WrapPair(account_id, withdraw))
+            .collect()
+    }
+
+    #[inline]
+    fn dont_check_proof(
+        &self,
+        posting_key: TransferPostingKeyRef<Config, Self>,
+    ) -> (Self::ValidProof, Self::Event) {
+        let _ = posting_key;
+        (Wrap(()), ())
+    }
+}
+
 /// Shared Ledger
 pub type SharedLedger = Arc<RwLock<Ledger>>;
+
+/// Fills `ledger` with randomly sampled `number_of_coins` of transactions.
+pub async fn safe_fill_ledger<R>(
+    number_of_coins: usize,
+    ledger: &SharedLedger,
+    proving_context: &MultiProvingContext,
+    parameters: &Parameters,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+    asset_id: AssetId,
+    rng: &mut R,
+) where
+    R: RngCore + CryptoRng + ?Sized,
+{
+    let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
+    for i in 0..number_of_coins {
+        if i % 5 == 0 {
+            println!("{i:?}");
+        }
+        match rng.gen_range(0..3) {
+            0 => {
+                let account = rng.gen();
+                let asset_value = rng.gen();
+                let to_private = to_private(
+                    &proving_context.to_private,
+                    parameters,
+                    &mut utxo_accumulator,
+                    asset_id,
+                    asset_value,
+                    rng,
+                );
+                ledger
+                    .write()
+                    .await
+                    .set_public_balance(account, asset_id, asset_value);
+                ledger.write().await.push(rng.gen(), vec![to_private]);
+            }
+            1 => {
+                let account = rng.gen();
+                let asset_values = [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2];
+                let (private_transfer_input, private_transfer) = private_transfer(
+                    proving_context,
+                    parameters,
+                    &mut utxo_accumulator,
+                    asset_id,
+                    asset_values,
+                    rng,
+                );
+                ledger.write().await.set_public_balance(
+                    account,
+                    asset_id,
+                    asset_values[0] + asset_values[1],
+                );
+                ledger
+                    .write()
+                    .await
+                    .push(account, private_transfer_input.into());
+                ledger.write().await.push(account, vec![private_transfer]);
+            }
+            _ => {
+                let account = rng.gen();
+                let asset_values = [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2];
+                let (to_public_input, to_public) = to_public(
+                    proving_context,
+                    parameters,
+                    &mut utxo_accumulator,
+                    asset_id,
+                    asset_values,
+                    account,
+                    rng,
+                );
+                ledger.write().await.set_public_balance(
+                    account,
+                    asset_id,
+                    asset_values[0] + asset_values[1],
+                );
+                ledger.write().await.push(account, to_public_input.into());
+                ledger.write().await.push(account, vec![to_public]);
+            }
+        };
+    }
+}
+
+/// Fills `ledger` with randomly sampled `number_of_coins` of transactions.
+///
+/// # Note
+///
+/// This function does not perform any checks on the generated transactions, as
+/// opposed to [`safe_fill_ledger`] which performs all necessary checks. See the documentation
+/// of the [`unverified_transfers`] module for more information.
+///
+/// [`unverified_transfers`]: manta_accounting::transfer::test::unverified_transfers
+pub async fn unsafe_fill_ledger<R>(
+    number_of_coins: usize,
+    ledger: &SharedLedger,
+    proving_context: &MultiProvingContext,
+    parameters: &Parameters,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+    asset_id: AssetId,
+    rng: &mut R,
+) where
+    R: RngCore + CryptoRng + ?Sized,
+{
+    for _ in 0..number_of_coins {
+        match rng.gen_range(0..3) {
+            0 => {
+                let to_private = unsafe_to_private(
+                    &proving_context.to_private,
+                    parameters,
+                    utxo_accumulator_model,
+                    asset_id,
+                    rng.gen(),
+                    rng,
+                );
+                ledger
+                    .write()
+                    .await
+                    .unsafe_push(rng.gen(), vec![to_private]);
+            }
+            1 => {
+                let (private_transfer_input, private_transfer) = unsafe_private_transfer(
+                    proving_context,
+                    parameters,
+                    utxo_accumulator_model,
+                    asset_id,
+                    [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
+                    rng,
+                );
+                ledger
+                    .write()
+                    .await
+                    .unsafe_push(rng.gen(), private_transfer_input.into());
+                ledger
+                    .write()
+                    .await
+                    .unsafe_push(rng.gen(), vec![private_transfer]);
+            }
+            _ => {
+                let account = rng.gen();
+                let (to_public_input, to_public) = unsafe_to_public(
+                    proving_context,
+                    parameters,
+                    utxo_accumulator_model,
+                    asset_id,
+                    [rng.gen::<_, u128>() / 2, rng.gen::<_, u128>() / 2],
+                    account,
+                    rng,
+                );
+                ledger
+                    .write()
+                    .await
+                    .unsafe_push(rng.gen(), to_public_input.into());
+                ledger.write().await.unsafe_push(account, vec![to_public]);
+            }
+        };
+    }
+}
 
 /// Ledger Connection
 #[derive(Clone, Debug)]

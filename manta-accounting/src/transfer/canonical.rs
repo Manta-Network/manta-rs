@@ -30,7 +30,12 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::{fmt::Debug, hash::Hash};
-use manta_crypto::rand::{CryptoRng, RngCore};
+use manta_crypto::{
+    arkworks::serialize::{
+        CanonicalDeserialize, CanonicalSerialize, Read, SerializationError, Write,
+    },
+    rand::{CryptoRng, RngCore},
+};
 use manta_util::{create_seal, seal};
 
 #[cfg(feature = "serde")]
@@ -617,6 +622,101 @@ where
 
     /// [`ToPublic`] Verifying Context
     pub to_public: VerifyingContext<C>,
+}
+
+impl<C> CanonicalSerialize for MultiVerifyingContext<C>
+where
+    C: Configuration + ?Sized,
+    VerifyingContext<C>: CanonicalSerialize,
+{
+    #[inline]
+    fn serialize<W>(&self, mut writer: W) -> Result<(), SerializationError>
+    where
+        W: Write,
+    {
+        self.to_private.serialize(&mut writer)?;
+        self.private_transfer.serialize(&mut writer)?;
+        self.to_public.serialize(&mut writer)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn serialized_size(&self) -> usize {
+        self.to_private.serialized_size()
+            + self.private_transfer.serialized_size()
+            + self.to_public.serialized_size()
+    }
+
+    #[inline]
+    fn serialize_uncompressed<W>(&self, mut writer: W) -> Result<(), SerializationError>
+    where
+        W: Write,
+    {
+        self.to_private.serialize_uncompressed(&mut writer)?;
+        self.private_transfer.serialize_uncompressed(&mut writer)?;
+        self.to_public.serialize_uncompressed(&mut writer)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn serialize_unchecked<W>(&self, mut writer: W) -> Result<(), SerializationError>
+    where
+        W: Write,
+    {
+        self.to_private.serialize_unchecked(&mut writer)?;
+        self.private_transfer.serialize_unchecked(&mut writer)?;
+        self.to_public.serialize_unchecked(&mut writer)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn uncompressed_size(&self) -> usize {
+        self.to_private.uncompressed_size()
+            + self.private_transfer.uncompressed_size()
+            + self.to_public.uncompressed_size()
+    }
+}
+
+impl<C> CanonicalDeserialize for MultiVerifyingContext<C>
+where
+    C: Configuration + ?Sized,
+    VerifyingContext<C>: CanonicalDeserialize,
+{
+    #[inline]
+    fn deserialize<R>(mut reader: R) -> Result<Self, SerializationError>
+    where
+        R: Read,
+    {
+        Ok(Self {
+            to_private: CanonicalDeserialize::deserialize(&mut reader)?,
+            private_transfer: CanonicalDeserialize::deserialize(&mut reader)?,
+            to_public: CanonicalDeserialize::deserialize(&mut reader)?,
+        })
+    }
+
+    #[inline]
+    fn deserialize_uncompressed<R>(mut reader: R) -> Result<Self, SerializationError>
+    where
+        R: Read,
+    {
+        Ok(Self {
+            to_private: CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+            private_transfer: CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+            to_public: CanonicalDeserialize::deserialize_uncompressed(&mut reader)?,
+        })
+    }
+
+    #[inline]
+    fn deserialize_unchecked<R>(mut reader: R) -> Result<Self, SerializationError>
+    where
+        R: Read,
+    {
+        Ok(Self {
+            to_private: CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+            private_transfer: CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+            to_public: CanonicalDeserialize::deserialize_unchecked(&mut reader)?,
+        })
+    }
 }
 
 impl<C> MultiVerifyingContext<C>

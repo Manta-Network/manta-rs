@@ -35,6 +35,8 @@ use manta_crypto::{
 };
 use manta_util::into_array_unchecked;
 
+pub mod unverified_transfers;
+
 /// Samples a distribution over `count`-many values summing to `total`.
 ///
 /// # Warning

@@ -26,6 +26,9 @@ use crate::merkle_tree::{
 };
 use core::{fmt::Debug, hash::Hash};
 
+#[cfg(feature = "serde")]
+use manta_util::serde::{Deserialize, Serialize};
+
 /// Tree Length State
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum Length {
@@ -43,6 +46,18 @@ pub enum Length {
 pub type SinglePathMerkleTree<C> = MerkleTree<C, SinglePath<C>>;
 
 /// Single Path Merkle Tree Backing Structure
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = "LeafDigest<C>: Deserialize<'de>, InnerDigest<C>: Deserialize<'de>",
+            serialize = "LeafDigest<C>: Serialize, InnerDigest<C>: Serialize",
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone, InnerDigest<C>: Clone"),

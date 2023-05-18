@@ -476,6 +476,10 @@ where
             Err(SyncError::MissingProofAuthorizationKey) => {
                 Err(Error::MissingProofAuthorizationKey)
             }
+
+            Err(SyncError::InconsistentBalance) => {
+                Err(Error::Inconsistency(InconsistencyError::WalletBalance))
+            }
         }
     }
 

@@ -46,7 +46,11 @@ use manta_crypto::{
     },
     rand::{CryptoRng, FromEntropy, RngCore},
 };
-use manta_util::{future::LocalBoxFutureResult, persistence::Rollback};
+use manta_util::{
+    future::LocalBoxFutureResult,
+    num::{CheckedAdd, CheckedSub},
+    persistence::Rollback,
+};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -640,6 +644,9 @@ where
 
     /// Missing Proof Authorization Key
     MissingProofAuthorizationKey,
+
+    /// Inconsistent Balance
+    InconsistentBalance,
 }
 
 /// Synchronization Result
@@ -1319,7 +1326,10 @@ where
     pub fn sync(
         &mut self,
         request: SyncRequest<C, C::Checkpoint>,
-    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>> {
+    ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
+    where
+        C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
+    {
         functions::sync(
             &self.parameters,
             self.state
@@ -1533,6 +1543,7 @@ where
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
+    C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
 {
     type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;
