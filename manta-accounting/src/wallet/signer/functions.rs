@@ -243,7 +243,7 @@ where
     let decryption_key = parameters.derive_decryption_key(authorization_context);
     let mut nonprovable_inserts = Vec::new();
     let mut utxo_count = 0;
-    let mut insert_next_item_count = 0;
+    let mut inserted_utxos_count = 0;
     for (utxo, note) in inserts {
         utxo_count = utxo_count + 1;
         if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
@@ -252,7 +252,7 @@ where
                 utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
                 nonprovable_inserts.clear();
             }
-            insert_next_item_count = insert_next_item_count + 1;
+            inserted_utxos_count = inserted_utxos_count + 1;
             insert_next_item::<C>(
                 authorization_context,
                 utxo_accumulator,
@@ -272,8 +272,8 @@ where
         &utxo_count.to_string().into(),
     );
     web_sys::console::log_2(
-        &"balance-issue: insert_next_item_count: ".into(),
-        &insert_next_item_count.to_string().into(),
+        &"balance-issue: inserted_utxos_count: ".into(),
+        &inserted_utxos_count.to_string().into(),
     );
     if !nonprovable_inserts.is_empty() {
         utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
