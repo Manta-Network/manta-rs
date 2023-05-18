@@ -242,10 +242,10 @@ where
     let mut withdraw = Vec::new();
     let decryption_key = parameters.derive_decryption_key(authorization_context);
     let mut nonprovable_inserts = Vec::new();
-    let mut inserts_count = 0;
+    let mut utxo_count = 0;
     let mut insert_next_item_count = 0;
     for (utxo, note) in inserts {
-        inserts_count = inserts_count + 1;
+        utxo_count = utxo_count + 1;
         if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
         {
             if !nonprovable_inserts.is_empty() {
@@ -268,8 +268,8 @@ where
         }
     }
     web_sys::console::log_2(
-        &"balance-issue: inserts_count: ".into(),
-        &inserts_count.to_string().into(),
+        &"balance-issue: utxo_count: ".into(),
+        &utxo_count.to_string().into(),
     );
     web_sys::console::log_2(
         &"balance-issue: insert_next_item_count: ".into(),
