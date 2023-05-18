@@ -235,7 +235,7 @@ where
 {
     let nullifier_count = nullifiers.len();
     web_sys::console::log_2(
-        &"nullifier_count_str: ".into(),
+        &"balance-issue: nullifiers_count: ".into(),
         &nullifier_count.to_string().into(),
     );
     let mut deposit = Vec::new();
@@ -267,15 +267,18 @@ where
             nonprovable_inserts.push(item_hash::<C>(parameters, &utxo));
         }
     }
-    web_sys::console::log_2(&"inserts_count: ".into(), &inserts_count.to_string().into());
     web_sys::console::log_2(
-        &"insert_next_item_count: ".into(),
+        &"balance-issue: inserts_count: ".into(),
+        &inserts_count.to_string().into(),
+    );
+    web_sys::console::log_2(
+        &"balance-issue: insert_next_item_count: ".into(),
         &insert_next_item_count.to_string().into(),
     );
     if !nonprovable_inserts.is_empty() {
         utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
     }
-    web_sys::console::log_1(&"About to call assets.retain".into());
+    web_sys::console::log_1(&"balance-issue: About to call assets.retain".into());
     assets.retain(|identifier, assets| {
         let assets_len_str = assets.len().to_string();
         web_sys::console::log_2(
@@ -294,13 +297,16 @@ where
                 rng,
             );
             web_sys::console::log_2(
-                &"is_asset_unspent: ".into(),
+                &"balance-issue: is_asset_unspent: ".into(),
                 &is_asset_unspent.to_string().into(),
             );
             is_asset_unspent
         });
         let assets_len_str = assets.len().to_string();
-        web_sys::console::log_2(&"After retaining: ".into(), &assets_len_str.into());
+        web_sys::console::log_2(
+            &"balance-issue: After retaining: ".into(),
+            &assets_len_str.into(),
+        );
         !assets.is_empty()
     });
     checkpoint.update_from_nullifiers(nullifier_count);
