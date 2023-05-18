@@ -26,7 +26,7 @@ maintenance = { status = "actively-developed" }
 
 [[bin]]
 name = "generate_parameters"
-required-features = ["groth16", "manta-util/std", "parameters", "serde"]
+required-features = ["manta-util/std", "parameters", "serde"]
 
 [[bin]]
 name = "simulation"
@@ -34,7 +34,7 @@ required-features = ["clap", "groth16", "simulation"]
 
 [[bin]]
 name = "precompute_ledger"
-required-features = ["download", "parameters", "test", "groth16", "simulation", "serde"]
+required-features = ["download", "parameters", "simulation", "serde"]
 
 [features]
 # Enable Arkworks Backend
