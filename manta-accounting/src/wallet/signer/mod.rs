@@ -1676,6 +1676,12 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
+    Clone(bound = r"
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+        C::NullifierMap: Clone,
+        C::Checkpoint: Clone,
+    "),
     Debug(bound = r"
         C::UtxoAccumulator: Debug,
         C::AssetMap: Debug,
