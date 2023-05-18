@@ -241,7 +241,9 @@ where
     let mut withdraw = Vec::new();
     let decryption_key = parameters.derive_decryption_key(authorization_context);
     let mut nonprovable_inserts = Vec::new();
+    let mut inserts_count = 0;
     for (utxo, note) in inserts {
+        inserts_count = inserts_count + 1;
         if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
         {
             if !nonprovable_inserts.is_empty() {
@@ -262,6 +264,7 @@ where
             nonprovable_inserts.push(item_hash::<C>(parameters, &utxo));
         }
     }
+    web_sys::console::log_2(&"inserts_count: ".into(), &inserts_count.to_string().into());
     if !nonprovable_inserts.is_empty() {
         utxo_accumulator.batch_insert_nonprovable(&nonprovable_inserts);
     }
