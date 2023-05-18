@@ -269,7 +269,7 @@ where
     assets.retain(|identifier, assets| {
         let assets_len_str = assets.len().to_string();
         web_sys::console::log_2(
-            &"After retain for each identifier: ".into(),
+            &"before retain for each identifier: ".into(),
             &assets_len_str.into(),
         );
         assets.retain(|asset| {
