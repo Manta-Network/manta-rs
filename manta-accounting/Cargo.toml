@@ -65,7 +65,7 @@ manta-crypto = { path = "../manta-crypto", default-features = false, features = 
 manta-util = { path = "../manta-util", default-features = false, features = ["alloc"] }
 parking_lot = { version = "0.12.1", optional = true, default-features = false }
 statrs = { version = "0.16.0", optional = true, default-features = false }
-web-sys = { version = "0.3.63", default-features = true }
+web-sys = { version = "0.3.63", default-features = true, features = ["console"]}
 
 [dev-dependencies]
 manta-crypto = { path = "../manta-crypto", default-features = false, features = ["getrandom"] }
