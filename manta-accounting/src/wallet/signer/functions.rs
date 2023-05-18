@@ -267,6 +267,11 @@ where
     }
     web_sys::console::log_1(&"About to call assets.retain".into());
     assets.retain(|identifier, assets| {
+        let assets_len_str = assets.len().to_string();
+        web_sys::console::log_2(
+            &"After retain for each identifier: ".into(),
+            &assets_len_str.into(),
+        );
         assets.retain(|asset| {
             let is_asset_unspent = is_asset_unspent::<C>(
                 authorization_context,
