@@ -38,9 +38,10 @@ use crate::{
         UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorWitness,
     },
     wallet::signer::{
-        AccountTable, BalanceUpdate, Checkpoint, Configuration, InitialSyncRequest, SignError,
-        SignResponse, SignWithTransactionDataResponse, SignWithTransactionDataResult,
-        SignerParameters, SyncData, SyncError, SyncRequest, SyncResponse,
+        nullifier_map::NullifierMap, AccountTable, BalanceUpdate, Checkpoint, Configuration,
+        InitialSyncRequest, SignError, SignResponse, SignWithTransactionDataResponse,
+        SignWithTransactionDataResult, SignerParameters, SyncData, SyncError, SyncRequest,
+        SyncResponse,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -51,9 +52,7 @@ use manta_crypto::{
     rand::Rand,
 };
 use manta_util::{
-    array_map,
-    cmp::Independence,
-    into_array_unchecked,
+    array_map, into_array_unchecked,
     iter::IteratorExt,
     num::{CheckedAdd, CheckedSub},
     persistence::Rollback,
@@ -150,7 +149,7 @@ fn insert_next_item<C>(
     assets: &mut C::AssetMap,
     parameters: &Parameters<C>,
     identified_asset: IdentifiedAsset<C>,
-    nullifiers: &mut Vec<Nullifier<C>>,
+    nullifiers: &mut C::NullifierMap,
     deposit: &mut Vec<Asset<C>>,
     rng: &mut C::Rng,
 ) where
@@ -163,21 +162,15 @@ fn insert_next_item<C>(
         asset.clone(),
         rng,
     );
-    // todo what if there are duplicates here
-    if let Some(index) = nullifiers
-        .iter()
-        .position(move |n| n.is_related(&nullifier))
-    {
-        nullifiers.remove(index);
+    if nullifiers.contains_item(&nullifier) {
+        utxo_accumulator.insert_nonprovable(&item_hash::<C>(parameters, &utxo));
     } else {
         utxo_accumulator.insert(&item_hash::<C>(parameters, &utxo));
         if !asset.is_zero() {
             deposit.push(asset.clone());
         }
         assets.insert(identifier, asset);
-        return;
     }
-    utxo_accumulator.insert_nonprovable(&item_hash::<C>(parameters, &utxo));
 }
 
 /// Checks if `asset` matches with `nullifier`, removing it from the `utxo_accumulator` and
@@ -190,7 +183,7 @@ fn is_asset_unspent<C>(
     parameters: &Parameters<C>,
     identifier: Identifier<C>,
     asset: Asset<C>,
-    nullifiers: &mut Vec<Nullifier<C>>,
+    nullifiers: &mut C::NullifierMap,
     withdraw: &mut Vec<Asset<C>>,
     rng: &mut C::Rng,
 ) -> bool
@@ -199,11 +192,7 @@ where
 {
     let (_, utxo, nullifier) =
         parameters.derive_spend(authorization_context, identifier, asset.clone(), rng);
-    if let Some(index) = nullifiers
-        .iter()
-        .position(move |n| n.is_related(&nullifier))
-    {
-        nullifiers.remove(index);
+    if nullifiers.contains_item(&nullifier) {
         utxo_accumulator.remove_proof(&item_hash::<C>(parameters, &utxo));
         if !asset.is_zero() {
             withdraw.push(asset);
@@ -220,11 +209,12 @@ where
 fn sync_with<C, I>(
     authorization_context: &mut AuthorizationContext<C>,
     assets: &mut C::AssetMap,
+    nullifiers: &mut C::NullifierMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
     parameters: &Parameters<C>,
     inserts: I,
-    mut nullifiers: Vec<Nullifier<C>>,
+    nullifier_data: Vec<Nullifier<C>>,
     is_partial: bool,
     rng: &mut C::Rng,
 ) -> Result<SyncResponse<C, C::Checkpoint>, SyncError<C::Checkpoint>>
@@ -233,11 +223,12 @@ where
     I: Iterator<Item = (Utxo<C>, Note<C>)>,
     C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
 {
-    let nullifier_count = nullifiers.len();
+    let nullifier_count = nullifier_data.len();
     web_sys::console::log_2(
         &"balance-issue: nullifiers_count: ".into(),
         &nullifier_count.to_string().into(),
     );
+    nullifiers.extend(nullifier_data);
     let mut deposit = Vec::new();
     let mut withdraw = Vec::new();
     let decryption_key = parameters.derive_decryption_key(authorization_context);
@@ -259,7 +250,7 @@ where
                 assets,
                 parameters,
                 transfer::utxo::IdentifiedAsset::new(identifier, asset),
-                &mut nullifiers,
+                nullifiers,
                 &mut deposit,
                 rng,
             );
@@ -292,7 +283,7 @@ where
                 parameters,
                 identifier.clone(),
                 asset.clone(),
-                &mut nullifiers,
+                nullifiers,
                 &mut withdraw,
                 rng,
             );
@@ -889,11 +880,13 @@ where
 }
 
 /// Updates `assets`, `checkpoint` and `utxo_accumulator`, returning the new asset distribution.
+#[allow(clippy::too_many_arguments)] // This function must take 8 arguments
 #[inline]
 pub fn sync<C>(
     parameters: &SignerParameters<C>,
     authorization_context: &mut AuthorizationContext<C>,
     assets: &mut C::AssetMap,
+    nullifiers: &mut C::NullifierMap,
     checkpoint: &mut C::Checkpoint,
     utxo_accumulator: &mut C::UtxoAccumulator,
     request: SyncRequest<C, C::Checkpoint>,
@@ -913,6 +906,7 @@ where
     let response = sync_with::<C, _>(
         authorization_context,
         assets,
+        nullifiers,
         checkpoint,
         utxo_accumulator,
         &parameters.parameters,

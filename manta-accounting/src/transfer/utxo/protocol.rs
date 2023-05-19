@@ -2405,9 +2405,7 @@ where
     Eq(bound = "UtxoCommitmentRandomness<C>: Eq"),
     Hash(bound = "UtxoCommitmentRandomness<C>: Hash"),
     Ord(bound = "UtxoCommitmentRandomness<C>: Ord"),
-    PartialEq(
-        bound = "UtxoCommitmentRandomness<C>: core::cmp::PartialEq<UtxoCommitmentRandomness<C>>"
-    ),
+    PartialEq(bound = "UtxoCommitmentRandomness<C>: cmp::PartialEq<UtxoCommitmentRandomness<C>>"),
     PartialOrd(bound = "UtxoCommitmentRandomness<C>: PartialOrd")
 )]
 pub struct Identifier<C>
@@ -2734,8 +2732,7 @@ where
     Debug(bound = "Nullifier<C>: Debug, OutgoingNote<C>: Debug"),
     Default(bound = "Nullifier<C>: Default, OutgoingNote<C>: Default"),
     Eq(bound = "Nullifier<C>: cmp::Eq, OutgoingNote<C>: cmp::Eq"),
-    Hash(bound = "Nullifier<C>: Hash, OutgoingNote<C>: Hash"),
-    PartialEq(bound = "Nullifier<C>: cmp::PartialEq, OutgoingNote<C>: cmp::PartialEq")
+    Hash(bound = "Nullifier<C>: Hash, OutgoingNote<C>: Hash")
 )]
 pub struct FullNullifier<C>
 where
@@ -2779,6 +2776,16 @@ where
     #[inline]
     fn from(note: FullNullifier<C>) -> Self {
         note.nullifier
+    }
+}
+
+impl<C> cmp::PartialEq for FullNullifier<C>
+where
+    C: Configuration<Bool = bool>,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        !self.is_independent(other)
     }
 }
 

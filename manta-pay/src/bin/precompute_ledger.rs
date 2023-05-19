@@ -62,6 +62,12 @@ const NUMBER_OF_COINS: usize = 10000;
 const DEFAULT_MODE: Mode = Mode::Unsafe;
 
 /// Builds sample transactions on a ledger for testing purposes.
+///
+/// # Instructions
+///
+/// To run this binary file, use the following command
+/// - cargo run --release --package manta-pay --bin precompute_ledger
+/// --all-features -- `directory` `NUMBER_OF_COINS` `MODE`
 #[inline]
 fn main() -> io::Result<()> {
     let target_dir = env::args()
@@ -119,6 +125,3 @@ fn main() -> io::Result<()> {
     runtime.block_on(async { ledger.read().await.serialize_into(target_file) });
     directory.close()
 }
-
-// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- <directory> <NUMBER_OF_COINS> <MODE>
-// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- manta-pay/src/test/data 100 unsafe

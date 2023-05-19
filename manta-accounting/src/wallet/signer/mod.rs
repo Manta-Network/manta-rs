@@ -56,6 +56,7 @@ use manta_util::{
 use manta_util::serde::{Deserialize, Serialize};
 
 pub mod functions;
+pub mod nullifier_map;
 
 /// Signer Connection
 pub trait Connection<C>
@@ -912,6 +913,9 @@ pub trait Configuration: transfer::Configuration {
     /// Asset Map Type
     type AssetMap: AssetMap<Self::AssetId, Self::AssetValue, Key = Identifier<Self>>;
 
+    /// Nullifier Map Type
+    type NullifierMap: nullifier_map::NullifierMap<Self::Nullifier>;
+
     /// Asset Metadata Type
     type AssetMetadata;
 
@@ -979,6 +983,7 @@ where
                 AuthorizationContext<C>: Deserialize<'de>,
                 C::UtxoAccumulator: Deserialize<'de>,
                 C::AssetMap: Deserialize<'de>,
+                C::NullifierMap: Deserialize<'de>,
                 C::Checkpoint: Deserialize<'de>,
                 C::AccountId: Deserialize<'de>,
             ",
@@ -987,6 +992,7 @@ where
                 AuthorizationContext<C>: Serialize,
                 C::UtxoAccumulator: Serialize,
                 C::AssetMap: Serialize,
+                C::NullifierMap: Serialize,
                 C::Checkpoint: Serialize,
                 C::AccountId: Serialize,
             ",
@@ -1002,6 +1008,7 @@ where
         AuthorizationContext<C>: Debug,
         C::UtxoAccumulator: Debug,
         C::AssetMap: Debug,
+        C::NullifierMap: Debug,
         C::Checkpoint: Debug,
         C::Rng: Debug
     "),
@@ -1010,6 +1017,7 @@ where
         AuthorizationContext<C>: Default,
         C::UtxoAccumulator: Default,
         C::AssetMap: Default,
+        C::NullifierMap: Default,
         C::Checkpoint: Default,
         C::Rng: Default
     "),
@@ -1018,6 +1026,7 @@ where
         AuthorizationContext<C>: Eq,
         C::UtxoAccumulator: Eq,
         C::AssetMap: Eq,
+        C::NullifierMap: Eq,
         C::Checkpoint: Eq,
         C::Rng: Eq
     "),
@@ -1026,6 +1035,7 @@ where
         AuthorizationContext<C>: Hash,
         C::UtxoAccumulator: Hash,
         C::AssetMap: Hash,
+        C::NullifierMap: Hash,
         C::Checkpoint: Hash,
         C::Rng: Hash
     "),
@@ -1034,6 +1044,7 @@ where
         AuthorizationContext<C>: PartialEq,
         C::UtxoAccumulator: PartialEq,
         C::AssetMap: PartialEq,
+        C::NullifierMap: PartialEq,
         C::Checkpoint: PartialEq,
         C::Rng: PartialEq
     ")
@@ -1060,6 +1071,9 @@ where
     /// Asset Distribution
     assets: C::AssetMap,
 
+    /// Nullifier Map
+    nullifiers: C::NullifierMap,
+
     /// Current Checkpoint
     checkpoint: C::Checkpoint,
 
@@ -1078,13 +1092,19 @@ where
 {
     /// Builds a new [`SignerState`] from `utxo_accumulator`, `assets`, and `rng`.
     #[inline]
-    fn build(utxo_accumulator: C::UtxoAccumulator, assets: C::AssetMap, rng: C::Rng) -> Self {
+    fn build(
+        utxo_accumulator: C::UtxoAccumulator,
+        assets: C::AssetMap,
+        nullifiers: C::NullifierMap,
+        rng: C::Rng,
+    ) -> Self {
         Self {
             accounts: None,
             authorization_context: None,
             checkpoint: C::Checkpoint::from_utxo_accumulator(&utxo_accumulator),
             utxo_accumulator,
             assets,
+            nullifiers,
             rng,
         }
     }
@@ -1094,6 +1114,7 @@ where
     pub fn new(utxo_accumulator: C::UtxoAccumulator) -> Self {
         Self::build(
             utxo_accumulator,
+            Default::default(),
             Default::default(),
             FromEntropy::from_entropy(),
         )
@@ -1162,12 +1183,14 @@ where
     AuthorizationContext<C>: Clone,
     C::UtxoAccumulator: Clone,
     C::AssetMap: Clone,
+    C::NullifierMap: Clone,
 {
     #[inline]
     fn clone(&self) -> Self {
         let mut signer_state = Self::build(
             self.utxo_accumulator.clone(),
             self.assets.clone(),
+            self.nullifiers.clone(),
             FromEntropy::from_entropy(),
         );
         if self.accounts.is_some() {
@@ -1230,6 +1253,7 @@ where
         proving_context: MultiProvingContext<C>,
         utxo_accumulator: C::UtxoAccumulator,
         assets: C::AssetMap,
+        nullifiers: C::NullifierMap,
         rng: C::Rng,
     ) -> Self {
         Self::from_parts(
@@ -1237,7 +1261,7 @@ where
                 parameters,
                 proving_context,
             },
-            SignerState::build(utxo_accumulator, assets, rng),
+            SignerState::build(utxo_accumulator, assets, nullifiers, rng),
         )
     }
 
@@ -1253,6 +1277,7 @@ where
             parameters,
             proving_context,
             utxo_accumulator,
+            Default::default(),
             Default::default(),
             rng,
         )
@@ -1337,6 +1362,7 @@ where
                 .as_mut()
                 .ok_or(SyncError::MissingProofAuthorizationKey)?,
             &mut self.state.assets,
+            &mut self.state.nullifiers,
             &mut self.state.checkpoint,
             &mut self.state.utxo_accumulator,
             request,
@@ -1484,6 +1510,7 @@ where
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
+        C::NullifierMap: Clone,
     {
         Some(StorageState::from_signer(self))
     }
@@ -1494,6 +1521,7 @@ where
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
+        C::NullifierMap: Clone,
     {
         if let Some(storage_state) = storage_state {
             storage_state.update_signer(self);
@@ -1629,8 +1657,18 @@ where
     derive(Deserialize, Serialize),
     serde(
         bound(
-            deserialize = "C::Checkpoint: Deserialize<'de>, C::UtxoAccumulator: Deserialize<'de>, C::AssetMap: Deserialize<'de>",
-            serialize = "C::Checkpoint: Serialize, C::UtxoAccumulator: Serialize, C::AssetMap: Serialize",
+            deserialize = r"
+                C::UtxoAccumulator: Deserialize<'de>,
+                C::AssetMap: Deserialize<'de>,
+                C::NullifierMap: Deserialize<'de>,
+                C::Checkpoint: Deserialize<'de>,
+            ",
+            serialize = r"
+                C::UtxoAccumulator: Serialize,
+                C::AssetMap: Serialize,
+                C::NullifierMap: Serialize,
+                C::Checkpoint: Serialize,
+            ",
         ),
         crate = "manta_util::serde",
         deny_unknown_fields
@@ -1638,13 +1676,42 @@ where
 )]
 #[derive(derivative::Derivative)]
 #[derivative(
-    Clone(bound = "C::Checkpoint: Clone, C::UtxoAccumulator: Clone, C::AssetMap: Clone"),
-    Debug(bound = "C::Checkpoint: Debug, C::UtxoAccumulator: Debug, C::AssetMap: Debug"),
-    Eq(bound = "C::Checkpoint: Eq, C::UtxoAccumulator: Eq, C::AssetMap: Eq"),
-    Hash(bound = "C::Checkpoint: Hash, C::UtxoAccumulator: Hash, C::AssetMap: Hash"),
-    PartialEq(
-        bound = "C::Checkpoint: PartialEq, C::UtxoAccumulator: PartialEq, C::AssetMap: PartialEq"
-    )
+    Clone(bound = r"
+        C::UtxoAccumulator: Clone,
+        C::AssetMap: Clone,
+        C::NullifierMap: Clone,
+        C::Checkpoint: Clone,
+    "),
+    Debug(bound = r"
+        C::UtxoAccumulator: Debug,
+        C::AssetMap: Debug,
+        C::NullifierMap: Debug,
+        C::Checkpoint: Debug,
+    "),
+    Default(bound = r"
+        C::UtxoAccumulator: Default,
+        C::AssetMap: Default,
+        C::NullifierMap: Default,
+        C::Checkpoint: Default,
+    "),
+    Eq(bound = r"
+        C::UtxoAccumulator: Eq,
+        C::AssetMap: Eq,
+        C::NullifierMap: Eq,
+        C::Checkpoint: Eq,
+    "),
+    Hash(bound = r"
+        C::UtxoAccumulator: Hash,
+        C::AssetMap: Hash,
+        C::NullifierMap: Hash,
+        C::Checkpoint: Hash,
+    "),
+    PartialEq(bound = r"
+        C::UtxoAccumulator: PartialEq,
+        C::AssetMap: PartialEq,
+        C::NullifierMap: PartialEq,
+        C::Checkpoint: PartialEq,
+    ")
 )]
 pub struct StorageState<C>
 where
@@ -1658,6 +1725,9 @@ where
 
     /// Assets
     assets: C::AssetMap,
+
+    /// Nullifiers
+    nullifiers: C::NullifierMap,
 }
 
 impl<C> StorageState<C>
@@ -1672,6 +1742,7 @@ where
             checkpoint: Checkpoint::from_utxo_accumulator(&utxo_accumulator),
             utxo_accumulator,
             assets: Default::default(),
+            nullifiers: Default::default(),
         }
     }
 
@@ -1681,10 +1752,12 @@ where
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
+        C::NullifierMap: Clone,
     {
         self.checkpoint = signer.state.checkpoint.clone();
         self.utxo_accumulator = signer.state.utxo_accumulator.clone();
         self.assets = signer.state.assets.clone();
+        self.nullifiers = signer.state.nullifiers.clone();
     }
 
     /// Builds a new [`StorageState`] from `signer`.
@@ -1693,11 +1766,13 @@ where
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
+        C::NullifierMap: Clone,
     {
         Self {
             checkpoint: signer.state.checkpoint.clone(),
             utxo_accumulator: signer.state.utxo_accumulator.clone(),
             assets: signer.state.assets.clone(),
+            nullifiers: signer.state.nullifiers.clone(),
         }
     }
 
@@ -1707,10 +1782,12 @@ where
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
+        C::NullifierMap: Clone,
     {
         signer.state.checkpoint = self.checkpoint.clone();
         signer.state.utxo_accumulator = self.utxo_accumulator.clone();
         signer.state.assets = self.assets.clone();
+        signer.state.nullifiers = self.nullifiers.clone();
     }
 
     /// Initializes a [`Signer`] from `self`, `accounts`, `parameters` and `proving_context`.
@@ -1723,6 +1800,7 @@ where
     where
         C::UtxoAccumulator: Clone,
         C::AssetMap: Clone,
+        C::NullifierMap: Clone,
     {
         let mut signer = Signer::new(
             parameters,
