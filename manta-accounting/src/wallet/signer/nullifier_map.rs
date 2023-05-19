@@ -26,6 +26,9 @@ pub trait NullifierMap<T>: Default {
     /// Creates a new [`NullifierMap`].
     fn new() -> Self;
 
+    ///
+    fn len(&self) -> usize;
+
     /// Inserts `item` in `self`.
     fn insert(&mut self, item: T) -> bool;
 
@@ -65,6 +68,11 @@ where
     fn contains_item(&self, item: &T) -> bool {
         self.contains(item)
     }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
+    }
 }
 
 impl<T> NullifierMap<T> for BTreeSet<T>
@@ -93,6 +101,11 @@ where
     fn contains_item(&self, item: &T) -> bool {
         self.contains(item)
     }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
+    }
 }
 
 #[cfg(feature = "std")]
@@ -103,6 +116,11 @@ where
     #[inline]
     fn new() -> Self {
         Self::new()
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self::len()
     }
 
     #[inline]
