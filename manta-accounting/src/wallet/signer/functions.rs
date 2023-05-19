@@ -302,10 +302,10 @@ where
     });
     checkpoint.update_from_nullifiers(nullifier_count);
     checkpoint.update_from_utxo_accumulator(utxo_accumulator);
-    web_sys::console::log_2(
-        &"balance-issue: nullifier_count at the end: ".into(),
-        &nullifiers.len().to_string().into(),
-    );
+    // web_sys::console::log_2(
+    //     &"balance-issue: nullifier_count at the end: ".into(),
+    //     &nullifiers.iter().count().to_string().into(),
+    // );
     normalize_assets::<C>(&mut deposit, &mut withdraw)?;
     Ok(SyncResponse {
         checkpoint: checkpoint.clone(),
