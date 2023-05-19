@@ -26,6 +26,15 @@ pub trait NullifierMap<T>: Default {
     /// Creates a new [`NullifierMap`].
     fn new() -> Self;
 
+    /// Returns the number of elements in `self`
+    fn len(&self) -> usize;
+
+    /// Returns `true` if `self` contains no elements.
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Inserts `item` in `self`.
     fn insert(&mut self, item: T) -> bool;
 
@@ -45,6 +54,11 @@ where
     #[inline]
     fn new() -> Self {
         Self::new()
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
     }
 
     #[inline]
@@ -77,6 +91,11 @@ where
     }
 
     #[inline]
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    #[inline]
     fn insert(&mut self, item: T) -> bool {
         self.insert(item)
     }
@@ -103,6 +122,11 @@ where
     #[inline]
     fn new() -> Self {
         Self::new()
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
     }
 
     #[inline]
