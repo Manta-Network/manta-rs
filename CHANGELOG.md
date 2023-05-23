@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#349](https://github.com/Manta-Network/manta-rs/pull/349) Nullifier map optimization.
 - [\#345](https://github.com/Manta-Network/manta-rs/pull/345) Precompute ledger and minor bug fix.
 
 ### Changed
