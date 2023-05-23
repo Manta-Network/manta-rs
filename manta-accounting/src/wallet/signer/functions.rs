@@ -29,8 +29,8 @@ use crate::{
         receiver::ReceiverPost,
         requires_authorization,
         utxo::{
-            auth::DeriveContext, DeriveAddress as _, DeriveDecryptionKey, DeriveSpend, Spend,
-            UtxoReconstruct,
+            auth::DeriveContext, DeriveAddress as _, DeriveDecryptionKey, DeriveSpend,
+            NullifierOpen, Spend, UtxoReconstruct,
         },
         Address, Asset, AssociatedData, Authorization, AuthorizationContext, FullParametersRef,
         IdentifiedAsset, Identifier, IdentityProof, Note, Nullifier, Parameters, PreSender,
@@ -162,7 +162,7 @@ fn insert_next_item<C>(
         asset.clone(),
         rng,
     );
-    if nullifiers.contains_item(&nullifier) {
+    if nullifiers.remove(&nullifier) {
         utxo_accumulator.insert_nonprovable(&item_hash::<C>(parameters, &utxo));
     } else {
         utxo_accumulator.insert(&item_hash::<C>(parameters, &utxo));
@@ -192,7 +192,7 @@ where
 {
     let (_, utxo, nullifier) =
         parameters.derive_spend(authorization_context, identifier, asset.clone(), rng);
-    if nullifiers.contains_item(&nullifier) {
+    if nullifiers.remove(&nullifier) {
         utxo_accumulator.remove_proof(&item_hash::<C>(parameters, &utxo));
         if !asset.is_zero() {
             withdraw.push(asset);
@@ -224,10 +224,14 @@ where
     C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
 {
     let nullifier_count = nullifier_data.len();
-    nullifiers.extend(nullifier_data);
     let mut deposit = Vec::new();
     let mut withdraw = Vec::new();
     let decryption_key = parameters.derive_decryption_key(authorization_context);
+    nullifiers.extend(
+        nullifier_data
+            .into_iter()
+            .filter(|nullifier| parameters.can_be_opened(nullifier, &decryption_key)),
+    );
     let mut nonprovable_inserts = Vec::new();
     for (utxo, note) in inserts {
         if let Some((identifier, asset)) = parameters.open_with_check(&decryption_key, &utxo, note)
