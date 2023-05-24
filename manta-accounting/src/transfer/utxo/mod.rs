@@ -91,6 +91,26 @@ impl IndependenceContext for NullifierIndependence {
     const DEFAULT: bool = false;
 }
 
+/// Nullifier Open
+pub trait NullifierOpen: AssetType + DeriveDecryptionKey + NullifierType {
+    /// Opens the outgoing note in `nullifier` with `decryption_key`.
+    fn open(
+        &self,
+        nullifier: &Self::Nullifier,
+        decryption_key: &Self::DecryptionKey,
+    ) -> Option<Self::Asset>;
+
+    /// Returns `true` if `nullifier` can be opened with `decryption_key`.
+    #[inline]
+    fn can_be_opened(
+        &self,
+        nullifier: &Self::Nullifier,
+        decryption_key: &Self::DecryptionKey,
+    ) -> bool {
+        self.open(nullifier, decryption_key).is_some()
+    }
+}
+
 /// Identifier
 pub trait IdentifierType {
     /// Identifier Type

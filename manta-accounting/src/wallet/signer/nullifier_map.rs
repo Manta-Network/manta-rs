@@ -43,6 +43,9 @@ pub trait NullifierMap<T>: Default {
     where
         I: IntoIterator<Item = T>;
 
+    /// Removes `item` from `self`.
+    fn remove(&mut self, item: &T) -> bool;
+
     /// Checks if `self` contains `item`.
     fn contains_item(&self, item: &T) -> bool;
 }
@@ -73,6 +76,16 @@ where
         I: IntoIterator<Item = T>,
     {
         Extend::extend(self, items)
+    }
+
+    #[inline]
+    fn remove(&mut self, item: &T) -> bool {
+        if let Some(index) = self.iter().position(|x| x == item) {
+            self.remove(index);
+            true
+        } else {
+            false
+        }
     }
 
     #[inline]
@@ -109,6 +122,11 @@ where
     }
 
     #[inline]
+    fn remove(&mut self, item: &T) -> bool {
+        self.remove(item)
+    }
+
+    #[inline]
     fn contains_item(&self, item: &T) -> bool {
         self.contains(item)
     }
@@ -140,6 +158,11 @@ where
         I: IntoIterator<Item = T>,
     {
         Extend::extend(self, items)
+    }
+
+    #[inline]
+    fn remove(&mut self, item: &T) -> bool {
+        self.remove(item)
     }
 
     #[inline]
