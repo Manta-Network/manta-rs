@@ -368,7 +368,10 @@ where
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.map.iter().position(|(_, (_, l))| l == leaf_digest)
+        self.map
+            .keys()
+            .find(|index| self.get(**index) == Some(leaf_digest))
+            .copied()
     }
 
     #[inline]
@@ -488,7 +491,10 @@ where
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.map.iter().position(|(_, (_, l))| l == leaf_digest)
+        self.map
+            .keys()
+            .find(|index| self.get(**index) == Some(leaf_digest))
+            .copied()
     }
 
     #[inline]
