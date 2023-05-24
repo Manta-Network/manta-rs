@@ -138,7 +138,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
@@ -230,7 +230,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
@@ -331,7 +331,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
@@ -452,7 +452,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
