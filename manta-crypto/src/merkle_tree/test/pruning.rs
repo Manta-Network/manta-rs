@@ -60,7 +60,7 @@ impl Sample for Provability {
 
 /// Tests that pruning doesn't remove necessary proofs.
 #[test]
-fn test_batch_pruning() {
+fn test_pruning_safety() {
     let mut rng = OsRng;
     let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
     let number_of_insertions = rng.gen_range((1 << (HEIGHT - 2))..(1 << (HEIGHT - 1)));

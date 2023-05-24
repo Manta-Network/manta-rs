@@ -19,7 +19,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    leaf_map::{LeafMap, TrivialLeafVec},
+    leaf_map::{LeafMap, LeafVec},
     partial::Partial,
     path::{CurrentInnerPath, InnerPath},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Path,
@@ -274,7 +274,7 @@ impl Default for BaseContribution {
     Hash(bound = "InnerDigest<C>: Hash, M: Hash, L: Hash"),
     PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq, L: PartialEq")
 )]
-struct Branch<C, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+struct Branch<C, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
@@ -587,7 +587,7 @@ where
     Debug(bound = "P::Weak: Debug, L: Debug, InnerDigest<C>: Debug, M: Debug"),
     Default(bound = "L: Default, InnerDigest<C>: Default")
 )]
-pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
@@ -839,7 +839,7 @@ where
     Hash(bound = "T: Hash, L: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "T: PartialEq, L: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct ForkedTree<C, T, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+pub struct ForkedTree<C, T, M = BTreeMap<C>, L = LeafVec<C>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
