@@ -333,6 +333,7 @@ where
     Debug(bound = "LeafDigest<C>: Debug"),
     Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
 pub struct LeafBTreeMap<C>
