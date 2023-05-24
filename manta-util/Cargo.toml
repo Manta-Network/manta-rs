@@ -1,6 +1,6 @@
 [package]
 name = "manta-util"
-version = "0.5.16"
+version = "0.5.17"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"
