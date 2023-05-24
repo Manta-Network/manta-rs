@@ -5,7 +5,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#345](https://github.com/Manta-Network/manta-rs/pull/345) Precompute ledger and minor bug fix.
 
 ### Changed
 
@@ -18,7 +17,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Security
 
-## [0.5.16] - 2023-10-05
+## [0.5.17] - 2023-05-24
+### Added
+- [\#349](https://github.com/Manta-Network/manta-rs/pull/349) Nullifier map optimization.
+- [\#345](https://github.com/Manta-Network/manta-rs/pull/345) Precompute ledger and minor bug fix.
+
+### Fixed
+-[\#347](https://github.com/Manta-Network/manta-rs/pull/347) Signer bug fix
+
+## [0.5.16] - 2023-05-10
 ### Deprecated
 - [\#344](https://github.com/Manta-Network/manta-rs/pull/344) Disable pruning feature.
 

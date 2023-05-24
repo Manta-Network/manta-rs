@@ -26,8 +26,14 @@ pub trait NullifierMap<T>: Default {
     /// Creates a new [`NullifierMap`].
     fn new() -> Self;
 
-    ///
+    /// Returns the number of elements in `self`
     fn len(&self) -> usize;
+
+    /// Returns `true` if `self` contains no elements.
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 
     /// Inserts `item` in `self`.
     fn insert(&mut self, item: T) -> bool;
@@ -36,6 +42,9 @@ pub trait NullifierMap<T>: Default {
     fn extend<I>(&mut self, items: I)
     where
         I: IntoIterator<Item = T>;
+
+    /// Removes `item` from `self`.
+    fn remove(&mut self, item: &T) -> bool;
 
     /// Checks if `self` contains `item`.
     fn contains_item(&self, item: &T) -> bool;
@@ -48,6 +57,11 @@ where
     #[inline]
     fn new() -> Self {
         Self::new()
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
     }
 
     #[inline]
@@ -65,13 +79,18 @@ where
     }
 
     #[inline]
-    fn contains_item(&self, item: &T) -> bool {
-        self.contains(item)
+    fn remove(&mut self, item: &T) -> bool {
+        if let Some(index) = self.iter().position(|x| x == item) {
+            self.remove(index);
+            true
+        } else {
+            false
+        }
     }
 
     #[inline]
-    fn len(&self) -> usize {
-        self.len()
+    fn contains_item(&self, item: &T) -> bool {
+        self.contains(item)
     }
 }
 
@@ -82,6 +101,11 @@ where
     #[inline]
     fn new() -> Self {
         Self::new()
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
     }
 
     #[inline]
@@ -98,13 +122,13 @@ where
     }
 
     #[inline]
-    fn contains_item(&self, item: &T) -> bool {
-        self.contains(item)
+    fn remove(&mut self, item: &T) -> bool {
+        self.remove(item)
     }
 
     #[inline]
-    fn len(&self) -> usize {
-        self.len()
+    fn contains_item(&self, item: &T) -> bool {
+        self.contains(item)
     }
 }
 
@@ -120,7 +144,7 @@ where
 
     #[inline]
     fn len(&self) -> usize {
-        self::len()
+        self.len()
     }
 
     #[inline]
@@ -134,6 +158,11 @@ where
         I: IntoIterator<Item = T>,
     {
         Extend::extend(self, items)
+    }
+
+    #[inline]
+    fn remove(&mut self, item: &T) -> bool {
+        self.remove(item)
     }
 
     #[inline]
