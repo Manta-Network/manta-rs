@@ -21,7 +21,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, InnerNodeIter, PartialInnerTree},
-    leaf_map::{LeafMap, TrivialLeafVec},
+    leaf_map::{LeafBTreeMap, LeafMap},
     node::{NodeRange, Parity},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
@@ -57,7 +57,7 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
     Hash(bound = "L: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "L: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct Partial<C, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+pub struct Partial<C, M = BTreeMap<C>, L = LeafBTreeMap<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
@@ -226,6 +226,12 @@ where
         self.leaf_map.current_leaf()
     }
 
+    /// Returns the current leaf index of the tree.
+    #[inline]
+    pub fn current_index(&self) -> Option<usize> {
+        self.leaf_map.current_index()
+    }
+
     /// Returns the current (right-most) path of the tree.
     #[inline]
     pub fn current_path(&self) -> CurrentPath<C>
@@ -233,7 +239,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone + PartialEq,
     {
-        let length = self.len();
+        let length = self.current_index().map(|index| index + 1).unwrap_or(0);
         if length == 0 {
             return Default::default();
         }
@@ -384,7 +390,7 @@ where
         // We need to collect before looping because we are taking a mutable
         // reference of `self` in the loop and an immutable one in the `filter`
         // method.
-        if let Some(current_index) = self.leaf_map.current_index() {
+        if let Some(current_index) = self.current_index() {
             let marked_indices = (0..current_index)
                 .filter(|index| self.leaf_map.is_marked(*index).unwrap_or(false))
                 .collect::<Vec<_>>();
@@ -424,7 +430,7 @@ where
     /// above it.
     #[inline]
     pub fn remove_path(&mut self, index: usize) -> bool {
-        match self.leaf_map.current_index() {
+        match self.current_index() {
             Some(current_index) if index <= current_index => (),
             _ => return false,
         };
@@ -536,7 +542,7 @@ where
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
         let _ = parameters;
-        let length = self.len();
+        let length = self.current_index().map(|index| index + 1).unwrap_or(0);
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });
         }
