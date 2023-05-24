@@ -17,13 +17,19 @@
 //! Pruning
 
 use crate::{
-    accumulator::{Accumulator, OptimizedAccumulator},
-    merkle_tree::{partial::PartialMerkleTree, test::Test, tree::Parameters},
+    accumulator::{Accumulator, MembershipProof, OptimizedAccumulator},
+    merkle_tree::{
+        fork::ForkedTree,
+        partial::{Partial, PartialMerkleTree},
+        test::Test,
+        tree::Parameters,
+        Leaf, Tree, WithProofs,
+    },
     rand::{OsRng, Rand, Sample},
 };
 
 /// Merkle Tree Height
-const HEIGHT: usize = 10;
+const HEIGHT: usize = 4;
 
 /// Proportion of provable insertions.
 ///
@@ -59,35 +65,73 @@ impl Sample for Provability {
 }
 
 /// Tests that pruning doesn't remove necessary proofs.
-#[test]
-fn test_pruning_safety() {
+#[inline]
+fn test_pruning_safety<T, F, G, H, P, PT>(
+    f: F,
+    mut push: G,
+    mut push_provable: H,
+    prove: P,
+    mut prune_tree: PT,
+) where
+    F: FnOnce(&Parameters<Config>) -> T,
+    G: FnMut(&mut T, &Parameters<Config>, &Leaf<Config>) -> bool,
+    H: FnMut(&mut T, &Parameters<Config>, &Leaf<Config>) -> bool,
+    P: Fn(&T, &Parameters<Config>, &Leaf<Config>) -> Option<MembershipProof<Parameters<Config>>>,
+    PT: FnMut(&mut T),
+{
     let mut rng = OsRng;
     let parameters = Parameters::<Config>::sample(Default::default(), &mut rng);
     let number_of_insertions = rng.gen_range((1 << (HEIGHT - 2))..(1 << (HEIGHT - 1)));
-    let mut tree = PartialMerkleTree::<Config>::new(parameters);
+    let mut tree = f(&parameters);
     let insertions = (0..number_of_insertions)
         .map(|i| (i.to_string(), Provability::gen(&mut rng)))
         .collect::<Vec<_>>();
     for (insertion, provability) in insertions.iter() {
         match provability {
             Provability::NonProvable => {
-                tree.insert_nonprovable(insertion);
+                push(&mut tree, &parameters, insertion);
             }
             _ => {
-                tree.insert(insertion);
+                push_provable(&mut tree, &parameters, insertion);
             }
         }
     }
-    tree.prune();
+    prune_tree(&mut tree);
     for insertion in insertions
         .iter()
         .filter(|(_, provability)| matches!(provability, Provability::Provable))
         .map(|(insertion, _)| insertion)
     {
-        let proof = tree.prove(insertion).expect("Failed to generate proof");
+        let proof = prove(&tree, &parameters, insertion).expect("Failed to generate proof");
         assert!(
             proof.verify(&parameters, insertion, &mut ()),
             "Proof must be valid"
         );
     }
+}
+
+/// Runs [`test_pruning_safety`] on a [`PartialMerkleTree`].
+#[test]
+fn test_pruning_safety_partial() {
+    test_pruning_safety(
+        |parameters| PartialMerkleTree::<Config>::new(*parameters),
+        |tree, _, leaf| tree.insert_nonprovable(leaf),
+        |tree, _, leaf| tree.insert(leaf),
+        |tree, _, leaf| tree.prove(leaf),
+        |tree| tree.prune(),
+    )
+}
+
+/// Runs [`test_pruning_safety`] on a [`ForkedTree`].
+#[test]
+fn test_pruning_forked() {
+    test_pruning_safety(
+        |parameters| {
+            ForkedTree::<Config, Partial<Config>>::new(Partial::new(parameters), parameters)
+        },
+        |tree, parameters, leaf| Tree::push(tree, parameters, leaf),
+        |tree, parameters, leaf| tree.push_provable(parameters, leaf),
+        |tree, parameters, leaf| tree.prove(parameters, leaf),
+        |tree| tree.prune(),
+    )
 }

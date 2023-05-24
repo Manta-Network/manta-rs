@@ -16,14 +16,17 @@
 
 //! Merkle Tree Forks
 
-use crate::merkle_tree::{
-    capacity,
-    inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    leaf_map::{LeafBTreeMap, LeafMap},
-    partial::Partial,
-    path::{CurrentInnerPath, InnerPath},
-    Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Path,
-    PathError, Root, Tree, WithProofs,
+use crate::{
+    accumulator::MembershipProof,
+    merkle_tree::{
+        capacity,
+        inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
+        leaf_map::{LeafBTreeMap, LeafMap},
+        partial::Partial,
+        path::{CurrentInnerPath, InnerPath},
+        Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Path,
+        PathError, Root, Tree, WithProofs,
+    },
 };
 use alloc::{vec, vec::Vec};
 use core::{borrow::Borrow, fmt::Debug, hash::Hash, marker::PhantomData, mem, ops::Deref};
@@ -939,6 +942,26 @@ where
         self.branch.path(index, |branch| {
             branch.modified_path_unchecked(parameters, index, &self.base)
         })
+    }
+
+    /// Generates a [`MembershipProof`] for `leaf`.
+    #[inline]
+    pub fn prove(
+        &self,
+        parameters: &Parameters<C>,
+        leaf: &Leaf<C>,
+    ) -> Option<MembershipProof<Parameters<C>>>
+    where
+        T: WithProofs<C>,
+        LeafDigest<C>: Clone + Default + PartialEq,
+        InnerDigest<C>: Clone + PartialEq,
+        Parameters<C>: Clone,
+    {
+        Some(MembershipProof::new(
+            self.path(parameters, self.position(&parameters.digest(leaf))?)
+                .ok()?,
+            self.root().clone(),
+        ))
     }
 
     /// Appends a new `leaf` onto this forked tree.
