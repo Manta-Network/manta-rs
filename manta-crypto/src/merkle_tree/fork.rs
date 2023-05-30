@@ -512,11 +512,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone,
     {
-        let length = self
-            .data
-            .current_index()
-            .map(|index| index + 1)
-            .unwrap_or(0);
+        let length = self.data.current_index();
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });
         }

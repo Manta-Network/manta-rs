@@ -226,10 +226,15 @@ where
         self.leaf_map.current_leaf()
     }
 
-    /// Returns the current leaf index of the tree.
+    /// Returns the current index of the tree.
     #[inline]
-    pub fn current_index(&self) -> Option<usize> {
-        self.leaf_map.current_index()
+    pub fn current_index(&self) -> usize {
+        self.starting_leaf_index()
+            + self
+                .leaf_map
+                .current_index()
+                .map(|index| index + 1)
+                .unwrap_or(0)
     }
 
     /// Returns the current (right-most) path of the tree.
@@ -239,7 +244,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone + PartialEq,
     {
-        let length = self.current_index().map(|index| index + 1).unwrap_or(0);
+        let length = self.current_index();
         if length == 0 {
             return Default::default();
         }
@@ -390,7 +395,7 @@ where
         // We need to collect before looping because we are taking a mutable
         // reference of `self` in the loop and an immutable one in the `filter`
         // method.
-        if let Some(current_index) = self.current_index() {
+        if let Some(current_index) = self.leaf_map.current_index() {
             let marked_indices = (0..current_index)
                 .filter(|index| self.leaf_map.is_marked(*index).unwrap_or(false))
                 .collect::<Vec<_>>();
@@ -430,7 +435,7 @@ where
     /// above it.
     #[inline]
     pub fn remove_path(&mut self, index: usize) -> bool {
-        match self.current_index() {
+        match self.leaf_map.current_index() {
             Some(current_index) if index <= current_index => (),
             _ => return false,
         };
@@ -542,7 +547,7 @@ where
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
         let _ = parameters;
-        let length = self.current_index().map(|index| index + 1).unwrap_or(0);
+        let length = self.current_index();
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });
         }
