@@ -308,7 +308,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        if leaf_digests.len() + base.len() >= capacity::<C, _>() {
+        if leaf_digests.len() + base.virtual_length() >= capacity::<C, _>() {
             return None;
         }
         Some(Self::new_unchecked(parameters, base, leaf_digests))
@@ -333,7 +333,7 @@ where
             base_leaf_digests,
             PartialInnerTree::from_current(parameters, base_inner_digest, inner_path),
         );
-        let partial_tree_len = partial.len();
+        let partial_tree_len = partial.virtual_length();
         for (i, digest) in leaf_digests.into_iter().enumerate() {
             partial.push_leaf_digest(parameters, Node(partial_tree_len + i), digest);
         }
@@ -409,7 +409,9 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Default,
     {
-        if self.data.len() + base.len() - (self.base_contribution as usize) >= capacity::<C, _>() {
+        if self.data.virtual_length() + base.virtual_length() - (self.base_contribution as usize)
+            >= capacity::<C, _>()
+        {
             return false;
         }
         let new_branch = Self::new_unchecked(
@@ -425,6 +427,12 @@ where
     #[inline]
     pub fn len(&self) -> usize {
         self.data.len()
+    }
+
+    /// Computes the virtual length of this branch of the tree.
+    #[inline]
+    pub fn virtual_length(&self) -> usize {
+        self.data.virtual_length()
     }
 
     /// Returns `true` if this branch is empty.
@@ -512,7 +520,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone,
     {
-        let length = self.data.current_index();
+        let length = self.data.virtual_length();
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });
         }
@@ -697,6 +705,12 @@ where
     #[inline]
     pub fn len(&self) -> usize {
         self.branch.len()
+    }
+
+    /// Computes the virtual length of this fork of the tree.
+    #[inline]
+    pub fn virtual_length(&self) -> usize {
+        self.branch.virtual_length()
     }
 
     /// Returns `true` if this fork is empty.
@@ -1096,6 +1110,11 @@ where
     #[inline]
     fn prune(&mut self) {
         self.branch.data.prune()
+    }
+
+    #[inline]
+    fn virtual_length(&self) -> usize {
+        self.branch.data.virtual_length()
     }
 }
 

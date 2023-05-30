@@ -442,6 +442,18 @@ where
     /// [`remove_path`]: WithProofs::remove_path
     #[inline]
     fn prune(&mut self) {}
+
+    /// Returns the virtual length of the tree, i.e., the number of elements that have ever been pushed,
+    /// including those which have been pruned.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method calls [`len`](Self::len). Custom implementations of this method
+    /// must be consistent with those of [`prune`].
+    #[inline]
+    fn virtual_length(&self) -> usize {
+        self.len()
+    }
 }
 
 /// Path Error

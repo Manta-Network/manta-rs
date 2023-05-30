@@ -158,6 +158,18 @@ where
     /// with the [`prune`](Tree::prune) implementation of the [`Tree`] type.
     #[inline]
     fn prune(&mut self) {}
+
+    /// Returns the virtual length of the forest, i.e., the number of elements that have ever been pushed,
+    /// including those which have been pruned.
+    ///
+    /// # Implementation Note
+    ///
+    /// By default, this method calls [`len`](Self::len). Custom implementations of this method
+    /// must be consistent with those of [`prune`].
+    #[inline]
+    fn virtual_length(&self) -> usize {
+        self.len()
+    }
 }
 
 /// Constant Width Forest
@@ -751,6 +763,11 @@ where
         for tree in self.array.iter_mut() {
             tree.prune();
         }
+    }
+
+    #[inline]
+    fn virtual_length(&self) -> usize {
+        self.array.iter().map(T::virtual_length).sum()
     }
 }
 

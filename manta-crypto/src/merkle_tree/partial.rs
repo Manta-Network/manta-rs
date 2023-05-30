@@ -226,9 +226,9 @@ where
         self.leaf_map.current_leaf()
     }
 
-    /// Returns the current index of the tree.
+    /// Returns the virtual length of the tree.
     #[inline]
-    pub fn current_index(&self) -> usize {
+    pub fn virtual_length(&self) -> usize {
         self.starting_leaf_index()
             + self
                 .leaf_map
@@ -244,7 +244,7 @@ where
         LeafDigest<C>: Clone + Default,
         InnerDigest<C>: Clone + PartialEq,
     {
-        let length = self.current_index();
+        let length = self.virtual_length();
         if length == 0 {
             return Default::default();
         }
@@ -325,7 +325,7 @@ where
         if leaf_digests.is_empty() {
             return None;
         }
-        let len = self.len();
+        let len = self.virtual_length();
         let number_of_leaf_digests = leaf_digests.len();
         let capacity = capacity::<C, _>();
         if len + number_of_leaf_digests > capacity {
@@ -361,7 +361,7 @@ where
     where
         LeafDigest<C>: Default,
     {
-        let len = self.len();
+        let len = self.virtual_length();
         if len >= capacity::<C, _>() {
             return false;
         }
@@ -381,7 +381,7 @@ where
         LeafDigest<C>: Default,
     {
         // TODO: Push without keeping unnecessary proof.
-        let len = self.len();
+        let len = self.virtual_length();
         if len >= capacity::<C, _>() {
             return Some(false);
         }
@@ -484,7 +484,7 @@ where
     where
         F: FnOnce() -> Option<LeafDigest<C>>,
     {
-        let len = self.len();
+        let len = self.virtual_length();
         let result = self.maybe_push_digest(parameters, leaf_digest);
         self.leaf_map.mark(len);
         result
@@ -499,7 +499,7 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        let len = self.len();
+        let len = self.virtual_length();
         let (result, number_of_insertions) =
             self.batch_maybe_push_digest(parameters, leaf_digests)?;
         for index in len..len + number_of_insertions {
@@ -511,6 +511,11 @@ where
     #[inline]
     fn prune(&mut self) {
         self.prune()
+    }
+
+    #[inline]
+    fn virtual_length(&self) -> usize {
+        self.virtual_length()
     }
 }
 
@@ -547,7 +552,7 @@ where
     #[inline]
     fn path(&self, parameters: &Parameters<C>, index: usize) -> Result<Path<C>, PathError> {
         let _ = parameters;
-        let length = self.current_index();
+        let length = self.virtual_length();
         if index > 0 && index >= length {
             return Err(PathError::IndexTooLarge { length });
         }
