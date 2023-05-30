@@ -165,7 +165,7 @@ where
     /// # Implementation Note
     ///
     /// By default, this method calls [`len`](Self::len). Custom implementations of this method
-    /// must be consistent with those of [`prune`].
+    /// must be consistent with those of [`prune`](Self::prune).
     #[inline]
     fn virtual_length(&self) -> usize {
         self.len()
