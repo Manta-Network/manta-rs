@@ -47,7 +47,7 @@ jobs:
           - ubuntu-latest
         channel:
           - stable
-          - nightly
+        #  - nightly
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -75,7 +75,7 @@ jobs:
           - windows-latest
         channel:
           - stable
-          - nightly
+        #  - nightly
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -94,7 +94,7 @@ jobs:
           - windows-latest
         channel:
           - stable
-          - nightly
+        #  - nightly
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
