@@ -1109,7 +1109,7 @@ where
 
     #[inline]
     fn prune(&mut self) {
-        self.branch.data.prune()
+        self.base.prune()
     }
 
     #[inline]
