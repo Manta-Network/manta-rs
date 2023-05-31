@@ -92,6 +92,7 @@ num-integer = { version = "0.1.45", optional = true, default-features = false }
 rand = { version = "0.8.5", optional = true, default-features = false, features = ["alloc"] }
 rand_chacha = { version = "0.3.1", optional = true, default-features = false }
 rand_core = { version = "0.6.4", default-features = false }
+web-sys = { version = "0.3.63", default-features = true, features = ["console"]}
 
 [dev-dependencies]
 manta-crypto = { path = ".", default-features = false, features = ["ark-bn254", "ark-ed-on-bn254", "getrandom", "rand", "std", "test"] }
