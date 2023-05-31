@@ -138,7 +138,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
@@ -230,7 +230,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
@@ -331,8 +331,9 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
 pub struct LeafBTreeMap<C>
@@ -368,7 +369,10 @@ where
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.map.iter().position(|(_, (_, l))| l == leaf_digest)
+        self.map
+            .keys()
+            .find(|index| self.get(**index) == Some(leaf_digest))
+            .copied()
     }
 
     #[inline]
@@ -449,7 +453,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
@@ -488,7 +492,10 @@ where
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.map.iter().position(|(_, (_, l))| l == leaf_digest)
+        self.map
+            .keys()
+            .find(|index| self.get(**index) == Some(leaf_digest))
+            .copied()
     }
 
     #[inline]

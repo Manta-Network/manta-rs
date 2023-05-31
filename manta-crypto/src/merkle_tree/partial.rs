@@ -21,7 +21,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, InnerNodeIter, PartialInnerTree},
-    leaf_map::{LeafMap, TrivialLeafVec},
+    leaf_map::{LeafBTreeMap, LeafMap},
     node::{NodeRange, Parity},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
@@ -57,7 +57,7 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
     Hash(bound = "L: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "L: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct Partial<C, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+pub struct Partial<C, M = BTreeMap<C>, L = LeafBTreeMap<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
@@ -175,7 +175,12 @@ where
     /// Returns the number of leaves in this tree.
     #[inline]
     pub fn len(&self) -> usize {
-        self.starting_leaf_index() + self.leaf_map.len()
+        self.starting_leaf_index()
+            + self
+                .leaf_map
+                .current_index()
+                .map(|index| index + 1)
+                .unwrap_or(0)
     }
 
     /// Returns `true` if this tree is empty.
