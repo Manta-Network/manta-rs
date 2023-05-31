@@ -27,6 +27,7 @@ use crate::merkle_tree::{
     PathError, Root, Tree, WithProofs,
 };
 use alloc::vec::Vec;
+use alloc::string::ToString;
 use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
@@ -392,6 +393,14 @@ where
     /// Removes the paths corresponding to the nonprovable leaves in `self`.
     #[inline]
     pub fn prune(&mut self) {
+        web_sys::console::log_2(
+            &"Number of leaves before pruning: ".into(),
+            &self.leaf_map.len().to_string().into(),
+        );
+        web_sys::console::log_2(
+            &"Number of inner nodes before pruning: ".into(),
+            &self.inner_digests.len().to_string().into(),
+        );
         // We need to collect before looping because we are taking a mutable
         // reference of `self` in the loop and an immutable one in the `filter`
         // method.
@@ -403,6 +412,14 @@ where
                 self.remove_path_at_index(index);
             }
         }
+        web_sys::console::log_2(
+            &"Number of leaves after pruning: ".into(),
+            &self.leaf_map.len().to_string().into(),
+        );
+        web_sys::console::log_2(
+            &"Number of inner nodes after pruning: ".into(),
+            &self.inner_digests.len().to_string().into(),
+        );
     }
 
     /// Removes the [`Path`] above the leaf at `index`. Returns `false` if the leaf

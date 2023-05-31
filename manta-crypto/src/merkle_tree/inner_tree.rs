@@ -452,6 +452,14 @@ where
         let _ = index;
         false
     }
+
+    ///
+    fn len(&self) -> usize;
+
+    ///
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<C, M> InnerMap<C> for &mut M
@@ -472,6 +480,11 @@ where
     #[inline]
     fn remove(&mut self, index: usize) -> bool {
         (**self).remove(index)
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        (**self).len()
     }
 }
 
@@ -495,6 +508,11 @@ where
     #[inline]
     fn remove(&mut self, index: usize) -> bool {
         self.remove(&index).is_some()
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.len()
     }
 }
 
@@ -523,6 +541,10 @@ where
     #[inline]
     fn remove(&mut self, index: usize) -> bool {
         self.remove(&index).is_some()
+    }
+
+    fn len(&self) -> usize {
+        self.len()
     }
 }
 
@@ -871,6 +893,16 @@ where
             self.path_iter_for_leaf(leaf_index).cloned().collect(),
         )
     }
+
+    ///
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    ///
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl<C, M> InnerTree<C, M, Sentinel<C>>
@@ -1097,6 +1129,16 @@ where
     #[inline]
     pub fn remove(&mut self, index: usize) -> bool {
         self.inner_tree.map.remove(index)
+    }
+
+    ///
+    pub fn len(&self) -> usize {
+        self.inner_tree.len()
+    }
+
+    ///
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
