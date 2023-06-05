@@ -60,14 +60,8 @@ where
         None
     }
 
-    /// Pushes `leaf_digest` with `marking` to the right-most position of `self`.
-    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>);
-
     /// Pushes `leaf_digest` to the right-most position of `self`.
-    #[inline]
-    fn push(&mut self, leaf_digest: LeafDigest<C>) {
-        self.push_digest_with_marking(false, leaf_digest)
-    }
+    fn push(&mut self, leaf_digest: LeafDigest<C>);
 
     /// Extends `self` with `leaf_digests`.
     #[inline]
@@ -186,8 +180,7 @@ where
     }
 
     #[inline]
-    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>) {
-        let _ = marking;
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
         self.0.push(leaf_digest)
     }
 
@@ -288,8 +281,8 @@ where
     }
 
     #[inline]
-    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>) {
-        self.vec.push((marking, leaf_digest))
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
+        self.vec.push((false, leaf_digest))
     }
 
     #[inline]
@@ -396,12 +389,12 @@ where
     }
 
     #[inline]
-    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>) {
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
         self.last_index = Some(self.last_index.map(|index| index + 1).unwrap_or(0));
         self.map.insert(
             self.last_index
                 .expect("This cannot fail because of the computation above."),
-            (marking, leaf_digest),
+            (false, leaf_digest),
         );
     }
 
@@ -527,12 +520,12 @@ where
     }
 
     #[inline]
-    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>) {
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
         self.last_index = Some(self.last_index.map(|index| index + 1).unwrap_or(0));
         self.map.insert(
             self.last_index
                 .expect("This cannot fail because of the computation above."),
-            (marking, leaf_digest),
+            (false, leaf_digest),
         );
     }
 
