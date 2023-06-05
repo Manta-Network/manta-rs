@@ -361,28 +361,6 @@ where
         }
     }
 
-    /// Appends `leaf_digest` with `marking` to `self` using `parameters`.
-    #[inline]
-    pub fn push_leaf_digest_with_marking(
-        &mut self,
-        parameters: &Parameters<C>,
-        marking: bool,
-        leaf_digest: LeafDigest<C>,
-    ) -> bool
-    where
-        LeafDigest<C>: Default,
-    {
-        let len = self.len();
-        if len >= capacity::<C, _>() {
-            return false;
-        }
-        self.push_leaf_digest(parameters, Node(len), leaf_digest);
-        if marking {
-            self.leaf_map.mark(len - self.starting_leaf_index());
-        }
-        true
-    }
-
     /// Appends an iterator of marked leaf digests at the end of the tree, returning the iterator back
     /// if it could not be inserted because the tree has exhausted its capacity.
     ///
@@ -399,14 +377,24 @@ where
     ) -> Result<(), I::IntoIter>
     where
         I: IntoIterator<Item = (bool, LeafDigest<C>)>,
-        LeafDigest<C>: Default,
+        L: Default,
+        M: Default,
+        InnerDigest<C>: Clone + Default + PartialEq,
+        LeafDigest<C>: Clone + Default,
     {
         let marked_leaf_digests = marked_leaf_digests.into_iter();
         if matches!(marked_leaf_digests.size_hint().1, Some(max) if max <= capacity::<C, _>() - self.len())
         {
+            let mut marked_inserts = Vec::new();
             for (marking, leaf_digest) in marked_leaf_digests {
-                assert!(self.push_leaf_digest_with_marking(parameters, marking, leaf_digest),
-                 "Pushing a leaf digest into the tree should always succeed because of the check above.")
+                if marking {
+                    marked_inserts.push(leaf_digest);
+                } else {
+                    assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
+                    "Pushing a leaf digest into the tree should always succeed because of the check above.");
+                    assert!(self.push_provable_digest(parameters, move || leaf_digest),
+                 "Pushing a leaf digest into the tree should always succeed because of the check above.");
+                }
             }
             return Ok(());
         }
@@ -493,12 +481,13 @@ where
     /// above it.
     #[inline]
     pub fn remove_path(&mut self, index: usize) -> bool {
+        let leaf_index = index - self.starting_leaf_index();
         match self.leaf_map.current_index() {
-            Some(current_index) if index <= current_index => (),
+            Some(current_index) if leaf_index <= current_index => (),
             _ => return false,
         };
-        self.leaf_map.mark(index);
-        self.remove_path_at_index(index)
+        self.leaf_map.mark(leaf_index);
+        self.remove_path_at_index(leaf_index)
     }
 }
 
@@ -544,7 +533,7 @@ where
     {
         let len = self.len();
         let result = self.maybe_push_digest(parameters, leaf_digest);
-        self.leaf_map.mark(len);
+        self.leaf_map.mark(len - self.starting_leaf_index());
         result
     }
 
@@ -557,10 +546,10 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        let len = self.len();
         let (result, number_of_insertions) =
             self.batch_maybe_push_digest(parameters, leaf_digests)?;
-        for index in len..len + number_of_insertions {
+        let leaf_index = self.len() - self.starting_leaf_index();
+        for index in leaf_index..leaf_index + number_of_insertions {
             self.leaf_map.mark(index)
         }
         Some(result)

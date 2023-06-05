@@ -397,7 +397,7 @@ where
         leaf_digests
     }
 
-    ///
+    /// Extracts the non-base leaves with their markings from `base_contribution` and `data`.
     #[inline]
     fn extract_leaves_with_markings(
         base_contribution: BaseContribution,
@@ -591,11 +591,20 @@ where
         );
     }
 
+    /// Merges `self` into the [`Partial`] tree `base`, keeping the markings.
     ///
+    /// # Panics
+    ///
+    /// This method panics if the [`Tree::extend_digests`] method returns an `Err` variant because
+    /// the capacity invariant should have prevented the addition of leaves to this branch if they
+    /// would have exceeded the capacity limit of `base`.
     #[inline]
     fn merge_partial(self, parameters: &Parameters<C>, base: &mut Partial<C, M, L>)
     where
-        LeafDigest<C>: Default,
+        L: Default,
+        M: Default,
+        InnerDigest<C>: Clone + Default + PartialEq,
+        LeafDigest<C>: Clone + Default,
     {
         assert!(
             base.extend_with_marked_digests(
