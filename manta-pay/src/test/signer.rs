@@ -229,7 +229,7 @@ async fn create_new_wallet(
 /// 5) Restarts the wallet.
 /// 6) Checks that the public and private balances are correct.
 #[ignore] // We don't run this test on the CI because it takes a long time to run.
-//#[tokio::test]
+          //#[tokio::test]
 async fn find_the_bug() {
     let mut seed_rng = OsRng;
     // let seed = [
@@ -299,10 +299,10 @@ async fn find_the_bug() {
 ///
 #[tokio::test]
 async fn find_the_bug_100_times() {
-for i in 0..100 {
-    println!("Test number {i:?}");
-    find_the_bug().await;
-}
+    for i in 0..100 {
+        println!("Test number {i:?}");
+        find_the_bug().await;
+    }
 }
 
 // cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture --ignored

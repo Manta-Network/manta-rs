@@ -787,15 +787,14 @@ where
     }
 }
 
-impl<C, T, M, L, const N: usize> Rollback
-    for MerkleForest<C, TreeArray<C, ForkedTree<C, T, M, L>, N>>
+impl<C, M, L, const N: usize> Rollback
+    for MerkleForest<C, TreeArray<C, ForkedTree<C, Partial<C, M, L>, M, L>, N>>
 where
     C: Configuration + ?Sized,
     C::Index: FixedIndex<N>,
-    T: Tree<C>,
     M: Default + InnerMap<C>,
-    L: LeafMap<C> + Default,
-    LeafDigest<C>: Clone + Default,
+    L: Default + LeafMap<C>,
+    LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
@@ -808,7 +807,7 @@ where
     #[inline]
     fn commit(&mut self) {
         for tree in self.forest.as_mut() {
-            tree.merge_fork(&self.parameters);
+            tree.merge_fork_partial(&self.parameters);
         }
     }
 }

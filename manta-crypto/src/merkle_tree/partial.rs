@@ -160,7 +160,13 @@ where
         self.leaf_map.into_leaf_digests()
     }
 
+    /// Returns the leaf digests stored in the tree with their markings,
+    /// dropping the rest of the tree data.
     ///
+    /// # Note
+    ///
+    /// See the note at [`leaf_digests`](Self::leaf_digests) for more information on indexing this
+    /// vector.
     #[inline]
     pub fn into_leaves_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
         self.leaf_map.into_leaf_digests_with_markings()
@@ -355,7 +361,7 @@ where
         }
     }
 
-    ///
+    /// Appends `leaf_digest` with `marking` to `self` using `parameters`.
     #[inline]
     pub fn push_leaf_digest_with_marking(
         &mut self,
@@ -372,12 +378,19 @@ where
         }
         self.push_leaf_digest(parameters, Node(len), leaf_digest);
         if marking {
-            self.leaf_map.mark(len);
+            self.leaf_map.mark(len - self.starting_leaf_index());
         }
         true
     }
 
+    /// Appends an iterator of marked leaf digests at the end of the tree, returning the iterator back
+    /// if it could not be inserted because the tree has exhausted its capacity.
     ///
+    /// # Implementation Note
+    ///
+    /// This operation is meant to be atomic, so if appending the iterator should fail, the
+    /// implementation must ensure that the tree returns to the same state before the insertion
+    /// occured.
     #[inline]
     pub fn extend_with_marked_digests<I>(
         &mut self,
@@ -556,18 +569,6 @@ where
     #[inline]
     fn prune(&mut self) {
         self.prune()
-    }
-
-    #[inline]
-    fn extend_with_marked_digests<I>(
-        &mut self,
-        parameters: &Parameters<C>,
-        marked_leaf_digests: I,
-    ) -> Result<(), I::IntoIter>
-    where
-        I: IntoIterator<Item = (bool, LeafDigest<C>)>,
-    {
-        self.extend_with_marked_digests(parameters, marked_leaf_digests)
     }
 }
 

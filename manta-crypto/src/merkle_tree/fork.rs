@@ -582,6 +582,22 @@ where
         LeafDigest<C>: Default,
     {
         assert!(
+            base.extend_digests(
+                parameters,
+                Self::extract_leaves(self.base_contribution, self.data)
+            )
+            .is_ok(),
+            "Should have been able to extend extracted leaves."
+        );
+    }
+
+    ///
+    #[inline]
+    fn merge_partial(self, parameters: &Parameters<C>, base: &mut Partial<C, M, L>)
+    where
+        LeafDigest<C>: Default,
+    {
+        assert!(
             base.extend_with_marked_digests(
                 parameters,
                 Self::extract_leaves_with_markings(self.base_contribution, self.data)
@@ -1005,9 +1021,11 @@ where
     }
 }
 
-impl<C> ForkedTree<C, Partial<C>>
+impl<C, M, L> ForkedTree<C, Partial<C, M, L>, M, L>
 where
     C: Configuration + ?Sized,
+    M: Default + InnerMap<C>,
+    L: Default + LeafMap<C>,
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
@@ -1023,6 +1041,13 @@ where
             Partial::from_leaves_and_path_unchecked(parameters, leaf_digests, path),
             parameters,
         )
+    }
+
+    /// Merges the fork of the base partial tree back into the trunk.
+    #[inline]
+    pub fn merge_fork_partial(&mut self, parameters: &Parameters<C>) {
+        mem::take(&mut self.branch).merge_partial(parameters, &mut self.base);
+        self.reset_fork(parameters)
     }
 }
 

@@ -394,20 +394,6 @@ where
         Err(leaf_digests)
     }
 
-    ///
-    #[inline]
-    fn extend_with_marked_digests<I>(
-        &mut self,
-        parameters: &Parameters<C>,
-        marked_leaf_digests: I,
-    ) -> Result<(), I::IntoIter>
-    where
-        I: IntoIterator<Item = (bool, LeafDigest<C>)>,
-    {
-        let _ = parameters;
-        Err(marked_leaf_digests.into_iter())
-    }
-
     /// Appends an iterator of leaves at the end of the tree, returning `false` if the `leaves`
     /// could not be inserted because the tree has exhausted its capacity.
     ///
