@@ -390,11 +390,17 @@ where
                 if marking {
                     marked_inserts.push(leaf_digest);
                 } else {
-                    assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
-                    "Pushing a leaf digest into the tree should always succeed because of the check above.");
+                    if !marked_inserts.is_empty() {
+                        assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
+                            "Pushing a leaf digest into the tree should always succeed because of the check above.");
+                    }
                     assert!(self.push_provable_digest(parameters, move || leaf_digest),
                  "Pushing a leaf digest into the tree should always succeed because of the check above.");
                 }
+            }
+            if !marked_inserts.is_empty() {
+                assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
+                    "Pushing a leaf digest into the tree should always succeed because of the check above.");
             }
             return Ok(());
         }
