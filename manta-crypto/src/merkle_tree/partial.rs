@@ -160,6 +160,12 @@ where
         self.leaf_map.into_leaf_digests()
     }
 
+    ///
+    #[inline]
+    pub fn into_leaves_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        self.leaf_map.into_leaf_digests_with_markings()
+    }
+
     /// Returns the starting leaf [`Node`] for this tree.
     #[inline]
     pub fn starting_leaf_node(&self) -> Node {
@@ -349,6 +355,51 @@ where
         }
     }
 
+    ///
+    #[inline]
+    pub fn push_leaf_digest_with_marking(
+        &mut self,
+        parameters: &Parameters<C>,
+        marking: bool,
+        leaf_digest: LeafDigest<C>,
+    ) -> bool
+    where
+        LeafDigest<C>: Default,
+    {
+        let len = self.len();
+        if len >= capacity::<C, _>() {
+            return false;
+        }
+        self.push_leaf_digest(parameters, Node(len), leaf_digest);
+        if marking {
+            self.leaf_map.mark(len);
+        }
+        true
+    }
+
+    ///
+    #[inline]
+    pub fn extend_with_marked_digests<I>(
+        &mut self,
+        parameters: &Parameters<C>,
+        marked_leaf_digests: I,
+    ) -> Result<(), I::IntoIter>
+    where
+        I: IntoIterator<Item = (bool, LeafDigest<C>)>,
+        LeafDigest<C>: Default,
+    {
+        let marked_leaf_digests = marked_leaf_digests.into_iter();
+        if matches!(marked_leaf_digests.size_hint().1, Some(max) if max <= capacity::<C, _>() - self.len())
+        {
+            for (marking, leaf_digest) in marked_leaf_digests {
+                assert!(self.push_leaf_digest_with_marking(parameters, marking, leaf_digest),
+                 "Pushing a leaf digest into the tree should always succeed because of the check above.")
+            }
+            return Ok(());
+        }
+        Err(marked_leaf_digests)
+    }
+
     /// Appends a `leaf` to the tree using `parameters`.
     #[inline]
     pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
@@ -505,6 +556,18 @@ where
     #[inline]
     fn prune(&mut self) {
         self.prune()
+    }
+
+    #[inline]
+    fn extend_with_marked_digests<I>(
+        &mut self,
+        parameters: &Parameters<C>,
+        marked_leaf_digests: I,
+    ) -> Result<(), I::IntoIter>
+    where
+        I: IntoIterator<Item = (bool, LeafDigest<C>)>,
+    {
+        self.extend_with_marked_digests(parameters, marked_leaf_digests)
     }
 }
 

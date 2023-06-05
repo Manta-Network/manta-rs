@@ -125,3 +125,5 @@ fn main() -> io::Result<()> {
     runtime.block_on(async { ledger.read().await.serialize_into(target_file) });
     directory.close()
 }
+
+// cargo run --release --package manta-pay --bin precompute_ledger --all-features -- manta-pay/src/test/data 10000 unsafe

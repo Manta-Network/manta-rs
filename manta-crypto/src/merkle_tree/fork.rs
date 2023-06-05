@@ -397,6 +397,17 @@ where
         leaf_digests
     }
 
+    ///
+    #[inline]
+    fn extract_leaves_with_markings(
+        base_contribution: BaseContribution,
+        data: Partial<C, M, L>,
+    ) -> Vec<(bool, LeafDigest<C>)> {
+        let mut marked_digests = data.into_leaves_with_markings();
+        mem::drop(marked_digests.drain(0..base_contribution as usize));
+        marked_digests
+    }
+
     /// Tries to rebase `self` at `base`.
     #[inline]
     fn try_rebase<T>(&mut self, parameters: &Parameters<C>, base: &T) -> bool
@@ -571,9 +582,9 @@ where
         LeafDigest<C>: Default,
     {
         assert!(
-            base.extend_digests(
+            base.extend_with_marked_digests(
                 parameters,
-                Self::extract_leaves(self.base_contribution, self.data)
+                Self::extract_leaves_with_markings(self.base_contribution, self.data)
             )
             .is_ok(),
             "Should have been able to extend extracted leaves."
@@ -1073,7 +1084,6 @@ where
     #[inline]
     fn prune(&mut self) {
         self.base.prune();
-        self.branch.data.prune();
     }
 }
 

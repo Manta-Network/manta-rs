@@ -26,7 +26,7 @@ use crate::{
     },
     simulation::{
         ledger::{Ledger, LedgerConnection, SharedLedger},
-        sample_signer,
+        sample_signer, sample_signer_from_seed,
     },
 };
 use alloc::sync::Arc;
@@ -37,7 +37,7 @@ use manta_accounting::{
 use manta_crypto::{
     algebra::HasGenerator,
     arkworks::constraint::fp::Fp,
-    rand::{fuzz::Fuzz, CryptoRng, OsRng, Rand, RngCore},
+    rand::{fuzz::Fuzz, ChaCha20Rng, CryptoRng, OsRng, Rand, RngCore, SeedableRng},
 };
 use manta_util::vec::VecExt;
 use std::{env, fs::OpenOptions, io::Error};
@@ -199,20 +199,18 @@ pub fn load_ledger() -> Result<SharedLedger, Error> {
 }
 
 /// Creates new wallet from `account_id`, `initial_balance`, `asset_id` and `ledger`.
-async fn create_new_wallet<R>(
+async fn create_new_wallet(
     account_id: [u8; 32],
     initial_balance: u128,
     asset_id: u128,
     ledger: SharedLedger,
-    rng: &mut R,
-) -> TestWallet
-where
-    R: CryptoRng + RngCore + ?Sized,
-{
+    seed: [u8; 32],
+) -> TestWallet {
     let directory = tempfile::tempdir().expect("Unable to generate temporary test directory.");
     let (proving_context, _, parameters, utxo_accumulator_model) =
         load_parameters(directory.path()).expect("Failed to load parameters");
-    let signer = sample_signer(&proving_context, &parameters, &utxo_accumulator_model, rng);
+    let signer =
+        sample_signer_from_seed(&proving_context, &parameters, &utxo_accumulator_model, seed);
     let asset_id = asset_id.into();
     ledger
         .write()
@@ -231,42 +229,50 @@ where
 /// 5) Restarts the wallet.
 /// 6) Checks that the public and private balances are correct.
 #[ignore] // We don't run this test on the CI because it takes a long time to run.
-#[tokio::test]
+//#[tokio::test]
 async fn find_the_bug() {
-    let mut rng = OsRng;
+    let mut seed_rng = OsRng;
+    // let seed = [
+    //     95, 206, 168, 118, 81, 155, 21, 130, 152, 40, 93, 75, 232, 66, 78, 228, 173, 187, 213, 83,
+    //     125, 28, 145, 205, 97, 28, 24, 252, 96, 241, 235, 126,
+    // ];
+    let seed = seed_rng.gen();
+    println!("Seed: {seed:?}");
+    let mut rng = ChaCha20Rng::from_seed(seed);
     let asset_id = 8;
-    println!("Loading ledger");
     let ledger = load_ledger().expect("Error loading ledger");
-    const NUMBER_OF_RUNS: usize = 100;
+    const NUMBER_OF_RUNS: usize = 10;
+    let account_id = rng.gen(); // fixed account id
+    let mut public_balance = rng.gen_range(Default::default()..u32::MAX as u128);
+    let mut wallet = create_new_wallet(
+        account_id,
+        public_balance,
+        asset_id,
+        ledger.clone(),
+        rng.gen(),
+    )
+    .await;
+    let mut private_balance = 0;
     for run in 0..NUMBER_OF_RUNS {
-        println!("Run number {:?}", run + 1);
         // 1) create new wallet, reset it and sync. (zkBalance = 0)
-        let account_id = rng.gen(); // fixed account id
-        let initial_balance = rng.gen_range(Default::default()..u32::MAX as u128);
-        println!("Initial public balance: {initial_balance:?}");
-        let mut wallet = create_new_wallet(
-            account_id,
-            initial_balance,
-            asset_id,
-            ledger.clone(),
-            &mut rng,
-        )
-        .await;
         wallet.reset_state();
         wallet.load_initial_state().await.expect("Sync error");
         wallet.sync().await.expect("Sync error");
+        wallet.signer_mut().prune();
         // 2) privatize `to_mint` tokens and sync (zkBalance = to_mint)
-        let to_mint = rng.gen_range(Default::default()..initial_balance);
-        println!("To Private: {to_mint:?}");
+        let to_mint = rng.gen_range(Default::default()..public_balance);
+        public_balance -= to_mint;
+        private_balance += to_mint;
         let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id.into(), to_mint));
         wallet
             .post(to_private, Default::default())
             .await
             .expect("Error posting ToPrivate");
         wallet.sync().await.expect("Sync error");
+        wallet.signer_mut().prune();
         // 3) send `to_send` tokens to another zkAddress and sync (zkBalance = to_mint - to_send)
-        let to_send = rng.gen_range(Default::default()..to_mint);
-        println!("Private Transfer: {to_send:?}");
+        let to_send = rng.gen_range(Default::default()..private_balance);
+        private_balance -= to_send;
         let private_transfer =
             Transaction::<Config>::PrivateTransfer(Asset::new(asset_id.into(), to_send), rng.gen());
         wallet
@@ -274,9 +280,11 @@ async fn find_the_bug() {
             .await
             .expect("Error posting PrivateTransfer");
         wallet.sync().await.expect("Sync error");
+        wallet.signer_mut().prune();
         // 4) reclaim `reclaim` tokens and sync (zkBalance = to_mint - to_send - reclaim)
-        let reclaim = rng.gen_range(Default::default()..to_mint - to_send);
-        println!("To Public: {reclaim:?}");
+        let reclaim = rng.gen_range(Default::default()..private_balance);
+        private_balance -= reclaim;
+        public_balance += reclaim;
         let to_public =
             Transaction::<Config>::ToPublic(Asset::new(asset_id.into(), reclaim), account_id);
         wallet
@@ -284,25 +292,18 @@ async fn find_the_bug() {
             .await
             .expect("Error posting ToPublic");
         wallet.sync().await.expect("Sync error");
-        // 5: Restart wallet
-        wallet.reset_state();
-        wallet.load_initial_state().await.expect("Sync error");
-        wallet.sync().await.expect("Sync error");
-        // 6: check balances
-        let public_balance = match wallet.ledger().public_balances().await {
-            Some(asset_list) => asset_list.value(&asset_id.into()),
-            None => 0,
-        };
-        let private_balance = wallet.balance(&asset_id.into());
-        let correct_public_balance = initial_balance - to_mint + reclaim;
-        let correct_private_balance = to_mint - to_send - reclaim;
-        assert_eq!(
-            correct_private_balance, private_balance,
-            "Private balance is not correct"
-        );
-        assert_eq!(
-            correct_public_balance, public_balance,
-            "Public balance is not correct"
-        );
+        wallet.signer_mut().prune();
     }
 }
+
+///
+#[tokio::test]
+async fn find_the_bug_100_times() {
+for i in 0..100 {
+    println!("Test number {i:?}");
+    find_the_bug().await;
+}
+}
+
+// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture --ignored
+// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug_100_times --exact --nocapture

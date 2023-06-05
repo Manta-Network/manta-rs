@@ -26,7 +26,7 @@ use alloc::vec::Vec;
 use manta_accounting::transfer::{self, internal_pair, test::value_distribution};
 use manta_crypto::{
     accumulator::Accumulator,
-    merkle_tree::{forest::TreeArrayMerkleForest, full::Full},
+    merkle_tree::{forest::TreeArrayMerkleForest, partial::Partial},
     rand::{CryptoRng, Rand, RngCore, Sample},
 };
 
@@ -35,7 +35,9 @@ pub type SpendingKey = transfer::SpendingKey<Config>;
 
 /// UTXO Accumulator for Building Test Circuits
 pub type UtxoAccumulator =
-    TreeArrayMerkleForest<MerkleTreeConfiguration, Full<MerkleTreeConfiguration>, 256>;
+    TreeArrayMerkleForest<MerkleTreeConfiguration, Partial<MerkleTreeConfiguration>, 256>;
+
+//TODO: import from base directly
 
 /// Utility Module for [`ToPrivate`]
 pub mod to_private {

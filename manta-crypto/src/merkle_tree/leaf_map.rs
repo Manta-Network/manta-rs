@@ -61,7 +61,13 @@ where
     }
 
     /// Pushes `leaf_digest` to the right-most position of `self`.
-    fn push(&mut self, leaf_digest: LeafDigest<C>);
+    #[inline]
+    fn push(&mut self, leaf_digest: LeafDigest<C>) {
+        self.push_digest_with_marking(false, leaf_digest)
+    }
+
+    ///
+    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>);
 
     /// Extends `self` with `leaf_digests`.
     #[inline]
@@ -107,6 +113,9 @@ where
 
     /// Returns a vector with all [`LeafDigest`]s, consuming `self`.
     fn into_leaf_digests(self) -> Vec<LeafDigest<C>>;
+
+    /// Returns a vector with all [`LeafDigest`]s and their markings, consuming `self`.
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)>;
 
     /// Returns a vector with all marked [`LeafDigest`]s in `self`.
     #[inline]
@@ -182,6 +191,11 @@ where
     }
 
     #[inline]
+    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>) {
+        self.0.push(leaf_digest)
+    }
+
+    #[inline]
     fn extend(&mut self, leaf_digests: Vec<LeafDigest<C>>) {
         self.0.extend(leaf_digests)
     }
@@ -194,6 +208,11 @@ where
     #[inline]
     fn into_leaf_digests(self) -> Vec<LeafDigest<C>> {
         self.0
+    }
+
+    #[inline]
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        core::iter::repeat(false).zip(self.0).collect()
     }
 
     #[inline]
@@ -278,6 +297,11 @@ where
     }
 
     #[inline]
+    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>) {
+        self.vec.push((marking, leaf_digest))
+    }
+
+    #[inline]
     fn extend(&mut self, leaf_digests: Vec<LeafDigest<C>>) {
         self.vec
             .extend(leaf_digests.into_iter().map(|digest| (false, digest)))
@@ -293,6 +317,11 @@ where
     #[inline]
     fn into_leaf_digests(self) -> Vec<LeafDigest<C>> {
         self.vec.into_iter().map(|(_, digest)| digest).collect()
+    }
+
+    #[inline]
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        self.vec
     }
 
     #[inline]
@@ -386,6 +415,16 @@ where
     }
 
     #[inline]
+    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>) {
+        self.last_index = Some(self.last_index.map(|index| index + 1).unwrap_or(0));
+        self.map.insert(
+            self.last_index
+                .expect("This cannot fail because of the computation above."),
+            (marking, leaf_digest),
+        );
+    }
+
+    #[inline]
     fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
         let digest_count = leaf_digests.len();
         if digest_count == 0 {
@@ -410,6 +449,14 @@ where
         self.map
             .into_iter()
             .map(|(_, (_, digest))| digest)
+            .collect()
+    }
+
+    #[inline]
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        self.map
+            .into_iter()
+            .map(|(_, (marking, digest))| (marking, digest))
             .collect()
     }
 
@@ -509,6 +556,16 @@ where
     }
 
     #[inline]
+    fn push_digest_with_marking(&mut self, marking: bool, leaf_digest: LeafDigest<C>) {
+        self.last_index = Some(self.last_index.map(|index| index + 1).unwrap_or(0));
+        self.map.insert(
+            self.last_index
+                .expect("This cannot fail because of the computation above."),
+            (marking, leaf_digest),
+        );
+    }
+
+    #[inline]
     fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
         let digest_count = leaf_digests.len();
         if digest_count == 0 {
@@ -533,6 +590,14 @@ where
         self.map
             .into_iter()
             .map(|(_, (_, digest))| digest)
+            .collect()
+    }
+
+    #[inline]
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        self.map
+            .into_iter()
+            .map(|(_, (marking, digest))| (marking, digest))
             .collect()
     }
 
