@@ -756,6 +756,9 @@ pub trait AssetMap<I, V>: Default {
     fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&Self::Key, &mut Vec<Asset<I, V>>) -> bool;
+
+    ///
+    fn asset_vector(&self) -> Vec<(Self::Key, Asset<I, V>)>;
 }
 
 /// Implements [`AssetMap`] for map types.
@@ -864,6 +867,15 @@ macro_rules! impl_asset_map_for_maps_body {
             F: FnMut(&Self::Key, &mut Vec<Asset<$I, $V>>) -> bool,
         {
             self.retain(move |key, assets| f(key, assets));
+        }
+
+        #[inline]
+        fn asset_vector(&self) -> Vec<(Self::Key, Asset<$I, $V>)> {
+            self.iter()
+                .flat_map(|(key, assets)| {
+                    assets.iter().map(move |asset| (key.clone(), asset.clone()))
+                })
+                .collect()
         }
     };
 }

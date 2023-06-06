@@ -837,6 +837,33 @@ where
     MissingProofAuthorizationKey,
 }
 
+/// Asset List Response
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Identifier<C>: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Identifier<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub struct AssetListResponse<C>(pub Vec<IdentifiedAsset<C>>)
+where
+    C: transfer::Configuration + ?Sized;
+
 /// Signing Result
 pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
 
@@ -1173,6 +1200,18 @@ where
     #[inline]
     pub fn default_account(&self) -> Option<Account<C::Account>> {
         Some(self.accounts.as_ref()?.get_default())
+    }
+
+    ///
+    #[inline]
+    fn asset_list(&self) -> AssetListResponse<C> {
+        AssetListResponse(
+            self.assets
+                .asset_vector()
+                .into_iter()
+                .map(|(identifier, asset)| IdentifiedAsset::<C>::new(identifier, asset))
+                .collect(),
+        )
     }
 }
 
@@ -1565,6 +1604,12 @@ where
     #[inline]
     pub fn prune(&mut self) {
         self.state.utxo_accumulator.prune()
+    }
+
+    ///
+    #[inline]
+    pub fn asset_list(&mut self) -> AssetListResponse<C> {
+        self.state.asset_list()
     }
 }
 
