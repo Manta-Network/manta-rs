@@ -552,9 +552,9 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
+        let leaf_index = self.len() - self.starting_leaf_index();
         let (result, number_of_insertions) =
             self.batch_maybe_push_digest(parameters, leaf_digests)?;
-        let leaf_index = self.len() - self.starting_leaf_index();
         for index in leaf_index..leaf_index + number_of_insertions {
             self.leaf_map.mark(index)
         }
