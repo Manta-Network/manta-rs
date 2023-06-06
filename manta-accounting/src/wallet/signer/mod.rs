@@ -1204,7 +1204,7 @@ where
 
     ///
     #[inline]
-    fn asset_list(&self) -> AssetListResponse<C> {
+    pub fn asset_list(&self) -> AssetListResponse<C> {
         AssetListResponse(
             self.assets
                 .asset_vector()
@@ -1608,7 +1608,7 @@ where
 
     ///
     #[inline]
-    pub fn asset_list(&mut self) -> AssetListResponse<C> {
+    pub fn asset_list(&self) -> AssetListResponse<C> {
         self.state.asset_list()
     }
 }
