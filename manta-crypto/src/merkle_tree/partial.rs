@@ -493,7 +493,8 @@ where
             _ => return false,
         };
         self.leaf_map.mark(leaf_index);
-        self.remove_path_at_index(leaf_index)
+        true
+        //self.remove_path_at_index(leaf_index)
     }
 }
 
