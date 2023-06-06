@@ -281,15 +281,3 @@ async fn find_the_bug() {
         wallet.signer_mut().prune();
     }
 }
-
-// ///
-// #[tokio::test]
-// async fn find_the_bug_100_times() {
-//     for run in 0..100 {
-//         println!("Run number: {:?}", run + 1);
-//         find_the_bug().await;
-//     }
-// }
-
-// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug --exact --nocapture --ignored
-// cargo test --release --package manta-pay --lib --all-features -- test::signer::find_the_bug_100_times --exact --nocapture

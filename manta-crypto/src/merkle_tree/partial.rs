@@ -27,7 +27,7 @@ use crate::merkle_tree::{
     PathError, Root, Tree, WithProofs,
 };
 use alloc::vec::Vec;
-use core::{fmt::Debug, hash::Hash, num};
+use core::{fmt::Debug, hash::Hash};
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
@@ -361,55 +361,6 @@ where
         }
     }
 
-    // /// Appends an iterator of marked leaf digests at the end of the tree, returning the iterator back
-    // /// if it could not be inserted because the tree has exhausted its capacity.
-    // ///
-    // /// # Implementation Note
-    // ///
-    // /// This operation is meant to be atomic, so if appending the iterator should fail, the
-    // /// implementation must ensure that the tree returns to the same state before the insertion
-    // /// occured.
-    // #[inline]
-    // pub fn extend_with_marked_digests<I>(
-    //     &mut self,
-    //     parameters: &Parameters<C>,
-    //     marked_leaf_digests: I,
-    // ) -> Result<(), I::IntoIter>
-    // where
-    //     I: IntoIterator<Item = (bool, LeafDigest<C>)>,
-    //     L: Default,
-    //     M: Default,
-    //     InnerDigest<C>: Clone + Default + PartialEq,
-    //     LeafDigest<C>: Clone + Default,
-    // {
-    //     let marked_leaf_digests = marked_leaf_digests.into_iter();
-    //     if matches!(marked_leaf_digests.size_hint().1, Some(max) if max <= capacity::<C, _>() - self.len())
-    //     {
-    //         let mut marked_inserts = Vec::new();
-    //         for (marking, leaf_digest) in marked_leaf_digests {
-    //             println!("{:?}", marking);
-    //             if marking {
-    //                 marked_inserts.push(leaf_digest);
-    //             } else {
-    //                 if !marked_inserts.is_empty() {
-    //                     println!("Marked inserts length: {:?}", marked_inserts.len());
-    //                     assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
-    //                         "Pushing a leaf digest into the tree should always succeed because of the check above.");
-    //                     println!("Marked inserts length: {:?}", marked_inserts.len());
-    //                 }
-    //                 assert!(self.push_provable_digest(parameters, move || leaf_digest),
-    //              "Pushing a leaf digest into the tree should always succeed because of the check above.");
-    //             }
-    //         }
-    //         if !marked_inserts.is_empty() {
-    //             assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
-    //                 "Pushing a leaf digest into the tree should always succeed because of the check above.");
-    //         }
-    //         return Ok(());
-    //     }
-    //     Err(marked_leaf_digests)
-    // }
-
     /// Appends an iterator of marked leaf digests at the end of the tree, returning the iterator back
     /// if it could not be inserted because the tree has exhausted its capacity.
     ///
@@ -436,9 +387,11 @@ where
         {
             for (marking, leaf_digest) in marked_leaf_digests {
                 if marking {
-                    assert!(self.push_digest(parameters, || leaf_digest));
+                    assert!(self.push_digest(parameters, || leaf_digest),
+                    "Unable to push digest even though the tree should have enough capacity to do so.");
                 } else {
-                    assert!(self.push_provable_digest(parameters, move || leaf_digest));
+                    assert!(self.push_provable_digest(parameters, move || leaf_digest),
+                    "Unable to push digest even though the tree should have enough capacity to do so.");
                 }
             }
             return Ok(());
@@ -511,10 +464,11 @@ where
             {
                 let sibling_node = inner_node.sibling();
                 self.inner_digests.remove(sibling_node.map_index());
-                if sibling_node
-                    .leaf_nodes(C::HEIGHT)
-                    .any(|x| !self.leaf_map.is_marked_or_removed(x.0))
-                {
+                if sibling_node.leaf_nodes(C::HEIGHT).any(|x| {
+                    !self
+                        .leaf_map
+                        .is_marked_or_removed(x.0 - self.starting_leaf_index())
+                }) {
                     break;
                 }
             }
@@ -524,8 +478,12 @@ where
         }
     }
 
-    /// Marks the leaf at `index` for removal and then tries to remove the [`Path`]
-    /// above it.
+    /// Marks the leaf at `index` for removal.
+    ///
+    /// # Note
+    ///
+    /// This method doesn't attempt to remove the path above `index`. Instead,
+    /// the [`prune`](Self::prune) method should be called.
     #[inline]
     pub fn remove_path(&mut self, index: usize) -> bool {
         let leaf_index = index - self.starting_leaf_index();
@@ -535,7 +493,6 @@ where
         };
         self.leaf_map.mark(leaf_index);
         true
-        //self.remove_path_at_index(leaf_index)
     }
 }
 
