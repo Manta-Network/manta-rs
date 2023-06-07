@@ -59,7 +59,7 @@ use manta_util::{
     vec::VecExt,
 };
 
-use super::ConsolidationRequest;
+use super::{ConsolidationPrerequest, ConsolidationRequest};
 
 /// Returns the default account for `accounts`.
 #[inline]
@@ -519,7 +519,7 @@ fn custom_select<C>(
     accounts: &AccountTable<C>,
     assets: &C::AssetMap,
     parameters: &Parameters<C>,
-    request: &ConsolidationRequest<C>,
+    request: ConsolidationRequest<C>,
     rng: &mut C::Rng,
 ) -> Result<Selection<C>, SignError<C>>
 where
@@ -529,13 +529,14 @@ where
     if !request.check_consolidation_request(assets) {
         return Err(SignError::InvalidConsolidationRequest);
     }
+    let id = request.id().clone();
     let selection = request.select::<C::AssetMap>();
     Selection::new(selection, move |k, v| {
         Ok(build_pre_sender::<C>(
             accounts,
             parameters,
             k,
-            Asset::<C>::new(request.id().clone(), v),
+            Asset::<C>::new(id.clone(), v),
             rng,
         ))
     })
@@ -948,39 +949,36 @@ where
 }
 
 ///
-#[allow(clippy::too_many_arguments)]
 #[inline]
 fn consolidate_internal<C>(
     parameters: &SignerParameters<C>,
     accounts: &AccountTable<C>,
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
-    asset: Asset<C>,
-    address: Option<Address<C>>,
-    request: &ConsolidationRequest<C>,
-    sink_accounts: Vec<C::AccountId>,
+    request: ConsolidationRequest<C>,
     rng: &mut C::Rng,
 ) -> Result<SignResponse<C>, SignError<C>>
 where
     C: Configuration,
     C::Identifier: PartialEq,
 {
-    let selection = custom_select(accounts, assets, &parameters.parameters, request, rng);
-    let selection = select(accounts, assets, &parameters.parameters, &asset, rng)?;
+    let asset = request.asset();
+    let selection = custom_select(accounts, assets, &parameters.parameters, request, rng)?;
     sign_after_selection(
         parameters,
         accounts,
         assets,
         utxo_accumulator,
         asset,
-        address,
-        sink_accounts,
+        Some(default_address::<C>(accounts, &parameters.parameters)),
+        Vec::new(),
         selection,
         rng,
     )
 }
 
 ///
+#[allow(clippy::too_many_arguments)]
 #[inline]
 fn sign_after_selection<C>(
     parameters: &SignerParameters<C>,
@@ -1136,16 +1134,25 @@ where
 pub fn consolidate<C>(
     parameters: &SignerParameters<C>,
     accounts: Option<&AccountTable<C>>,
-    authorization_context: Option<&mut AuthorizationContext<C>>,
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
-    transaction: Transaction<C>,
+    request: ConsolidationPrerequest<C>,
     rng: &mut C::Rng,
 ) -> Result<SignResponse<C>, SignError<C>>
 where
     C: Configuration,
+    C::Identifier: PartialEq,
 {
-    todo!()
+    let result = consolidate_internal(
+        parameters,
+        accounts.ok_or(SignError::MissingSpendingKey)?,
+        assets,
+        utxo_accumulator,
+        request.try_into()?,
+        rng,
+    )?;
+    utxo_accumulator.rollback();
+    Ok(result)
 }
 
 /// Generates an [`IdentityProof`] for `identified_asset` by

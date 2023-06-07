@@ -51,6 +51,8 @@ use manta_util::ops::ControlFlow;
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
 
+use self::signer::ConsolidationPrerequest;
+
 pub mod balance;
 pub mod ledger;
 pub mod signer;
@@ -564,6 +566,19 @@ where
             .map_err(Error::SignError)
     }
 
+    ///
+    #[inline]
+    pub async fn consolidate(
+        &mut self,
+        request: ConsolidationPrerequest<C>,
+    ) -> Result<SignResponse<C>, Error<C, L, S>> {
+        self.signer
+            .consolidate(request)
+            .await
+            .map_err(Error::SignerConnectionError)?
+            .map_err(Error::SignError)
+    }
+
     /// Attempts to process [`TransferPost`]s and returns the corresponding
     /// [`TransactionData`](crate::transfer::canonical::TransactionData).
     #[inline]
@@ -624,6 +639,24 @@ where
     {
         self.sync().await?;
         let SignResponse { posts } = self.sign(transaction, metadata).await?;
+        self.ledger
+            .write(posts)
+            .await
+            .map_err(Error::LedgerConnectionError)
+    }
+
+    ///
+    #[inline]
+    pub async fn post_consolidation(
+        &mut self,
+        request: ConsolidationPrerequest<C>,
+    ) -> Result<L::Response, Error<C, L, S>>
+    where
+        L: ledger::Read<SyncData<C>, Checkpoint = S::Checkpoint>
+            + ledger::Write<Vec<TransferPost<C>>>,
+    {
+        self.sync().await?;
+        let SignResponse { posts } = self.consolidate(request).await?;
         self.ledger
             .write(posts)
             .await

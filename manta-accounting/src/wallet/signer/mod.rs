@@ -30,7 +30,7 @@ use crate::{
     key::{self, Account, AccountCollection, DeriveAddresses},
     transfer::{
         self,
-        canonical::{MultiProvingContext, Selection, Transaction, TransactionData},
+        canonical::{MultiProvingContext, Transaction, TransactionData},
         Address, Asset, AuthorizationContext, IdentifiedAsset, Identifier, IdentityProof, Note,
         Nullifier, Parameters, ProofSystemError, SpendingKey, TransferPost, Utxo,
         UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorWitness, UtxoMembershipProof,
@@ -148,6 +148,12 @@ where
 
     /// Returns the transfer [`Parameters`] corresponding to `self`.
     fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error>;
+
+    ///
+    fn consolidate(
+        &mut self,
+        request: ConsolidationPrerequest<C>,
+    ) -> LocalBoxFutureResult<SignResult<C>, Self::Error>;
 }
 
 /// Signer Initial Synchronization Data
@@ -867,6 +873,33 @@ pub struct AssetListResponse<C>(pub Vec<IdentifiedAsset<C>>)
 where
     C: transfer::Configuration + ?Sized;
 
+/// Consolidation prerequest
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Identifier<C>: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Identifier<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub struct ConsolidationPrerequest<C>(pub Vec<IdentifiedAsset<C>>)
+where
+    C: transfer::Configuration + ?Sized;
+
 /// Consolidation request
 #[cfg_attr(
     feature = "serde",
@@ -974,22 +1007,30 @@ where
 
     ///
     #[inline]
-    pub fn select<M>(&self) -> asset::Selection<C::AssetId, C::AssetValue, M>
+    pub fn select<M>(self) -> asset::Selection<C::AssetId, C::AssetValue, M>
     where
         M: AssetMap<C::AssetId, C::AssetValue, Key = Identifier<C>>,
     {
         asset::Selection::new(
             Default::default(),
             self.0
-                .iter()
-                .map(|identified_asset| {
-                    (
-                        identified_asset.identifier.clone(),
-                        identified_asset.asset.value.clone(),
-                    )
-                })
+                .into_iter()
+                .map(|identified_asset| (identified_asset.identifier, identified_asset.asset.value))
                 .collect::<Vec<_>>(),
         )
+    }
+}
+
+impl<C> TryFrom<ConsolidationPrerequest<C>> for ConsolidationRequest<C>
+where
+    C: transfer::Configuration,
+    IdentifiedAsset<C>: PartialEq,
+{
+    type Error = SignError<C>;
+
+    #[inline]
+    fn try_from(value: ConsolidationPrerequest<C>) -> Result<Self, Self::Error> {
+        Self::new(value.0).ok_or(SignError::InvalidConsolidationRequest)
     }
 }
 
@@ -1592,6 +1633,25 @@ where
         )
     }
 
+    ///
+    #[inline]
+    pub fn consolidate(
+        &mut self,
+        request: ConsolidationPrerequest<C>,
+    ) -> Result<SignResponse<C>, SignError<C>>
+    where
+        C::Identifier: PartialEq,
+    {
+        functions::consolidate(
+            &self.parameters,
+            self.state.accounts.as_ref(),
+            &self.state.assets,
+            &mut self.state.utxo_accumulator,
+            request,
+            &mut self.state.rng,
+        )
+    }
+
     /// Returns a vector with the [`IdentityProof`] corresponding to each [`IdentifiedAsset`] in `identified_assets`.
     #[inline]
     pub fn batched_identity_proof(
@@ -1747,6 +1807,7 @@ impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
     C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
+    C::Identifier: PartialEq,
 {
     type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;
@@ -1819,6 +1880,14 @@ where
     #[inline]
     fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error> {
         Box::pin(async move { Ok(Signer::transfer_parameters(self).clone()) })
+    }
+
+    #[inline]
+    fn consolidate(
+        &mut self,
+        request: ConsolidationPrerequest<C>,
+    ) -> LocalBoxFutureResult<SignResult<C>, Self::Error> {
+        Box::pin(async move { Ok(self.consolidate(request)) })
     }
 }
 
