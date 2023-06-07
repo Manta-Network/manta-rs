@@ -59,6 +59,8 @@ use manta_util::{
     vec::VecExt,
 };
 
+use super::ConsolidationRequest;
+
 /// Returns the default account for `accounts`.
 #[inline]
 pub fn default_account<C>(accounts: &AccountTable<C>) -> Account<C::Account>
@@ -511,6 +513,34 @@ where
     })
 }
 
+///
+#[inline]
+fn custom_select<C>(
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    parameters: &Parameters<C>,
+    request: &ConsolidationRequest<C>,
+    rng: &mut C::Rng,
+) -> Result<Selection<C>, SignError<C>>
+where
+    C: Configuration,
+    IdentifiedAsset<C>: PartialEq,
+{
+    if !request.check_consolidation_request(assets) {
+        return Err(SignError::InvalidConsolidationRequest);
+    }
+    let selection = request.select::<C::AssetMap>();
+    Selection::new(selection, move |k, v| {
+        Ok(build_pre_sender::<C>(
+            accounts,
+            parameters,
+            k,
+            Asset::<C>::new(request.id().clone(), v),
+            rng,
+        ))
+    })
+}
+
 /// Builds a [`TransferPost`] for the given `transfer`.
 #[inline]
 fn build_post_inner<
@@ -904,6 +934,68 @@ where
     C: Configuration,
 {
     let selection = select(accounts, assets, &parameters.parameters, &asset, rng)?;
+    sign_after_selection(
+        parameters,
+        accounts,
+        assets,
+        utxo_accumulator,
+        asset,
+        address,
+        sink_accounts,
+        selection,
+        rng,
+    )
+}
+
+///
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn consolidate_internal<C>(
+    parameters: &SignerParameters<C>,
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    asset: Asset<C>,
+    address: Option<Address<C>>,
+    request: &ConsolidationRequest<C>,
+    sink_accounts: Vec<C::AccountId>,
+    rng: &mut C::Rng,
+) -> Result<SignResponse<C>, SignError<C>>
+where
+    C: Configuration,
+    C::Identifier: PartialEq,
+{
+    let selection = custom_select(accounts, assets, &parameters.parameters, request, rng);
+    let selection = select(accounts, assets, &parameters.parameters, &asset, rng)?;
+    sign_after_selection(
+        parameters,
+        accounts,
+        assets,
+        utxo_accumulator,
+        asset,
+        address,
+        sink_accounts,
+        selection,
+        rng,
+    )
+}
+
+///
+#[inline]
+fn sign_after_selection<C>(
+    parameters: &SignerParameters<C>,
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    asset: Asset<C>,
+    address: Option<Address<C>>,
+    sink_accounts: Vec<C::AccountId>,
+    selection: Selection<C>,
+    rng: &mut C::Rng,
+) -> Result<SignResponse<C>, SignError<C>>
+where
+    C: Configuration,
+{
     let mut posts = Vec::new();
     let senders = compute_batched_transactions(
         accounts,
@@ -1037,6 +1129,23 @@ where
     )?;
     utxo_accumulator.rollback();
     Ok(result)
+}
+
+///
+#[inline]
+pub fn consolidate<C>(
+    parameters: &SignerParameters<C>,
+    accounts: Option<&AccountTable<C>>,
+    authorization_context: Option<&mut AuthorizationContext<C>>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    transaction: Transaction<C>,
+    rng: &mut C::Rng,
+) -> Result<SignResponse<C>, SignError<C>>
+where
+    C: Configuration,
+{
+    todo!()
 }
 
 /// Generates an [`IdentityProof`] for `identified_asset` by

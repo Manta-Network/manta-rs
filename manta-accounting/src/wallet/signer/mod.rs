@@ -26,11 +26,11 @@
 //        internally.
 
 use crate::{
-    asset::AssetMap,
+    asset::{self, AssetMap},
     key::{self, Account, AccountCollection, DeriveAddresses},
     transfer::{
         self,
-        canonical::{MultiProvingContext, Transaction, TransactionData},
+        canonical::{MultiProvingContext, Selection, Transaction, TransactionData},
         Address, Asset, AuthorizationContext, IdentifiedAsset, Identifier, IdentityProof, Note,
         Nullifier, Parameters, ProofSystemError, SpendingKey, TransferPost, Utxo,
         UtxoAccumulatorItem, UtxoAccumulatorModel, UtxoAccumulatorWitness, UtxoMembershipProof,
@@ -835,6 +835,9 @@ where
 
     /// Missing Proof Authorization Key
     MissingProofAuthorizationKey,
+
+    /// Invalid Consolidation Request
+    InvalidConsolidationRequest,
 }
 
 /// Asset List Response
@@ -863,6 +866,132 @@ where
 pub struct AssetListResponse<C>(pub Vec<IdentifiedAsset<C>>)
 where
     C: transfer::Configuration + ?Sized;
+
+/// Consolidation request
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Identifier<C>: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Identifier<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub struct ConsolidationRequest<C>(Vec<IdentifiedAsset<C>>)
+where
+    C: transfer::Configuration + ?Sized;
+
+impl<C> ConsolidationRequest<C>
+where
+    C: transfer::Configuration,
+    IdentifiedAsset<C>: PartialEq,
+{
+    /// Builds a new [`ConsolidationRequest`] from `assets`.
+    #[inline]
+    fn new_unchecked(assets: Vec<IdentifiedAsset<C>>) -> Self {
+        Self(assets)
+    }
+
+    /// Builds a new [`ConsolidationRequest`] from `assets`, ensuring that:
+    /// 1) There are at least two [`IdentifiedAsset`]s in `assets`.
+    /// 2) There are no duplicates in `assets`.
+    /// 3) All assets in `assets` have the same asset id.
+    /// 4) No asset in `assets` has zero value.
+    #[inline]
+    pub fn new(assets: Vec<IdentifiedAsset<C>>) -> Option<Self> {
+        let number_of_assets = assets.len();
+        if number_of_assets < 2 {
+            return None;
+        }
+        let asset_id = &assets
+            .first()
+            .expect("This cannot fail because of the check above.")
+            .asset
+            .id;
+        (!(1..number_of_assets).any(|i| {
+            assets[i..].contains(&assets[i - 1])
+                && assets[i].asset.id.ne(asset_id)
+                && assets[i].asset.value.eq(&Default::default())
+        }))
+        .then_some(Self::new_unchecked(assets))
+    }
+
+    ///
+    #[inline]
+    pub fn id(&self) -> &C::AssetId {
+        &self
+            .0
+            .first()
+            .expect("Consolidation requests must have at least 2 elements")
+            .asset
+            .id
+    }
+
+    ///
+    #[inline]
+    pub fn asset(&self) -> Asset<C> {
+        Asset::<C>::new(
+            self.id().clone(),
+            self.0
+                .iter()
+                .map(|identified_asset| identified_asset.asset.value.clone())
+                .sum(),
+        )
+    }
+
+    ///
+    #[inline]
+    pub fn check_consolidation_request<M>(&self, asset_map: &M) -> bool
+    where
+        M: AssetMap<C::AssetId, C::AssetValue, Key = Identifier<C>>,
+    {
+        let id = &self
+            .0
+            .first()
+            .expect("Consolidation requests must have at least 2 elements")
+            .asset
+            .id;
+        let asset_map_assets = asset_map
+            .asset_vector_with_id(id)
+            .into_iter()
+            .map(|(identifier, asset)| IdentifiedAsset::<C>::new(identifier, asset))
+            .collect::<Vec<_>>();
+        self.0.iter().all(|asset| asset_map_assets.contains(asset))
+    }
+
+    ///
+    #[inline]
+    pub fn select<M>(&self) -> asset::Selection<C::AssetId, C::AssetValue, M>
+    where
+        M: AssetMap<C::AssetId, C::AssetValue, Key = Identifier<C>>,
+    {
+        asset::Selection::new(
+            Default::default(),
+            self.0
+                .iter()
+                .map(|identified_asset| {
+                    (
+                        identified_asset.identifier.clone(),
+                        identified_asset.asset.value.clone(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+    }
+}
 
 /// Signing Result
 pub type SignResult<C> = Result<SignResponse<C>, SignError<C>>;
@@ -1209,6 +1338,7 @@ where
             self.assets
                 .asset_vector()
                 .into_iter()
+                .filter(|(_, asset)| !asset.is_zero())
                 .map(|(identifier, asset)| IdentifiedAsset::<C>::new(identifier, asset))
                 .collect(),
         )

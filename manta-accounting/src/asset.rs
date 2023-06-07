@@ -759,6 +759,9 @@ pub trait AssetMap<I, V>: Default {
 
     ///
     fn asset_vector(&self) -> Vec<(Self::Key, Asset<I, V>)>;
+
+    ///
+    fn asset_vector_with_id(&self, id: &I) -> Vec<(Self::Key, Asset<I, V>)>;
 }
 
 /// Implements [`AssetMap`] for map types.
@@ -875,6 +878,16 @@ macro_rules! impl_asset_map_for_maps_body {
                 .flat_map(|(key, assets)| {
                     assets.iter().map(move |asset| (key.clone(), asset.clone()))
                 })
+                .collect()
+        }
+
+        #[inline]
+        fn asset_vector_with_id(&self, id: &$I) -> Vec<(Self::Key, Asset<$I, $V>)> {
+            self.iter()
+                .flat_map(|(key, assets)| {
+                    assets.iter().map(move |asset| (key.clone(), asset.clone()))
+                })
+                .filter(move |(_, asset)| asset.id == *id)
                 .collect()
         }
     };
