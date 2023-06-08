@@ -900,6 +900,17 @@ pub struct ConsolidationPrerequest<C>(pub Vec<IdentifiedAsset<C>>)
 where
     C: transfer::Configuration + ?Sized;
 
+impl<C> ConsolidationPrerequest<C>
+where
+    C: transfer::Configuration + ?Sized,
+{
+    ///
+    #[inline]
+    pub fn new(assets: Vec<IdentifiedAsset<C>>) -> Self {
+        Self(assets)
+    }
+}
+
 /// Consolidation request
 #[cfg_attr(
     feature = "serde",

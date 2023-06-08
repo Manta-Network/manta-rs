@@ -32,7 +32,7 @@ use crate::{
 use alloc::sync::Arc;
 use manta_accounting::{
     transfer::{canonical::Transaction, IdentifiedAsset, Identifier},
-    wallet::Wallet,
+    wallet::{signer::ConsolidationPrerequest, Wallet},
 };
 use manta_crypto::{
     algebra::HasGenerator,
@@ -223,7 +223,7 @@ async fn create_new_wallet(
 /// Tests that pruning is safe and doesn't delete necessary Merkle proofs.
 #[ignore] // We don't run this test on the CI because it takes a long time to run.
 #[tokio::test]
-async fn find_the_bug() {
+async fn pruning_test() {
     let mut rng = OsRng;
     let asset_id = 8;
     let ledger = load_ledger().expect("Error loading ledger");
@@ -280,4 +280,62 @@ async fn find_the_bug() {
         wallet.sync().await.expect("Sync error");
         wallet.signer_mut().prune();
     }
+}
+
+///
+#[ignore] // We don't run this test on the CI because it takes a long time to run.
+#[tokio::test]
+async fn consolidation_test() {
+    let mut rng = OsRng;
+    let asset_id = 8;
+    let ledger = load_ledger().expect("Error loading ledger");
+    let account_id = rng.gen();
+    let mut public_balance = rng.gen_range(Default::default()..u32::MAX as u128);
+    let mut wallet = create_new_wallet(
+        account_id,
+        public_balance,
+        asset_id,
+        ledger.clone(),
+        rng.gen(),
+    )
+    .await;
+    // 1) create new wallet, reset it and sync.
+    wallet.reset_state();
+    wallet.load_initial_state().await.expect("Sync error");
+    wallet.sync().await.expect("Sync error");
+    // 2) privatize `to_mint` tokens, sync and prune.
+    const NUMBER_OF_PRIVATE_UTXOS: usize = 9;
+    for _ in 0..NUMBER_OF_PRIVATE_UTXOS {
+        let to_mint = rng.gen_range(Default::default()..public_balance);
+        public_balance -= to_mint;
+        let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id.into(), to_mint));
+        wallet
+            .post(to_private, Default::default())
+            .await
+            .expect("Error posting ToPrivate");
+        wallet.sync().await.expect("Sync error");
+    }
+    let asset_list = wallet.signer().asset_list().0;
+    let balance_before_consolidation = wallet.balance(&asset_id.into());
+    assert_eq!(
+        asset_list.len(),
+        NUMBER_OF_PRIVATE_UTXOS,
+        "The number of UTXOs in the asset list must be equal to the number of UTXOs minted."
+    );
+    wallet
+        .post_consolidation(ConsolidationPrerequest::new(asset_list))
+        .await
+        .expect("Consolidation error");
+    wallet.sync().await.expect("Sync error");
+    let balance_after_consolidation = wallet.balance(&asset_id.into());
+    assert_eq!(
+        balance_before_consolidation, balance_after_consolidation,
+        "Consolidation must preserve the total balance."
+    );
+    let asset_list_after_consolidation = wallet.signer().asset_list().0;
+    assert_eq!(
+        asset_list_after_consolidation.len(),
+        1,
+        "The number of UTXOs after consolidation must be 1"
+    );
 }
