@@ -299,11 +299,11 @@ async fn consolidation_test() {
         rng.gen(),
     )
     .await;
-    // 1) create new wallet, reset it and sync.
+    // 1) reset the wallet and sync.
     wallet.reset_state();
     wallet.load_initial_state().await.expect("Sync error");
     wallet.sync().await.expect("Sync error");
-    // 2) privatize `to_mint` tokens, sync and prune.
+    // 2) mint several UTXOs.
     const NUMBER_OF_PRIVATE_UTXOS: usize = 9;
     for _ in 0..NUMBER_OF_PRIVATE_UTXOS {
         let to_mint = rng.gen_range(Default::default()..public_balance);
@@ -313,8 +313,9 @@ async fn consolidation_test() {
             .post(to_private, Default::default())
             .await
             .expect("Error posting ToPrivate");
-        wallet.sync().await.expect("Sync error");
     }
+    // 3) consolidate all UTXOs
+    wallet.sync().await.expect("Sync error");
     let asset_list = wallet.signer().asset_list().0;
     let balance_before_consolidation = wallet.balance(&asset_id.into());
     assert_eq!(
@@ -327,6 +328,7 @@ async fn consolidation_test() {
         .await
         .expect("Consolidation error");
     wallet.sync().await.expect("Sync error");
+    // 4) check we only have 1 UTXO and the balance is preserved
     let balance_after_consolidation = wallet.balance(&asset_id.into());
     assert_eq!(
         balance_before_consolidation, balance_after_consolidation,
