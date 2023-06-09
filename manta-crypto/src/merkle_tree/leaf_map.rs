@@ -450,7 +450,7 @@ where
     fn remove(&mut self, index: usize) -> bool {
         match self.last_index {
             Some(current_index) if index == current_index => false,
-            _ => self.map.remove(&index).is_none(),
+            _ => self.map.remove(&index).is_some(),
         }
     }
 }
@@ -581,7 +581,7 @@ where
     fn remove(&mut self, index: usize) -> bool {
         match self.last_index {
             Some(current_index) if index == current_index => false,
-            _ => self.map.remove(&index).is_none(),
+            _ => self.map.remove(&index).is_some(),
         }
     }
 }
