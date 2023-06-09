@@ -925,7 +925,7 @@ where
 /// 1) It contains no duplicates.
 /// 2) It contains no assets with value zero.
 /// 3) It contains at least two assets.
-/// 4) All the assets it contains share the same asset id.
+/// 4) All the assets contained in it share the same asset id.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
