@@ -1812,6 +1812,19 @@ where
     pub fn asset_list(&self) -> AssetListResponse<C> {
         self.state.asset_list()
     }
+
+    ///
+    #[inline]
+    pub fn estimate_transferposts(&self, transaction: &Transaction<C>) -> usize {
+        match transaction {
+            Transaction::ToPrivate(_) => 1,
+            Transaction::PrivateTransfer(asset, _) => {
+                self.state.assets.select(asset).values.len() - 1
+            }
+            Transaction::ToPublic(asset, _) => self.state.assets.select(asset).values.len() - 1,
+            // note: change the estimation once we implement the topublic optimization
+        }
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
