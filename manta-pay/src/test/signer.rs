@@ -282,7 +282,7 @@ async fn pruning_test() {
     }
 }
 
-///
+/// Tests [`consolidate`](manta_accounting::wallet::Wallet::consolidate) works as expected.
 #[ignore] // We don't run this test on the CI because it takes a long time to run.
 #[tokio::test]
 async fn consolidation_test() {

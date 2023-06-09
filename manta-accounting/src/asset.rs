@@ -757,10 +757,10 @@ pub trait AssetMap<I, V>: Default {
     where
         F: FnMut(&Self::Key, &mut Vec<Asset<I, V>>) -> bool;
 
-    ///
+    /// Returns a vector with all assets in `self`, indexed by their keys.
     fn asset_vector(&self) -> Vec<(Self::Key, Asset<I, V>)>;
 
-    ///
+    /// Returns a vector with all assets in `self` with `id`, indexed by their keys.
     fn asset_vector_with_id(&self, id: &I) -> Vec<(Self::Key, Asset<I, V>)>;
 }
 

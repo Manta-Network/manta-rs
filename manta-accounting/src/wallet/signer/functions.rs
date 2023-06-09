@@ -39,9 +39,9 @@ use crate::{
     },
     wallet::signer::{
         nullifier_map::NullifierMap, AccountTable, BalanceUpdate, Checkpoint, Configuration,
-        InitialSyncRequest, SignError, SignResponse, SignWithTransactionDataResponse,
-        SignWithTransactionDataResult, SignerParameters, SyncData, SyncError, SyncRequest,
-        SyncResponse,
+        ConsolidationPrerequest, ConsolidationRequest, InitialSyncRequest, SignError, SignResponse,
+        SignWithTransactionDataResponse, SignWithTransactionDataResult, SignerParameters, SyncData,
+        SyncError, SyncRequest, SyncResponse,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -58,8 +58,6 @@ use manta_util::{
     persistence::Rollback,
     vec::VecExt,
 };
-
-use super::{ConsolidationPrerequest, ConsolidationRequest};
 
 /// Returns the default account for `accounts`.
 #[inline]
@@ -513,7 +511,11 @@ where
     })
 }
 
+/// Selects the pre-senders which own the assets in `request`, returning no change.
 ///
+/// # Failure Conditions
+///
+/// This function returns an error if any of the assets in `request` is not in `assets`.
 #[inline]
 fn custom_select<C>(
     accounts: &AccountTable<C>,
@@ -948,7 +950,7 @@ where
     )
 }
 
-///
+/// Signs a transaction which consolidates the assets in `request`.
 #[inline]
 fn consolidate_internal<C>(
     parameters: &SignerParameters<C>,
@@ -977,7 +979,8 @@ where
     )
 }
 
-///
+/// Signs a withdraw transaction for `asset` sent to `address`, where `selection`
+/// owns at least `asset`.
 #[allow(clippy::too_many_arguments)]
 #[inline]
 fn sign_after_selection<C>(
@@ -1129,7 +1132,8 @@ where
     Ok(result)
 }
 
-///
+/// Signs a transaction which consolidates the assets in `request`,
+/// generating transfer posts without releasing resources.
 #[inline]
 pub fn consolidate<C>(
     parameters: &SignerParameters<C>,

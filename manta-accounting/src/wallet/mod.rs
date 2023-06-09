@@ -37,8 +37,8 @@ use crate::{
         balance::{BTreeMapBalanceState, BalanceState},
         ledger::ReadResponse,
         signer::{
-            BalanceUpdate, Checkpoint, IdentityRequest, IdentityResponse, InitialSyncData,
-            InitialSyncRequest, SignError, SignRequest, SignResponse,
+            BalanceUpdate, Checkpoint, ConsolidationPrerequest, IdentityRequest, IdentityResponse,
+            InitialSyncData, InitialSyncRequest, SignError, SignRequest, SignResponse,
             SignWithTransactionDataResponse, SyncData, SyncError, SyncRequest, SyncResponse,
             SyncResult, TransactionDataRequest, TransactionDataResponse,
         },
@@ -50,8 +50,6 @@ use manta_util::ops::ControlFlow;
 
 #[cfg(feature = "serde")]
 use manta_util::serde::{Deserialize, Serialize};
-
-use self::signer::ConsolidationPrerequest;
 
 pub mod balance;
 pub mod ledger;
@@ -566,7 +564,9 @@ where
             .map_err(Error::SignError)
     }
 
-    ///
+    /// Consolidates the assets in `request` using the signer connection. This
+    /// method _does not_ automatically sychronize with the ledger. To do this, call the
+    /// [`sync`](Self::sync) method separately.
     #[inline]
     pub async fn consolidate(
         &mut self,
@@ -645,7 +645,25 @@ where
             .map_err(Error::LedgerConnectionError)
     }
 
+    /// Posts a consolidation to the ledger, returning a success [`Response`] if the assets in
+    /// `request` were successfully consolidated and posted to the ledger. This method automatically
+    /// synchronizes with the ledger before posting, _but not after_. To amortize the cost of future
+    /// calls to [`post_consolidation`], the [`sync`] method can be used to synchronize with the ledger.
     ///
+    /// # Failure Conditions
+    ///
+    /// This method returns a [`Response`] when there were no errors in producing transfer data and
+    /// sending and receiving from the ledger, but instead the ledger just did not accept the
+    /// transaction as is. This could be caused by an external update to the ledger while the signer
+    /// was building the transaction that caused the wallet and the ledger to get out of sync. In
+    /// this case, [`post_consolidation`] can safely be called again, to retry the transaction.
+    ///
+    /// This method returns an error in any other case. The internal state of the wallet is kept
+    /// consistent between calls and recoverable errors are returned for the caller to handle.
+    ///
+    /// [`Response`]: ledger::Write::Response
+    /// [`post_consolidation`]: Self::post_consolidation
+    /// [`sync`]: Self::sync
     #[inline]
     pub async fn post_consolidation(
         &mut self,

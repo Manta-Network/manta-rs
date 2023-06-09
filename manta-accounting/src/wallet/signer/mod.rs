@@ -149,7 +149,12 @@ where
     /// Returns the transfer [`Parameters`] corresponding to `self`.
     fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error>;
 
+    /// Signs a [`ConsolidationPrerequest`] and returns the transfer posts if successful.
     ///
+    /// # Implementation Note
+    ///
+    /// Utxo consolidation is a self transfer which merges several Utxos into a single
+    /// one whose asset value is the sum of the original Utxos.
     fn consolidate(
         &mut self,
         request: ConsolidationPrerequest<C>,
@@ -873,7 +878,7 @@ pub struct AssetListResponse<C>(pub Vec<IdentifiedAsset<C>>)
 where
     C: transfer::Configuration + ?Sized;
 
-/// Consolidation prerequest
+/// Consolidation Prerequest
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -904,14 +909,23 @@ impl<C> ConsolidationPrerequest<C>
 where
     C: transfer::Configuration + ?Sized,
 {
-    ///
+    /// Builds a new [`ConsolidationPrerequest`] from `assets`.
     #[inline]
     pub fn new(assets: Vec<IdentifiedAsset<C>>) -> Self {
         Self(assets)
     }
 }
 
-/// Consolidation request
+/// Consolidation Request
+///
+/// # Note
+///
+/// A consolidation request is a vector of [`IdentifiedAsset`]s satisfying the
+/// following conditions:
+/// 1) It contains no duplicates.
+/// 2) It contains no assets with value zero.
+/// 3) It contains at least two assets.
+/// 4) All the assets it contains share the same asset id.
 #[cfg_attr(
     feature = "serde",
     derive(Deserialize, Serialize),
@@ -973,7 +987,7 @@ where
         .then_some(Self::new_unchecked(assets))
     }
 
-    ///
+    /// Returns the asset id of the assets in `self`.
     #[inline]
     pub fn id(&self) -> &C::AssetId {
         &self
@@ -984,7 +998,7 @@ where
             .id
     }
 
-    ///
+    /// Returns the total amount of [`Asset`] held by the assets in `self`.
     #[inline]
     pub fn asset(&self) -> Asset<C> {
         Asset::<C>::new(
@@ -996,7 +1010,7 @@ where
         )
     }
 
-    ///
+    /// Checks that every asset in `self` is also in `asset_map`.
     #[inline]
     pub fn check_consolidation_request<M>(&self, asset_map: &M) -> bool
     where
@@ -1016,7 +1030,7 @@ where
         self.0.iter().all(|asset| asset_map_assets.contains(asset))
     }
 
-    ///
+    /// Consumes `self` and returns an asset [`Selection`](asset::Selection) with all its assets.
     #[inline]
     pub fn select<M>(self) -> asset::Selection<C::AssetId, C::AssetValue, M>
     where
@@ -1383,7 +1397,7 @@ where
         Some(self.accounts.as_ref()?.get_default())
     }
 
-    ///
+    /// Returns a vector with all the [`Asset`]s owned by `self`.
     #[inline]
     pub fn asset_list(&self) -> AssetListResponse<C> {
         AssetListResponse(
@@ -1644,7 +1658,12 @@ where
         )
     }
 
+    /// Signs a [`ConsolidationPrerequest`] and returns the transfer posts if successful.
     ///
+    /// # Note
+    ///
+    /// Utxo consolidation is a self transfer which merges several Utxos into a single
+    /// one whose asset value is the sum of the original Utxos.
     #[inline]
     pub fn consolidate(
         &mut self,
@@ -1807,13 +1826,13 @@ where
         self.state.utxo_accumulator.prune()
     }
 
-    ///
+    /// Returns a vector with all the [`Asset`]s owned by `self`.
     #[inline]
     pub fn asset_list(&self) -> AssetListResponse<C> {
         self.state.asset_list()
     }
 
-    ///
+    /// Returns the estimated number of [`TransferPost`]s necessary to execute the `transaction`.
     #[inline]
     pub fn estimate_transferposts(&self, transaction: &Transaction<C>) -> usize {
         match transaction {
