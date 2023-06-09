@@ -154,7 +154,7 @@ where
     /// # Implementation Note
     ///
     /// Utxo consolidation is a self transfer which merges several Utxos into a single
-    /// one whose asset value is the sum of the original Utxos.
+    /// one whose asset value is the sum of the asset values of the original Utxos.
     fn consolidate(
         &mut self,
         request: ConsolidationPrerequest<C>,
@@ -1663,7 +1663,7 @@ where
     /// # Note
     ///
     /// Utxo consolidation is a self transfer which merges several Utxos into a single
-    /// one whose asset value is the sum of the original Utxos.
+    /// one whose asset value is the sum of the asset values of the original Utxos.
     #[inline]
     pub fn consolidate(
         &mut self,
