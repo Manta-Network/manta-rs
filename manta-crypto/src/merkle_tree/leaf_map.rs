@@ -108,6 +108,9 @@ where
     /// Returns a vector with all [`LeafDigest`]s, consuming `self`.
     fn into_leaf_digests(self) -> Vec<LeafDigest<C>>;
 
+    /// Returns a vector with all [`LeafDigest`]s and their markings, consuming `self`.
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)>;
+
     /// Returns a vector with all marked [`LeafDigest`]s in `self`.
     #[inline]
     fn marked_leaf_digests(&self) -> Vec<&LeafDigest<C>> {
@@ -138,7 +141,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
@@ -178,7 +181,7 @@ where
 
     #[inline]
     fn push(&mut self, leaf_digest: LeafDigest<C>) {
-        self.0.push(leaf_digest);
+        self.0.push(leaf_digest)
     }
 
     #[inline]
@@ -194,6 +197,11 @@ where
     #[inline]
     fn into_leaf_digests(self) -> Vec<LeafDigest<C>> {
         self.0
+    }
+
+    #[inline]
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        core::iter::repeat(false).zip(self.0).collect()
     }
 
     #[inline]
@@ -230,7 +238,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
@@ -274,7 +282,7 @@ where
 
     #[inline]
     fn push(&mut self, leaf_digest: LeafDigest<C>) {
-        self.vec.push((false, leaf_digest));
+        self.vec.push((false, leaf_digest))
     }
 
     #[inline]
@@ -293,6 +301,11 @@ where
     #[inline]
     fn into_leaf_digests(self) -> Vec<LeafDigest<C>> {
         self.vec.into_iter().map(|(_, digest)| digest).collect()
+    }
+
+    #[inline]
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        self.vec
     }
 
     #[inline]
@@ -331,8 +344,9 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
+    Hash(bound = "LeafDigest<C>: Hash"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
 pub struct LeafBTreeMap<C>
@@ -368,7 +382,10 @@ where
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.map.iter().position(|(_, (_, l))| l == leaf_digest)
+        self.map
+            .keys()
+            .find(|index| self.get(**index) == Some(leaf_digest))
+            .copied()
     }
 
     #[inline]
@@ -410,6 +427,14 @@ where
     }
 
     #[inline]
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        self.map
+            .into_iter()
+            .map(|(_, (marking, digest))| (marking, digest))
+            .collect()
+    }
+
+    #[inline]
     fn mark(&mut self, index: usize) {
         if let Some((b, _)) = self.map.get_mut(&index) {
             *b = true
@@ -425,7 +450,7 @@ where
     fn remove(&mut self, index: usize) -> bool {
         match self.last_index {
             Some(current_index) if index == current_index => false,
-            _ => !matches!(self.map.remove(&index), None),
+            _ => self.map.remove(&index).is_some(),
         }
     }
 }
@@ -449,7 +474,7 @@ where
 #[derivative(
     Clone(bound = "LeafDigest<C>: Clone"),
     Debug(bound = "LeafDigest<C>: Debug"),
-    Default(bound = "LeafDigest<C>: Default"),
+    Default(bound = ""),
     Eq(bound = "LeafDigest<C>: Eq"),
     PartialEq(bound = "LeafDigest<C>: PartialEq")
 )]
@@ -488,7 +513,10 @@ where
 
     #[inline]
     fn position(&self, leaf_digest: &LeafDigest<C>) -> Option<usize> {
-        self.map.iter().position(|(_, (_, l))| l == leaf_digest)
+        self.map
+            .keys()
+            .find(|index| self.get(**index) == Some(leaf_digest))
+            .copied()
     }
 
     #[inline]
@@ -530,6 +558,14 @@ where
     }
 
     #[inline]
+    fn into_leaf_digests_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        self.map
+            .into_iter()
+            .map(|(_, (marking, digest))| (marking, digest))
+            .collect()
+    }
+
+    #[inline]
     fn mark(&mut self, index: usize) {
         if let Some((b, _)) = self.map.get_mut(&index) {
             *b = true
@@ -545,7 +581,7 @@ where
     fn remove(&mut self, index: usize) -> bool {
         match self.last_index {
             Some(current_index) if index == current_index => false,
-            _ => !matches!(self.map.remove(&index), None),
+            _ => self.map.remove(&index).is_some(),
         }
     }
 }

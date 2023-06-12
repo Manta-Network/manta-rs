@@ -777,10 +777,7 @@ pub async fn safe_fill_ledger<R>(
     R: RngCore + CryptoRng + ?Sized,
 {
     let mut utxo_accumulator = UtxoAccumulator::new(utxo_accumulator_model.clone());
-    for i in 0..number_of_coins {
-        if i % 5 == 0 {
-            println!("{i:?}");
-        }
+    for _ in 0..number_of_coins {
         match rng.gen_range(0..3) {
             0 => {
                 let account = rng.gen();

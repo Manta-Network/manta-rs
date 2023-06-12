@@ -19,7 +19,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, PartialInnerTree},
-    leaf_map::{LeafMap, TrivialLeafVec},
+    leaf_map::{LeafBTreeMap, LeafMap},
     partial::Partial,
     path::{CurrentInnerPath, InnerPath},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, Node, Parameters, Parity, Path,
@@ -274,7 +274,7 @@ impl Default for BaseContribution {
     Hash(bound = "InnerDigest<C>: Hash, M: Hash, L: Hash"),
     PartialEq(bound = "InnerDigest<C>: PartialEq, M: PartialEq, L: PartialEq")
 )]
-struct Branch<C, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+struct Branch<C, M = BTreeMap<C>, L = LeafBTreeMap<C>>
 where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
@@ -395,6 +395,17 @@ where
         let mut leaf_digests = data.into_leaves();
         mem::drop(leaf_digests.drain(0..base_contribution as usize));
         leaf_digests
+    }
+
+    /// Extracts the non-base leaves with their markings from `base_contribution` and `data`.
+    #[inline]
+    fn extract_leaves_with_markings(
+        base_contribution: BaseContribution,
+        data: Partial<C, M, L>,
+    ) -> Vec<(bool, LeafDigest<C>)> {
+        let mut marked_digests = data.into_leaves_with_markings();
+        mem::drop(marked_digests.drain(0..base_contribution as usize));
+        marked_digests
     }
 
     /// Tries to rebase `self` at `base`.
@@ -579,6 +590,31 @@ where
             "Should have been able to extend extracted leaves."
         );
     }
+
+    /// Merges `self` into the [`Partial`] tree `base`, keeping the markings.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the [`Tree::extend_digests`] method returns an `Err` variant because
+    /// the capacity invariant should have prevented the addition of leaves to this branch if they
+    /// would have exceeded the capacity limit of `base`.
+    #[inline]
+    fn merge_partial(self, parameters: &Parameters<C>, base: &mut Partial<C, M, L>)
+    where
+        L: Default,
+        M: Default,
+        InnerDigest<C>: Clone + Default + PartialEq,
+        LeafDigest<C>: Clone + Default,
+    {
+        assert!(
+            base.extend_with_marked_digests(
+                parameters,
+                Self::extract_leaves_with_markings(self.base_contribution, self.data)
+            )
+            .is_ok(),
+            "Should have been able to extend extracted leaves."
+        );
+    }
 }
 
 /// Merkle Tree Fork
@@ -587,7 +623,7 @@ where
     Debug(bound = "P::Weak: Debug, L: Debug, InnerDigest<C>: Debug, M: Debug"),
     Default(bound = "L: Default, InnerDigest<C>: Default")
 )]
-pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+pub struct Fork<C, T, P = pointer::SingleThreaded, M = BTreeMap<C>, L = LeafBTreeMap<C>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
@@ -839,7 +875,7 @@ where
     Hash(bound = "T: Hash, L: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "T: PartialEq, L: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct ForkedTree<C, T, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+pub struct ForkedTree<C, T, M = BTreeMap<C>, L = LeafBTreeMap<C>>
 where
     C: Configuration + ?Sized,
     T: Tree<C>,
@@ -994,9 +1030,11 @@ where
     }
 }
 
-impl<C> ForkedTree<C, Partial<C>>
+impl<C, M, L> ForkedTree<C, Partial<C, M, L>, M, L>
 where
     C: Configuration + ?Sized,
+    M: Default + InnerMap<C>,
+    L: Default + LeafMap<C>,
     LeafDigest<C>: Clone + Default + PartialEq,
     InnerDigest<C>: Clone + Default + PartialEq,
 {
@@ -1012,6 +1050,13 @@ where
             Partial::from_leaves_and_path_unchecked(parameters, leaf_digests, path),
             parameters,
         )
+    }
+
+    /// Merges the fork of the base partial tree back into the trunk.
+    #[inline]
+    pub fn merge_fork_partial(&mut self, parameters: &Parameters<C>) {
+        mem::take(&mut self.branch).merge_partial(parameters, &mut self.base);
+        self.reset_fork(parameters)
     }
 }
 
@@ -1072,7 +1117,7 @@ where
 
     #[inline]
     fn prune(&mut self) {
-        self.branch.data.prune()
+        self.base.prune();
     }
 }
 

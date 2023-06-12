@@ -16,7 +16,7 @@
 
 //! A double-ended queue (deque) implemented with a growable ring buffer.
 
-use crate::{array::BoxArray, collections::VecDeque};
+use crate::array::BoxArray;
 
 #[cfg(all(feature = "serde-alloc", feature = "serde-array"))]
 use crate::serde::{Deserialize, Serialize};

@@ -21,7 +21,7 @@
 use crate::merkle_tree::{
     capacity,
     inner_tree::{BTreeMap, InnerMap, InnerNodeIter, PartialInnerTree},
-    leaf_map::{LeafMap, TrivialLeafVec},
+    leaf_map::{LeafBTreeMap, LeafMap},
     node::{NodeRange, Parity},
     Configuration, CurrentPath, InnerDigest, Leaf, LeafDigest, MerkleTree, Node, Parameters, Path,
     PathError, Root, Tree, WithProofs,
@@ -57,7 +57,7 @@ pub type PartialMerkleTree<C, M = BTreeMap<C>> = MerkleTree<C, Partial<C, M>>;
     Hash(bound = "L: Hash, InnerDigest<C>: Hash, M: Hash"),
     PartialEq(bound = "L: PartialEq, InnerDigest<C>: PartialEq, M: PartialEq")
 )]
-pub struct Partial<C, M = BTreeMap<C>, L = TrivialLeafVec<C>>
+pub struct Partial<C, M = BTreeMap<C>, L = LeafBTreeMap<C>>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
@@ -160,6 +160,18 @@ where
         self.leaf_map.into_leaf_digests()
     }
 
+    /// Returns the leaf digests stored in the tree with their markings,
+    /// dropping the rest of the tree data.
+    ///
+    /// # Note
+    ///
+    /// See the note at [`leaf_digests`](Self::leaf_digests) for more information on indexing this
+    /// vector.
+    #[inline]
+    pub fn into_leaves_with_markings(self) -> Vec<(bool, LeafDigest<C>)> {
+        self.leaf_map.into_leaf_digests_with_markings()
+    }
+
     /// Returns the starting leaf [`Node`] for this tree.
     #[inline]
     pub fn starting_leaf_node(&self) -> Node {
@@ -175,7 +187,12 @@ where
     /// Returns the number of leaves in this tree.
     #[inline]
     pub fn len(&self) -> usize {
-        self.starting_leaf_index() + self.leaf_map.len()
+        self.starting_leaf_index()
+            + self
+                .leaf_map
+                .current_index()
+                .map(|index| index + 1)
+                .unwrap_or(0)
     }
 
     /// Returns `true` if this tree is empty.
@@ -344,6 +361,44 @@ where
         }
     }
 
+    /// Appends an iterator of marked leaf digests at the end of the tree, returning the iterator back
+    /// if it could not be inserted because the tree has exhausted its capacity.
+    ///
+    /// # Implementation Note
+    ///
+    /// This operation is meant to be atomic, so if appending the iterator should fail, the
+    /// implementation must ensure that the tree returns to the same state before the insertion
+    /// occured.
+    #[inline]
+    pub fn extend_with_marked_digests<I>(
+        &mut self,
+        parameters: &Parameters<C>,
+        marked_leaf_digests: I,
+    ) -> Result<(), I::IntoIter>
+    where
+        I: IntoIterator<Item = (bool, LeafDigest<C>)>,
+        L: Default,
+        M: Default,
+        InnerDigest<C>: Clone + Default + PartialEq,
+        LeafDigest<C>: Clone + Default,
+    {
+        let marked_leaf_digests = marked_leaf_digests.into_iter();
+        if matches!(marked_leaf_digests.size_hint().1, Some(max) if max <= capacity::<C, _>() - self.len())
+        {
+            for (marking, leaf_digest) in marked_leaf_digests {
+                if marking {
+                    assert!(self.push_digest(parameters, || leaf_digest),
+                    "Unable to push digest even though the tree should have enough capacity to do so.");
+                } else {
+                    assert!(self.push_provable_digest(parameters, move || leaf_digest),
+                    "Unable to push digest even though the tree should have enough capacity to do so.");
+                }
+            }
+            return Ok(());
+        }
+        Err(marked_leaf_digests)
+    }
+
     /// Appends a `leaf` to the tree using `parameters`.
     #[inline]
     pub fn push(&mut self, parameters: &Parameters<C>, leaf: &Leaf<C>) -> bool
@@ -404,13 +459,16 @@ where
         {
             self.leaf_map.remove(index);
             self.leaf_map.remove(sibling_index);
-            for inner_node in InnerNodeIter::from_leaf::<C>(Node(index)) {
+            for inner_node in
+                InnerNodeIter::from_leaf::<C>(Node(index + self.starting_leaf_index()))
+            {
                 let sibling_node = inner_node.sibling();
                 self.inner_digests.remove(sibling_node.map_index());
-                if sibling_node
-                    .leaf_nodes(C::HEIGHT)
-                    .any(|x| !self.leaf_map.is_marked_or_removed(x.0))
-                {
+                if sibling_node.leaf_nodes(C::HEIGHT).any(|x| {
+                    !self
+                        .leaf_map
+                        .is_marked_or_removed(x.0 - self.starting_leaf_index())
+                }) {
                     break;
                 }
             }
@@ -420,16 +478,21 @@ where
         }
     }
 
-    /// Marks the leaf at `index` for removal and then tries to remove the [`Path`]
-    /// above it.
+    /// Marks the leaf at `index` for removal.
+    ///
+    /// # Note
+    ///
+    /// This method doesn't attempt to remove the path above `index`. Instead,
+    /// the [`prune`](Self::prune) method should be called.
     #[inline]
     pub fn remove_path(&mut self, index: usize) -> bool {
+        let leaf_index = index - self.starting_leaf_index();
         match self.leaf_map.current_index() {
-            Some(current_index) if index <= current_index => (),
+            Some(current_index) if leaf_index <= current_index => (),
             _ => return false,
         };
-        self.leaf_map.mark(index);
-        self.remove_path_at_index(index)
+        self.leaf_map.mark(leaf_index);
+        true
     }
 }
 
@@ -475,7 +538,7 @@ where
     {
         let len = self.len();
         let result = self.maybe_push_digest(parameters, leaf_digest);
-        self.leaf_map.mark(len);
+        self.leaf_map.mark(len - self.starting_leaf_index());
         result
     }
 
@@ -488,10 +551,10 @@ where
     where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
-        let len = self.len();
+        let leaf_index = self.len() - self.starting_leaf_index();
         let (result, number_of_insertions) =
             self.batch_maybe_push_digest(parameters, leaf_digests)?;
-        for index in len..len + number_of_insertions {
+        for index in leaf_index..leaf_index + number_of_insertions {
             self.leaf_map.mark(index)
         }
         Some(result)

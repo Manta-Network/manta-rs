@@ -23,7 +23,10 @@ use crate::{
         UtxoAccumulatorModel,
     },
     key::KeySecret,
-    signer::{base::Signer, functions, InitialSyncData},
+    signer::{
+        base::{Signer, UtxoAccumulator},
+        functions, InitialSyncData,
+    },
     simulation::ledger::{Ledger, LedgerConnection},
 };
 use alloc::{format, sync::Arc};
@@ -39,7 +42,10 @@ use manta_accounting::{
         Error,
     },
 };
-use manta_crypto::rand::{ChaCha20Rng, CryptoRng, RngCore, SeedableRng};
+use manta_crypto::{
+    accumulator::Accumulator,
+    rand::{ChaCha20Rng, CryptoRng, RngCore, SeedableRng},
+};
 use tokio::{
     io::{self, AsyncWriteExt},
     sync::RwLock,
@@ -72,6 +78,26 @@ where
         utxo_accumulator_model,
     );
     signer.load_accounts(AccountTable::new(KeySecret::sample(rng)));
+    signer
+}
+
+/// Samples a new signer.
+#[inline]
+pub fn sample_signer_from_seed(
+    proving_context: &MultiProvingContext,
+    parameters: &Parameters,
+    utxo_accumulator_model: &UtxoAccumulatorModel,
+    seed: [u8; 32],
+) -> Signer {
+    let mut rng = ChaCha20Rng::from_seed(seed);
+    let accounts = AccountTable::new(KeySecret::sample(&mut rng));
+    let mut signer = Signer::new(
+        parameters.clone(),
+        proving_context.clone(),
+        UtxoAccumulator::empty(utxo_accumulator_model),
+        rng,
+    );
+    signer.load_accounts(accounts);
     signer
 }
 
