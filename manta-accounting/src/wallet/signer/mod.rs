@@ -38,7 +38,7 @@ use crate::{
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::{convert::Infallible, fmt::Debug, hash::Hash};
+use core::{cmp::max, convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{
         Accumulator, BatchInsertion, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
@@ -1838,10 +1838,11 @@ where
         match transaction {
             Transaction::ToPrivate(_) => 1,
             Transaction::PrivateTransfer(asset, _) => {
-                self.state.assets.select(asset).values.len() - 1
+                max(self.state.assets.select(asset).values.len() - 1, 1)
             }
-            Transaction::ToPublic(asset, _) => self.state.assets.select(asset).values.len() - 1,
-            // note: change the estimation once we implement the topublic optimization
+            Transaction::ToPublic(asset, _) => {
+                max(self.state.assets.select(asset).values.len() - 1, 1)
+            } // note: change the estimation once we implement the topublic optimization
         }
     }
 }
