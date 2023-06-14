@@ -1846,8 +1846,8 @@ where
                 max(self.state.assets.select(asset).values.len() - 1, 1)
             }
             Transaction::ToPublic(asset, _) => {
-                max(self.state.assets.select(asset).values.len() - 1, 1)
-            } // note: change the estimation once we implement the topublic optimization
+                (self.state.assets.select(asset).values.len() + 2 - 1) / 2
+            }
         }
     }
 }
