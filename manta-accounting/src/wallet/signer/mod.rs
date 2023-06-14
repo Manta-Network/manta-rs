@@ -1846,7 +1846,7 @@ where
                 max(self.state.assets.select(asset).values.len() - 1, 1)
             }
             Transaction::ToPublic(asset, _) => {
-                (self.state.assets.select(asset).values.len() + 2 - 1) / 2
+                (self.state.assets.select(asset).values.len() + 1) / 2
             }
         }
     }
