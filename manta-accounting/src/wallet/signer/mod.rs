@@ -38,7 +38,7 @@ use crate::{
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::{cmp::max, convert::Infallible, fmt::Debug, hash::Hash};
+use core::{cmp::max, convert::Infallible, fmt::Debug, hash::Hash, ops::SubAssign};
 use manta_crypto::{
     accumulator::{
         Accumulator, BatchInsertion, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
@@ -1646,7 +1646,10 @@ where
 
     /// Signs the `transaction`, generating transfer posts.
     #[inline]
-    pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>> {
+    pub fn sign(&mut self, transaction: Transaction<C>) -> Result<SignResponse<C>, SignError<C>>
+    where
+        C::AssetValue: SubAssign,
+    {
         functions::sign(
             &self.parameters,
             self.state.accounts.as_ref(),
@@ -1670,6 +1673,7 @@ where
         request: ConsolidationPrerequest<C>,
     ) -> Result<SignResponse<C>, SignError<C>>
     where
+        C::AssetValue: SubAssign,
         C::Identifier: PartialEq,
     {
         functions::consolidate(
@@ -1748,6 +1752,7 @@ where
     ) -> Result<SignWithTransactionDataResponse<C>, SignError<C>>
     where
         TransferPost<C>: Clone,
+        C::AssetValue: SubAssign,
     {
         functions::sign_with_transaction_data(
             &self.parameters,
@@ -1850,7 +1855,8 @@ where
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
-    C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
+    C::AssetValue:
+        CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue> + SubAssign,
     C::Identifier: PartialEq,
 {
     type AssetMetadata = C::AssetMetadata;

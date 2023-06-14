@@ -24,7 +24,7 @@ use crate::{
         batch::Join,
         canonical::{
             MultiProvingContext, PrivateTransfer, PrivateTransferShape, Selection, ToPrivate,
-            ToPublic, Transaction, TransactionData, TransferShape,
+            ToPublic, ToPublicShape, Transaction, TransactionData, TransferShape,
         },
         receiver::ReceiverPost,
         requires_authorization,
@@ -45,6 +45,7 @@ use crate::{
     },
 };
 use alloc::{vec, vec::Vec};
+use core::ops::SubAssign;
 use manta_crypto::{
     accumulator::{
         Accumulator, BatchInsertion, FromItemsAndWitnesses, ItemHashFunction, OptimizedAccumulator,
@@ -807,6 +808,135 @@ where
     Ok(into_array_unchecked(final_presenders))
 }
 
+///
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn compute_to_public_transaction<C>(
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    parameters: &Parameters<C>,
+    proving_context: &MultiProvingContext<C>,
+    asset_id: &C::AssetId,
+    sink_accounts: Vec<C::AccountId>,
+    selection: Selection<C>,
+    rng: &mut C::Rng,
+) -> Result<SignResponse<C>, SignError<C>>
+where
+    C: Configuration,
+    C::AssetValue: SubAssign,
+{
+    let Selection {
+        mut change,
+        mut pre_senders,
+    } = selection;
+    let mut posts = Vec::new();
+    let mut iter = pre_senders
+        .into_iter()
+        .chunk_by::<{ ToPublicShape::SENDERS }>();
+    for chunk in &mut iter {
+        let senders = array_map(chunk, |s| {
+            s.try_upgrade(parameters, utxo_accumulator)
+                .expect("Unable to upgrade expected UTXO.")
+        });
+        process_to_public_senders(
+            accounts,
+            utxo_accumulator,
+            parameters,
+            proving_context,
+            asset_id,
+            &mut change,
+            senders,
+            sink_accounts.clone(),
+            &mut posts,
+            rng,
+        )?;
+    }
+    pre_senders = iter.remainder();
+    if !pre_senders.is_empty() {
+        let final_senders = into_array_unchecked(prepare_final_pre_senders(
+            accounts,
+            assets,
+            utxo_accumulator,
+            parameters,
+            asset_id,
+            Default::default(),
+            pre_senders,
+            rng,
+        )?);
+        process_to_public_senders(
+            accounts,
+            utxo_accumulator,
+            parameters,
+            proving_context,
+            asset_id,
+            &mut change,
+            final_senders,
+            sink_accounts,
+            &mut posts,
+            rng,
+        )?;
+    }
+    Ok(SignResponse::new(posts))
+}
+
+///
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn process_to_public_senders<C>(
+    accounts: &AccountTable<C>,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    parameters: &Parameters<C>,
+    proving_context: &MultiProvingContext<C>,
+    asset_id: &C::AssetId,
+    change: &mut C::AssetValue,
+    senders: [Sender<C>; ToPublicShape::SENDERS],
+    sink_accounts: Vec<C::AccountId>,
+    posts: &mut Vec<TransferPost<C>>,
+    rng: &mut C::Rng,
+) -> Result<(), SignError<C>>
+where
+    C: Configuration,
+    C::AssetValue: SubAssign,
+{
+    let authorization = authorization_for_default_spending_key::<C>(accounts, parameters, rng);
+    let mut received_value = C::AssetValue::default();
+    let mut reclaimed_value = senders
+        .iter()
+        .map(|sender| sender.asset().value)
+        .sum::<C::AssetValue>();
+    if reclaimed_value >= *change {
+        received_value += change.clone();
+        reclaimed_value -= received_value.clone();
+        *change = Default::default();
+    } else {
+        received_value += reclaimed_value.clone();
+        *change -= reclaimed_value;
+        reclaimed_value = Default::default();
+    }
+    let receiver = default_receiver::<C>(
+        accounts,
+        parameters,
+        Asset::<C>::new(asset_id.clone(), received_value),
+        rng,
+    );
+    posts.push(build_post(
+        Some(accounts),
+        utxo_accumulator.model(),
+        parameters,
+        &proving_context.to_public,
+        ToPublic::build(
+            authorization,
+            senders,
+            [receiver],
+            Asset::<C>::new(asset_id.clone(), reclaimed_value),
+        ),
+        sink_accounts,
+        rng,
+    )?);
+    Ok(())
+}
+
 /// Returns the [`Address`] corresponding to `authorization_context`.
 #[inline]
 pub fn address<C>(
@@ -935,6 +1065,7 @@ fn sign_withdraw<C>(
 ) -> Result<SignResponse<C>, SignError<C>>
 where
     C: Configuration,
+    C::AssetValue: SubAssign,
 {
     let selection = select(accounts, assets, &parameters.parameters, &asset, rng)?;
     sign_after_selection(
@@ -962,6 +1093,7 @@ fn consolidate_internal<C>(
 ) -> Result<SignResponse<C>, SignError<C>>
 where
     C: Configuration,
+    C::AssetValue: SubAssign,
     C::Identifier: PartialEq,
 {
     let asset = request.asset();
@@ -979,18 +1111,16 @@ where
     )
 }
 
-/// Signs a withdraw transaction for `asset` sent to `address`, where `selection`
-/// owns at least `asset`.
+///
 #[allow(clippy::too_many_arguments)]
 #[inline]
-fn sign_after_selection<C>(
+fn sign_after_selection_private_transfer<C>(
     parameters: &SignerParameters<C>,
     accounts: &AccountTable<C>,
     assets: &C::AssetMap,
     utxo_accumulator: &mut C::UtxoAccumulator,
     asset: Asset<C>,
-    address: Option<Address<C>>,
-    sink_accounts: Vec<C::AccountId>,
+    address: Address<C>,
     selection: Selection<C>,
     rng: &mut C::Rng,
 ) -> Result<SignResponse<C>, SignError<C>>
@@ -1017,37 +1147,68 @@ where
     );
     let authorization =
         authorization_for_default_spending_key::<C>(accounts, &parameters.parameters, rng);
-    let final_post = match address {
-        Some(address) => {
-            let receiver = receiver::<C>(
-                &parameters.parameters,
-                address,
-                asset,
-                Default::default(),
-                rng,
-            );
-            build_post(
-                Some(accounts),
-                utxo_accumulator.model(),
-                &parameters.parameters,
-                &parameters.proving_context.private_transfer,
-                PrivateTransfer::build(authorization, senders, [change, receiver]),
-                Vec::new(),
-                rng,
-            )?
-        }
-        _ => build_post(
-            Some(accounts),
-            utxo_accumulator.model(),
-            &parameters.parameters,
-            &parameters.proving_context.to_public,
-            ToPublic::build(authorization, senders, [change], asset),
-            sink_accounts,
-            rng,
-        )?,
-    };
+    let receiver = receiver::<C>(
+        &parameters.parameters,
+        address,
+        asset,
+        Default::default(),
+        rng,
+    );
+    let final_post = build_post(
+        Some(accounts),
+        utxo_accumulator.model(),
+        &parameters.parameters,
+        &parameters.proving_context.private_transfer,
+        PrivateTransfer::build(authorization, senders, [change, receiver]),
+        Vec::new(),
+        rng,
+    )?;
     posts.push(final_post);
     Ok(SignResponse::new(posts))
+}
+
+/// Signs a withdraw transaction for `asset` sent to `address`, where `selection`
+/// owns at least `asset`.
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn sign_after_selection<C>(
+    parameters: &SignerParameters<C>,
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    asset: Asset<C>,
+    address: Option<Address<C>>,
+    sink_accounts: Vec<C::AccountId>,
+    selection: Selection<C>,
+    rng: &mut C::Rng,
+) -> Result<SignResponse<C>, SignError<C>>
+where
+    C: Configuration,
+    C::AssetValue: SubAssign,
+{
+    match address {
+        Some(address) => sign_after_selection_private_transfer(
+            parameters,
+            accounts,
+            assets,
+            utxo_accumulator,
+            asset,
+            address,
+            selection,
+            rng,
+        ),
+        _ => compute_to_public_transaction(
+            accounts,
+            assets,
+            utxo_accumulator,
+            &parameters.parameters,
+            &parameters.proving_context,
+            &asset.id,
+            sink_accounts,
+            selection,
+            rng,
+        ),
+    }
 }
 
 /// Signs the `transaction`, generating transfer posts without releasing resources.
@@ -1063,6 +1224,7 @@ fn sign_internal<C>(
 ) -> Result<SignResponse<C>, SignError<C>>
 where
     C: Configuration,
+    C::AssetValue: SubAssign,
 {
     match transaction {
         Transaction::ToPrivate(asset) => {
@@ -1118,6 +1280,7 @@ pub fn sign<C>(
 ) -> Result<SignResponse<C>, SignError<C>>
 where
     C: Configuration,
+    C::AssetValue: SubAssign,
 {
     let result = sign_internal(
         parameters,
@@ -1145,6 +1308,7 @@ pub fn consolidate<C>(
 ) -> Result<SignResponse<C>, SignError<C>>
 where
     C: Configuration,
+    C::AssetValue: SubAssign,
     C::Identifier: PartialEq,
 {
     let result = consolidate_internal(
@@ -1270,6 +1434,7 @@ pub fn sign_with_transaction_data<C>(
 ) -> SignWithTransactionDataResult<C>
 where
     C: Configuration,
+    C::AssetValue: SubAssign,
     TransferPost<C>: Clone,
 {
     Ok(SignWithTransactionDataResponse(

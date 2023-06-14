@@ -135,6 +135,24 @@ where
     }
 }
 
+impl<I, V> core::iter::Sum for Asset<I, V>
+where
+    I: Default,
+    V: AddAssign + Default,
+{
+    #[inline]
+    fn sum<J>(mut iter: J) -> Self
+    where
+        J: Iterator<Item = Self>,
+    {
+        let mut result = iter.next().unwrap_or_default();
+        for asset in iter {
+            result.value += asset.value
+        }
+        result
+    }
+}
+
 impl<I, V> AddAssign<V> for Asset<I, V>
 where
     V: AddAssign,
