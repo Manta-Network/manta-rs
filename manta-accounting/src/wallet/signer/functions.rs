@@ -808,7 +808,8 @@ where
     Ok(into_array_unchecked(final_presenders))
 }
 
-///
+/// Performs a ToPublic transaction spending the assets in `selection`,
+/// returning [`TransferPost`]s.
 #[allow(clippy::too_many_arguments)]
 #[inline]
 fn compute_to_public_transaction<C>(
@@ -880,7 +881,8 @@ where
     Ok(SignResponse::new(posts))
 }
 
-///
+/// Creates a to public [`TransferPost`] spending the assets held by `senders` and
+/// attaches it to `post`.
 #[allow(clippy::too_many_arguments)]
 #[inline]
 fn process_to_public_senders<C>(
@@ -1111,7 +1113,7 @@ where
     )
 }
 
-///
+/// Signs a private transfer of `asset` to `address`.
 #[allow(clippy::too_many_arguments)]
 #[inline]
 fn sign_after_selection_private_transfer<C>(

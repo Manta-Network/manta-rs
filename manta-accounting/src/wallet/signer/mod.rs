@@ -1751,8 +1751,8 @@ where
         transaction: Transaction<C>,
     ) -> Result<SignWithTransactionDataResponse<C>, SignError<C>>
     where
-        TransferPost<C>: Clone,
         C::AssetValue: SubAssign,
+        TransferPost<C>: Clone,
     {
         functions::sign_with_transaction_data(
             &self.parameters,
