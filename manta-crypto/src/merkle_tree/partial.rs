@@ -392,15 +392,15 @@ where
                 } else {
                     if !marked_inserts.is_empty() {
                         assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
-                                "Pushing a leaf digest into the tree should always succeed because of the check above.");
+                        "Unable to push digest even though the tree should have enough capacity to do so.");
                     }
                     assert!(self.push_provable_digest(parameters, move || leaf_digest),
-                     "Pushing a leaf digest into the tree should always succeed because of the check above.");
+                    "Unable to push digest even though the tree should have enough capacity to do so.");
                 }
             }
             if !marked_inserts.is_empty() {
                 assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
-                        "Pushing a leaf digest into the tree should always succeed because of the check above.");
+                "Unable to push digest even though the tree should have enough capacity to do so.");
             }
             return Ok(());
         }
