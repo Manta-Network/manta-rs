@@ -547,8 +547,8 @@ macro_rules! impl_from_items_and_witnesses {
         where
             C: Configuration + ?Sized,
             C::Index: FixedIndex<N>,
-            LeafDigest<C>: Clone + Default + PartialEq + Debug,
-            InnerDigest<C>: Clone + Default + PartialEq + Debug,
+            LeafDigest<C>: Clone + Default + PartialEq,
+            InnerDigest<C>: Clone + Default + PartialEq,
         {
             /// Builds a new [`TreeArray`] from `leaves` and `paths` without checking that
             /// the `paths` are consistent with the leaves and that they are
@@ -579,8 +579,8 @@ macro_rules! impl_from_items_and_witnesses {
             C: Configuration + ?Sized,
             C::Index: FixedIndex<N>,
             Parameters<C>: Clone,
-            LeafDigest<C>: Clone + Default + PartialEq + Debug,
-            InnerDigest<C>: Clone + Default + PartialEq + Debug,
+            LeafDigest<C>: Clone + Default + PartialEq,
+            InnerDigest<C>: Clone + Default + PartialEq,
         {
             const NUMBER_OF_SUBACCUMULATORS: usize = N;
 
@@ -615,8 +615,8 @@ macro_rules! impl_from_items_and_witnesses {
             C::Index: FixedIndex<N>,
             Parameters<C>: Clone,
             Leaf<C>: Clone,
-            LeafDigest<C>: Clone + Default + PartialEq + Debug,
-            InnerDigest<C>: Clone + Default + PartialEq + Debug,
+            LeafDigest<C>: Clone + Default + PartialEq,
+            InnerDigest<C>: Clone + Default + PartialEq,
         {
             #[inline]
             fn batch_insert<'a, I>(&mut self, items: I) -> bool
@@ -794,8 +794,8 @@ where
     C::Index: FixedIndex<N>,
     M: Default + InnerMap<C>,
     L: Default + LeafMap<C>,
-    LeafDigest<C>: Clone + Default + PartialEq + Debug,
-    InnerDigest<C>: Clone + Default + PartialEq + Debug,
+    LeafDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
     fn rollback(&mut self) {

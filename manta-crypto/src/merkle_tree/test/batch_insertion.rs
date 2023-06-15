@@ -121,7 +121,7 @@ fn branch_and_merge_test() {
     type StringConfig = Test<String, HEIGHT>;
     type PartialString = partial::Partial<StringConfig>;
     type ForkedString = fork::ForkedTree<StringConfig, PartialString>;
-    let mut rng = ChaCha20Rng::from_seed(Default::default());
+    let mut rng = OsRng;
     let parameters = Parameters::<StringConfig>::sample(Default::default(), &mut rng);
     let mut tree = ForkedString::new(PartialString::new(&parameters), &parameters);
     let number_of_insertions = rng.gen_range(1..(1 << (HEIGHT - 1)) / 2);

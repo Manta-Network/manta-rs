@@ -979,8 +979,6 @@ where
     pub fn from_trunk<P>(trunk: Trunk<C, T, P>, parameters: Parameters<C>) -> Self
     where
         P: PointerFamily<T>,
-        InnerDigest<C>: Debug,
-        LeafDigest<C>: Debug,
     {
         Self::from_tree(trunk.into_tree(), parameters)
     }
@@ -1175,8 +1173,6 @@ where
     pub fn into_trunk<P>(self) -> Trunk<C, T, P>
     where
         P: PointerFamily<T>,
-        InnerDigest<C>: Debug,
-        LeafDigest<C>: Debug,
     {
         Trunk::new(self.tree)
     }
@@ -1354,8 +1350,8 @@ where
     T: Tree<C>,
     M: Default + InnerMap<C>,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Clone + Default + Debug,
-    InnerDigest<C>: Clone + Default + PartialEq + Debug,
+    LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
     fn rollback(&mut self) {

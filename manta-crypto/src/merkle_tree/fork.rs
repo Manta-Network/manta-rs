@@ -53,8 +53,6 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
     P: PointerFamily<T>,
-    InnerDigest<C>: Debug,
-    LeafDigest<C>: Debug,
 {
     /// Builds a new [`Trunk`] from a reference-counted tree.
     #[inline]
@@ -188,8 +186,6 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
     P: PointerFamily<T>,
-    InnerDigest<C>: Debug,
-    LeafDigest<C>: Debug,
 {
     #[inline]
     fn as_ref(&self) -> &T {
@@ -202,8 +198,6 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
     P: PointerFamily<T>,
-    InnerDigest<C>: Debug,
-    LeafDigest<C>: Debug,
 {
     #[inline]
     fn borrow(&self) -> &T {
@@ -216,8 +210,6 @@ where
     C: Configuration + ?Sized,
     T: Tree<C>,
     P: PointerFamily<T>,
-    InnerDigest<C>: Debug,
-    LeafDigest<C>: Debug,
 {
     type Target = T;
 
@@ -300,8 +292,6 @@ where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
     L: LeafMap<C>,
-    InnerDigest<C>: Debug,
-    LeafDigest<C>: Debug,
 {
     /// Builds a new branch off of `base`, extending by `leaf_digests`.
     #[inline]
@@ -655,8 +645,6 @@ where
     P: PointerFamily<T>,
     M: Default + InnerMap<C>,
     L: LeafMap<C>,
-    InnerDigest<C>: Debug,
-    LeafDigest<C>: Debug,
 {
     /// Builds a new [`Fork`] off of `trunk` with the given `base_contribution` and `branch`.
     #[inline]
@@ -907,8 +895,6 @@ where
     T: Tree<C>,
     M: Default + InnerMap<C>,
     L: LeafMap<C>,
-    InnerDigest<C>: Debug,
-    LeafDigest<C>: Debug,
 {
     /// Builds a new [`ForkedTree`] for `tree`.
     #[inline]
@@ -1049,8 +1035,8 @@ where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
     L: Default + LeafMap<C>,
-    LeafDigest<C>: Clone + Default + PartialEq + Debug,
-    InnerDigest<C>: Clone + Default + PartialEq + Debug,
+    LeafDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     /// Builds a new [`ForkedTree`] from `leaf_digests` and `path` without checking that
     /// `path` is consistent with the leaves and that it is a [`CurrentPath`].
@@ -1080,8 +1066,8 @@ where
     T: Tree<C>,
     M: Default + InnerMap<C>,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Clone + Default + Debug,
-    InnerDigest<C>: Clone + Default + PartialEq + Debug,
+    LeafDigest<C>: Clone + Default,
+    InnerDigest<C>: Clone + Default + PartialEq,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -1141,8 +1127,8 @@ where
     T: Tree<C> + WithProofs<C>,
     M: Default + InnerMap<C>,
     L: LeafMap<C>,
-    LeafDigest<C>: Clone + Default + PartialEq + Debug,
-    InnerDigest<C>: Clone + Default + Debug,
+    LeafDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Clone + Default,
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
