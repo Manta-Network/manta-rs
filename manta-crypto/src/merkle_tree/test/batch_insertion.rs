@@ -22,14 +22,14 @@ use crate::{
         forest, fork, full, partial,
         test::Test,
         tree::{Parameters, Tree},
-        Leaf, WithProofs,
+        Leaf, MerkleTree, WithProofs,
     },
-    rand::{OsRng, Rand, Sample},
+    rand::{ChaCha20Rng, OsRng, Rand, Sample, SeedableRng},
 };
 use core::fmt::Debug;
 
 /// Merkle Tree Height
-const HEIGHT: usize = 11;
+const HEIGHT: usize = 4;
 
 /// Merkle Tree Configuration
 type Config = Test<u64, HEIGHT>;
@@ -114,3 +114,38 @@ fn test_batch_insertion_forest() {
         |forest, _, leaves| forest.batch_insert(leaves),
     )
 }
+
+///
+#[test]
+fn branch_and_merge_test() {
+    type StringConfig = Test<String, HEIGHT>;
+    type PartialString = partial::Partial<StringConfig>;
+    type ForkedString = fork::ForkedTree<StringConfig, PartialString>;
+    let mut rng = ChaCha20Rng::from_seed(Default::default());
+    let parameters = Parameters::<StringConfig>::sample(Default::default(), &mut rng);
+    let mut tree = ForkedString::new(PartialString::new(&parameters), &parameters);
+    let number_of_insertions = rng.gen_range(1..(1 << (HEIGHT - 1)) / 2);
+    let insertions = (0..number_of_insertions)
+        .map(|e| (e as u8).to_string())
+        .collect::<Vec<_>>();
+    for leaf in insertions {
+        Tree::push(&mut tree, &parameters, &leaf);
+    }
+    tree.merge_fork(&parameters);
+    println!("Tree before: {tree:#?}");
+    let second_number_of_insertions = rng.gen_range(number_of_insertions..(1 << (HEIGHT - 1)));
+    let insertions = (number_of_insertions..second_number_of_insertions)
+        .map(|e| (e as u8).to_string())
+        .collect::<Vec<_>>();
+    for leaf in insertions {
+        Tree::push(&mut tree, &parameters, &leaf);
+    }
+    let mut cloned_tree = tree.clone();
+    tree.merge_fork_partial(&parameters);
+    cloned_tree.merge_fork(&parameters);
+    println!("Tree after (batch): {tree:#?}");
+    println!("Tree after (no batch): {cloned_tree:#?}");
+    assert_eq!(tree.root(), cloned_tree.root(), "Second round wrong");
+}
+
+// cargo test --package manta-crypto --lib --all-features -- merkle_tree::test::batch_insertion::branch_and_merge_test --exact --nocapture > test_result

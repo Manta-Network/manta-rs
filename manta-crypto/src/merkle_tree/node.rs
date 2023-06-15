@@ -552,23 +552,34 @@ impl NodeRange {
         C: HashConfiguration + ?Sized,
         LeafDigest<C>: 'a + Default,
         F: FnMut(Node) -> Option<&'a LeafDigest<C>>,
+        InnerDigest<C>: core::fmt::Debug,
     {
         let dual_parity = self.dual_parity();
         let mut result = Vec::new();
         let length = leaves.len();
         let range = match dual_parity.starting_parity() {
-            Parity::Left => (0..length - 1).step_by(2),
+            Parity::Left => {
+                println!("Left Parity");
+                (0..length - 1).step_by(2)
+            }
             _ => {
+                println!("Right Parity");
                 result.push(Node(0).join_leaves(
                     parameters,
                     get_leaves(self.node).unwrap_or(&Default::default()),
                     &leaves[0],
                 ));
+                println!("{result:?}");
                 (1..length - 1).step_by(2)
             }
         };
+        println!("{range:?}");
         for i in range {
-            result.push(Node(i).join_leaves(parameters, &leaves[i], &leaves[i + 1]))
+            if i % 2 == 0 {
+                result.push(Node(i).join_leaves(parameters, &leaves[i], &leaves[i + 1]))
+            } else {
+                result.push(Node(i - 1).join_leaves(parameters, &leaves[i], &leaves[i + 1]))
+            }
         }
         if dual_parity.final_parity().is_left() {
             result.push(self.last_node().join_leaves(
@@ -577,6 +588,7 @@ impl NodeRange {
                 get_leaves(self.last_node()).unwrap_or(&Default::default()),
             ))
         }
+        println!("{result:?}");
         result
     }
 }

@@ -75,6 +75,7 @@ impl<C, M> Full<C, M>
 where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
+    InnerDigest<C>: Debug,
 {
     /// Builds a new [`Full`] without checking that `leaf_digests` and `inner_digests` form a
     /// consistent merkle tree.
@@ -178,7 +179,7 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
     LeafDigest<C>: Clone + Default,
-    InnerDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Clone + Default + PartialEq + Debug,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -277,7 +278,7 @@ where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
     LeafDigest<C>: Clone + Default + PartialEq,
-    InnerDigest<C>: Clone + Default + PartialEq,
+    InnerDigest<C>: Clone + Default + PartialEq + Debug,
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {

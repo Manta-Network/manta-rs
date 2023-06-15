@@ -75,6 +75,8 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C>,
     L: LeafMap<C>,
+    InnerDigest<C>: Debug,
+    LeafDigest<C>: Debug,
 {
     /// Builds a new [`Partial`] without checking that `leaf_map` and `inner_digests` form a
     /// consistent merkle tree.
@@ -382,17 +384,32 @@ where
         InnerDigest<C>: Clone + Default + PartialEq,
         LeafDigest<C>: Clone + Default,
     {
+        println!("{:?}", self.starting_leaf_index());
         let marked_leaf_digests = marked_leaf_digests.into_iter();
         if matches!(marked_leaf_digests.size_hint().1, Some(max) if max <= capacity::<C, _>() - self.len())
         {
+            let mut marked_inserts = Vec::new();
             for (marking, leaf_digest) in marked_leaf_digests {
+                println!("{:?}", marking);
                 if marking {
-                    assert!(self.push_digest(parameters, || leaf_digest),
-                    "Unable to push digest even though the tree should have enough capacity to do so.");
+                    marked_inserts.push(leaf_digest);
                 } else {
+                    if !marked_inserts.is_empty() {
+                        println!("Marked inserts length: {:?}", marked_inserts.len());
+                        let drained_digests = marked_inserts.drain(..).collect::<Vec<_>>();
+                        assert!(self.batch_push_digest(parameters, move || drained_digests),
+                                "Pushing a leaf digest into the tree should always succeed because of the check above.");
+                        println!("Marked inserts length: {:?}", marked_inserts.len());
+                    }
                     assert!(self.push_provable_digest(parameters, move || leaf_digest),
-                    "Unable to push digest even though the tree should have enough capacity to do so.");
+                     "Pushing a leaf digest into the tree should always succeed because of the check above.");
                 }
+            }
+            if !marked_inserts.is_empty() {
+                let drained_digests = marked_inserts.drain(..).collect::<Vec<_>>();
+                println!("Drained digests: {drained_digests:?}");
+                assert!(self.batch_push_digest(parameters, || drained_digests),
+                        "Pushing a leaf digest into the tree should always succeed because of the check above.");
             }
             return Ok(());
         }
@@ -501,8 +518,8 @@ where
     C: Configuration + ?Sized,
     M: InnerMap<C> + Default,
     L: LeafMap<C> + Default,
-    LeafDigest<C>: Clone + Default,
-    InnerDigest<C>: Clone + Default + PartialEq,
+    LeafDigest<C>: Clone + Default + Debug,
+    InnerDigest<C>: Clone + Default + PartialEq + Debug,
 {
     #[inline]
     fn new(parameters: &Parameters<C>) -> Self {
@@ -552,6 +569,8 @@ where
         F: FnOnce() -> Vec<LeafDigest<C>>,
     {
         let leaf_index = self.len() - self.starting_leaf_index();
+        println!("Length: {:?}", self.len());
+        println!("Leaf index: {leaf_index:?}");
         let (result, number_of_insertions) =
             self.batch_maybe_push_digest(parameters, leaf_digests)?;
         for index in leaf_index..leaf_index + number_of_insertions {
@@ -571,8 +590,8 @@ where
     C: Configuration + ?Sized,
     M: Default + InnerMap<C>,
     L: LeafMap<C>,
-    LeafDigest<C>: Clone + Default,
-    InnerDigest<C>: Clone + Default + PartialEq,
+    LeafDigest<C>: Clone + Default + Debug,
+    InnerDigest<C>: Clone + Default + PartialEq + Debug,
 {
     #[inline]
     fn leaf_digest(&self, index: usize) -> Option<&LeafDigest<C>> {
