@@ -1016,9 +1016,8 @@ where
     where
         M: AssetMap<C::AssetId, C::AssetValue, Key = Identifier<C>>,
     {
-        let id = self.id();
         let asset_map_assets = asset_map
-            .asset_vector_with_id(id)
+            .asset_vector_with_id(self.id())
             .into_iter()
             .map(|(identifier, asset)| IdentifiedAsset::<C>::new(identifier, asset))
             .collect::<Vec<_>>();
