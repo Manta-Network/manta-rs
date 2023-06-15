@@ -981,8 +981,8 @@ where
             .id;
         (!(1..number_of_assets).any(|i| {
             assets[i..].contains(&assets[i - 1])
-                && assets[i].asset.id.ne(asset_id)
-                && assets[i].asset.value.eq(&Default::default())
+                || assets[i].asset.id.ne(asset_id)
+                || assets[i].asset.value.eq(&Default::default())
         }))
         .then_some(Self::new_unchecked(assets))
     }
@@ -1016,12 +1016,7 @@ where
     where
         M: AssetMap<C::AssetId, C::AssetValue, Key = Identifier<C>>,
     {
-        let id = &self
-            .0
-            .first()
-            .expect("Consolidation requests must have at least 2 elements")
-            .asset
-            .id;
+        let id = self.id();
         let asset_map_assets = asset_map
             .asset_vector_with_id(id)
             .into_iter()
