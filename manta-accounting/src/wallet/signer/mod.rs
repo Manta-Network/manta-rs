@@ -26,7 +26,7 @@
 //        internally.
 
 use crate::{
-    asset::AssetMap,
+    asset::{self, AssetMap},
     key::{self, Account, AccountCollection, DeriveAddresses},
     transfer::{
         self,
@@ -38,7 +38,7 @@ use crate::{
     wallet::ledger::{self, Data},
 };
 use alloc::{boxed::Box, vec::Vec};
-use core::{convert::Infallible, fmt::Debug, hash::Hash};
+use core::{cmp::max, convert::Infallible, fmt::Debug, hash::Hash};
 use manta_crypto::{
     accumulator::{
         Accumulator, BatchInsertion, ExactSizeAccumulator, FromItemsAndWitnesses, ItemHashFunction,
@@ -148,6 +148,17 @@ where
 
     /// Returns the transfer [`Parameters`] corresponding to `self`.
     fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error>;
+
+    /// Signs a [`ConsolidationPrerequest`] and returns the transfer posts if successful.
+    ///
+    /// # Implementation Note
+    ///
+    /// Utxo consolidation is a self transfer which merges several Utxos into a single
+    /// one whose asset value is the sum of the asset values of the original Utxos.
+    fn consolidate(
+        &mut self,
+        request: ConsolidationPrerequest<C>,
+    ) -> LocalBoxFutureResult<SignResult<C>, Self::Error>;
 }
 
 /// Signer Initial Synchronization Data
@@ -835,6 +846,211 @@ where
 
     /// Missing Proof Authorization Key
     MissingProofAuthorizationKey,
+
+    /// Invalid Consolidation Request
+    InvalidConsolidationRequest,
+}
+
+/// Asset List Response
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Identifier<C>: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Identifier<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub struct AssetListResponse<C>(pub Vec<IdentifiedAsset<C>>)
+where
+    C: transfer::Configuration + ?Sized;
+
+/// Consolidation Prerequest
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Identifier<C>: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Identifier<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub struct ConsolidationPrerequest<C>(pub Vec<IdentifiedAsset<C>>)
+where
+    C: transfer::Configuration + ?Sized;
+
+impl<C> ConsolidationPrerequest<C>
+where
+    C: transfer::Configuration + ?Sized,
+{
+    /// Builds a new [`ConsolidationPrerequest`] from `assets`.
+    #[inline]
+    pub fn new(assets: Vec<IdentifiedAsset<C>>) -> Self {
+        Self(assets)
+    }
+}
+
+/// Consolidation Request
+///
+/// # Note
+///
+/// A consolidation request is a vector of [`IdentifiedAsset`]s satisfying the
+/// following conditions:
+/// 1) It contains no duplicates.
+/// 2) It contains no assets with value zero.
+/// 3) It contains at least two assets.
+/// 4) All the assets contained in it share the same asset id.
+#[cfg_attr(
+    feature = "serde",
+    derive(Deserialize, Serialize),
+    serde(
+        bound(
+            deserialize = r"Asset<C>: Deserialize<'de>, 
+                Identifier<C>: Deserialize<'de>",
+            serialize = r"Asset<C>: Serialize, 
+                Identifier<C>: Serialize"
+        ),
+        crate = "manta_util::serde",
+        deny_unknown_fields
+    )
+)]
+#[derive(derivative::Derivative)]
+#[derivative(
+    Clone(bound = "Asset<C>: Clone, Identifier<C>: Clone"),
+    Debug(bound = "Asset<C>: Debug, Identifier<C>: Debug"),
+    Eq(bound = "Asset<C>: Eq, Identifier<C>: Eq"),
+    Hash(bound = "Asset<C>: Hash, Identifier<C>: Hash"),
+    PartialEq(bound = "Asset<C>: PartialEq, Identifier<C>: PartialEq")
+)]
+pub struct ConsolidationRequest<C>(Vec<IdentifiedAsset<C>>)
+where
+    C: transfer::Configuration + ?Sized;
+
+impl<C> ConsolidationRequest<C>
+where
+    C: transfer::Configuration,
+    IdentifiedAsset<C>: PartialEq,
+{
+    /// Builds a new [`ConsolidationRequest`] from `assets`.
+    #[inline]
+    fn new_unchecked(assets: Vec<IdentifiedAsset<C>>) -> Self {
+        Self(assets)
+    }
+
+    /// Builds a new [`ConsolidationRequest`] from `assets`, ensuring that:
+    /// 1) There are at least two [`IdentifiedAsset`]s in `assets`.
+    /// 2) There are no duplicates in `assets`.
+    /// 3) All assets in `assets` have the same asset id.
+    /// 4) No asset in `assets` has zero value.
+    #[inline]
+    pub fn new(assets: Vec<IdentifiedAsset<C>>) -> Option<Self> {
+        let number_of_assets = assets.len();
+        if number_of_assets < 2 {
+            return None;
+        }
+        let asset_id = &assets
+            .first()
+            .expect("This cannot fail because of the check above.")
+            .asset
+            .id;
+        (!(1..number_of_assets).any(|i| {
+            assets[i..].contains(&assets[i - 1])
+                || assets[i].asset.id.ne(asset_id)
+                || assets[i].asset.value.eq(&Default::default())
+        }))
+        .then_some(Self::new_unchecked(assets))
+    }
+
+    /// Returns the asset id of the assets in `self`.
+    #[inline]
+    pub fn id(&self) -> &C::AssetId {
+        &self
+            .0
+            .first()
+            .expect("Consolidation requests must have at least 2 elements")
+            .asset
+            .id
+    }
+
+    /// Returns the total amount of [`Asset`] held by the assets in `self`.
+    #[inline]
+    pub fn asset(&self) -> Asset<C> {
+        Asset::<C>::new(
+            self.id().clone(),
+            self.0
+                .iter()
+                .map(|identified_asset| identified_asset.asset.value.clone())
+                .sum(),
+        )
+    }
+
+    /// Checks that every asset in `self` is also in `asset_map`.
+    #[inline]
+    pub fn check_consolidation_request<M>(&self, asset_map: &M) -> bool
+    where
+        M: AssetMap<C::AssetId, C::AssetValue, Key = Identifier<C>>,
+    {
+        let asset_map_assets = asset_map
+            .asset_vector_with_id(self.id())
+            .into_iter()
+            .map(|(identifier, asset)| IdentifiedAsset::<C>::new(identifier, asset))
+            .collect::<Vec<_>>();
+        self.0.iter().all(|asset| asset_map_assets.contains(asset))
+    }
+
+    /// Consumes `self` and returns an asset [`Selection`](asset::Selection) with all its assets.
+    #[inline]
+    pub fn select<M>(self) -> asset::Selection<C::AssetId, C::AssetValue, M>
+    where
+        M: AssetMap<C::AssetId, C::AssetValue, Key = Identifier<C>>,
+    {
+        asset::Selection::new(
+            Default::default(),
+            self.0
+                .into_iter()
+                .map(|identified_asset| (identified_asset.identifier, identified_asset.asset.value))
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
+impl<C> TryFrom<ConsolidationPrerequest<C>> for ConsolidationRequest<C>
+where
+    C: transfer::Configuration,
+    IdentifiedAsset<C>: PartialEq,
+{
+    type Error = SignError<C>;
+
+    #[inline]
+    fn try_from(value: ConsolidationPrerequest<C>) -> Result<Self, Self::Error> {
+        Self::new(value.0).ok_or(SignError::InvalidConsolidationRequest)
+    }
 }
 
 /// Signing Result
@@ -1174,6 +1390,19 @@ where
     pub fn default_account(&self) -> Option<Account<C::Account>> {
         Some(self.accounts.as_ref()?.get_default())
     }
+
+    /// Returns a vector with all the [`Asset`]s owned by `self`.
+    #[inline]
+    pub fn asset_list(&self) -> AssetListResponse<C> {
+        AssetListResponse(
+            self.assets
+                .asset_vector()
+                .into_iter()
+                .filter(|(_, asset)| !asset.is_zero())
+                .map(|(identifier, asset)| IdentifiedAsset::<C>::new(identifier, asset))
+                .collect(),
+        )
+    }
 }
 
 impl<C> Clone for SignerState<C>
@@ -1423,6 +1652,30 @@ where
         )
     }
 
+    /// Signs a [`ConsolidationPrerequest`] and returns the transfer posts if successful.
+    ///
+    /// # Note
+    ///
+    /// Utxo consolidation is a self transfer which merges several Utxos into a single
+    /// one whose asset value is the sum of the asset values of the original Utxos.
+    #[inline]
+    pub fn consolidate(
+        &mut self,
+        request: ConsolidationPrerequest<C>,
+    ) -> Result<SignResponse<C>, SignError<C>>
+    where
+        C::Identifier: PartialEq,
+    {
+        functions::consolidate(
+            &self.parameters,
+            self.state.accounts.as_ref(),
+            &self.state.assets,
+            &mut self.state.utxo_accumulator,
+            request,
+            &mut self.state.rng,
+        )
+    }
+
     /// Returns a vector with the [`IdentityProof`] corresponding to each [`IdentifiedAsset`] in `identified_assets`.
     #[inline]
     pub fn batched_identity_proof(
@@ -1566,12 +1819,33 @@ where
     pub fn prune(&mut self) {
         self.state.utxo_accumulator.prune()
     }
+
+    /// Returns a vector with all the [`Asset`]s owned by `self`.
+    #[inline]
+    pub fn asset_list(&self) -> AssetListResponse<C> {
+        self.state.asset_list()
+    }
+
+    /// Returns the estimated number of [`TransferPost`]s necessary to execute the `transaction`.
+    #[inline]
+    pub fn estimate_transferposts(&self, transaction: &Transaction<C>) -> usize {
+        match transaction {
+            Transaction::ToPrivate(_) => 1,
+            Transaction::PrivateTransfer(asset, _) => {
+                max(self.state.assets.select(asset).values.len() - 1, 1)
+            }
+            Transaction::ToPublic(asset, _) => {
+                max(self.state.assets.select(asset).values.len() - 1, 1)
+            } // note: change the estimation once we implement the topublic optimization
+        }
+    }
 }
 
 impl<C> Connection<C> for Signer<C>
 where
     C: Configuration,
     C::AssetValue: CheckedAdd<Output = C::AssetValue> + CheckedSub<Output = C::AssetValue>,
+    C::Identifier: PartialEq,
 {
     type AssetMetadata = C::AssetMetadata;
     type Checkpoint = C::Checkpoint;
@@ -1644,6 +1918,14 @@ where
     #[inline]
     fn transfer_parameters(&mut self) -> LocalBoxFutureResult<Parameters<C>, Self::Error> {
         Box::pin(async move { Ok(Signer::transfer_parameters(self).clone()) })
+    }
+
+    #[inline]
+    fn consolidate(
+        &mut self,
+        request: ConsolidationPrerequest<C>,
+    ) -> LocalBoxFutureResult<SignResult<C>, Self::Error> {
+        Box::pin(async move { Ok(self.consolidate(request)) })
     }
 }
 

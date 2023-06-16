@@ -5,6 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
+- [\#355](https://github.com/Manta-Network/manta-rs/pull/355) UTXO consolidation signer method.
 - [\#353](https://github.com/Manta-Network/manta-rs/pull/353) Restore Merkle tree pruning for the wallet.
 
 ### Changed

@@ -100,6 +100,12 @@ pub type StorageState = signer::StorageState<Config>;
 /// Storage State Option
 pub type StorageStateOption = Option<StorageState>;
 
+/// Asset List Response
+pub type AssetListResponse = signer::AssetListResponse<Config>;
+
+/// Consolidation Prerequest
+pub type ConsolidationPrerequest = signer::ConsolidationPrerequest<Config>;
+
 /// Receiving Key Request
 #[cfg_attr(
     feature = "serde",

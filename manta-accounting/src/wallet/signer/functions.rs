@@ -39,9 +39,9 @@ use crate::{
     },
     wallet::signer::{
         nullifier_map::NullifierMap, AccountTable, BalanceUpdate, Checkpoint, Configuration,
-        InitialSyncRequest, SignError, SignResponse, SignWithTransactionDataResponse,
-        SignWithTransactionDataResult, SignerParameters, SyncData, SyncError, SyncRequest,
-        SyncResponse,
+        ConsolidationPrerequest, ConsolidationRequest, InitialSyncRequest, SignError, SignResponse,
+        SignWithTransactionDataResponse, SignWithTransactionDataResult, SignerParameters, SyncData,
+        SyncError, SyncRequest, SyncResponse,
     },
 };
 use alloc::{vec, vec::Vec};
@@ -511,6 +511,39 @@ where
     })
 }
 
+/// Selects the pre-senders which own the assets in `request`, returning no change.
+///
+/// # Failure Conditions
+///
+/// This function returns an error if any of the assets in `request` is not in `assets`.
+#[inline]
+fn custom_select<C>(
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    parameters: &Parameters<C>,
+    request: ConsolidationRequest<C>,
+    rng: &mut C::Rng,
+) -> Result<Selection<C>, SignError<C>>
+where
+    C: Configuration,
+    IdentifiedAsset<C>: PartialEq,
+{
+    if !request.check_consolidation_request(assets) {
+        return Err(SignError::InvalidConsolidationRequest);
+    }
+    let id = request.id().clone();
+    let selection = request.select::<C::AssetMap>();
+    Selection::new(selection, move |k, v| {
+        Ok(build_pre_sender::<C>(
+            accounts,
+            parameters,
+            k,
+            Asset::<C>::new(id.clone(), v),
+            rng,
+        ))
+    })
+}
+
 /// Builds a [`TransferPost`] for the given `transfer`.
 #[inline]
 fn build_post_inner<
@@ -904,6 +937,66 @@ where
     C: Configuration,
 {
     let selection = select(accounts, assets, &parameters.parameters, &asset, rng)?;
+    sign_after_selection(
+        parameters,
+        accounts,
+        assets,
+        utxo_accumulator,
+        asset,
+        address,
+        sink_accounts,
+        selection,
+        rng,
+    )
+}
+
+/// Signs a transaction which consolidates the assets in `request`.
+#[inline]
+fn consolidate_internal<C>(
+    parameters: &SignerParameters<C>,
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    request: ConsolidationRequest<C>,
+    rng: &mut C::Rng,
+) -> Result<SignResponse<C>, SignError<C>>
+where
+    C: Configuration,
+    C::Identifier: PartialEq,
+{
+    let asset = request.asset();
+    let selection = custom_select(accounts, assets, &parameters.parameters, request, rng)?;
+    sign_after_selection(
+        parameters,
+        accounts,
+        assets,
+        utxo_accumulator,
+        asset,
+        Some(default_address::<C>(accounts, &parameters.parameters)),
+        Vec::new(),
+        selection,
+        rng,
+    )
+}
+
+/// Signs a withdraw transaction for `asset` sent to `address`, where `selection`
+/// owns at least `asset`.
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn sign_after_selection<C>(
+    parameters: &SignerParameters<C>,
+    accounts: &AccountTable<C>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    asset: Asset<C>,
+    address: Option<Address<C>>,
+    sink_accounts: Vec<C::AccountId>,
+    selection: Selection<C>,
+    rng: &mut C::Rng,
+) -> Result<SignResponse<C>, SignError<C>>
+where
+    C: Configuration,
+{
     let mut posts = Vec::new();
     let senders = compute_batched_transactions(
         accounts,
@@ -1033,6 +1126,33 @@ where
         assets,
         utxo_accumulator,
         transaction,
+        rng,
+    )?;
+    utxo_accumulator.rollback();
+    Ok(result)
+}
+
+/// Signs a transaction which consolidates the assets in `request`,
+/// generating transfer posts without releasing resources.
+#[inline]
+pub fn consolidate<C>(
+    parameters: &SignerParameters<C>,
+    accounts: Option<&AccountTable<C>>,
+    assets: &C::AssetMap,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    request: ConsolidationPrerequest<C>,
+    rng: &mut C::Rng,
+) -> Result<SignResponse<C>, SignError<C>>
+where
+    C: Configuration,
+    C::Identifier: PartialEq,
+{
+    let result = consolidate_internal(
+        parameters,
+        accounts.ok_or(SignError::MissingSpendingKey)?,
+        assets,
+        utxo_accumulator,
+        request.try_into()?,
         rng,
     )?;
     utxo_accumulator.rollback();

@@ -756,6 +756,12 @@ pub trait AssetMap<I, V>: Default {
     fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&Self::Key, &mut Vec<Asset<I, V>>) -> bool;
+
+    /// Returns a vector with all assets in `self`, indexed by their keys.
+    fn asset_vector(&self) -> Vec<(Self::Key, Asset<I, V>)>;
+
+    /// Returns a vector with all assets in `self` with `id`, indexed by their keys.
+    fn asset_vector_with_id(&self, id: &I) -> Vec<(Self::Key, Asset<I, V>)>;
 }
 
 /// Implements [`AssetMap`] for map types.
@@ -864,6 +870,25 @@ macro_rules! impl_asset_map_for_maps_body {
             F: FnMut(&Self::Key, &mut Vec<Asset<$I, $V>>) -> bool,
         {
             self.retain(move |key, assets| f(key, assets));
+        }
+
+        #[inline]
+        fn asset_vector(&self) -> Vec<(Self::Key, Asset<$I, $V>)> {
+            self.iter()
+                .flat_map(|(key, assets)| {
+                    assets.iter().map(move |asset| (key.clone(), asset.clone()))
+                })
+                .collect()
+        }
+
+        #[inline]
+        fn asset_vector_with_id(&self, id: &$I) -> Vec<(Self::Key, Asset<$I, $V>)> {
+            self.iter()
+                .flat_map(|(key, assets)| {
+                    assets.iter().map(move |asset| (key.clone(), asset.clone()))
+                })
+                .filter(move |(_, asset)| asset.id == *id)
+                .collect()
         }
     };
 }
