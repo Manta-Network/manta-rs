@@ -32,7 +32,7 @@ use crate::{
 use alloc::sync::Arc;
 use manta_accounting::{
     transfer::{canonical::Transaction, IdentifiedAsset, Identifier},
-    wallet::{signer::ConsolidationPrerequest, Wallet},
+    wallet::{signer::ConsolidationPrerequest, test::PublicBalanceOracle, Wallet},
 };
 use manta_crypto::{
     algebra::HasGenerator,
@@ -304,8 +304,8 @@ async fn consolidation_test() {
     wallet.load_initial_state().await.expect("Sync error");
     wallet.sync().await.expect("Sync error");
     // 2) mint several UTXOs.
-    const NUMBER_OF_PRIVATE_UTXOS: usize = 9;
-    for _ in 0..NUMBER_OF_PRIVATE_UTXOS {
+    let number_of_private_utxos = rng.gen_range(0..30);
+    for _ in 0..number_of_private_utxos {
         let to_mint = rng.gen_range(Default::default()..public_balance);
         public_balance -= to_mint;
         let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id.into(), to_mint));
@@ -320,7 +320,7 @@ async fn consolidation_test() {
     let balance_before_consolidation = wallet.balance(&asset_id.into());
     assert_eq!(
         asset_list.len(),
-        NUMBER_OF_PRIVATE_UTXOS,
+        number_of_private_utxos,
         "The number of UTXOs in the asset list must be equal to the number of UTXOs minted."
     );
     wallet
@@ -339,5 +339,79 @@ async fn consolidation_test() {
         asset_list_after_consolidation.len(),
         1,
         "The number of UTXOs after consolidation must be 1"
+    );
+}
+
+/// Tests the new to public implementation works as expected.
+#[ignore] // We don't run this test on the CI because it takes a long time to run.
+#[tokio::test]
+async fn to_public_test() {
+    let mut rng = OsRng;
+    let asset_id = 8;
+    let ledger = load_ledger().expect("Error loading ledger");
+    let account_id = rng.gen();
+    let mut public_balance = rng.gen_range(Default::default()..u32::MAX as u128);
+    let mut wallet = create_new_wallet(
+        account_id,
+        public_balance,
+        asset_id,
+        ledger.clone(),
+        rng.gen(),
+    )
+    .await;
+    let mut private_balance = 0;
+    // 1) reset the wallet and sync.
+    wallet.reset_state();
+    wallet.load_initial_state().await.expect("Sync error");
+    wallet.sync().await.expect("Sync error");
+    // 2) mint several UTXOs and sync.
+    let number_of_private_utxos = rng.gen_range(0..30);
+    for _ in 0..number_of_private_utxos {
+        let to_mint = rng.gen_range(Default::default()..public_balance);
+        public_balance -= to_mint;
+        private_balance += to_mint;
+        let to_private = Transaction::<Config>::ToPrivate(Asset::new(asset_id.into(), to_mint));
+        wallet
+            .post(to_private, Default::default())
+            .await
+            .expect("Error posting ToPrivate");
+    }
+    wallet.sync().await.expect("Sync error");
+    // 3) to public some amount and estimate the number of posts.
+    let reclaim = rng.gen_range(Default::default()..private_balance);
+    public_balance += reclaim;
+    private_balance -= reclaim;
+    let to_public =
+        Transaction::<Config>::ToPublic(Asset::new(asset_id.into(), reclaim), account_id);
+    let estimation = wallet.signer().estimate_transferposts(&to_public);
+    let response = wallet
+        .sign(to_public, Default::default())
+        .await
+        .expect("ToPublic error");
+    assert_eq!(
+        response.posts.len(),
+        estimation,
+        "The estimation is different than the actual number of posts"
+    );
+    wallet
+        .post(to_public, Default::default())
+        .await
+        .expect("To Public error");
+    // 4) check the balances are preserved
+    wallet.sync().await.expect("Sync error");
+    assert_eq!(
+        wallet.balance(&asset_id.into()),
+        private_balance,
+        "Private balance not preserved."
+    );
+    let real_public_balance = wallet
+        .ledger()
+        .public_balances()
+        .await
+        .expect("No public balances registered in the ledger")
+        .value(&asset_id.into());
+    assert_eq!(
+        real_public_balance, public_balance,
+        "Public balance not preserved"
     );
 }

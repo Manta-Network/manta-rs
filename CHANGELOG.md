@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - [\#353](https://github.com/Manta-Network/manta-rs/pull/353) Restore Merkle tree pruning for the wallet.
 
 ### Changed
+- [\#356](https://github.com/Manta-Network/manta-rs/pull/356) Signer ToPublic optimization.
 
 ### Deprecated
 
