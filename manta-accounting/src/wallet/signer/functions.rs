@@ -815,12 +815,12 @@ where
 fn compute_to_public_transaction<C>(
     accounts: &AccountTable<C>,
     assets: &C::AssetMap,
-    utxo_accumulator: &mut C::UtxoAccumulator,
     parameters: &Parameters<C>,
     proving_context: &MultiProvingContext<C>,
     asset_id: &C::AssetId,
     sink_accounts: Vec<C::AccountId>,
     selection: Selection<C>,
+    utxo_accumulator: &mut C::UtxoAccumulator,
     rng: &mut C::Rng,
 ) -> Result<SignResponse<C>, SignError<C>>
 where
@@ -842,13 +842,13 @@ where
         });
         process_to_public_senders(
             accounts,
-            utxo_accumulator,
             parameters,
             proving_context,
             asset_id,
-            &mut change,
             senders,
             sink_accounts.clone(),
+            utxo_accumulator,
+            &mut change,
             &mut posts,
             rng,
         )?;
@@ -867,13 +867,13 @@ where
         )?);
         process_to_public_senders(
             accounts,
-            utxo_accumulator,
             parameters,
             proving_context,
             asset_id,
-            &mut change,
             final_senders,
             sink_accounts,
+            utxo_accumulator,
+            &mut change,
             &mut posts,
             rng,
         )?;
@@ -887,13 +887,13 @@ where
 #[inline]
 fn process_to_public_senders<C>(
     accounts: &AccountTable<C>,
-    utxo_accumulator: &mut C::UtxoAccumulator,
     parameters: &Parameters<C>,
     proving_context: &MultiProvingContext<C>,
     asset_id: &C::AssetId,
-    change: &mut C::AssetValue,
     senders: [Sender<C>; ToPublicShape::SENDERS],
     sink_accounts: Vec<C::AccountId>,
+    utxo_accumulator: &mut C::UtxoAccumulator,
+    change: &mut C::AssetValue,
     posts: &mut Vec<TransferPost<C>>,
     rng: &mut C::Rng,
 ) -> Result<(), SignError<C>>
@@ -1202,12 +1202,12 @@ where
         _ => compute_to_public_transaction(
             accounts,
             assets,
-            utxo_accumulator,
             &parameters.parameters,
             &parameters.proving_context,
             &asset.id,
             sink_accounts,
             selection,
+            utxo_accumulator,
             rng,
         ),
     }
