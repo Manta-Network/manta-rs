@@ -1,6 +1,6 @@
 [package]
 name = "manta-trusted-setup"
-version = "0.5.17"
+version = "0.6.0"
 edition = "2021"
 authors = ["Manta Network <contact@manta.network>"]
 readme = "README.md"

@@ -5,12 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 ### Added
-- [\#355](https://github.com/Manta-Network/manta-rs/pull/355) UTXO consolidation signer method.
-- [\#353](https://github.com/Manta-Network/manta-rs/pull/353) Restore Merkle tree pruning for the wallet.
 
 ### Changed
-- [\#357](https://github.com/Manta-Network/manta-rs/pull/357) Sync protocol optimization.
-- [\#356](https://github.com/Manta-Network/manta-rs/pull/356) Signer ToPublic optimization.
 
 ### Deprecated
 
@@ -19,6 +15,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 
 ### Security
+
+## [0.6.0] - 2023-06-20
+### Added
+- [\#355](https://github.com/Manta-Network/manta-rs/pull/355) UTXO consolidation signer method.
+- [\#353](https://github.com/Manta-Network/manta-rs/pull/353) Restore Merkle tree pruning for the wallet.
+
+### Changed
+- [\#357](https://github.com/Manta-Network/manta-rs/pull/357) Sync protocol optimization.
+- [\#356](https://github.com/Manta-Network/manta-rs/pull/356) Signer ToPublic optimization.
 
 ## [0.5.17] - 2023-05-24
 ### Added
