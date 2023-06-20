@@ -119,7 +119,7 @@ fn test_batch_insertion_forest() {
 ///
 /// [`merge_fork`]: ForkedTree::merge_fork
 /// [`merge_fork_partial`]: ForkedTree::merge_fork_partial
-#[test]
+#[inline]
 fn branch_and_merge_test() {
     let mut rng = OsRng;
     let parameters = Parameters::sample(Default::default(), &mut rng);
@@ -147,4 +147,12 @@ fn branch_and_merge_test() {
         cloned_tree.root(),
         "Merge fork and merge fork partial should return the same Merkle root"
     );
+}
+
+/// Runs [`branch_and_merge_test`] 10 times.
+#[test]
+fn branch_and_merge_test_10_times() {
+    for _ in 0..10 {
+        branch_and_merge_test();
+    }
 }
