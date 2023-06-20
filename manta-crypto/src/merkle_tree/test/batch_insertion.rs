@@ -114,3 +114,45 @@ fn test_batch_insertion_forest() {
         |forest, _, leaves| forest.batch_insert(leaves),
     )
 }
+
+/// Tests that [`merge_fork_partial`] returns the same root as [`merge_fork`].
+///
+/// [`merge_fork`]: ForkedTree::merge_fork
+/// [`merge_fork_partial`]: ForkedTree::merge_fork_partial
+#[inline]
+fn branch_and_merge_test() {
+    let mut rng = OsRng;
+    let parameters = Parameters::sample(Default::default(), &mut rng);
+    let mut tree = ForkedTree::new(Partial::new(&parameters), &parameters);
+    let number_of_insertions = rng.gen_range(1..(1 << (HEIGHT - 1)) / 2);
+    let insertions = (0..number_of_insertions)
+        .map(|_| rng.gen())
+        .collect::<Vec<_>>();
+    for leaf in insertions {
+        Tree::push(&mut tree, &parameters, &leaf);
+    }
+    tree.merge_fork(&parameters);
+    let second_number_of_insertions = rng.gen_range(number_of_insertions..(1 << (HEIGHT - 1)));
+    let insertions = (number_of_insertions..second_number_of_insertions)
+        .map(|_| rng.gen())
+        .collect::<Vec<_>>();
+    for leaf in insertions {
+        Tree::push(&mut tree, &parameters, &leaf);
+    }
+    let mut cloned_tree = tree.clone();
+    tree.merge_fork_partial(&parameters);
+    cloned_tree.merge_fork(&parameters);
+    assert_eq!(
+        tree.root(),
+        cloned_tree.root(),
+        "Merge fork and merge fork partial should return the same Merkle root"
+    );
+}
+
+/// Runs [`branch_and_merge_test`] 10 times.
+#[test]
+fn branch_and_merge_test_10_times() {
+    for _ in 0..10 {
+        branch_and_merge_test();
+    }
+}

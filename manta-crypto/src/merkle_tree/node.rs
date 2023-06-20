@@ -568,7 +568,7 @@ impl NodeRange {
             }
         };
         for i in range {
-            result.push(Node(i).join_leaves(parameters, &leaves[i], &leaves[i + 1]))
+            result.push(parameters.join_leaves(&leaves[i], &leaves[i + 1]));
         }
         if dual_parity.final_parity().is_left() {
             result.push(self.last_node().join_leaves(

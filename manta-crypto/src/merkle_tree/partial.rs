@@ -385,14 +385,22 @@ where
         let marked_leaf_digests = marked_leaf_digests.into_iter();
         if matches!(marked_leaf_digests.size_hint().1, Some(max) if max <= capacity::<C, _>() - self.len())
         {
+            let mut marked_inserts = Vec::new();
             for (marking, leaf_digest) in marked_leaf_digests {
                 if marking {
-                    assert!(self.push_digest(parameters, || leaf_digest),
-                    "Unable to push digest even though the tree should have enough capacity to do so.");
+                    marked_inserts.push(leaf_digest);
                 } else {
+                    if !marked_inserts.is_empty() {
+                        assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
+                        "Unable to push digest even though the tree should have enough capacity to do so.");
+                    }
                     assert!(self.push_provable_digest(parameters, move || leaf_digest),
                     "Unable to push digest even though the tree should have enough capacity to do so.");
                 }
+            }
+            if !marked_inserts.is_empty() {
+                assert!(self.batch_push_digest(parameters, || marked_inserts.drain(..).collect::<Vec<_>>()),
+                "Unable to push digest even though the tree should have enough capacity to do so.");
             }
             return Ok(());
         }
