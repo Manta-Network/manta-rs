@@ -804,8 +804,10 @@ macro_rules! impl_asset_map_for_maps_body {
                 } else if value == &asset.value {
                     return Selection::new(Default::default(), vec![(key.clone(), value.clone())]);
                 } else {
-                    sum.value.add_assign(value.clone());
-                    values.push((key.clone(), value.clone()));
+                    if sum.value < asset.value {
+                        sum.value.add_assign(value.clone());
+                        values.push((key.clone(), value.clone()));
+                    }
                 }
             }
             if let Some((best_key, best_value)) = min_max_asset {
