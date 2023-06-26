@@ -13,9 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Removed
 
 ### Fixed
-- [\#361](https://github.com/Manta-Network/manta-rs/pull/361) Asset selection fix
 
 ### Security
+
+## [0.6.1] - 2023-06-26
+### Fix
+- [\#361](https://github.com/Manta-Network/manta-rs/pull/361) Asset selection fix
 
 ## [0.6.0] - 2023-06-20
 ### Added
