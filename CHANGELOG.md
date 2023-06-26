@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Removed
 
 ### Fixed
+- [\#361](https://github.com/Manta-Network/manta-rs/pull/361) Asset selection fix
 
 ### Security
 
