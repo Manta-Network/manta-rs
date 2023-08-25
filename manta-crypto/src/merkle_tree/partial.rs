@@ -93,11 +93,16 @@ where
         leaf_digests: Vec<LeafDigest<C>>,
         inner_digests: PartialInnerTree<C, M>,
     ) -> Self {
-        Self::new_unchecked(LeafMap::from_vec(leaf_digests), inner_digests)
+        Self::new_unchecked(LeafMap::from_vec(leaf_digests, false), inner_digests)
     }
 
     /// Builds a new [`Partial`] from `leaf_digests` and `path` without checking that
     /// `path` is consistent with the leaves and that it is a [`CurrentPath`].
+    ///
+    /// # Note
+    ///
+    /// This function is intended to be used for the initialization of partial Merkle trees
+    /// in the signer, so every leaf inserted will be marked for deletion by default.
     #[inline]
     pub fn from_leaves_and_path_unchecked(
         parameters: &Parameters<C>,
@@ -110,14 +115,14 @@ where
     {
         let n = leaf_digests.len();
         if n == 0 {
-            Self::new_unchecked(LeafMap::from_vec(leaf_digests), Default::default())
+            Self::new_unchecked(LeafMap::from_vec(leaf_digests, true), Default::default())
         } else {
             let base = match Parity::from_index(n - 1) {
                 Parity::Left => parameters.join_leaves(&leaf_digests[n - 1], &path.sibling_digest),
                 Parity::Right => parameters.join_leaves(&path.sibling_digest, &leaf_digests[n - 1]),
             };
             let mut partial_tree = Self::new_unchecked(
-                LeafMap::from_vec(leaf_digests),
+                LeafMap::from_vec(leaf_digests, true),
                 PartialInnerTree::from_current(
                     parameters,
                     base,

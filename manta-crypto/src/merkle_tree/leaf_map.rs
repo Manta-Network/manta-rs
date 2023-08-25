@@ -96,8 +96,9 @@ where
     /// Tries to remove the [`LeafDigest`] stored at `index`. Fails when trying to remove the current leaf.
     fn remove(&mut self, index: usize) -> bool;
 
-    /// Builds a [`LeafMap`] from `leaf_digests`.
-    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self;
+    /// Builds a [`LeafMap`] from `leaf_digests`. The value `marked` determines whether the leaves will be
+    /// marked or unmarked.
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>, marked: bool) -> Self;
 
     /// Returns a vector with all [`LeafDigest`]s in `self`.
     #[inline]
@@ -190,7 +191,8 @@ where
     }
 
     #[inline]
-    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>, marked: bool) -> Self {
+        let _ = marked;
         Self(leaf_digests)
     }
 
@@ -292,9 +294,9 @@ where
     }
 
     #[inline]
-    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>, marked: bool) -> Self {
         Self {
-            vec: leaf_digests.into_iter().map(|x| (false, x)).collect(),
+            vec: leaf_digests.into_iter().map(|x| (marked, x)).collect(),
         }
     }
 
@@ -399,7 +401,7 @@ where
     }
 
     #[inline]
-    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>, marked: bool) -> Self {
         let digest_count = leaf_digests.len();
         if digest_count == 0 {
             Self {
@@ -410,7 +412,7 @@ where
             Self {
                 map: leaf_digests
                     .into_iter()
-                    .map(|x| (false, x))
+                    .map(|x| (marked, x))
                     .enumerate()
                     .collect::<BTreeMap<usize, (bool, LeafDigest<C>)>>(),
                 last_index: Some(digest_count - 1),
@@ -530,7 +532,7 @@ where
     }
 
     #[inline]
-    fn from_vec(leaf_digests: Vec<LeafDigest<C>>) -> Self {
+    fn from_vec(leaf_digests: Vec<LeafDigest<C>>, marked: bool) -> Self {
         let digest_count = leaf_digests.len();
         if digest_count == 0 {
             Self {
@@ -541,7 +543,7 @@ where
             Self {
                 map: leaf_digests
                     .into_iter()
-                    .map(|x| (false, x))
+                    .map(|x| (marked, x))
                     .enumerate()
                     .collect::<HashMap<usize, (bool, LeafDigest<C>)>>(),
                 last_index: Some(digest_count - 1),
