@@ -80,7 +80,7 @@ pub type Header<T> = <T as HeaderType>::Header;
     )
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct EmptyHeader<COM = ()>(PhantomData<COM>);
 
 impl<COM> Constant<COM> for EmptyHeader<COM> {
