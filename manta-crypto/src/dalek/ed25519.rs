@@ -98,6 +98,7 @@ where
 }
 
 /// Edwards Curve Signature Scheme for the `Curve25519` Elliptic Curve
+#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Ed25519<M>(PhantomData<M>);

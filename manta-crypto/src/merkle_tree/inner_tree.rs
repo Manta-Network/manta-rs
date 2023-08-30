@@ -1127,6 +1127,7 @@ where
 }
 
 /// [`InnerTree`] Path Iterator
+#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 #[derive(derivative::Derivative)]
 #[derivative(
     Copy(bound = ""),

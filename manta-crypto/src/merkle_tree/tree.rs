@@ -80,6 +80,7 @@ pub trait LeafHash<COM = ()> {
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
+#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IdentityLeafHash<L, COM = ()>(PhantomData<(L, COM)>)

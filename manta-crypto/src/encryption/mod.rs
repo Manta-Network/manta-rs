@@ -69,7 +69,6 @@ where
 /// Header Type
 pub type Header<T> = <T as HeaderType>::Header;
 
-#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 /// Empty Header
 #[cfg_attr(
     feature = "serde",
@@ -80,6 +79,7 @@ pub type Header<T> = <T as HeaderType>::Header;
         deny_unknown_fields
     )
 )]
+#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct EmptyHeader<COM = ()>(PhantomData<COM>);
@@ -158,6 +158,7 @@ where
 ///
 /// For protocols that need some unconstrained behavior in-circuit, we can use this
 /// type to return from the computation.
+#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UnsafeOutput<T, COM = ()>(PhantomData<(T, COM)>);
@@ -233,6 +234,7 @@ where
 }
 
 /// Empty Encryption Scheme returning [`UnsafeOutput`].
+#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UnsafeNoEncrypt<E, COM = ()>(PhantomData<(E, COM)>);

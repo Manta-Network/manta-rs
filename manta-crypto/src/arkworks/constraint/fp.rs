@@ -51,6 +51,7 @@ use manta_util::serde::{Deserialize, Serialize, Serializer};
         try_from = "Vec<u8>"
     )
 )]
+#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Fp<F>(
