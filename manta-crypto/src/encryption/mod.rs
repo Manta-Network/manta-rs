@@ -69,6 +69,7 @@ where
 /// Header Type
 pub type Header<T> = <T as HeaderType>::Header;
 
+#[allow(clippy::incorrect_clone_impl_on_copy_type)]
 /// Empty Header
 #[cfg_attr(
     feature = "serde",
@@ -80,7 +81,7 @@ pub type Header<T> = <T as HeaderType>::Header;
     )
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct EmptyHeader<COM = ()>(PhantomData<COM>);
 
 impl<COM> Constant<COM> for EmptyHeader<COM> {
