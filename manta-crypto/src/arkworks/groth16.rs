@@ -539,7 +539,7 @@ where
 }
 
 /// Arkworks Groth16 Proof System
-#[allow(clippy::incorrect_clone_impl_on_copy_type)]
+#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
 #[derive(derivative::Derivative)]
 #[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Groth16<E>(PhantomData<E>)
