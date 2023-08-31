@@ -465,7 +465,6 @@ where
 
 /// Prime Modulus
 #[derive(derivative::Derivative)]
-#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
 #[derivative(Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct PrimeModulus<F>(PhantomData<F>)
 where

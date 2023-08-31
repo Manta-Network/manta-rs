@@ -540,7 +540,6 @@ where
 
 /// Arkworks Groth16 Proof System
 #[derive(derivative::Derivative)]
-#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
 #[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Groth16<E>(PhantomData<E>)
 where
