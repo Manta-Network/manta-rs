@@ -80,7 +80,7 @@ pub type Header<T> = <T as HeaderType>::Header;
     )
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct EmptyHeader<COM = ()>(PhantomData<COM>);
 
 impl<COM> Constant<COM> for EmptyHeader<COM> {
@@ -158,7 +158,7 @@ where
 /// For protocols that need some unconstrained behavior in-circuit, we can use this
 /// type to return from the computation.
 #[derive(derivative::Derivative)]
-#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UnsafeOutput<T, COM = ()>(PhantomData<(T, COM)>);
 
 impl<T, COM> Constant<COM> for UnsafeOutput<T, COM> {
@@ -233,7 +233,7 @@ where
 
 /// Empty Encryption Scheme returning [`UnsafeOutput`].
 #[derive(derivative::Derivative)]
-#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct UnsafeNoEncrypt<E, COM = ()>(PhantomData<(E, COM)>);
 
 impl<E, COM> Constant<COM> for UnsafeNoEncrypt<E, COM>

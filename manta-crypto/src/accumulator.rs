@@ -297,7 +297,7 @@ pub trait FromItemsAndWitnesses: Accumulator {
         deny_unknown_fields
     )
 )]
-#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
+#[derive(derivative::Derivative)]
 #[derivative(
     Clone(bound = "M::Witness: Clone, M::Output: Clone"),
     Copy(bound = "M::Witness: Copy, M::Output: Copy"),

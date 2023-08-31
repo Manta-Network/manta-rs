@@ -540,7 +540,7 @@ where
 
 /// Arkworks Groth16 Proof System
 #[derive(derivative::Derivative)]
-#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Groth16<E>(PhantomData<E>)
 where
     E: PairingEngine;

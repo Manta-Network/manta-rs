@@ -58,8 +58,7 @@ where
     serde(crate = "manta_util::serde")
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
-#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Identity<K, COM = ()>(PhantomData<(K, COM)>)
 where
     K: Clone;

@@ -99,7 +99,7 @@ where
 
 /// Edwards Curve Signature Scheme for the `Curve25519` Elliptic Curve
 #[derive(derivative::Derivative)]
-#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Ed25519<M>(PhantomData<M>);
 
 /// The serialization of a [`PublicKey`].

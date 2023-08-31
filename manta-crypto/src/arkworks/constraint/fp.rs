@@ -52,7 +52,7 @@ use manta_util::serde::{Deserialize, Serialize, Serializer};
     )
 )]
 #[derive(derivative::Derivative)]
-#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Fp<F>(
     /// Field Element
     #[cfg_attr(
