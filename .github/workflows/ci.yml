@@ -58,7 +58,7 @@ jobs:
       - run: cargo hakari manage-deps --yes
       - run: cargo hakari verify
       - run: cargo install cargo-hack --locked
-      - run: cargo clippy --workspace --all-features -vv
+      #- run: cargo clippy --workspace --all-features -vv
       - run: cargo hack clippy --workspace --feature-powerset --depth 3 --tests
       - run: cargo hack clippy --workspace --feature-powerset --depth 3
       - run: cargo hack clippy --workspace --feature-powerset --depth 3 --bins
