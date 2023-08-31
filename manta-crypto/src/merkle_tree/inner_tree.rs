@@ -1127,7 +1127,6 @@ where
 }
 
 /// [`InnerTree`] Path Iterator
-#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
 #[derive(derivative::Derivative)]
 #[derivative(
     Copy(bound = ""),
