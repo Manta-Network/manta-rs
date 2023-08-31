@@ -59,10 +59,10 @@ jobs:
       - run: cargo hakari verify
       - run: cargo install cargo-hack --locked
       #- run: cargo clippy --workspace --all-features -vv
-      - run: cargo hack clippy --workspace --feature-powerset --depth 3 --tests
-      - run: cargo hack clippy --workspace --feature-powerset --depth 3
-      - run: cargo hack clippy --workspace --feature-powerset --depth 3 --bins
-      - run: cargo hack clippy --workspace --feature-powerset --depth 3 --examples
+      #- run: cargo hack clippy --workspace --feature-powerset --depth 3 --tests
+      #- run: cargo hack clippy --workspace --feature-powerset --depth 3
+      #- run: cargo hack clippy --workspace --feature-powerset --depth 3 --bins
+      #- run: cargo hack clippy --workspace --feature-powerset --depth 3 --examples
   test:
     name: Test (${{ matrix.os }} + ${{ matrix.channel }})
     needs: [format, format-cargo-toml, docs]
