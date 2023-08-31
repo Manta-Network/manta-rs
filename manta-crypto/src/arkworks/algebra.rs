@@ -246,9 +246,9 @@ where
         try_from = "Vec<u8>"
     )
 )]
-#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
+#[derivative(Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Group<C>(
     /// Affine Point Representation
     #[cfg_attr(

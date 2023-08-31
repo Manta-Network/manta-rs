@@ -80,9 +80,9 @@ pub trait LeafHash<COM = ()> {
     derive(Deserialize, Serialize),
     serde(crate = "manta_util::serde", deny_unknown_fields)
 )]
-#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
+#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IdentityLeafHash<L, COM = ()>(PhantomData<(L, COM)>)
 where
     L: Clone;

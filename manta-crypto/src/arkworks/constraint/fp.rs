@@ -51,9 +51,9 @@ use manta_util::serde::{Deserialize, Serialize, Serializer};
         try_from = "Vec<u8>"
     )
 )]
-#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
 #[derive(derivative::Derivative)]
-#[derivative(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derivative(Clone(clone_trait = "::std::clone::Clone"))]
+#[derivative(Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Fp<F>(
     /// Field Element
     #[cfg_attr(
