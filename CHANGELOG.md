@@ -13,9 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Removed
 
 ### Fixed
-- [\#363](https://github.com/Manta-Network/manta-rs/pull/363) Initial sync pruning fix
 
 ### Security
+
+## [0.6.2] - 2023-09-01
+### Fix
+- [\#363](https://github.com/Manta-Network/manta-rs/pull/363) Initial sync pruning fix
 
 ## [0.6.1] - 2023-06-26
 ### Fix
