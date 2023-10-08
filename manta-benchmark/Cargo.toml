@@ -48,6 +48,7 @@ name = "to_public"
 harness = false
 
 [dependencies]
+criterion = { version = "0.3.4", default-features = false }
 getrandom = { version = "0.2.8", default-features = false, features = ["js"] }
 instant = { version = "0.1.12", default-features = false, features = [ "wasm-bindgen" ] }
 manta-accounting = { path = "../manta-accounting", default-features = false, features = ["test"] }

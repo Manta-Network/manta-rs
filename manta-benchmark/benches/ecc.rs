@@ -18,9 +18,9 @@
 
 use core::iter::repeat_with;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use manta_benchmark::ecc;
+use manta_benchmark::{ecc, glv::GLVMutiplicationSetup, Benchmark};
 use manta_crypto::{
-    arkworks::bls12_381::{G1Affine, G1Projective},
+    arkworks::bls12_381::{G1Affine as BLSAffine, G1Projective as BLSProjective},
     rand::OsRng,
 };
 
@@ -28,7 +28,7 @@ use manta_crypto::{
 fn affine_affine_addition(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let mut lhs = black_box(ecc::sample_affine_point::<G1Affine, _>(&mut rng));
+    let mut lhs = black_box(ecc::sample_affine_point::<BLSAffine, _>(&mut rng));
     let rhs = black_box(ecc::sample_affine_point(&mut rng));
     group.bench_function("affine-affine addition", |b| {
         b.iter(|| {
@@ -41,7 +41,7 @@ fn affine_affine_addition(c: &mut Criterion) {
 fn projective_affine_addition(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let mut lhs = black_box(ecc::sample_projective_point::<G1Projective, _>(&mut rng));
+    let mut lhs = black_box(ecc::sample_projective_point::<BLSProjective, _>(&mut rng));
     let rhs = black_box(ecc::sample_affine_point(&mut rng));
     group.bench_function("projective-affine addition", |b| {
         b.iter(|| {
@@ -54,8 +54,8 @@ fn projective_affine_addition(c: &mut Criterion) {
 fn projective_projective_addition(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let mut lhs = black_box(ecc::sample_projective_point::<G1Projective, _>(&mut rng));
-    let rhs = black_box(ecc::sample_projective_point::<G1Projective, _>(&mut rng));
+    let mut lhs = black_box(ecc::sample_projective_point::<BLSProjective, _>(&mut rng));
+    let rhs = black_box(ecc::sample_projective_point::<BLSProjective, _>(&mut rng));
     group.bench_function("projective-projective addition", |b| {
         b.iter(|| {
             let _ = black_box(ecc::projective_projective_add_assign(&mut lhs, rhs));
@@ -67,8 +67,8 @@ fn projective_projective_addition(c: &mut Criterion) {
 fn affine_scalar_multiplication(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let point = black_box(ecc::sample_affine_point::<G1Affine, _>(&mut rng));
-    let scalar = black_box(ecc::sample_scalar::<G1Affine, _>(&mut rng));
+    let point = black_box(ecc::sample_affine_point::<BLSAffine, _>(&mut rng));
+    let scalar = black_box(ecc::sample_scalar::<BLSAffine, _>(&mut rng));
     group.bench_function("affine-scalar multiplication", |b| {
         b.iter(|| {
             let _ = black_box(ecc::affine_scalar_mul(&point, scalar));
@@ -80,8 +80,8 @@ fn affine_scalar_multiplication(c: &mut Criterion) {
 fn projective_scalar_multiplication(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let mut point = black_box(ecc::sample_projective_point::<G1Projective, _>(&mut rng));
-    let scalar = black_box(ecc::sample_scalar::<G1Affine, _>(&mut rng));
+    let mut point = black_box(ecc::sample_projective_point::<BLSProjective, _>(&mut rng));
+    let scalar = black_box(ecc::sample_scalar::<BLSAffine, _>(&mut rng));
     group.bench_function("projective-scalar multiplication", |b| {
         b.iter(|| {
             let _ = black_box(ecc::projective_scalar_mul_assign(&mut point, scalar));
@@ -93,7 +93,7 @@ fn projective_scalar_multiplication(c: &mut Criterion) {
 fn projective_to_affine_normalization(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let point = black_box(ecc::sample_projective_point::<G1Projective, _>(&mut rng));
+    let point = black_box(ecc::sample_projective_point::<BLSProjective, _>(&mut rng));
     group.bench_function("projective to affine normalization", |b| {
         b.iter(|| {
             let _ = black_box(ecc::projective_to_affine_normalization(&point));
@@ -105,7 +105,7 @@ fn projective_to_affine_normalization(c: &mut Criterion) {
 fn batch_vector_projective_to_affine_normalization(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let points = repeat_with(|| ecc::sample_projective_point::<G1Projective, _>(&mut rng))
+    let points = repeat_with(|| ecc::sample_projective_point::<BLSProjective, _>(&mut rng))
         .take(1 << 16)
         .collect::<Vec<_>>();
     let points_slice = black_box(points.as_slice());
@@ -122,7 +122,7 @@ fn batch_vector_projective_to_affine_normalization(c: &mut Criterion) {
 fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
     let mut group = c.benchmark_group("bench");
     let mut rng = OsRng;
-    let points = repeat_with(|| ecc::sample_projective_point::<G1Projective, _>(&mut rng))
+    let points = repeat_with(|| ecc::sample_projective_point::<BLSProjective, _>(&mut rng))
         .take(1 << 16)
         .collect::<Vec<_>>();
     let points_slice = black_box(points.as_slice());
@@ -135,6 +135,12 @@ fn naive_vector_projective_to_affine_normalization(c: &mut Criterion) {
     });
 }
 
+#[inline]
+fn glv_scalar_multiplication(c: &mut Criterion) {
+    black_box(GLVMutiplicationSetup::<BLSAffine, _>::setup(&mut OsRng, ()))
+        .define_benchmark(&mut c.benchmark_group("bench"));
+}
+
 criterion_group!(
     ecc,
     affine_affine_addition,
@@ -145,5 +151,6 @@ criterion_group!(
     projective_to_affine_normalization,
     batch_vector_projective_to_affine_normalization,
     naive_vector_projective_to_affine_normalization,
+    glv_scalar_multiplication,
 );
 criterion_main!(ecc);
