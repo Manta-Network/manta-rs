@@ -23,7 +23,7 @@ jobs:
           - nightly
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.channel }} && rustup default ${{ matrix.channel }}
       - run: cargo bench --workspace --all-features
   wasm-pack-bench:
@@ -42,7 +42,7 @@ jobs:
           - manta-benchmark
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: rustup update ${{ matrix.channel }} && rustup default ${{ matrix.channel }}
       - run: cargo install wasm-pack
       - run: wasm-pack test --headless --chrome --release ${{ matrix.package }}
