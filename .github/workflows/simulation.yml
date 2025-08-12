@@ -28,6 +28,6 @@ jobs:
           - nightly
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v5
       - run: rustup update ${{ matrix.channel }} --no-self-update && rustup default ${{ matrix.channel }}
       - run: cargo run --package manta-pay --all-features --release --bin simulation ${{ matrix.agents }} ${{ matrix.rounds }} 10 100000
